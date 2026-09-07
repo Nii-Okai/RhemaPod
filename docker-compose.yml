@@ -1,0 +1,93 @@
+name: fastapi-sermon
+
+# Local dev / integration stack: api + postgres + redis.
+# No MinIO (LocalStorage stub covers dev) and no Stripe stub (MockProvider is
+# in-process) — see ADR 0001 §4.
+#
+# Migrations are NOT run on `up`. Run them once, as an explicit operator step:
+#     docker compose run --rm migrate
+#   (equivalently: docker compose run --rm api alembic upgrade head)
+# The `migrate` service sits behind a profile so it is never started by `up`.
+
+# Shared app config for the api and migrate containers. DATABASE_URL and
+# REDIS_URL default to the compose-network services. SECRET_KEY has NO default —
+# supply it before `up` (export it, or `cp .env.docker.example .env` and fill it
+# in; compose auto-loads .env for ${VAR} substitution). `docker compose up`
+# fails loudly until it is set. Everything here is DEV-ONLY, not a real secret.
+x-app-env: &app-env
+  ENVIRONMENT: development
+  # Required, no default. app/core/config.py rejects placeholder / low-entropy
+  # keys in every environment, so this must be real random bytes even in dev:
+  #     python -c "import secrets; print(secrets.token_urlsafe(48))"
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — cp .env.docker.example .env and generate one}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sermon:sermon@postgres:5432/sermon}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: sermon
+      POSTGRES_PASSWORD: sermon
+      POSTGRES_DB: sermon
+    ports:
+      # Bind to loopback only — do not publish the DB on every host interface.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sermon -d sermon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8
+    ports:
+      # Bind to loopback only — do not publish Redis on every host interface.
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *app-env
+      DEBUG: "true"
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Mirrors the image HEALTHCHECK (liveness — checks nothing external).
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # One-shot migration runner. Started ONLY via its profile, never by `up`:
+  #     docker compose run --rm migrate
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["migrate"]
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
