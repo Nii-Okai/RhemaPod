@@ -112,17 +112,33 @@ async def search_sermons(
             )
         )
 
-    total = (await db.execute(
-        select(func.count()).select_from(Sermon).where(*conditions)
-    )).scalar_one()
+    # Effective tier = sermon.tier ?? series.tier ?? free — the SQL form of
+    # content_service.effective_tier. Filter it in SQL so `total` and the
+    # returned page are built from one condition list and cannot disagree
+    # (a Python post-filter left `total` counting the pre-filter set).
+    needs_series_join = tier is not None
+    if tier is not None:
+        conditions.append(
+            func.coalesce(Sermon.tier, Series.tier, ContentTier.FREE) == tier
+        )
+
+    count_stmt = select(func.count()).select_from(Sermon)
+    page_stmt = select(Sermon)
+    if needs_series_join:
+        join_on = Series.id == Sermon.series_id
+        count_stmt = count_stmt.outerjoin(Series, join_on)
+        page_stmt = page_stmt.outerjoin(Series, join_on)
+
+    total = (await db.execute(count_stmt.where(*conditions))).scalar_one()
 
     order = _rank(db, query) if query else Sermon.published_at.desc().nullslast()
     rows = (await db.execute(
-        select(Sermon).where(*conditions).order_by(order).limit(limit).offset(offset)
+        page_stmt.where(*conditions).order_by(order).limit(limit).offset(offset)
     )).scalars().all()
 
-    # Tier is resolved per sermon (it can be inherited from the series), so the
-    # tier filter is applied after loading rather than in SQL.
+    # series_map still resolves the effective tier on the returned items (it can
+    # be inherited from the series). It is NOT collapsed into the join above —
+    # that is a separate deferred cleanup.
     series_ids = {s.series_id for s in rows if s.series_id}
     series_map = {}
     if series_ids:
@@ -135,8 +151,6 @@ async def search_sermons(
     items = []
     for sermon in rows:
         resolved = effective_tier(sermon, series_map.get(sermon.series_id))
-        if tier is not None and resolved != tier:
-            continue
         items.append(to_list_item(sermon, resolved, has_sub))
 
     log.info("search", query=query or "", results=len(items), total=total)

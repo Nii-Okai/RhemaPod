@@ -261,3 +261,64 @@ async def test_category_rejects_unknown_parent_field(client, engine):
     )
     assert r.status_code == 201
     assert "parent_id" not in r.json()
+
+
+# ── catalog cache invalidation on sermon edit (finding 1) ─────────────────────
+async def test_patch_published_sermon_busts_catalog_cache(client, engine):
+    """A tier PATCH on a published sermon must invalidate the cached catalog so
+    /catalog/sermons and the live stream/detail endpoints never disagree on
+    `locked`/`tier`. Pre-fix, update_sermon never busts the cache, so the
+    anonymous re-read below still serves the stale `free`/unlocked row.
+    """
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free then paid", "tier": "free"},
+        headers=editor,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+
+    # Prime the catalog cache as an anonymous caller.
+    primed = (await client.get("/api/v1/catalog/sermons")).json()
+    row = next(i for i in primed if i["id"] == sid)
+    assert row["tier"] == "free"
+    assert row["locked"] is False
+
+    # Owning editor flips it to paid.
+    r = await client.patch(
+        f"/api/v1/sermons/{sid}", json={"tier": "paid"}, headers=editor
+    )
+    assert r.status_code == 200
+
+    # Immediately re-read: the cache must reflect the new tier.
+    after = (await client.get("/api/v1/catalog/sermons")).json()
+    row = next(i for i in after if i["id"] == sid)
+    assert row["tier"] == "paid"
+    assert row["locked"] is True
+
+
+async def test_patch_draft_sermon_does_not_touch_catalog_cache(client, engine):
+    """A no-op guard: editing a non-published sermon leaves the primed catalog
+    cache alone (nothing to invalidate — it was never in the catalog)."""
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+    published = (await client.post(
+        "/api/v1/sermons", json={"title": "Live", "tier": "free"}, headers=editor
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{published}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{published}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{published}/publish", headers=manager)
+
+    draft = (await client.post(
+        "/api/v1/sermons", json={"title": "Draft", "tier": "free"}, headers=editor
+    )).json()["id"]
+
+    (await client.get("/api/v1/catalog/sermons")).json()
+    r = await client.patch(
+        f"/api/v1/sermons/{draft}", json={"tier": "paid"}, headers=editor
+    )
+    assert r.status_code == 200
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert [i["id"] for i in listing] == [published]

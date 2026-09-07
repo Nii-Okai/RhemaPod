@@ -330,9 +330,15 @@ async def update_sermon(
     ):
         fields["episode_number"] = await next_episode_number(db, new_series)
 
+    changed = False
     for key, value in fields.items():
+        if getattr(sermon, key) != value:
+            changed = True
         setattr(sermon, key, value)
 
+    # Tags are excluded from `fields` (and so from the `changed` check) on
+    # purpose: they are not part of SermonListItem / the cached catalog row, so
+    # a tags-only edit never needs to bust the catalog cache below.
     if data.tags is not None:
         sermon.tags.clear()
         for tag in {t.strip().lower() for t in data.tags if t.strip()}:
@@ -340,6 +346,16 @@ async def update_sermon(
 
     await db.commit()
     await db.refresh(sermon)
+
+    # A published sermon's card is cached in the public catalog (5 min TTL). Any
+    # effective change to it — not just tier: the cached SermonListItem carries
+    # title, description, thumbnail, duration, episode number, the denormalised
+    # speaker/category/series names and tier — leaves the catalog disagreeing
+    # with the live detail/stream endpoints until the TTL lapses. Commit first,
+    # then invalidate (mirrors update_series / the approval transitions).
+    if changed and sermon.status == SermonStatus.PUBLISHED:
+        await invalidate_catalog_cache()
+
     log.info("sermon_updated", sermon_id=str(sermon.id), by=str(editor.id))
     return sermon
 

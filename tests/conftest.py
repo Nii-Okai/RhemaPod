@@ -33,6 +33,11 @@ import app.core.storage as storage_module  # noqa: E402
 
 storage_module.set_storage(storage_module.LocalStorage())
 
+# Force the in-process mock payment provider for the suite.
+import app.core.payments as payments_module  # noqa: E402
+
+payments_module.set_provider(payments_module.MockProvider())
+
 from app.db.database import Base, get_db, get_read_db  # noqa: E402
 from main import app  # noqa: E402
 
@@ -65,6 +70,9 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     _fake.store.clear()
     _fake.fail = False  # a leaked failure-injection flag would cascade-fail the suite
     storage_module.set_storage(storage_module.LocalStorage())
+    # Fresh mock payment provider per test — no seeded period-ends or counter
+    # state bleeds between tests.
+    payments_module.set_provider(payments_module.MockProvider())
     TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async def override_get_db():

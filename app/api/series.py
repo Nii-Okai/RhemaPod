@@ -114,7 +114,9 @@ async def delete_series(series_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> R
 
 
 @router.get("/{series_id}/episodes", response_model=list[SermonListItem])
-async def series_episodes(series_id: uuid.UUID, db: ReadDbDep) -> list[SermonListItem]:
+async def series_episodes(
+    series_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> list[SermonListItem]:
     """Published episodes of a series, ordered by episode number (gaps allowed)."""
     series = await db.get(Series, series_id)
     if series is None:
@@ -130,8 +132,12 @@ async def series_episodes(series_id: uuid.UUID, db: ReadDbDep) -> list[SermonLis
         .order_by(Sermon.episode_number.asc().nullslast())
     )
     rows = (await db.execute(stmt)).scalars().all()
+    # Resolve entitlement once for the caller — not per row (that would be a
+    # Redis round-trip per episode). is_entitled writes only to Redis, so the
+    # read-only session is not violated.
+    has_sub = await content_service._has_subscription(db, user)
     return [
-        to_list_item(s, effective_tier(s, series), has_subscription=False)
+        to_list_item(s, effective_tier(s, series), has_sub)
         for s in rows
     ]
 
