@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   RhemaPod admin portal — design-token layer (W1)
+
+   Every token below is transcribed verbatim from
+   docs/design_admin_portal/README.md ("Design tokens") and cross-checked against
+   docs/design_admin_portal/RhemaPod UI Kit.dc.html. Names mirror the design
+   table so a fidelity review can grep for drift (plan §A.6, risk D5).
+
+   Light-only. The palette has one dark hint (clay-400, "dark-mode accent") and
+   no dark surface set, so there is deliberately NO dark theme (§A.6).
+   ========================================================================== */
+
+@theme {
+  /* ---- Colour · warm neutrals (carry the interface) ---------------------- */
+  --color-surface: #ffffff;          /* cards, tables, top bar               */
+  --color-surface-sunken: #fbf9f5;   /* page bg in the shell, table headers  */
+  --color-canvas: #f7f4ee;           /* sidebar, app background, chips        */
+  --color-border-subtle: #efe9df;    /* row dividers, inner rules            */
+  --color-border: #e4ddd1;           /* card and container borders           */
+  --color-border-strong: #d8cfc0;    /* input borders, dashed dropzones      */
+
+  /* ---- Colour · ink ramp (text) --------------------------------------- */
+  --color-ink-faint: #9c9085;        /* mono labels, meta, disabled text     */
+  --color-ink-muted: #6b6055;        /* secondary body text                  */
+  --color-ink-soft: #5c534a;         /* inactive nav labels                  */
+  --color-ink: #2e2723;              /* primary text                         */
+
+  /* ---- Colour · clay ramp (the only interactive accent) -------------- */
+  --color-clay-50: #fbf1ec;          /* ghost-button hover, selected row     */
+  --color-clay-100: #f1e4dc;         /* focus-ring glow, PAID badge, avatar  */
+  --color-clay-400: #de8f63;         /* chart mid series, dark-mode accent   */
+  --color-clay-600: #a65b3a;         /* PRIMARY — buttons, active bars, links */
+  --color-clay-700: #7e4128;         /* primary hover / active, clay-on-tint */
+
+  /* ---- Colour · status (reserved for status, never decoration) ------- */
+  --color-sage: #3f7a55;             /* published, active, positive delta    */
+  --color-sage-tint: #e6f0e9;        /* approved badge fill                  */
+  --color-sage-text: #2f6342;        /* approved badge text                  */
+  --color-wheat: #8a6a1f;            /* pending review, past due, warnings   */
+  --color-wheat-tint: #f7efda;       /* pending badge fill                   */
+  --color-wheat-text: #725718;       /* pending badge text                   */
+  --color-slate: #3d6491;            /* under review, processing             */
+  --color-slate-tint: #e7eef6;       /* processing badge fill               */
+  --color-slate-text: #33547a;       /* processing badge text               */
+  --color-rose: #a33f3f;             /* rejected, failed, destructive        */
+  --color-rose-tint: #f7e7e7;        /* rejected badge fill                  */
+  --color-rose-text: #8c3535;        /* rejected badge text                  */
+  --color-rose-border: #e2c4c4;      /* destructive button border           */
+  --color-rose-bg: #fcf2f2;          /* destructive button hover            */
+
+  /* ---- Colour · misc ------------------------------------------------- */
+  --color-on-clay: #fff8f3;          /* text on clay-600                    */
+  --color-dark: #2e2723;             /* toast background, Admin role chip    */
+  --color-dark-deep: #241f1b;        /* README lists dark as #241F1B/#2E2723 */
+
+  /* ---- Colour · alert surfaces (README "Design tokens" → Alert) ------ */
+  --color-alert-success-bg: #f2f8f3;
+  --color-alert-success-border: #c6d6c9;
+  --color-alert-warning-bg: #fcf7ea;
+  --color-alert-warning-border: #e5d7b4;
+  --color-alert-error-bg: #fcf2f2;
+  --color-alert-error-border: #e2c4c4;
+
+  /* ---- Colour · status-badge fills -----------------------------------
+     From README "Components to build → StatusBadge". Not in the colour
+     table itself, but load-bearing for the badge (W2) and flagged as such. */
+  --color-neutral-badge: #f2efe8;    /* Draft / Unpublished badge fill      */
+  --color-sage-dot: #b6d6c0;         /* Published badge dot                 */
+
+  /* ---- Spacing scale (px) ------------------------------------------------
+     README: 2,4,6,7,8,9,10,11,12,14,16,18,20,22,24,28.
+     Off Tailwind's 4px grid at 6,7,9,11,18,22 — defined explicitly so
+     fidelity does not rot into scattered p-[7px] arbitrary values (§A.6). */
+  --spacing-2: 2px;
+  --spacing-4: 4px;
+  --spacing-6: 6px;
+  --spacing-7: 7px;
+  --spacing-8: 8px;
+  --spacing-9: 9px;
+  --spacing-10: 10px;
+  --spacing-11: 11px;
+  --spacing-12: 12px;
+  --spacing-14: 14px;
+  --spacing-16: 16px;
+  --spacing-18: 18px;
+  --spacing-20: 20px;
+  --spacing-22: 22px;
+  --spacing-24: 24px;
+  --spacing-28: 28px;
+
+  /* ---- Radius scale ----------------------------------------------------
+     README: 4-5 thumbnails · 6 tier/role chips · 8 small buttons/pagination
+     · 9 toolbar controls, nav items · 10 buttons, inputs · 11-12 inner
+     cards, alerts, dropzones · 14 stat/media cards · 16 panels · 18
+     showcase cards · 999 pills, avatars, dots. Each radius is load-bearing. */
+  --radius-4: 4px;
+  --radius-5: 5px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-11: 11px;
+  --radius-12: 12px;
+  --radius-14: 14px;
+  --radius-16: 16px;
+  --radius-18: 18px;
+  --radius-full: 999px;
+
+  /* ---- Elevation — the only three shadows in the system (README) ----- */
+  --shadow-nav-active: inset 0 0 0 1px #e4ddd1;          /* active nav item        */
+  --shadow-segmented-thumb: 0 1px 2px rgba(46, 39, 35, 0.06); /* segmented thumb   */
+  --shadow-toast: 0 8px 24px rgba(46, 39, 35, 0.16);    /* toast                  */
+
+  /* ---- Typography families -------------------------------------------
+     Bound to the next/font/google CSS variables set in app/layout.tsx.
+     README: Newsreader (serif) titles/metrics · Figtree (sans) all UI ·
+     IBM Plex Mono IDs/timestamps/durations/labels. */
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+}
+
+/* -----------------------------------------------------------------------------
+   Focus treatment (README "Design tokens" → Focus), exposed as reusable
+   utilities. Inputs: clay border + 3px clay-100 glow. Buttons: 2px clay-400
+   ring at 2px offset.
+   -------------------------------------------------------------------------- */
+@utility focus-ring-input {
+  border-color: var(--color-clay-600);
+  box-shadow: 0 0 0 3px var(--color-clay-100);
+}
+
+@utility focus-ring-button {
+  outline: 2px solid var(--color-clay-400);
+  outline-offset: 2px;
+}
+
+/* -----------------------------------------------------------------------------
+   shadcn/ui primitive base bridge → RhemaPod tokens.
+
+   Only the token map lives here so shadcn primitives render on-palette out of
+   the box. Per-variant / per-size restyling to design fidelity is W2. Kept as
+   `@theme inline` (the shadcn-idiomatic pattern) so opacity modifiers such as
+   `bg-primary/50` resolve. No `.dark` block — the design is light-only.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--color-clay-600);
+  --color-primary-foreground: var(--color-on-clay);
+  --color-secondary: var(--color-surface);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-surface-sunken);
+  --color-muted-foreground: var(--color-ink-muted);
+  --color-accent: var(--color-clay-50);
+  --color-accent-foreground: var(--color-clay-700);
+  --color-destructive: var(--color-rose);
+  --color-destructive-foreground: var(--color-on-clay);
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-clay-600);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

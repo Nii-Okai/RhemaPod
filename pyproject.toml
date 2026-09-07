@@ -28,3 +28,8 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+# admin_portal/ is a separate Node/TypeScript project — keep Python tooling out.
+extend-exclude = ["admin_portal"]
