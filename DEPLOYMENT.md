@@ -100,7 +100,23 @@ Browser uploads need a CORS rule on the raw bucket:
 
 Both buckets must block all public access — playback uses signed URLs.
 
-## 8. What is still deferred
+## 8. Operational behaviour when Redis is down
+
+Redis backs refresh-token rotation, the one-shot reset/invite ledger, and login
+rate limiting. The failure posture is split on purpose:
+
+| Path | Redis unreachable | Why |
+|---|---|---|
+| `POST /auth/login`, `/auth/refresh` | **503**, no token issued | An access/refresh pair whose jti was never recorded cannot be revoked |
+| `POST /auth/logout`, `/auth/change-password`, `PATCH /users/{id}/role` | **503** | Returning 200 for a session revocation that never reached Redis is a lie to the client |
+| `POST /auth/reset-password` | **503**, password unchanged | The one-shot token cannot be atomically consumed, so it cannot be honoured |
+| Login rate limiter | **fails open** — request allowed | Blocking every login because Redis blinked is worse than briefly not throttling; an outage is not an attack signal |
+
+All 503s carry the correlation ID and a generic message. `/health/ready`
+already returns 503 while Redis is unreachable, so a load balancer drains the
+instance; the per-request behaviour above covers the window before it does.
+
+## 9. What is still deferred
 
 - **Transcoding** is passthrough: the uploaded MP4 is served directly. Fine for
   launch; revisit when bandwidth cost or mobile buffering justifies an HLS

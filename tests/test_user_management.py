@@ -51,6 +51,13 @@ async def test_admin_creates_editor_and_invite_activates(client, engine):
 
     # They set their password via the invite link, then log in.
     token = _token_from_link(body["invite_link"])
+
+    # The invite carries its own type marker, distinct from a self-service reset.
+    from app.core import security
+
+    payload = security.decode_token(token, security.INVITE)
+    assert payload is not None and payload["type"] == "invite"
+
     r = await client.post(
         "/api/v1/auth/reset-password",
         json={"token": token, "new_password": "my-own-strong-pass"},
@@ -61,6 +68,18 @@ async def test_admin_creates_editor_and_invite_activates(client, engine):
         json={"email": "editor@example.com", "password": "my-own-strong-pass"},
     )
     assert ok.status_code == 200
+
+    # Single-use: the invite link cannot be replayed to reset the password again.
+    replay = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "a-different-strong-pass"},
+    )
+    assert replay.status_code == 400
+    still_ok = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "editor@example.com", "password": "my-own-strong-pass"},
+    )
+    assert still_ok.status_code == 200
 
 
 async def test_viewer_cannot_create_staff(client, engine):

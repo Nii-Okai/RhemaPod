@@ -1,7 +1,13 @@
 """Simple fixed-window rate limiter backed by Redis.
 
-Used to slow brute-force login attempts. Fails open: if Redis is
-unavailable, requests are allowed rather than blocking all logins.
+Used to slow brute-force login attempts. Fails OPEN: if Redis is unavailable,
+requests are allowed rather than blocking all logins — availability beats
+throttling here, and a Redis outage is not itself an attack signal.
+
+This is the deliberate opposite of ``token_store.py``, where the credential
+paths fail CLOSED (503) on the same outage: never issue or revoke a token we
+cannot record. Keep the two postures in sync with that reasoning if either
+changes.
 """
 from app.core.config import get_settings
 from app.core.logging import get_logger

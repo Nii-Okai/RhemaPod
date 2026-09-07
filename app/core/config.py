@@ -2,10 +2,32 @@ from functools import lru_cache
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Recognised deployment environments. An unrecognised value is rejected rather
+# than silently treated as non-production — landing on "not production" is what
+# disables the preflight below and exposes /docs.
+KNOWN_ENVIRONMENTS = {"development", "test", "staging", "production"}
+
+# Substrings that mark a SECRET_KEY as a placeholder rather than a real secret.
+# The first entry is the exact value shipped in .env.example.
+_PLACEHOLDER_SECRET_MARKERS = (
+    "replace-with-a-long-random-string-at-least-32-chars",
+    "replace-with",
+    "change-me",
+    "changeme",
+    "change_me",
+    "your-secret",
+    "placeholder",
+    "example-secret",
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env.example",
+        # Local/dev only. .env is gitignored; .env.example is committed docs of
+        # the variable names and must never be a runtime config source. Deployed
+        # environments inject real environment variables / secrets-manager values
+        # and have no .env file at all.
+        env_file=".env",
         env_file_encoding="utf-8",
     )
 
@@ -110,11 +132,39 @@ class Settings(BaseSettings):
     def email_is_live(self) -> bool:
         return bool(self.smtp_host and self.smtp_from_email)
 
+    @field_validator("environment")
+    @classmethod
+    def environment_is_known(cls, v: str) -> str:
+        if v.lower() not in KNOWN_ENVIRONMENTS:
+            raise ValueError(
+                "ENVIRONMENT must be one of "
+                f"{sorted(KNOWN_ENVIRONMENTS)}, got {v!r} — an unrecognised value "
+                "would silently disable the production preflight"
+            )
+        return v
+
     @field_validator("secret_key")
     @classmethod
-    def secret_not_default(cls, v: str) -> str:
-        if "change-me" in v.lower():
-            raise ValueError("SECRET_KEY must be changed from its default value")
+    def secret_key_is_real(cls, v: str) -> str:
+        """Reject placeholder / low-entropy signing keys, in EVERY environment.
+
+        This is a field validator, so it runs regardless of `environment` and
+        regardless of whether a dotenv file was found — a deploy that forgets to
+        inject SECRET_KEY fails to boot instead of signing tokens with a value
+        anyone can read out of the repo.
+        """
+        lowered = v.lower()
+        for marker in _PLACEHOLDER_SECRET_MARKERS:
+            if marker in lowered:
+                raise ValueError(
+                    "SECRET_KEY looks like a placeholder — generate a real one, "
+                    'e.g. python -c "import secrets; print(secrets.token_urlsafe(48))"'
+                )
+        if len(set(v)) < 8:
+            raise ValueError(
+                "SECRET_KEY has too little entropy (fewer than 8 distinct "
+                "characters) — use a random value, not a repeated pattern"
+            )
         return v
 
     @model_validator(mode="after")

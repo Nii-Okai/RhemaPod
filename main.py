@@ -31,6 +31,7 @@ from app.core.middleware import (
 from app.core.payments import get_provider
 from app.core.redis import check_redis
 from app.core.storage import get_storage
+from app.core.token_store import TokenStoreUnavailable
 from app.db.database import check_db, primary_engine
 
 settings = get_settings()
@@ -124,6 +125,32 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "errors": errors,
             "correlation_id": correlation_id.get(),
         },
+    )
+
+
+@app.exception_handler(TokenStoreUnavailable)
+async def token_store_unavailable_handler(
+    request: Request, exc: TokenStoreUnavailable
+):
+    """Redis behind the token store is unreachable.
+
+    The credential paths fail closed (see ``token_store`` module docstring), so
+    this surfaces as a deliberate 503 with the correlation ID — never a naked
+    500 from the catch-all, and never a false 200 for a revocation that did not
+    happen. The message is intentionally non-specific.
+    """
+    log.warning(
+        "token_store_unavailable",
+        method=request.method,
+        path=request.url.path,
+        error=type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=_error_body(
+            "Authentication service temporarily unavailable. Please retry.",
+            request,
+        ),
     )
 
 

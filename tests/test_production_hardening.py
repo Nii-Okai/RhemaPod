@@ -83,6 +83,62 @@ def test_development_allows_stubs():
     assert not s.payments_are_live
 
 
+# ── config loading + secret/environment guards (review finding 1) ─────────────
+def test_env_example_placeholder_secret_is_rejected():
+    """The exact SECRET_KEY shipped in .env.example must not boot the app."""
+    with pytest.raises(ValueError):
+        _settings(secret_key="replace-with-a-long-random-string-at-least-32-chars")
+
+
+def test_changeme_family_secret_is_rejected():
+    with pytest.raises(ValueError):
+        _settings(secret_key="change-me-this-is-not-a-real-secret-key-value")
+
+
+def test_short_secret_is_rejected():
+    with pytest.raises(ValueError):
+        _settings(secret_key="too-short")
+
+
+def test_low_entropy_secret_is_rejected():
+    """32+ chars but almost no distinct characters — a repeated pattern."""
+    with pytest.raises(ValueError):
+        _settings(secret_key="a" * 48)
+
+
+def test_secret_guard_runs_outside_production():
+    """The secret-key check fires in development, not only in production."""
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError):
+        Settings(
+            **{
+                **BASE_ENV,
+                "environment": "development",
+                "secret_key": "replace-with-a-long-random-string-at-least-32-chars",
+            }
+        )
+
+
+def test_unrecognised_environment_is_rejected():
+    with pytest.raises(ValueError):
+        _settings(environment="prod")
+
+
+def test_settings_do_not_source_from_env_example(monkeypatch):
+    """With no env vars and no .env file, a required field is unsatisfied —
+    proving .env.example is not a runtime config source."""
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    for key in ("SECRET_KEY", "DATABASE_URL", "REDIS_URL", "ENVIRONMENT", "DEBUG"):
+        monkeypatch.delenv(key, raising=False)
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 # ── error handling ────────────────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_404_includes_correlation_id(client):

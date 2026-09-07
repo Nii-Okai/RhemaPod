@@ -181,7 +181,7 @@ async def test_forgot_password_is_generic(client):
 
 async def test_password_reset_flow(client):
     await register(client)
-    from app.core import security
+    from app.core import security, token_store
 
     tokens = (await login(client)).json()
     me = await client.get(
@@ -189,7 +189,9 @@ async def test_password_reset_flow(client):
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
     user_id = me.json()["id"]
-    reset_token = security.create_reset_token(user_id)
+    # Mint + register the one-shot jti exactly as /auth/forgot-password does.
+    reset_token, jti = security.create_reset_token(user_id)
+    await token_store.register_single_use(jti, 3600)
 
     r = await client.post(
         "/api/v1/auth/reset-password",
@@ -197,4 +199,12 @@ async def test_password_reset_flow(client):
     )
     assert r.status_code == 200
     assert (await login(client, password=PW)).status_code == 401
+    assert (await login(client, password=NEW_PW)).status_code == 200
+
+    # Single-use: the same token replayed inside its TTL is now rejected.
+    replay = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": reset_token, "new_password": "yet-another-passphrase-1"},
+    )
+    assert replay.status_code == 400
     assert (await login(client, password=NEW_PW)).status_code == 200

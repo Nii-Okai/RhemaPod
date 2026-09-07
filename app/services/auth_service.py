@@ -5,7 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security, token_store
+from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.token_store import TokenStoreUnavailable
 from app.models.models import User, UserRole
 from app.models.schemas import UserRegister
 
@@ -16,6 +18,7 @@ from sqlalchemy import select as _select  # noqa: E402
 from app.models.models import UserRole as _UserRole  # noqa: E402
 
 log = get_logger("auth")
+settings = get_settings()
 
 # Who may assign which roles. Managers can create/manage editors; only admins
 # can mint or grant manager/admin. Prevents a manager escalating to admin.
@@ -123,8 +126,16 @@ async def logout(user_id: str) -> None:
 
 
 async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:
-    payload = security.decode_token(token, security.RESET)
+    payload = security.decode_token(token, {security.RESET, security.INVITE})
     if payload is None:
+        raise AuthError("Invalid or expired reset token")
+
+    # Consume the one-shot jti BEFORE touching the password. A replay inside the
+    # token's TTL finds nothing to consume and is rejected here. If Redis is
+    # unreachable, consume_single_use raises TokenStoreUnavailable -> 503 and the
+    # password is left unchanged (the Step 2 fail-closed contract).
+    jti = payload.get("jti")
+    if jti is None or not await token_store.consume_single_use(jti):
         raise AuthError("Invalid or expired reset token")
 
     user = await get_user_by_id(db, uuid.UUID(payload["sub"]))
@@ -135,7 +146,7 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
     await db.commit()
     # Force re-login everywhere after a password change.
     await token_store.revoke_refresh(str(user.id))
-    log.info("password_reset", user_id=str(user.id))
+    log.info("password_reset", user_id=str(user.id), token_type=payload.get("type"))
 
 
 async def change_password(
@@ -152,9 +163,13 @@ async def change_password(
         raise AuthError("Current password is incorrect")
 
     user.password_hash = security.hash_password(new_password)
-    await db.commit()
-    # Force re-login everywhere after a password change.
+    # Revoke every session BEFORE the write commits (as reset_password sequences
+    # consume-before-write). If Redis is unreachable revoke_refresh raises
+    # TokenStoreUnavailable -> 503 and the pending hash change rolls back with
+    # the session — rather than persisting a new password whose old sessions
+    # were never cut while telling the caller "unavailable, retry".
     await token_store.revoke_refresh(str(user.id))
+    await db.commit()
     log.info("password_changed", user_id=str(user.id))
 
 
@@ -203,10 +218,19 @@ async def create_staff(
 
     db.add(Subscription(user_id=user.id, tier=SubscriptionTier.FREE))
 
-    invite_token = security.create_invite_token(str(user.id))
+    invite_token, invite_jti = security.create_invite_token(str(user.id))
+    invite_ttl_seconds = settings.invite_token_expire_hours * 60 * 60
 
     try:
+        # Register the one-shot jti inside the pre-commit sequence: if anything
+        # below rolls the transaction back, all that is left is an orphaned
+        # ledger entry that expires on its own TTL — never a usable account.
+        await token_store.register_single_use(invite_jti, invite_ttl_seconds)
         await send_invite(user.email, user.full_name, invite_token)
+    except TokenStoreUnavailable:
+        # Fail closed: don't create an account whose invite we couldn't record.
+        await db.rollback()
+        raise
     except Exception:
         await db.rollback()
         log.warning("staff_invite_send_failed", email=email)
@@ -245,10 +269,12 @@ async def change_role(
 
     old_role = target.role
     target.role = new_role
+    # Revoke BEFORE commit (see change_password): a Redis outage raises
+    # TokenStoreUnavailable -> 503 with the role change rolled back, never a
+    # persisted new role whose still-live sessions carry the old one.
+    await token_store.revoke_refresh(str(target.id))
     await db.commit()
     await db.refresh(target)
-    # Force re-auth so the new role takes effect immediately, not at token expiry.
-    await token_store.revoke_refresh(str(target.id))
     log.info(
         "role_changed",
         user_id=str(target.id),

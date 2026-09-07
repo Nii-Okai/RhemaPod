@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -6,8 +7,17 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+# The runtime reads .env (not .env.example) and refuses to boot without a real
+# SECRET_KEY / DATABASE_URL, so the suite must supply them in os.environ BEFORE
+# any app module builds its settings singleton. No dotenv file, no new dependency.
+os.environ.setdefault("SECRET_KEY", "test-suite-signing-key-2b9f3a7c1e4d8065af12cd93")
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://test:test@localhost/test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault("DEBUG", "true")
+
 # In-memory fake Redis shared across the app for tests.
-from tests.fake_redis import FakeRedis
+from tests.fake_redis import FakeRedis  # noqa: E402
 
 _fake = FakeRedis()
 
@@ -53,6 +63,7 @@ async def engine():
 @pytest_asyncio.fixture
 async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     _fake.store.clear()
+    _fake.fail = False  # a leaked failure-injection flag would cascade-fail the suite
     storage_module.set_storage(storage_module.LocalStorage())
     TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

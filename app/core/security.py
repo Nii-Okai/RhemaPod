@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -17,11 +18,15 @@ _password_hash = PasswordHash.recommended()
 # Argon2 time — login latency can't be used to enumerate accounts.
 _DUMMY_HASH = _password_hash.hash("timing-attack-mitigation-dummy-password")
 
-# Token type markers embedded in the JWT "type" claim
-TokenType = Literal["access", "refresh", "reset"]
+# Token type markers embedded in the JWT "type" claim.
+# `invite` is distinct from `reset` so logs/audit can tell an admin-issued
+# set-your-password link apart from a self-service reset; /auth/reset-password
+# accepts both.
+TokenType = Literal["access", "refresh", "reset", "invite"]
 ACCESS: TokenType = "access"
 REFRESH: TokenType = "refresh"
 RESET: TokenType = "reset"
+INVITE: TokenType = "invite"
 
 
 # --- Passwords ---
@@ -107,31 +112,47 @@ def create_refresh_token(user_id: str) -> tuple[str, str]:
     return token, jti
 
 
-def create_reset_token(user_id: str) -> str:
-    return _create_token(
+def create_reset_token(user_id: str) -> tuple[str, str]:
+    """Return (token, jti). The jti is registered in the single-use ledger
+    (``token_store``) at mint and consumed on use, so a reset token cannot be
+    replayed within its TTL."""
+    jti = str(uuid.uuid4())
+    token = _create_token(
         user_id,
         RESET,
         timedelta(minutes=settings.password_reset_expire_minutes),
+        jti=jti,
     )
+    return token, jti
 
 
-def create_invite_token(user_id: str) -> str:
-    """A set-your-password token for admin-created staff. Same RESET type as a
-    normal reset (so /auth/reset-password consumes it), just a longer TTL."""
-    return _create_token(
+def create_invite_token(user_id: str) -> tuple[str, str]:
+    """A set-your-password token for admin-created staff. Carries its own
+    ``invite`` type (distinct from a self-service ``reset``) so logs and audit
+    can tell the two apart; /auth/reset-password consumes both. Longer TTL.
+    Returns (token, jti) for the single-use ledger."""
+    jti = str(uuid.uuid4())
+    token = _create_token(
         user_id,
-        RESET,
+        INVITE,
         timedelta(hours=settings.invite_token_expire_hours),
+        jti=jti,
     )
+    return token, jti
 
 
-def decode_token(token: str, expected_type: TokenType) -> dict[str, Any] | None:
+def decode_token(
+    token: str, expected_type: TokenType | Iterable[TokenType]
+) -> dict[str, Any] | None:
     """Decode and fully validate a token. Returns the payload, or None if
     invalid — callers can't accidentally leak the specific reason to the client.
 
     Validates signature, expiry, not-before, audience, and issuer, requires the
     core claims, pins the algorithm (never accepts 'none'), and rejects a token
-    whose `type` does not match the expected one."""
+    whose `type` is not among the expected one(s). `expected_type` may be a
+    single marker (the usual case) or a set of them — the reset endpoint accepts
+    both `reset` and `invite`; an access or refresh token is still rejected
+    anywhere it is not explicitly expected."""
     try:
         payload = jwt.decode(
             token,
@@ -148,11 +169,16 @@ def decode_token(token: str, expected_type: TokenType) -> dict[str, Any] | None:
         log.info("token_rejected", reason=type(exc).__name__)
         return None
 
-    if payload.get("type") != expected_type:
+    expected = (
+        {expected_type}
+        if isinstance(expected_type, str)
+        else set(expected_type)
+    )
+    if payload.get("type") not in expected:
         log.warning(
             "token_rejected",
             reason="wrong_type",
-            expected=expected_type,
+            expected=sorted(expected),
             got=payload.get("type"),
         )
         return None

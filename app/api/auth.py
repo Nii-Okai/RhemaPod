@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import security
+from app.core import email as email_module
+from app.core import security, token_store
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserDep, require_role
 from app.core.logging import get_logger
@@ -109,14 +110,52 @@ async def change_password(
     return MessageResponse(message="Password updated. Please log in again.")
 
 
+async def _dispatch_password_reset(
+    user_id: str, to_email: str, token: str, jti: str, ttl_seconds: int
+) -> None:
+    """Off the response path — see forgot_password for why.
+
+    Record the one-shot jti, then hand the token to the email seam. Both are
+    swallowed-and-logged: a reset token that never reached the single-use
+    ledger is inert (/auth/reset-password rejects it), and a delivery failure
+    must not retroactively change what the endpoint already answered. The
+    token itself is never logged; in production delivery is real SMTP (no body
+    logged) and in dev the console backend (which logs the link — a deliberate
+    dev-only affordance, structurally unreachable in prod).
+    """
+    try:
+        await token_store.register_single_use(jti, ttl_seconds)
+        await email_module.send_password_reset(to_email, token)
+    except Exception as exc:
+        log.warning(
+            "password_reset_dispatch_failed",
+            user_id=user_id,
+            error=type(exc).__name__,
+        )
+
+
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password(data: ForgotPasswordRequest, db: DbDep) -> MessageResponse:
+async def forgot_password(
+    data: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: DbDep
+) -> MessageResponse:
+    # This endpoint's whole purpose is to NOT be an account-enumeration oracle
+    # (test_forgot_password_is_generic). Both branches must return in
+    # get_user_by_email time: the known-email side effects (mint the one-shot
+    # jti, open an SMTP connection — 50-300ms of connect/STARTTLS/login in
+    # prod) are handed to BackgroundTasks so they never show up as a
+    # response-latency signal. A Redis outage or a send failure is swallowed in
+    # the background task; the status code and body are already fixed by then.
     user = await auth_service.get_user_by_email(db, data.email)
     if user is not None:
-        token = security.create_reset_token(str(user.id))
-        # Phase 6 wires this to real email delivery. For now, log it.
-        log.info("password_reset_requested", user_id=str(user.id), reset_token=token)
-    # Always return the same response so emails can't be enumerated.
+        token, jti = security.create_reset_token(str(user.id))
+        background_tasks.add_task(
+            _dispatch_password_reset,
+            str(user.id),
+            user.email,
+            token,
+            jti,
+            settings.password_reset_expire_minutes * 60,
+        )
     return MessageResponse(
         message="If that email exists, a reset link has been sent."
     )
