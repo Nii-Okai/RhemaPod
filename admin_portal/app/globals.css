@@ -63,11 +63,14 @@
   --color-alert-error-bg: #fcf2f2;
   --color-alert-error-border: #e2c4c4;
 
-  /* ---- Colour · status-badge fills -----------------------------------
-     From README "Components to build → StatusBadge". Not in the colour
-     table itself, but load-bearing for the badge (W2) and flagged as such. */
+  /* ---- Colour · component-spec values not in the main colour table ---
+     From README "Components to build". Load-bearing for W2 primitives and
+     flagged as such so a fidelity review knows they are deliberate. */
   --color-neutral-badge: #f2efe8;    /* Draft / Unpublished badge fill      */
   --color-sage-dot: #b6d6c0;         /* Published badge dot                 */
+  --color-ink-disabled: #b9ac99;     /* Button: disabled label text AND the
+                                        secondary-variant hover border
+                                        (README "Components to build → Button"). */
 
   /* ---- Spacing scale (px) ------------------------------------------------
      README: 2,4,6,7,8,9,10,11,12,14,16,18,20,22,24,28.
@@ -137,6 +140,108 @@
 @utility focus-ring-button {
   outline: 2px solid var(--color-clay-400);
   outline-offset: 2px;
+}
+
+/* -----------------------------------------------------------------------------
+   Type scale (README "Design tokens" → Typography table).
+
+   The README table is the stated source of truth. Where the UI Kit HTML
+   disagrees, the table value is encoded here and the HTML value is left in a
+   comment so the design-fidelity pass can adjudicate (plan §A.6 rules, risk D5).
+
+   Three families, bound to the next/font CSS variables:
+     Newsreader (--font-serif) — display / page-title / card-title / metric
+     Figtree    (--font-sans)  — heading / section-title / body / body-sm / label
+     Plex Mono  (--font-mono)  — mono-meta / mono-eyebrow
+   -------------------------------------------------------------------------- */
+@utility text-display {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 52px;
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+}
+
+@utility text-page-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1.12; /* UI-Kit HTML says 32/1.15 */
+  letter-spacing: -0.02em; /* UI-Kit HTML says -0.015em */
+}
+
+@utility text-card-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 20px; /* table range 19-22; UI-Kit HTML card uses 19 */
+  line-height: 1.22; /* table range 1.2-1.25 */
+  letter-spacing: -0.01em;
+}
+
+@utility text-metric {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 40px; /* table range 38-40; UI-Kit HTML StatCard uses 40, dashboard 38 */
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+@utility text-heading {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+
+@utility text-section-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+@utility text-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+@utility text-body-sm {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+@utility text-label {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-ink-muted);
+}
+
+@utility text-badge {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px; /* table range 12-12.5 */
+}
+
+@utility text-mono-meta {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 12px; /* table range 11-13 */
+  letter-spacing: 0.06em;
+}
+
+@utility text-mono-eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 10.5px; /* table range 10-11 */
+  letter-spacing: 0.12em; /* table range 0.10-0.14em */
+  text-transform: uppercase;
 }
 
 /* -----------------------------------------------------------------------------

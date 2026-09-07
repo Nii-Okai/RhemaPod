@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Toolchain
+
+Requires **Node 24** (see `.nvmrc` / `engines`). Vitest 5 and `next build` will not run on older lines. With `nvm`: `nvm use`. If Node 24 is a keg-only Homebrew install, put it on `PATH` first: `export PATH=/usr/local/opt/node@24/bin:$PATH`.
+
 ## Getting Started
 
 First, run the development server:

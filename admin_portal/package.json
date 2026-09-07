@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "gen:api": "openapi-typescript ../openapi.json -o lib/api/schema.d.ts",
     "test": "vitest run --passWithNoTests",
-    "verify": "npm run typecheck && npm run lint && npm run build && npm run test"
+    "verify": "npm run build && npm run typecheck && npm run lint && npm run test"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
