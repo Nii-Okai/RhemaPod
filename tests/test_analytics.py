@@ -1,8 +1,24 @@
+import asyncio
+import uuid as _uuid
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
 
 PW = "correct-horse-battery"
+
+
+async def _user_by_email(engine, email):
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import User
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        return (await s.execute(
+            select(User).where(User.email == email)
+        )).scalar_one()
 
 
 async def make_user(client, engine, email, role):
@@ -145,6 +161,98 @@ async def test_restart_increments_play_count(client, engine):
         json={"position_seconds": 5, "watched_delta": 5}, headers=v,
     )
     assert r.json()["play_count"] == 2
+
+
+# ── upsert: concurrency & clamping (finding 2) ───────────────────────────────
+async def test_concurrent_first_progress_writes_do_not_500(client, engine):
+    """Two overlapping first writes for the same user+sermon, from two
+    independent sessions on the same engine. Pre-fix: the SELECT->add->commit
+    sequence has no conflict handling, so the loser raises IntegrityError (and
+    corrupts its session) and nothing persists. Post-fix: the single
+    INSERT ... ON CONFLICT DO UPDATE means both succeed and exactly one row
+    exists.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import PlaybackSession
+    from app.services import analytics_service
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = _uuid.UUID(await publish(client, ed, mgr, title="S"))
+    await make_viewer(client)
+    user = await _user_by_email(engine, "viewer@example.com")
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def ping(pos, delta):
+        async with Session() as s:
+            return await analytics_service.record_progress(
+                s, user, sid, position_seconds=pos, watched_delta=delta
+            )
+
+    results = await asyncio.gather(
+        ping(10, 10), ping(20, 20), return_exceptions=True
+    )
+    raised = [r for r in results if isinstance(r, Exception)]
+    assert not raised, f"a concurrent first write raised: {raised!r}"
+
+    async with Session() as s:
+        rows = (await s.execute(
+            select(PlaybackSession).where(PlaybackSession.sermon_id == sid)
+        )).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_concurrent_watch_deltas_are_not_lost(client, engine):
+    """Two overlapping writes must total both watched deltas, not just one —
+    the increment-loss half of finding 2. Pre-fix the losing transaction rolls
+    back and its delta vanishes."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import PlaybackSession
+    from app.services import analytics_service
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = _uuid.UUID(await publish(client, ed, mgr, title="S"))
+    await make_viewer(client)
+    user = await _user_by_email(engine, "viewer@example.com")
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def ping(pos, delta):
+        async with Session() as s:
+            return await analytics_service.record_progress(
+                s, user, sid, position_seconds=pos, watched_delta=delta
+            )
+
+    await asyncio.gather(ping(40, 40), ping(80, 80), return_exceptions=True)
+
+    async with Session() as s:
+        row = (await s.execute(
+            select(PlaybackSession).where(PlaybackSession.sermon_id == sid)
+        )).scalar_one()
+    assert row.watched_seconds == 120
+
+
+async def test_position_is_clamped_to_duration(client, engine):
+    """A self-reported position past the sermon's real length is stored
+    clamped. Pre-fix the raw value is persisted verbatim."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = await publish(client, ed, mgr, title="S")
+    await set_duration(engine, sid, 600)
+    v = await make_viewer(client)
+
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/progress",
+        json={"position_seconds": 5000, "watched_delta": 10}, headers=v,
+    )
+    assert r.status_code == 200
+    assert r.json()["position_seconds"] == 600
 
 
 async def test_progress_on_unpublished_rejected(client, engine):

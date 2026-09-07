@@ -10,7 +10,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -51,39 +53,86 @@ async def record_progress(
     if sermon is None or sermon.status != SermonStatus.PUBLISHED:
         raise ContentError("Sermon not found", status_code=404)
 
-    session = (await db.execute(
+    # Self-reported position is clamped to the sermon's real length when we know
+    # it, so a client cannot inflate "furthest reached" past the end. The
+    # client-settable `completed` flag has the same trust problem but clearing
+    # it needs a product decision, not a code change — left alone here.
+    if sermon.duration_seconds:
+        position_seconds = min(position_seconds, sermon.duration_seconds)
+
+    # Whether this ping marks the sermon finished. A function of the request and
+    # the sermon's duration, not of the stored row — so it is derived here and
+    # then OR-ed into the stored flag SQL-side (stickiness: a restart must never
+    # un-finish a sermon).
+    if completed is not None:
+        marks_completed = completed
+    elif sermon.duration_seconds:
+        marks_completed = (
+            position_seconds >= sermon.duration_seconds * COMPLETION_THRESHOLD
+        )
+    else:
+        marks_completed = False
+
+    now = _now()
+
+    # A single INSERT ... ON CONFLICT (user_id, sermon_id) DO UPDATE. There is no
+    # dialect-neutral upsert in SQLAlchemy 2.0, so the insert() function is
+    # chosen on the dialect (same shape as search_service._is_postgres);
+    # production runs the postgresql arm, the suite exercises the sqlite arm.
+    # One `set_` clause is built and handed to whichever construct was picked so
+    # the two arms cannot drift in their update semantics.
+    insert_fn = (
+        pg_insert if db.bind.dialect.name == "postgresql" else sqlite_insert
+    )
+    stmt = insert_fn(PlaybackSession).values(
+        user_id=user.id,
+        sermon_id=sermon_id,
+        position_seconds=position_seconds,
+        watched_seconds=watched_delta,
+        completed=marks_completed,
+        play_count=1,
+        last_played_at=now,
+    )
+    col = PlaybackSession
+    incoming = stmt.excluded
+    # A large backward jump (>60s) is a deliberate restart, not a scrub:
+    #   * play_count increments;
+    #   * position follows the viewer back to the start (wins outright).
+    # Any other ping takes the max against the stored position, which discards
+    # an out-of-order or concurrent late ping. GREATEST / max(a, b) is spelled
+    # differently across the two dialects, so this is a case() instead.
+    is_restart = incoming.position_seconds < col.position_seconds - 60
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_id", "sermon_id"],
+        set_={
+            # SQL-side accumulation — a Python read-modify-write here loses
+            # increments under concurrency, which is the bug being fixed.
+            "watched_seconds": col.watched_seconds + watched_delta,
+            "play_count": case(
+                (is_restart, col.play_count + 1), else_=col.play_count
+            ),
+            "position_seconds": case(
+                (is_restart, incoming.position_seconds),
+                (col.position_seconds > incoming.position_seconds,
+                 col.position_seconds),
+                else_=incoming.position_seconds,
+            ),
+            # Sticky: once true, stays true.
+            "completed": col.completed | incoming.completed,
+            "last_played_at": now,
+        },
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+    # RETURNING is not portable across both dialects here; re-read the row and
+    # return that. One extra round-trip buys a single code path.
+    return (await db.execute(
         select(PlaybackSession).where(
             PlaybackSession.user_id == user.id,
             PlaybackSession.sermon_id == sermon_id,
         )
-    )).scalar_one_or_none()
-
-    if session is None:
-        session = PlaybackSession(
-            user_id=user.id,
-            sermon_id=sermon_id,
-            position_seconds=position_seconds,
-            watched_seconds=watched_delta,
-            play_count=1,
-        )
-        db.add(session)
-    else:
-        # A large backward jump means a fresh viewing, not a scrub.
-        if position_seconds < session.position_seconds - 60:
-            session.play_count += 1
-        session.position_seconds = position_seconds
-        session.watched_seconds += watched_delta
-        session.last_played_at = _now()
-
-    if completed is not None:
-        session.completed = completed
-    elif sermon.duration_seconds:
-        if position_seconds >= sermon.duration_seconds * COMPLETION_THRESHOLD:
-            session.completed = True
-
-    await db.commit()
-    await db.refresh(session)
-    return session
+    )).scalar_one()
 
 
 async def get_progress(

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -120,7 +121,21 @@ async def start_checkout(
     db: AsyncSession, user: User, tier: SubscriptionTier
 ) -> tuple[str, str]:
     sub = await get_or_create(db, user.id)
-    if entitlement_from_row(sub) and not sub.cancel_at_period_end:
+    # Refuse whenever the entitlement is live at all — cancelled-but-still-in-
+    # period included. A second checkout there creates an orphaned provider
+    # subscription that stomps provider_subscription_id. entitlement_from_row is
+    # the single source of truth for "access live right now" (it already checks
+    # the valid_until expiry), so a genuinely lapsed member — FREE tier /
+    # EXPIRED / valid_until past — is not blocked and can re-subscribe.
+    if entitlement_from_row(sub):
+        if sub.cancel_at_period_end:
+            raise SubscriptionError(
+                "Your subscription is cancelled but still active until the end "
+                "of the paid period. Undo the cancellation from the billing "
+                "portal (POST /api/v1/subscriptions/portal) instead of starting "
+                "a new checkout.",
+                409,
+            )
         raise SubscriptionError("You already have an active subscription", 409)
 
     provider = get_provider()
@@ -189,6 +204,31 @@ def _parse_ts(value: Any) -> datetime | None:
         except ValueError:
             return None
     return None
+
+
+def _is_webhook_ledger_violation(exc: IntegrityError) -> bool:
+    """True when an IntegrityError is the `uq_webhook_provider_event` collision
+    (a concurrent duplicate delivery) and not some other constraint.
+
+    Postgres names the constraint in the error text, so match it directly. The
+    SQLite driver never names the constraint — it emits
+    ``UNIQUE constraint failed: processed_webhooks.provider,
+    processed_webhooks.event_id`` — so match that constraint's exact
+    ``provider`` + ``event_id`` column pair rather than "any unique error on
+    processed_webhooks". If a second unique constraint is ever added to the
+    table, its violations then fall through and surface instead of being
+    silently swallowed as `duplicate_ignored`. A genuine subscription-mutation
+    IntegrityError (e.g. a `subscriptions.provider_subscription_id` collision)
+    matches neither arm and still surfaces.
+    """
+    text = str(getattr(exc, "orig", exc)).lower()
+    if "uq_webhook_provider_event" in text:
+        return True
+    return (
+        "unique" in text
+        and "processed_webhooks.provider" in text
+        and "processed_webhooks.event_id" in text
+    )
 
 
 async def _already_processed(db: AsyncSession, provider: str, event_id: str) -> bool:
@@ -261,11 +301,39 @@ async def handle_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
                 provider_sub_id or sub.provider_subscription_id
             )
             sub.cancel_at_period_end = False
-            period_end = _parse_ts(
-                obj.get("current_period_end") or obj.get("expires_at")
-            )
+            # Period end is the real subscription's, never the checkout
+            # session's `expires_at` — that is when the payment *link* dies
+            # (~24h), not a billing period, and writing it here sets a paying
+            # member's expiry ~1 day out. Source order: the event object's own
+            # `current_period_end` (real on customer.subscription.created, and
+            # what the test fixtures supply), then a provider lookup.
+            period_end = _parse_ts(obj.get("current_period_end"))
+            if period_end is None and provider_sub_id:
+                try:
+                    period_end = get_provider().get_subscription_period_end(
+                        subscription_id=provider_sub_id
+                    )
+                except PaymentError as exc:
+                    # A secondary lookup failing must not fail the webhook — a
+                    # 500 just earns a provider retry that fails the same way.
+                    # The ledger row and the activation still commit; the next
+                    # invoice.paid corrects valid_until.
+                    log.warning(
+                        "subscription_period_end_lookup_failed",
+                        event_id=event_id,
+                        provider_subscription_id=provider_sub_id,
+                        error=str(exc),
+                    )
+                    period_end = None
             if period_end:
                 sub.valid_until = period_end
+            # If neither source yields a period end, valid_until is left
+            # untouched rather than invented from our own clock (this module
+            # never infers a payment from our clock). Consequence ratified at
+            # the gate: an unset valid_until reads as "entitled, no expiry" in
+            # entitlement_from_row and is not swept by expire_lapsed
+            # (valid_until IS NOT NULL), so this path fails OPEN by design and
+            # is corrected by the next invoice event.
             outcome = "activated"
 
     elif event_type in ("invoice.paid", "invoice.payment_succeeded"):
@@ -293,9 +361,24 @@ async def handle_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
 
     elif event_type == "customer.subscription.updated":
         if sub is not None:
-            if obj.get("cancel_at_period_end"):
-                sub.cancel_at_period_end = True
-                sub.status = SubscriptionStatus.CANCELLED
+            # Distinguish "the event never mentioned cancellation" from
+            # "cancel_at_period_end is explicitly false" — obj.get() alone
+            # conflates them and would fire the un-cancel arm on an unrelated
+            # field change.
+            if "cancel_at_period_end" in obj:
+                if obj.get("cancel_at_period_end"):
+                    sub.cancel_at_period_end = True
+                    sub.status = SubscriptionStatus.CANCELLED
+                else:
+                    # Un-cancel in the provider portal: clear the flag and
+                    # promote CANCELLED -> ACTIVE, and ONLY that transition. A
+                    # row in PAST_DUE or EXPIRED belongs to the invoice /
+                    # subscription-lifecycle events; a subscription.updated
+                    # carrying some other field change must not resurrect a
+                    # lapsed member.
+                    sub.cancel_at_period_end = False
+                    if sub.status == SubscriptionStatus.CANCELLED:
+                        sub.status = SubscriptionStatus.ACTIVE
             period_end = _parse_ts(obj.get("current_period_end"))
             if period_end:
                 sub.valid_until = period_end
@@ -306,7 +389,26 @@ async def handle_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     db.add(ProcessedWebhook(
         provider=provider_name, event_id=event_id, event_type=event_type
     ))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # The ledger insert and the subscription mutations commit together, so a
+        # genuine data defect must not be reported to the provider as a
+        # successfully-ignored duplicate — only swallow the webhook-ledger
+        # constraint, re-raise everything else.
+        if not _is_webhook_ledger_violation(exc):
+            raise
+        # A concurrent delivery won the race and applied the change in full
+        # (ledger row + effect, atomically). Losing here is the correct outcome.
+        # The transaction is gone; do NOT touch the now-stale `sub` — the winner
+        # already invalidated the entitlement cache for that user.
+        await db.rollback()
+        log.info(
+            "webhook_duplicate_ignored",
+            event_type=event_type,
+            event_id=event_id,
+        )
+        return "duplicate_ignored"
 
     if sub is not None:
         await invalidate_entitlement(sub.user_id)

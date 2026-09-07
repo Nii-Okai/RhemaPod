@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from app.core.config import get_settings
@@ -43,6 +44,13 @@ class PaymentProvider(Protocol):
 
     def cancel_at_period_end(self, *, subscription_id: str) -> None: ...
 
+    def get_subscription_period_end(
+        self, *, subscription_id: str
+    ) -> datetime | None:
+        """The subscription's current billing-period end, or None when it
+        cannot be determined. Never raises for an unknown id."""
+        ...
+
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]: ...
 
 
@@ -54,6 +62,25 @@ class MockProvider:
 
     def __init__(self) -> None:
         self._counter = 0
+        # subscription_id -> current_period_end. Seeded by tests via
+        # `set_subscription_period_end`; empty otherwise. Kept on the instance
+        # so a fresh MockProvider (see the `client` fixture) starts clean and
+        # nothing bleeds between tests.
+        self._period_ends: dict[str, datetime] = {}
+
+    def reset(self) -> None:
+        self._counter = 0
+        self._period_ends.clear()
+
+    def set_subscription_period_end(
+        self, subscription_id: str, period_end: datetime | None
+    ) -> None:
+        """Test seam: declare what `get_subscription_period_end` should return
+        for this subscription id."""
+        if period_end is None:
+            self._period_ends.pop(subscription_id, None)
+        else:
+            self._period_ends[subscription_id] = period_end
 
     def create_checkout_session(
         self, *, user_id: str, email: str, tier: str, customer_id: str | None
@@ -70,6 +97,11 @@ class MockProvider:
 
     def cancel_at_period_end(self, *, subscription_id: str) -> None:
         log.info("mock_cancel_scheduled", subscription_id=subscription_id)
+
+    def get_subscription_period_end(
+        self, *, subscription_id: str
+    ) -> datetime | None:
+        return self._period_ends.get(subscription_id)
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
         try:
@@ -131,6 +163,20 @@ class StripeProvider:
 
     def cancel_at_period_end(self, *, subscription_id: str) -> None:
         self._stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
+
+    def get_subscription_period_end(
+        self, *, subscription_id: str
+    ) -> datetime | None:
+        try:
+            sub = self._stripe.Subscription.retrieve(subscription_id)
+        except Exception as exc:
+            raise PaymentError(
+                f"Could not retrieve subscription '{subscription_id}'"
+            ) from exc
+        epoch = sub.get("current_period_end") if hasattr(sub, "get") else None
+        if epoch is None:
+            return None
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc)
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
         if not signature:

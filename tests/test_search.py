@@ -137,6 +137,67 @@ async def test_filter_by_tier(client, engine):
     assert len(results) == 1 and results[0]["title"] == "Paid one"
 
 
+async def test_tier_filter_total_agrees_with_page(client, engine):
+    """finding 6: `total` must be the tier-filtered count, not the pre-filter
+    count. Pre-fix the Python post-filter trimmed `results` but left `total` at
+    the unfiltered value (4 here)."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    for i in range(3):
+        await publish(client, ed, mgr, title=f"Free {i}", tier="free")
+    await publish(client, ed, mgr, title="Paid one", tier="paid")
+
+    body = (await client.get("/api/v1/search?tier=paid")).json()
+    assert body["total"] == 1
+    assert len(body["results"]) == 1
+    assert body["results"][0]["title"] == "Paid one"
+
+
+async def test_tier_filter_paginates_on_the_filtered_set(client, engine):
+    """finding 6: paging must partition the tier-filtered set, with `total`
+    equal to the tier-filtered count on every page."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    for i in range(4):
+        await publish(client, ed, mgr, title=f"Paid {i}", tier="paid")
+    for i in range(3):
+        await publish(client, ed, mgr, title=f"Free {i}", tier="free")
+
+    page1 = (await client.get("/api/v1/search?tier=paid&limit=2&offset=0")).json()
+    page2 = (await client.get("/api/v1/search?tier=paid&limit=2&offset=2")).json()
+    assert page1["total"] == 4 and page2["total"] == 4
+    assert len(page1["results"]) == 2 and len(page2["results"]) == 2
+    ids1 = {r["id"] for r in page1["results"]}
+    ids2 = {r["id"] for r in page2["results"]}
+    assert not (ids1 & ids2)
+    assert all(r["tier"] == "paid" for r in page1["results"] + page2["results"])
+
+
+async def test_tier_filter_uses_effective_tier_from_series(client, engine):
+    """finding 6: a sermon with no explicit tier inside a `paid` series is
+    counted and returned under ?tier=paid, and absent from ?tier=free. This is
+    what the COALESCE(sermon.tier, series.tier, 'free') is for — a naive
+    `WHERE sermon.tier = :tier` would miss it."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    paid_series = (await client.post(
+        "/api/v1/series", json={"title": "Paid Series", "tier": "paid"}, headers=ed
+    )).json()
+    await publish(
+        client, ed, mgr, title="Inherits paid",
+        series_id=paid_series["id"], episode_number=1,
+    )
+    await publish(client, ed, mgr, title="Explicit free", tier="free")
+
+    paid = (await client.get("/api/v1/search?tier=paid")).json()
+    assert paid["total"] == 1
+    assert [r["title"] for r in paid["results"]] == ["Inherits paid"]
+
+    free = (await client.get("/api/v1/search?tier=free")).json()
+    assert free["total"] == 1
+    assert [r["title"] for r in free["results"]] == ["Explicit free"]
+
+
 async def test_results_carry_locked_flag(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     mgr = await make_user(client, engine, "m@example.com", "manager")
