@@ -1,4 +1,4 @@
-"""Regression tests for the auth-review remediation (plan.md steps 2-4).
+"""Regression tests for the auth-review remediation (plans/plan.md steps 2-4).
 
 - Step 2 / finding 4: Redis-down on the auth path is a deliberate, typed 503,
   never a naked 500; the login rate limiter still fails open.
