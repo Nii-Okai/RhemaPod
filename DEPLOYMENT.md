@@ -47,6 +47,51 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 Run migrations as a separate step before rolling instances — concurrent
 `alembic upgrade` from several starting containers will race.
 
+### Container form
+
+The image entrypoint runs **uvicorn only** — no `alembic upgrade head` on
+container boot — so the same sequence becomes three explicit invocations. Every
+invocation takes an env file (or injected env vars) carrying at least
+`SECRET_KEY` and `DATABASE_URL` (see §2 for the full production set); never bake
+secrets into the image.
+
+```bash
+# 1. Build (or pull) the image
+docker build -t fastapi-sermon:"$(git rev-parse --short HEAD)" .
+
+# 2. Migrations — one off, before any app container starts. Same override shape
+#    as an ECS one-off task or a k8s Job.
+docker run --rm --env-file deploy.env fastapi-sermon:<tag> alembic upgrade head
+
+# 3. Preflight, then start the app container(s)
+docker run --rm --env-file deploy.env fastapi-sermon:<tag> \
+  python -m app.scripts.preflight
+docker run -d --env-file deploy.env -p 8000:8000 \
+  -e UVICORN_WORKERS=1 fastapi-sermon:<tag>
+```
+
+One uvicorn process per container (`UVICORN_WORKERS` defaults to 1); scale out
+with replicas, not workers. The container listens on port 8000 (fixed — matches
+`EXPOSE` and the `HEALTHCHECK`). The image `HEALTHCHECK` probes `/health/live`
+(liveness — checks nothing external).
+
+Locally, `docker-compose.yml` wires the same steps. First provide a signing key
+— compose has **no default** for `SECRET_KEY` and refuses to start without one:
+
+```bash
+cp .env.docker.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"   # paste into .env as SECRET_KEY=
+# or, without a file:
+#   export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+```
+
+Then `docker compose run --rm migrate` (or `docker compose run --rm api alembic
+upgrade head`) for step 2, then `docker compose up`. This trades away the
+"zero-setup `docker compose up`" property on purpose: the key must be real random
+bytes (the config validator rejects placeholders) and is never committed. The
+`migrate` service is behind a `migrate` profile, so it never runs on `docker
+compose up`.
+
 Behind a reverse proxy terminating TLS. The app sets HSTS in production but
 does not terminate TLS itself.
 

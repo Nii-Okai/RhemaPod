@@ -1,0 +1,74 @@
+# Build-context hygiene for the API image. Anything the running app or the
+# separate `alembic upgrade head` step does not need at runtime is excluded:
+# a fat context is slow to hand to the daemon and risks shipping local files
+# (.env, dumps, caches). alembic/versions/ is deliberately NOT excluded —
+# migrations must be in the image for the one-off migrate step.
+
+# ── VCS & git tooling ──
+.git
+.gitignore
+.githooks
+.gitleaksignore
+.pre-commit-config.yaml
+
+# ── Docker / compose (not needed inside the image) ──
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+.env.docker.example
+
+# ── secrets & local env (never ship) ──
+.env
+.env.*
+*.pem
+*.key
+
+# ── virtualenvs ──
+.venv
+venv
+ENV/
+
+# ── Python caches / build artefacts ──
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ── local data / dumps ──
+dump.rdb
+*.rdb
+*.sqlite
+*.sqlite3
+*.db
+
+# ── OS / editor cruft ──
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── docs & planning (not runtime) ──
+docs/
+plans/
+status.md
+*.md
+
+# ── tests (not runtime; rely on dev-group deps that are not installed) ──
+tests/
