@@ -1,0 +1,724 @@
+"""Content service: catalog reads, CRUD, tier resolution, approval workflow.
+
+Design notes
+------------
+* Catalog listings return ALL published sermons — visible but gated. The
+  `locked` flag is computed per user; playback is refused later (Phase 4)
+  when a locked sermon's stream is requested.
+* Tier resolves: explicit sermon tier > series tier > free.
+* Approval transitions are validated by app.services.approval and every
+  transition writes an append-only ApprovalLog row.
+"""
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from sqlalchemy.exc import IntegrityError  # noqa: E402
+
+from app.models.models import MediaRef, Speaker  # noqa: E402
+
+from app.core.config import get_settings
+from app.core.logging import get_logger
+from app.core.redis import cache_aside, get_redis
+from app.models.content_schemas import (
+    SermonCreate,
+    SermonDetail,
+    SermonListItem,
+    SermonUpdate,
+)
+from app.models.models import (
+    VIEWER_VISIBLE_STATUSES,
+    ApprovalLog,
+    Category,
+    ContentTier,
+    Sermon,
+    Speaker,
+    SermonStatus,
+    SermonTag,
+    Series,
+    User,
+    UserRole,
+)
+from app.services.approval import resolve_transition
+
+settings = get_settings()
+log = get_logger("content")
+
+CATALOG_TTL_SECONDS = 300  # 5 minutes
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+MAX_PAGE_SIZE = 100
+
+
+async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
+    """Next episode number for a series: one past the highest in use.
+
+    Editors shouldn't have to track this by hand. A number can still be set
+    explicitly when reordering, so this only fills the blank.
+
+    Not collision-proof under simultaneous creates — two editors adding an
+    episode at the same instant could both get the same number. Harmless here
+    (ordering is by number, duplicates just sort adjacently) and cheaper than
+    the locking the alternative would need.
+    """
+    highest = (await db.execute(
+        select(func.max(Sermon.episode_number)).where(Sermon.series_id == series_id)
+    )).scalar_one_or_none()
+    return (highest or 0) + 1
+
+
+class ContentError(Exception):
+    def __init__(self, message: str, status_code: int = 400):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+# ── Tier & locked resolution ──────────────────────────────────────────────────
+def effective_tier(sermon: Sermon, series: Series | None) -> ContentTier:
+    if sermon.tier is not None:
+        return sermon.tier
+    if series is not None:
+        return series.tier
+    return ContentTier.FREE
+
+
+def _thumbnail_url(key: str | None) -> str | None:
+    """Turn a stored thumbnail key into a fetchable URL.
+
+    Prefers the CDN when configured (cacheable, no signing cost); otherwise
+    signs a time-limited URL against the media bucket. Buckets stay private
+    either way — we never expose a raw object URL.
+    """
+    if not key:
+        return None
+    if settings.cdn_base_url:
+        return f"{settings.cdn_base_url.rstrip('/')}/{key}"
+    from app.core import storage as storage_module
+
+    try:
+        return storage_module.get_storage().presigned_download_url(
+            settings.s3_media_bucket, key, settings.stream_url_expire_seconds
+        )
+    except Exception:
+        log.warning("thumbnail_url_failed", key=key)
+        return None
+
+
+def to_list_item(
+    sermon: Sermon,
+    tier: ContentTier,
+    has_subscription: bool,
+    names: "RefNames | None" = None,
+) -> SermonListItem:
+    names = names or RefNames()
+    return SermonListItem(
+        id=sermon.id,
+        title=sermon.title,
+        description=sermon.description,
+        thumbnail_url=_thumbnail_url(sermon.thumbnail_key),
+        duration_seconds=sermon.duration_seconds,
+        speaker_id=sermon.speaker_id,
+        speaker_name=names.speakers.get(sermon.speaker_id),
+        category_id=sermon.category_id,
+        category_name=names.categories.get(sermon.category_id),
+        series_id=sermon.series_id,
+        series_title=names.series.get(sermon.series_id),
+        episode_number=sermon.episode_number,
+        tier=tier,
+        locked=(tier == ContentTier.PAID and not has_subscription),
+    )
+
+
+@dataclass
+class RefNames:
+    """Speaker/category/series names for a batch of sermons, so a list view
+    resolves them in three queries rather than three per row."""
+
+    speakers: dict = field(default_factory=dict)
+    categories: dict = field(default_factory=dict)
+    series: dict = field(default_factory=dict)
+
+
+async def load_ref_names(db: AsyncSession, sermons: list[Sermon]) -> RefNames:
+    speaker_ids = {s.speaker_id for s in sermons if s.speaker_id}
+    category_ids = {s.category_id for s in sermons if s.category_id}
+    series_ids = {s.series_id for s in sermons if s.series_id}
+
+    names = RefNames()
+    if speaker_ids:
+        rows = (await db.execute(
+            select(Speaker.id, Speaker.name).where(Speaker.id.in_(speaker_ids))
+        )).all()
+        names.speakers = {i: n for i, n in rows}
+    if category_ids:
+        rows = (await db.execute(
+            select(Category.id, Category.name).where(Category.id.in_(category_ids))
+        )).all()
+        names.categories = {i: n for i, n in rows}
+    if series_ids:
+        rows = (await db.execute(
+            select(Series.id, Series.title).where(Series.id.in_(series_ids))
+        )).all()
+        names.series = {i: t for i, t in rows}
+    return names
+
+
+async def series_for(db: AsyncSession, sermons: list[Sermon]) -> dict:
+    """Series rows keyed by id, for resolving inherited tiers in bulk."""
+    ids = {s.series_id for s in sermons if s.series_id}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Series).where(Series.id.in_(ids)))).scalars().all()
+    return {s.id: s for s in rows}
+
+
+async def _has_subscription(db: AsyncSession, user: User | None) -> bool:
+    """Does this user currently have access to paid content?
+
+    Delegates to the subscription service, which caches the answer in Redis —
+    this sits on the hot path for every catalog read and every playback.
+    Imported lazily to avoid a circular import at module load.
+    """
+    from app.services import subscription_service
+
+    return await subscription_service.is_entitled(db, user)
+
+
+# ── Catalog reads (cached) ────────────────────────────────────────────────────
+async def list_published_sermons(
+    db: AsyncSession, user: User | None
+) -> list[SermonListItem]:
+    """All published sermons, newest first. Cached by tier, since the raw list
+    is identical for everyone; the per-user `locked` flag is applied after."""
+    has_sub = await _has_subscription(db, user)
+    cache_key = "catalog:published:v1"
+
+    async def _load() -> list[dict]:
+        stmt = (
+            select(Sermon)
+            .where(Sermon.status == SermonStatus.PUBLISHED)
+            .order_by(Sermon.published_at.desc().nullslast())
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        series_map = await _series_map(db, rows)
+        out = []
+        for s in rows:
+            tier = effective_tier(s, series_map.get(s.series_id))
+            # Cache the tier-resolved shape without the user-specific lock.
+            item = to_list_item(s, tier, has_subscription=True)
+            d = item.model_dump(mode="json")
+            d["tier"] = tier.value
+            out.append(d)
+        return out
+
+    cached = await cache_aside(cache_key, CATALOG_TTL_SECONDS, _load)
+
+    # Apply the per-user lock to the cached, tier-resolved list.
+    items: list[SermonListItem] = []
+    for d in cached:
+        tier = ContentTier(d["tier"])
+        d = {**d, "locked": (tier == ContentTier.PAID and not has_sub)}
+        items.append(SermonListItem.model_validate(d))
+    return items
+
+
+async def _series_map(db: AsyncSession, sermons: list[Sermon]) -> dict[uuid.UUID, Series]:
+    ids = {s.series_id for s in sermons if s.series_id is not None}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Series).where(Series.id.in_(ids)))).scalars().all()
+    return {s.id: s for s in rows}
+
+
+async def invalidate_catalog_cache() -> None:
+    try:
+        await get_redis().delete("catalog:published:v1")
+    except Exception:
+        log.warning("catalog_cache_invalidation_failed")
+
+
+# ── Sermon detail ─────────────────────────────────────────────────────────────
+async def get_sermon_detail(
+    db: AsyncSession, sermon_id: uuid.UUID, user: User | None
+) -> SermonDetail:
+    stmt = (
+        select(Sermon)
+        .where(Sermon.id == sermon_id)
+        .options(selectinload(Sermon.media_refs), selectinload(Sermon.tags))
+    )
+    sermon = (await db.execute(stmt)).scalar_one_or_none()
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+
+    # Viewers only see published content; editors/managers can see any of their
+    # own work-in-progress via the editor endpoints, not here.
+    is_staff = user is not None and user.role in (
+        UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN
+    )
+    if sermon.status not in VIEWER_VISIBLE_STATUSES and not is_staff:
+        raise ContentError("Sermon not found", status_code=404)
+
+    series = None
+    if sermon.series_id is not None:
+        series = await db.get(Series, sermon.series_id)
+    tier = effective_tier(sermon, series)
+    has_sub = await _has_subscription(db, user)
+
+    base = to_list_item(sermon, tier, has_sub)
+    return SermonDetail(
+        **base.model_dump(),
+        status=sermon.status,
+        tags=[t.tag for t in sermon.tags],
+        media_refs=sermon.media_refs,
+        published_at=sermon.published_at,
+        created_at=sermon.created_at,
+    )
+
+
+# ── CRUD ──────────────────────────────────────────────────────────────────────
+async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> Sermon:
+    if data.series_id is not None and await db.get(Series, data.series_id) is None:
+        raise ContentError("series_id does not exist", status_code=400)
+
+    # Fill the episode number automatically when the sermon joins a series and
+    # the editor hasn't set one.
+    episode_number = data.episode_number
+    if data.series_id is not None and episode_number is None:
+        episode_number = await next_episode_number(db, data.series_id)
+
+    sermon = Sermon(
+        title=data.title,
+        description=data.description,
+        speaker_id=data.speaker_id,
+        category_id=data.category_id,
+        series_id=data.series_id,
+        episode_number=episode_number,
+        tier=data.tier,
+        status=SermonStatus.DRAFT,
+        created_by=creator.id,
+    )
+    for tag in {t.strip().lower() for t in data.tags if t.strip()}:
+        sermon.tags.append(SermonTag(tag=tag))
+    db.add(sermon)
+    await db.commit()
+    await db.refresh(sermon)
+    log.info("sermon_created", sermon_id=str(sermon.id), by=str(creator.id))
+    return sermon
+
+
+async def update_sermon(
+    db: AsyncSession, sermon_id: uuid.UUID, data: SermonUpdate, editor: User
+) -> Sermon:
+    sermon = await _load_editable(db, sermon_id, editor)
+
+    fields = data.model_dump(exclude_unset=True, exclude={"tags"})
+
+    # Moving a sermon into a series (or between series) without naming an
+    # episode number gets the next free one.
+    new_series = fields.get("series_id", sermon.series_id)
+    if (
+        new_series is not None
+        and fields.get("episode_number") is None
+        and (new_series != sermon.series_id or sermon.episode_number is None)
+    ):
+        fields["episode_number"] = await next_episode_number(db, new_series)
+
+    for key, value in fields.items():
+        setattr(sermon, key, value)
+
+    if data.tags is not None:
+        sermon.tags.clear()
+        for tag in {t.strip().lower() for t in data.tags if t.strip()}:
+            sermon.tags.append(SermonTag(tag=tag))
+
+    await db.commit()
+    await db.refresh(sermon)
+    log.info("sermon_updated", sermon_id=str(sermon.id), by=str(editor.id))
+    return sermon
+
+
+async def _load_editable(db: AsyncSession, sermon_id: uuid.UUID, editor: User) -> Sermon:
+    stmt = (
+        select(Sermon)
+        .where(Sermon.id == sermon_id)
+        .options(selectinload(Sermon.tags))
+    )
+    sermon = (await db.execute(stmt)).scalar_one_or_none()
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+    # Editors may only edit their own drafts; managers/admins may edit any.
+    if editor.role == UserRole.EDITOR and sermon.created_by != editor.id:
+        raise ContentError("You can only edit your own sermons", status_code=403)
+    return sermon
+
+
+# ── Approval workflow ─────────────────────────────────────────────────────────
+async def transition(
+    db: AsyncSession,
+    sermon_id: uuid.UUID,
+    action: str,
+    actor: User,
+    note: str | None = None,
+) -> Sermon:
+    from app.services.approval import TransitionError
+
+    sermon = (await db.execute(
+        select(Sermon).where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+
+    # Editors may only submit their own drafts.
+    if action == "submit" and actor.role == UserRole.EDITOR and sermon.created_by != actor.id:
+        raise ContentError("You can only submit your own sermons", status_code=403)
+
+    try:
+        new_status = resolve_transition(action, sermon.status, actor.role)
+    except TransitionError as exc:
+        raise ContentError(exc.message, status_code=409)
+
+    from_status = sermon.status
+    sermon.status = new_status
+    if new_status == SermonStatus.PUBLISHED:
+        sermon.published_at = datetime.now(timezone.utc)
+
+    db.add(ApprovalLog(
+        sermon_id=sermon.id,
+        from_status=from_status.value,
+        to_status=new_status.value,
+        actor_id=actor.id,
+        note=note,
+    ))
+    await db.commit()
+    await db.refresh(sermon)
+
+    # Publishing or unpublishing changes the public catalog — bust the cache.
+    if new_status in (SermonStatus.PUBLISHED, SermonStatus.UNPUBLISHED):
+        await invalidate_catalog_cache()
+
+    log.info(
+        "sermon_transition",
+        sermon_id=str(sermon.id),
+        action=action,
+        from_status=from_status.value,
+        to_status=new_status.value,
+        by=str(actor.id),
+    )
+    return sermon
+
+
+async def review_queue(db: AsyncSession) -> list[Sermon]:
+    stmt = (
+        select(Sermon)
+        .where(Sermon.status.in_((SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)))
+        .order_by(Sermon.updated_at.asc().nullslast())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def approval_history(db: AsyncSession, sermon_id: uuid.UUID) -> list[ApprovalLog]:
+    stmt = (
+        select(ApprovalLog)
+        .where(ApprovalLog.sermon_id == sermon_id)
+        .order_by(ApprovalLog.created_at.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+# ── Categories (flat) ─────────────────────────────────────────────────────────
+async def create_category(db: AsyncSession, name: str, slug: str) -> Category:
+    cat = Category(name=name, slug=slug)
+    db.add(cat)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ContentError("A category with that slug already exists", status_code=409)
+    await db.refresh(cat)
+    return cat
+
+
+async def list_categories(db: AsyncSession) -> list[Category]:
+    rows = (await db.execute(select(Category).order_by(Category.name))).scalars().all()
+    return list(rows)
+
+
+# Backwards-compatible alias.
+list_categories_flat = list_categories
+
+
+async def get_category(db: AsyncSession, category_id: uuid.UUID) -> Category:
+    cat = await db.get(Category, category_id)
+    if cat is None:
+        raise ContentError("Category not found", status_code=404)
+    return cat
+
+
+async def update_category(
+    db: AsyncSession,
+    category_id: uuid.UUID,
+    name: str | None,
+    slug: str | None,
+) -> Category:
+    cat = await get_category(db, category_id)
+    if name is not None:
+        cat.name = name
+    if slug is not None:
+        cat.slug = slug
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ContentError("A category with that slug already exists", status_code=409)
+    await db.refresh(cat)
+    return cat
+
+
+async def delete_category(db: AsyncSession, category_id: uuid.UUID) -> None:
+    cat = await get_category(db, category_id)
+    # sermons.category_id and series.category_id are ON DELETE SET NULL, so the
+    # content survives and simply becomes uncategorised.
+    await db.delete(cat)
+    await db.commit()
+    await invalidate_catalog_cache()
+
+
+# ── Speakers ──────────────────────────────────────────────────────────────────
+async def get_speaker(db: AsyncSession, speaker_id: uuid.UUID) -> Speaker:
+    speaker = await db.get(Speaker, speaker_id)
+    if speaker is None:
+        raise ContentError("Speaker not found", status_code=404)
+    return speaker
+
+
+async def update_speaker(
+    db: AsyncSession, speaker_id: uuid.UUID, name: str | None, bio: str | None, bio_set: bool
+) -> Speaker:
+    speaker = await get_speaker(db, speaker_id)
+    if name is not None:
+        speaker.name = name
+    if bio_set:
+        speaker.bio = bio
+    await db.commit()
+    await db.refresh(speaker)
+    return speaker
+
+
+async def delete_speaker(db: AsyncSession, speaker_id: uuid.UUID) -> None:
+    speaker = await get_speaker(db, speaker_id)
+    # sermons.speaker_id is ON DELETE SET NULL.
+    await db.delete(speaker)
+    await db.commit()
+    await invalidate_catalog_cache()
+
+
+# ── Series ────────────────────────────────────────────────────────────────────
+async def get_series(db: AsyncSession, series_id: uuid.UUID) -> Series:
+    series = await db.get(Series, series_id)
+    if series is None:
+        raise ContentError("Series not found", status_code=404)
+    return series
+
+
+async def list_series(db: AsyncSession) -> list[Series]:
+    rows = (await db.execute(select(Series).order_by(Series.title))).scalars().all()
+    return list(rows)
+
+
+async def update_series(
+    db: AsyncSession, series_id: uuid.UUID, fields: dict, editor: User
+) -> Series:
+    series = await get_series(db, series_id)
+    if editor.role == UserRole.EDITOR and series.created_by != editor.id:
+        raise ContentError("You can only edit your own series", status_code=403)
+
+    if "category_id" in fields and fields["category_id"] is not None:
+        if await db.get(Category, fields["category_id"]) is None:
+            raise ContentError("category_id does not exist", status_code=400)
+
+    tier_changed = "tier" in fields and fields["tier"] != series.tier
+    for key, value in fields.items():
+        setattr(series, key, value)
+    await db.commit()
+    await db.refresh(series)
+
+    # A tier change alters the effective tier of inheriting episodes in the
+    # public catalog, so bust the cache.
+    if tier_changed:
+        await invalidate_catalog_cache()
+    return series
+
+
+async def delete_series(db: AsyncSession, series_id: uuid.UUID) -> None:
+    series = await get_series(db, series_id)
+    # sermons.series_id is ON DELETE SET NULL — episodes become standalone
+    # sermons rather than being deleted.
+    await db.delete(series)
+    await db.commit()
+    await invalidate_catalog_cache()
+
+
+# ── Sermons: list & delete ────────────────────────────────────────────────────
+async def list_sermons_for_staff(
+    db: AsyncSession,
+    requester: User,
+    status_filter: SermonStatus | None,
+    limit: int = 25,
+    offset: int = 0,
+    search: str | None = None,
+) -> tuple[list[Sermon], int]:
+    """Editors see their own sermons across all statuses; managers/admins see
+    everyone's. Returns (rows, total) — total is the count before paging, so a
+    CMS can size its pager."""
+    conditions = []
+    if requester.role == UserRole.EDITOR:
+        conditions.append(Sermon.created_by == requester.id)
+    if status_filter is not None:
+        conditions.append(Sermon.status == status_filter)
+    if search:
+        conditions.append(func.lower(Sermon.title).like(f"%{search.lower()}%"))
+
+    total = (await db.execute(
+        select(func.count()).select_from(Sermon).where(*conditions)
+    )).scalar_one()
+
+    stmt = (
+        select(Sermon)
+        .where(*conditions)
+        .order_by(Sermon.updated_at.desc().nullslast(), Sermon.created_at.desc())
+        .limit(max(1, min(limit, MAX_PAGE_SIZE)))
+        .offset(max(0, offset))
+    )
+    return list((await db.execute(stmt)).scalars().all()), total
+
+
+async def delete_sermon(db: AsyncSession, sermon_id: uuid.UUID, actor: User) -> None:
+    sermon = (await db.execute(
+        select(Sermon).where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+
+    # Never hard-delete live content — unpublish first. This preserves the
+    # "unpublish is the reversible path" model and avoids yanking something a
+    # viewer may be mid-playback on.
+    if sermon.status == SermonStatus.PUBLISHED:
+        raise ContentError(
+            "Unpublish the sermon before deleting it", status_code=409
+        )
+
+    if actor.role == UserRole.EDITOR:
+        if sermon.created_by != actor.id:
+            raise ContentError("You can only delete your own sermons", status_code=403)
+        # Editors may only delete work that never went live.
+        if sermon.status not in (SermonStatus.DRAFT, SermonStatus.REJECTED):
+            raise ContentError(
+                "Editors can only delete draft or rejected sermons", status_code=403
+            )
+
+    # media_refs, sermon_tags and approval_log cascade on delete.
+    await db.delete(sermon)
+    await db.commit()
+    log.info("sermon_deleted", sermon_id=str(sermon_id), by=str(actor.id))
+
+
+def series_to_public(series: Series) -> dict:
+    """Series fields plus a resolved thumbnail URL, for the API layer."""
+    return {
+        "id": series.id,
+        "title": series.title,
+        "description": series.description,
+        "category_id": series.category_id,
+        "tier": series.tier,
+        "status": series.status,
+        "thumbnail_url": _thumbnail_url(series.thumbnail_key),
+    }
+
+
+def _validate_image_type(content_type: str) -> None:
+    if content_type.lower() not in ALLOWED_IMAGE_TYPES:
+        raise ContentError(
+            f"Unsupported image type '{content_type}'. Use JPEG, PNG, or WebP.",
+            status_code=400,
+        )
+
+
+async def create_thumbnail_ticket(
+    db: AsyncSession, kind: str, entity_id: uuid.UUID, actor: User,
+    filename: str, content_type: str,
+) -> dict:
+    """Issue a pre-signed PUT for a sermon or series cover image.
+
+    Same direct-to-storage pattern as media: the image never passes through
+    this API.
+    """
+    from app.core import storage as storage_module
+
+    _validate_image_type(content_type)
+    entity = await _load_thumbnail_target(db, kind, entity_id, actor)
+
+    key = storage_module.thumbnail_key(kind, entity.id, filename)
+    url = storage_module.get_storage().presigned_upload_url(
+        settings.s3_media_bucket, key, content_type,
+        settings.upload_url_expire_seconds,
+    )
+    return {
+        "upload_url": url,
+        "headers": {"Content-Type": content_type},
+        "expires_in": settings.upload_url_expire_seconds,
+        "thumbnail_key": key,
+    }
+
+
+async def confirm_thumbnail(
+    db: AsyncSession, kind: str, entity_id: uuid.UUID, actor: User, key: str
+) -> str | None:
+    """Attach an uploaded image after verifying it actually landed."""
+    from app.core import storage as storage_module
+
+    entity = await _load_thumbnail_target(db, kind, entity_id, actor)
+
+    # The key is supplied by the client, so confine it to this entity's prefix —
+    # otherwise a caller could point their thumbnail at any object in the bucket.
+    expected_prefix = f"thumbnails/{kind}/{entity.id}/"
+    if not key.startswith(expected_prefix):
+        raise ContentError("Thumbnail key does not belong to this item", 400)
+
+    if not storage_module.get_storage().object_exists(settings.s3_media_bucket, key):
+        raise ContentError(
+            "No uploaded image found — complete the PUT first", status_code=409
+        )
+
+    entity.thumbnail_key = key
+    await db.commit()
+    await invalidate_catalog_cache()
+    log.info("thumbnail_set", kind=kind, entity_id=str(entity.id), by=str(actor.id))
+    return _thumbnail_url(key)
+
+
+async def _load_thumbnail_target(
+    db: AsyncSession, kind: str, entity_id: uuid.UUID, actor: User
+):
+    if kind == "sermons":
+        entity = (await db.execute(
+            select(Sermon).where(Sermon.id == entity_id)
+        )).scalar_one_or_none()
+        label = "Sermon"
+    elif kind == "series":
+        entity = await db.get(Series, entity_id)
+        label = "Series"
+    else:
+        raise ContentError("Unknown thumbnail target", status_code=400)
+
+    if entity is None:
+        raise ContentError(f"{label} not found", status_code=404)
+    if actor.role == UserRole.EDITOR and entity.created_by != actor.id:
+        raise ContentError(f"You can only edit your own {label.lower()}", 403)
+    return entity

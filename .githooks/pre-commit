@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Pre-commit hook: detect staged secrets and sensitive files
+# This hook scans staged content for AWS keys, Stripe live keys, PEM private keys,
+# and .env files. Future: replace with gitleaks for comprehensive secret scanning.
+#
+# To bypass (if false positive): git commit --no-verify
+
+set -euo pipefail
+
+errors=0
+error_lines=""
+
+# Check for staged .env file
+while IFS= read -r file; do
+	if [[ "$(basename "$file")" == ".env" ]]; then
+		error_lines="${error_lines}${file}: staged .env file\n"
+		errors=$((errors + 1))
+	fi
+done < <(git diff --cached --name-only)
+
+# Get staged diffs, excluding documentation, examples, code, and hooks
+# Only scan config/env files for actual secrets (not Python code which may reference secret names)
+staged_diff=$(git diff --cached -U0 -- ':!*.example' ':!.githooks/*' ':!*.md' ':!*.py' ':!*.txt' 2>/dev/null || true)
+
+# AWS Access Key ID (AKIA* or ASIA* followed by exactly 16 alphanumeric chars)
+# Only flag if it looks like a real key (no false positives on documentation)
+if echo "$staged_diff" | grep -E '^\+.*[^A-Za-z0-9-_](AKIA|ASIA)[A-Z0-9]{16}[^A-Za-z0-9-_]' > /dev/null 2>&1; then
+	error_lines="${error_lines}AWS Access Key ID detected (AKIA/ASIA pattern)\n"
+	errors=$((errors + 1))
+fi
+
+# AWS Secret Access Key with non-placeholder value (40+ chars, looks like real base64)
+if echo "$staged_diff" | grep -iE '^\+.*aws_secret_access_key\s*[=:]\s*[A-Za-z0-9/+]{40,}' > /dev/null 2>&1; then
+	error_lines="${error_lines}AWS Secret Access Key detected\n"
+	errors=$((errors + 1))
+fi
+
+# PEM Private Key
+if echo "$staged_diff" | grep -E '^\+.*-----BEGIN [A-Z ]*PRIVATE KEY-----' > /dev/null 2>&1; then
+	error_lines="${error_lines}PEM Private Key detected\n"
+	errors=$((errors + 1))
+fi
+
+# Stripe Live Keys
+if echo "$staged_diff" | grep -E '^\+.*sk_live_[0-9a-zA-Z]{16,}' > /dev/null 2>&1 || \
+   echo "$staged_diff" | grep -E '^\+.*rk_live_[0-9a-zA-Z]{16,}' > /dev/null 2>&1; then
+	error_lines="${error_lines}Stripe live key detected (sk_live_/rk_live_ pattern)\n"
+	errors=$((errors + 1))
+fi
+
+# SECRET_KEY with actual secret value (not placeholder, not change-me, and looks real: 32+ random chars/base64)
+if echo "$staged_diff" | grep -iE '^\+.*SECRET_KEY\s*[=:]\s*[A-Za-z0-9_\-/+]{32,}' > /dev/null 2>&1; then
+	# Exclude placeholders like "change-me-..." or "replace-with-..."
+	if ! echo "$staged_diff" | grep -iE 'change-me|replace-with' > /dev/null 2>&1; then
+		error_lines="${error_lines}SECRET_KEY with long value detected\n"
+		errors=$((errors + 1))
+	fi
+fi
+
+if [ $errors -gt 0 ]; then
+	echo -e "Commit blocked: possible secret. If it is a false positive, re-run with git commit --no-verify."
+	echo -e "$error_lines"
+	exit 1
+fi
+
+exit 0
