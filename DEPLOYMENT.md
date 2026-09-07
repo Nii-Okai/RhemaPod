@@ -47,6 +47,14 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 Run migrations as a separate step before rolling instances — concurrent
 `alembic upgrade` from several starting containers will race.
 
+### API schema (`openapi.json`)
+
+`uv run python -m app.scripts.dump_openapi` regenerates `openapi.json` at the
+repo root; commit the result. The admin portal's TypeScript typegen reads this
+file, so it must stay in sync with the routers — `tests/test_openapi_dump.py`
+fails if a backend change has not been re-dumped. The dump is built in-process
+and needs no running server, database, or Redis (and no `DEBUG=true`).
+
 ### Container form
 
 The image entrypoint runs **uvicorn only** — no `alembic upgrade head` on
