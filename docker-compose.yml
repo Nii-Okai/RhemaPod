@@ -68,7 +68,9 @@ services:
 
   # S3-compatible object storage for the media upload pipeline. Console on 9001.
   minio:
-    image: minio/minio
+    # Pinned like the rest of the stack. This is the exact release the upload
+    # pipeline was verified against end-to-end (GATE 3 Batch 2).
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -83,16 +85,14 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 5s
+    # No healthcheck: recent minio/minio images ship no `curl` (the old probe
+    # was perpetually unhealthy), and nothing blocks on minio's health anyway —
+    # `createbuckets` runs its own `until mc alias set` retry loop and `api`
+    # gates on `createbuckets: service_completed_successfully`.
 
   # One-shot: create the raw + media buckets, then exit. Idempotent.
   createbuckets:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_started
