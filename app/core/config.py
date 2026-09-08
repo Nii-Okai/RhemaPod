@@ -1,4 +1,6 @@
+import ipaddress
 from functools import lru_cache
+
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -112,6 +114,14 @@ class Settings(BaseSettings):
     # Global per-IP request cap (0 disables).
     global_rate_limit: int = 300
     global_rate_window_seconds: int = 60
+
+    # Reverse proxies whose X-Forwarded-For header we trust to carry the real
+    # client IP (plain IPs and CIDRs; see app/core/net.client_ip). Empty =
+    # trust nothing = key rate limits on the immediate peer, the historical
+    # behaviour. SECURITY: only list peers you actually control. Too broad a
+    # list (worst case a world CIDR) makes X-Forwarded-For attacker-forgeable,
+    # which turns every per-IP rate limit into a trivial bypass.
+    trusted_proxies: list[str] = []
     # Reject request bodies larger than this before parsing (bytes).
     max_request_bytes: int = 2 * 1024 * 1024
 
@@ -209,6 +219,19 @@ class Settings(BaseSettings):
             problems.append("FRONTEND_BASE_URL must use https in production")
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
+        for entry in self.trusted_proxies:
+            try:
+                network = ipaddress.ip_network(entry.strip(), strict=False)
+            except ValueError:
+                problems.append(
+                    f"TRUSTED_PROXIES entry {entry!r} is not a valid IP or CIDR"
+                )
+                continue
+            if network.prefixlen == 0:
+                problems.append(
+                    f"TRUSTED_PROXIES must not contain a world CIDR ({entry!r}) — "
+                    "it makes X-Forwarded-For forgeable and every rate limit bypassable"
+                )
 
         if problems:
             raise ValueError(

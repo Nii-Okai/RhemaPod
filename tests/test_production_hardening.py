@@ -90,6 +90,25 @@ def test_env_example_placeholder_secret_is_rejected():
         _settings(secret_key="replace-with-a-long-random-string-at-least-32-chars")
 
 
+def test_production_rejects_world_cidr_trusted_proxy():
+    """A world CIDR in trusted_proxies makes X-Forwarded-For forgeable — every
+    per-IP rate limit becomes a one-header bypass. The preflight must refuse it."""
+    with pytest.raises(ValueError, match="world CIDR"):
+        _settings(trusted_proxies=["0.0.0.0/0"])
+    with pytest.raises(ValueError, match="world CIDR"):
+        _settings(trusted_proxies=["::/0"])
+
+
+def test_production_rejects_malformed_trusted_proxy():
+    with pytest.raises(ValueError, match="not a valid IP or CIDR"):
+        _settings(trusted_proxies=["not-an-ip"])
+
+
+def test_production_allows_scoped_trusted_proxy():
+    s = _settings(trusted_proxies=["10.0.0.0/8", "172.18.0.5"])
+    assert s.trusted_proxies == ["10.0.0.0/8", "172.18.0.5"]
+
+
 def test_changeme_family_secret_is_rejected():
     with pytest.raises(ValueError):
         _settings(secret_key="change-me-this-is-not-a-real-secret-key-value")
