@@ -1,8 +1,10 @@
 name: fastapi-sermon
 
-# Local dev / integration stack: api + postgres + redis.
-# No MinIO (LocalStorage stub covers dev) and no Stripe stub (MockProvider is
-# in-process) — see ADR 0001 §4.
+# Local dev / integration stack: api + postgres + redis + minio.
+# MinIO backs the browser-direct presigned-upload pipeline (the in-process
+# LocalStorage stub fakes both the URL and the object, so it cannot exercise it)
+# — see ADR 0001 §4, superseded 2026-09 (W8). Stripe is still the in-process
+# MockProvider.
 #
 # Migrations are NOT run on `up`. Run them once, as an explicit operator step:
 #     docker compose run --rm migrate
@@ -22,6 +24,18 @@ x-app-env: &app-env
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — cp .env.docker.example .env and generate one}
   DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sermon:sermon@postgres:5432/sermon}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  # Object storage — the compose MinIO. Setting the access keys flips
+  # settings.storage_is_live true, so get_storage() returns the real S3Storage
+  # and the browser-direct presigned PUT is exercised end to end. The API
+  # container reaches MinIO at minio:9000; the browser's presigned URLs are
+  # signed for S3_PUBLIC_ENDPOINT so it can PUT to a host it can resolve
+  # (SigV4 signs Host, so the signing host must match). DEV-ONLY credentials.
+  S3_ENDPOINT_URL: http://minio:9000
+  S3_PUBLIC_ENDPOINT: http://localhost:9000
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  S3_RAW_BUCKET: sermon-raw
+  S3_MEDIA_BUCKET: sermon-media
 
 services:
   postgres:
@@ -52,6 +66,51 @@ services:
       timeout: 3s
       retries: 10
 
+  # S3-compatible object storage for the media upload pipeline. Console on 9001.
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      # Browser uploads PUT cross-origin from the portal's dev origin. MinIO's
+      # server-wide CORS allow-list is the clean, version-stable way to permit
+      # it (per-bucket `mc cors` support varies by mc release).
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:3000}
+    ports:
+      # Loopback only. 9000 = S3 API (matches S3_PUBLIC_ENDPOINT), 9001 = console.
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  # One-shot: create the raw + media buckets, then exit. Idempotent.
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://minio:9000
+        "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+          echo 'waiting for minio...'; sleep 1;
+        done;
+        mc mb --ignore-existing local/sermon-raw;
+        mc mb --ignore-existing local/sermon-media;
+        echo 'buckets ready';
+
   api:
     build:
       context: .
@@ -67,6 +126,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
     healthcheck:
       # Mirrors the image HEALTHCHECK (liveness — checks nothing external).
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4).status == 200 else 1)"]
@@ -91,3 +152,4 @@ services:
 
 volumes:
   postgres-data:
+  minio-data:

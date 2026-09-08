@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     # --- Media / storage (Phase 4) ---
     # S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
     s3_endpoint_url: str | None = None          # None = real AWS S3
+    # Host the BROWSER uses to reach object storage, when it differs from the
+    # host THIS process uses (s3_endpoint_url). Presigned upload/download URLs
+    # are signed for this host so the browser can follow them — SigV4 signs the
+    # Host header, so a URL signed for the internal host is rejected when the
+    # request arrives on the public one. This process still does its own reads
+    # and writes (object_exists, delete) via s3_endpoint_url. Dev/compose only:
+    # the API container reaches MinIO at http://minio:9000, the browser needs
+    # http://localhost:9000. Leave unset for real AWS S3 (one host for both).
+    s3_public_endpoint: str | None = None
     s3_region: str = "eu-north-1"
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
@@ -264,6 +273,19 @@ class Settings(BaseSettings):
             problems.append("ALLOWED_ORIGINS must use https in production")
         if self.frontend_base_url.startswith("http://"):
             problems.append("FRONTEND_BASE_URL must use https in production")
+        if self.s3_public_endpoint:
+            low = self.s3_public_endpoint.lower()
+            local_markers = (
+                "localhost", "127.0.0.1", "0.0.0.0", "::1",
+                "minio:", "host.docker.internal", ".invalid",
+            )
+            if low.startswith("http://") or any(m in low for m in local_markers):
+                problems.append(
+                    "S3_PUBLIC_ENDPOINT must be a real https host, not a "
+                    "localhost/compose value — it is a dev-only shim for signing "
+                    "presigned URLs for a browser that cannot resolve the "
+                    "internal storage host. Unset it in production."
+                )
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by

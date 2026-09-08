@@ -74,6 +74,21 @@ def test_production_refuses_insecure_origin():
         _settings(allowed_origins=["http://app.example.com"])
 
 
+def test_production_refuses_localhost_s3_public_endpoint():
+    """S3_PUBLIC_ENDPOINT is a dev-only shim (rewrites the presigned-URL host so
+    a browser can reach a compose MinIO). It must not slip into production."""
+    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
+        _settings(s3_public_endpoint="http://localhost:9000")
+    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
+        _settings(s3_public_endpoint="http://minio:9000")
+
+
+def test_production_allows_a_real_s3_public_endpoint():
+    """A genuine https host is unusual but not unsafe — don't block it."""
+    s = _settings(s3_public_endpoint="https://cdn.example.com")
+    assert s.s3_public_endpoint == "https://cdn.example.com"
+
+
 def test_development_allows_stubs():
     """Stubs remain available outside production so tests need no cloud."""
     from app.core.config import Settings
