@@ -177,6 +177,53 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("trusted_proxies")
+    @classmethod
+    def trusted_proxies_are_scoped(cls, v: list[str]) -> list[str]:
+        """Validate every trusted-proxy entry, in EVERY environment.
+
+        Runs regardless of ``environment`` — staging is frequently
+        internet-reachable, so an over-broad entry there is exactly as
+        exploitable as one in production. An entry that is too broad (a world
+        CIDR, or a prefix short enough to span a large slice of the internet
+        such as ``0.0.0.0/1`` + ``128.0.0.0/1``) makes ``X-Forwarded-For``
+        attacker-forgeable and turns every per-IP rate limit into a one-header
+        bypass.
+
+        This CANNOT catch a proxy that is itself narrowly scoped but forwards
+        unverified client input (a non-appending / header-spoofing proxy) — see
+        the SECURITY note on the ``trusted_proxies`` field. Only list peers whose
+        forwarding behaviour you control.
+        """
+        # An IPv4 entry must be /8 or narrower; IPv6 must be /32 or narrower.
+        min_v4_prefix, min_v6_prefix = 8, 32
+        for raw in v:
+            entry = raw.strip()
+            if not entry:
+                continue
+            try:
+                network = ipaddress.ip_network(entry, strict=False)
+            except ValueError:
+                raise ValueError(
+                    f"TRUSTED_PROXIES entry {entry!r} is not a valid IP or CIDR"
+                )
+            if network.prefixlen == 0:
+                raise ValueError(
+                    f"TRUSTED_PROXIES must not contain a world CIDR ({entry!r}) — "
+                    "it makes X-Forwarded-For forgeable and every rate limit "
+                    "bypassable"
+                )
+            min_prefix = min_v4_prefix if network.version == 4 else min_v6_prefix
+            if network.prefixlen < min_prefix:
+                raise ValueError(
+                    f"TRUSTED_PROXIES entry {entry!r} is too broad "
+                    f"(/{network.prefixlen}) — IPv{network.version} entries must "
+                    f"be /{min_prefix} or narrower; a wide range makes "
+                    "X-Forwarded-For forgeable and every per-IP rate limit "
+                    "bypassable"
+                )
+        return v
+
     @model_validator(mode="after")
     def production_preflight(self) -> "Settings":
         """Refuse to start in production on stub backends or unsafe config.
@@ -219,19 +266,8 @@ class Settings(BaseSettings):
             problems.append("FRONTEND_BASE_URL must use https in production")
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
-        for entry in self.trusted_proxies:
-            try:
-                network = ipaddress.ip_network(entry.strip(), strict=False)
-            except ValueError:
-                problems.append(
-                    f"TRUSTED_PROXIES entry {entry!r} is not a valid IP or CIDR"
-                )
-                continue
-            if network.prefixlen == 0:
-                problems.append(
-                    f"TRUSTED_PROXIES must not contain a world CIDR ({entry!r}) — "
-                    "it makes X-Forwarded-For forgeable and every rate limit bypassable"
-                )
+        # trusted_proxies format / breadth is validated in every environment by
+        # trusted_proxies_are_scoped (a field validator) — not repeated here.
 
         if problems:
             raise ValueError(

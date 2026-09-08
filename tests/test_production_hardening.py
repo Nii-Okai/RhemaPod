@@ -109,6 +109,42 @@ def test_production_allows_scoped_trusted_proxy():
     assert s.trusted_proxies == ["10.0.0.0/8", "172.18.0.5"]
 
 
+def test_production_rejects_overbroad_trusted_proxy_prefix():
+    """/1 .. /7 (v4) and < /32 (v6) span a large slice of the internet — just as
+    forgeable as a world CIDR. The classic evasion is 0.0.0.0/1 + 128.0.0.0/1."""
+    with pytest.raises(ValueError, match="too broad"):
+        _settings(trusted_proxies=["0.0.0.0/1"])
+    with pytest.raises(ValueError, match="too broad"):
+        _settings(trusted_proxies=["128.0.0.0/1"])
+    with pytest.raises(ValueError, match="too broad"):
+        _settings(trusted_proxies=["10.0.0.0/7"])
+    with pytest.raises(ValueError, match="too broad"):
+        _settings(trusted_proxies=["2001:db8::/16"])
+
+
+def _dev_settings(**overrides):
+    """A non-production Settings — trusted_proxies validation must still run."""
+    from app.core.config import Settings
+
+    return Settings(**{**BASE_ENV, "environment": "development", **overrides})
+
+
+def test_trusted_proxy_format_checked_outside_production():
+    """Staging is often internet-reachable — the parse/breadth check is not
+    production-only."""
+    with pytest.raises(ValueError, match="not a valid IP or CIDR"):
+        _dev_settings(trusted_proxies=["not-an-ip"])
+    with pytest.raises(ValueError, match="world CIDR"):
+        _dev_settings(trusted_proxies=["0.0.0.0/0"])
+    with pytest.raises(ValueError, match="too broad"):
+        _dev_settings(trusted_proxies=["64.0.0.0/2"])
+
+
+def test_dev_allows_scoped_trusted_proxy():
+    s = _dev_settings(trusted_proxies=["127.0.0.1", "10.0.0.0/8"])
+    assert s.trusted_proxies == ["127.0.0.1", "10.0.0.0/8"]
+
+
 def test_changeme_family_secret_is_rejected():
     with pytest.raises(ValueError):
         _settings(secret_key="change-me-this-is-not-a-real-secret-key-value")

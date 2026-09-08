@@ -6,21 +6,38 @@ domain for staff, a ``[SEED]`` title/name prefix, a ``seed-`` slug prefix) so
 ``--fresh`` can find and drop exactly its own rows and nothing else.
 
     uv run python -m app.scripts.seed_dev            # idempotent: no-op if present
-    uv run python -m app.scripts.seed_dev --fresh    # drop seed rows, rebuild
+    uv run python -m app.scripts.seed_dev --fresh --yes-delete-from localhost
 
-Production-guarded: it refuses to run when ``settings.is_production`` and unless
-``ENVIRONMENT`` is ``development`` or ``test``. It creates fake accounts with a
-shared, printed password — never something to point at a real database.
+Guarded two ways, because ``ENVIRONMENT`` alone is not enough — a laptop
+defaults to ``development`` while its ``DATABASE_URL`` may still point at prod:
+
+* **Environment:** refuses unless ``ENVIRONMENT`` is ``development`` or ``test``
+  (and never when ``settings.is_production``).
+* **DB target:** refuses unless the host in ``settings.database_url`` is loopback
+  (``127.0.0.1`` / ``localhost`` / ``::1``), a dev compose service name
+  (``postgres`` / ``db``), or listed in ``SEED_DEV_ALLOWED_DB_HOSTS``
+  (comma-separated).
+
+Both checks run inside ``_build()`` and ``_delete_seed_rows()`` themselves, so no
+caller can bypass them. ``--fresh`` runs DELETEs and additionally needs the
+target host echoed back: ``--yes-delete-from <host>``, an interactive prompt, or
+``--force`` in a non-interactive context (loopback/compose host only).
+
+It creates fake accounts with a shared, printed password — never something to
+point at a real database.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import os
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, or_, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
@@ -74,7 +91,43 @@ class SeedError(SystemExit):
     """Non-zero exit with a human message (SystemExit → exit code 1)."""
 
 
+# DB hosts this script is allowed to write to / delete from. Loopback = the
+# developer's own machine; the compose service names = the dev docker-compose
+# Postgres. Anything else (a real hostname, an RDS endpoint) is refused unless
+# explicitly listed in SEED_DEV_ALLOWED_DB_HOSTS.
+_LOOPBACK_DB_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_COMPOSE_DB_HOSTS = frozenset({"postgres", "db"})
+_DB_HOST_ALLOWLIST_ENV = "SEED_DEV_ALLOWED_DB_HOSTS"
+
+
+def _target_db_host() -> str:
+    """The host in ``settings.database_url``, lower-cased.
+
+    Returns ``""`` when the URL cannot be parsed or carries no host (e.g. a unix
+    socket) — which then fails ``_db_host_is_safe`` below. Fail closed.
+    """
+    try:
+        return (make_url(get_settings().database_url).host or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def _db_host_allowlist() -> set[str]:
+    raw = os.environ.get(_DB_HOST_ALLOWLIST_ENV, "")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _db_host_is_safe(host: str) -> bool:
+    return bool(host) and (
+        host in _LOOPBACK_DB_HOSTS
+        or host in _COMPOSE_DB_HOSTS
+        or host in _db_host_allowlist()
+    )
+
+
 def _ensure_safe_environment() -> None:
+    """Full guard: environment AND resolved DB host. Called from every mutating
+    path (``_build`` / ``_delete_seed_rows``), not just the entrypoint."""
     settings = get_settings()
     if settings.is_production:
         raise SeedError(
@@ -86,6 +139,47 @@ def _ensure_safe_environment() -> None:
             "seed_dev only runs with ENVIRONMENT in (development, test); got "
             f"{settings.environment!r}."
         )
+    host = _target_db_host()
+    if not _db_host_is_safe(host):
+        raise SeedError(
+            "seed_dev refuses to run: DATABASE_URL host "
+            f"{host or '(unparseable/none)'!r} is not a recognised dev target. "
+            "Allowed: loopback (127.0.0.1 / localhost / ::1), a compose service "
+            f"name ({' / '.join(sorted(_COMPOSE_DB_HOSTS))}), or a host listed "
+            f"in {_DB_HOST_ALLOWLIST_ENV}. ENVIRONMENT alone is not enough — a "
+            "laptop defaults to 'development' while still pointed at prod."
+        )
+
+
+def _ensure_delete_confirmed(confirm_host: str | None, force: bool) -> None:
+    """``--fresh`` runs DELETEs — require the target DB host to be named back so
+    a mistyped ``--fresh`` against the wrong database is never silent.
+
+    ``_ensure_safe_environment`` has already proven the host is a dev target;
+    this is the extra, deliberate speed-bump on destructive intent.
+    """
+    host = _target_db_host()
+    if confirm_host is not None:
+        if confirm_host.strip().lower() == host:
+            return
+        raise SeedError(
+            f"--fresh confirmation mismatch: got {confirm_host!r}, but the "
+            f"DATABASE_URL host is {host!r}. Pass --yes-delete-from {host}."
+        )
+    if sys.stdin.isatty():
+        typed = input(
+            f"About to DELETE all seed rows from DB host {host!r}. "
+            "Type the host to confirm: "
+        ).strip().lower()
+        if typed == host:
+            return
+        raise SeedError("--fresh aborted: confirmation did not match.")
+    if force and _db_host_is_safe(host):
+        return
+    raise SeedError(
+        "--fresh needs confirmation in a non-interactive context: pass "
+        f"--yes-delete-from {host} (or --force for a loopback/compose host)."
+    )
 
 
 async def _seed_present(db: AsyncSession) -> bool:
@@ -95,14 +189,25 @@ async def _seed_present(db: AsyncSession) -> bool:
     return hit.first() is not None
 
 
-async def _delete_seed_rows(db: AsyncSession) -> None:
+async def _delete_seed_rows(
+    db: AsyncSession,
+    *,
+    confirm_host: str | None = None,
+    force: bool = False,
+) -> None:
     """Drop every row this script owns, in FK-safe order.
 
     sermon_tags / approval_log / announcement_approval_log are ON DELETE CASCADE
     at the DB (and SQLite honours it under PRAGMA foreign_keys=ON in tests), so
     deleting the parent sermon / announcement takes its children with it. The
     created_by FKs to users are ON DELETE RESTRICT, so users go last.
+
+    Guards run here, not only in the caller, so no future caller can DELETE
+    against an unvetted database or without confirming the target host.
     """
+    _ensure_safe_environment()
+    _ensure_delete_confirmed(confirm_host, force)
+
     seed_user_ids = (
         await db.execute(
             select(User.id).where(User.email.like(f"%@{SEED_EMAIL_DOMAIN}"))
@@ -166,6 +271,11 @@ def _log(sermon: Sermon, actor: User, chain: list[tuple[SermonStatus, SermonStat
 
 
 async def _build(db: AsyncSession) -> SeedSummary:
+    # Guard here too — a future caller that reaches _build directly (a test, a
+    # REPL, another script) must not be able to write seed accounts into an
+    # unvetted database.
+    _ensure_safe_environment()
+
     # ── Staff ────────────────────────────────────────────────────────────────
     users: dict[str, User] = {}
     for email, name, role in STAFF:
@@ -409,17 +519,22 @@ async def seed(
     session_factory: async_sessionmaker[AsyncSession] = PrimarySession,
     *,
     fresh: bool = False,
+    confirm_delete_host: str | None = None,
+    force: bool = False,
 ) -> SeedSummary:
     """Build the dev dataset. Idempotent unless ``fresh=True``.
 
     ``session_factory`` is injectable so the test suite can run it against its
-    own in-memory database.
+    own in-memory database. ``confirm_delete_host`` / ``force`` gate the
+    ``fresh=True`` DELETE path (see ``_ensure_delete_confirmed``).
     """
     _ensure_safe_environment()
 
     async with session_factory() as db:
         if fresh:
-            await _delete_seed_rows(db)
+            await _delete_seed_rows(
+                db, confirm_host=confirm_delete_host, force=force
+            )
         elif await _seed_present(db):
             print(
                 f"[=] Seed data already present ({SEED_EMAIL_DOMAIN}); nothing "
@@ -455,8 +570,27 @@ def main() -> None:
         action="store_true",
         help="Delete previously seeded rows first, then rebuild.",
     )
+    parser.add_argument(
+        "--yes-delete-from",
+        metavar="HOST",
+        default=None,
+        help="Confirm --fresh by naming the target DATABASE_URL host "
+        "(e.g. --yes-delete-from localhost).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow --fresh without a typed confirmation in a non-interactive "
+        "context — only when the DB host is loopback or a compose service name.",
+    )
     args = parser.parse_args()
-    asyncio.run(seed(fresh=args.fresh))
+    asyncio.run(
+        seed(
+            fresh=args.fresh,
+            confirm_delete_host=args.yes_delete_from,
+            force=args.force,
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -64,6 +64,25 @@ def _ip_in(host: str, networks: tuple[ipaddress._BaseNetwork, ...]) -> bool:
     return any(addr.version == net.version and addr in net for net in networks)
 
 
+def _log_fallback(peer: str, *, reason: str, xff_present: bool) -> None:
+    """Record that a *trusted* peer produced no usable forwarded client IP.
+
+    Without this the "every portal user collapses into one rate-limit bucket"
+    regression (the original lockout bug this module exists to prevent) is
+    silent: ``client_ip()`` just returns the proxy's own IP and every
+    ``login:`` / ``global:`` bucket keys on it. One warning per fallback makes
+    that observable — the volume itself is the signal that the forwarding chain
+    (BFF / LB) is misconfigured or has stopped appending. Unconditional on
+    purpose: sampling here would blunt exactly the signal we want.
+    """
+    log.warning(
+        "client_ip_fallback",
+        peer=peer,
+        reason=reason,
+        xff_present=xff_present,
+    )
+
+
 def client_ip(request: Request) -> str:
     """The best available client IP for rate-limiting purposes.
 
@@ -79,6 +98,7 @@ def client_ip(request: Request) -> str:
 
     forwarded = request.headers.get(_XFF_HEADER)
     if not forwarded:
+        _log_fallback(peer, reason="no_xff", xff_present=False)
         return peer
 
     # Right-most first: entries are appended by each hop, so the right-most is
@@ -92,7 +112,9 @@ def client_ip(request: Request) -> str:
         except ValueError:
             # A non-IP token in the chain means the header is malformed or
             # spoofed past the last trusted hop — do not trust it.
+            _log_fallback(peer, reason="malformed_xff", xff_present=True)
             return peer
         return token
 
+    _log_fallback(peer, reason="all_entries_trusted", xff_present=True)
     return peer
