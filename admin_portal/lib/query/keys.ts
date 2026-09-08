@@ -43,10 +43,25 @@ export const queryKeys = {
       [...queryKeys.sermons.detail(sermonId), "uploads"] as const,
     approvalLog: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "approval-log"] as const,
+    /** The Sermons-list header count line (`N total · N published · …`, W7).
+        Its own sub-tree, not a `list()` variant — it is four `limit=1`
+        `total` probes, not a page of rows (§A.9 "Sermons list counts"). */
+    counts: () => [...queryKeys.sermons.all(), "counts"] as const,
   },
   review: {
     all: () => ["review"] as const,
     queue: () => [...queryKeys.review.all(), "queue"] as const,
+  },
+  /** Filter-bar option sources on the Sermons list (W7). Small, rarely-changing
+      reference lists — cached long, invalidated by the (Phase 2) screens that
+      edit them. */
+  speakers: {
+    all: () => ["speakers"] as const,
+    list: () => [...queryKeys.speakers.all(), "list"] as const,
+  },
+  series: {
+    all: () => ["series"] as const,
+    list: () => [...queryKeys.series.all(), "list"] as const,
   },
   nav: {
     all: () => ["nav"] as const,

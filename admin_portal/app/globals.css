@@ -278,6 +278,24 @@
   --radius-xl: 12px;
 }
 
+/* -----------------------------------------------------------------------------
+   Motion — deliberately minimal (README "Transitions": 120–160ms ease-out on
+   background/border/opacity; no layout animation). `rp-menu-in` is the
+   DropdownMenu open transition (components/ui/dropdown-menu.tsx). W1 removed
+   `tw-animate-css` pending a real need; a single 6-line keyframe is that need,
+   so the utility library stays out.
+   -------------------------------------------------------------------------- */
+@keyframes rp-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @layer base {
   *,
   ::after,
