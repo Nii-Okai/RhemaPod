@@ -8,6 +8,7 @@ from app.core import security, token_store
 from app.core.config import get_settings
 from app.core.dependencies import CurrentUserDep, require_role
 from app.core.logging import get_logger
+from app.core.net import client_ip
 from app.core.rate_limit import check_rate_limit
 from app.db.database import get_db
 from app.models.schemas import (
@@ -49,7 +50,7 @@ async def register(data: UserRegister, db: DbDep) -> UserPublic:
 
 @router.post("/login", response_model=TokenPair)
 async def login(data: UserLogin, request: Request, db: DbDep) -> TokenPair:
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request)
     rl_key = f"login:{client}:{data.email.lower()}"
     allowed = await check_rate_limit(
         rl_key, settings.login_rate_limit, settings.login_rate_window_seconds

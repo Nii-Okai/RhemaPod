@@ -589,6 +589,9 @@ async def list_sermons_for_staff(
     limit: int = 25,
     offset: int = 0,
     search: str | None = None,
+    speaker_id: uuid.UUID | None = None,
+    series_id: uuid.UUID | None = None,
+    tier: ContentTier | None = None,
 ) -> tuple[list[Sermon], int]:
     """Editors see their own sermons across all statuses; managers/admins see
     everyone's. Returns (rows, total) — total is the count before paging, so a
@@ -600,13 +603,32 @@ async def list_sermons_for_staff(
         conditions.append(Sermon.status == status_filter)
     if search:
         conditions.append(func.lower(Sermon.title).like(f"%{search.lower()}%"))
+    if speaker_id is not None:
+        conditions.append(Sermon.speaker_id == speaker_id)
+    if series_id is not None:
+        conditions.append(Sermon.series_id == series_id)
 
-    total = (await db.execute(
-        select(func.count()).select_from(Sermon).where(*conditions)
-    )).scalar_one()
+    # Effective tier = sermon.tier ?? series.tier ?? free — the SQL form of
+    # effective_tier() above, mirroring the pattern search_service uses. Filter
+    # it in SQL so `total` and the returned page are built from one condition
+    # list and cannot disagree.
+    needs_series_join = tier is not None
+    if tier is not None:
+        conditions.append(
+            func.coalesce(Sermon.tier, Series.tier, ContentTier.FREE) == tier
+        )
+
+    count_stmt = select(func.count()).select_from(Sermon)
+    page_stmt = select(Sermon)
+    if needs_series_join:
+        join_on = Series.id == Sermon.series_id
+        count_stmt = count_stmt.outerjoin(Series, join_on)
+        page_stmt = page_stmt.outerjoin(Series, join_on)
+
+    total = (await db.execute(count_stmt.where(*conditions))).scalar_one()
 
     stmt = (
-        select(Sermon)
+        page_stmt
         .where(*conditions)
         .order_by(Sermon.updated_at.desc().nullslast(), Sermon.created_at.desc())
         .limit(max(1, min(limit, MAX_PAGE_SIZE)))

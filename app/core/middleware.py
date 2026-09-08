@@ -131,8 +131,10 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         if limit <= 0 or request.url.path.startswith("/health"):
             return await call_next(request)
 
-        client = request.client.host if request.client else "unknown"
+        from app.core.net import client_ip
         from app.core.rate_limit import check_rate_limit
+
+        client = client_ip(request)
 
         allowed = await check_rate_limit(
             f"global:{client}", limit, _settings.global_rate_window_seconds
