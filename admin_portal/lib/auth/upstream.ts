@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 
 import { logError } from "../log";
+import { forwardedForHeaders } from "./client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 
 const CORRELATION_HEADER = "x-correlation-id";
@@ -19,16 +20,25 @@ export interface UpstreamResponse {
   retryAfter: string | null;
 }
 
-/** POST JSON to `${API_BASE_URL}/api/v1<path>` and read the envelope back. */
+/**
+ * POST JSON to `${API_BASE_URL}/api/v1<path>` and read the envelope back.
+ * `clientIp` (the real browser IP — plan §A.10) is forwarded as
+ * `X-Forwarded-For` / `X-Real-IP` so the backend rate limiter keys per staff
+ * member, not per BFF instance.
+ */
 export async function postUpstream(
   path: string,
   payload: unknown,
+  clientIp?: string | null,
 ): Promise<UpstreamResponse> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}${BACKEND_API_PREFIX}${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...forwardedForHeaders(clientIp ?? null),
+      },
       body: JSON.stringify(payload),
       cache: "no-store",
     });

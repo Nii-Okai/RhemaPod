@@ -13,6 +13,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { clientIpFrom } from "@/lib/auth/client-ip";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
 
@@ -47,10 +48,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const upstream = await postUpstream("/auth/reset-password", {
-    token,
-    new_password: password,
-  });
+  const upstream = await postUpstream(
+    "/auth/reset-password",
+    { token, new_password: password },
+    clientIpFrom(req),
+  );
   if (!upstream.ok) {
     return relayUpstreamError(upstream);
   }

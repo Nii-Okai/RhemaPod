@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { clientIpFrom } from "@/lib/auth/client-ip";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream } from "@/lib/auth/upstream";
 
@@ -32,7 +33,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (typeof email === "string" && email) {
-    const upstream = await postUpstream("/auth/forgot-password", { email });
+    const upstream = await postUpstream(
+      "/auth/forgot-password",
+      { email },
+      clientIpFrom(req),
+    );
     const headers = new Headers();
     if (upstream.correlationId) {
       headers.set("x-correlation-id", upstream.correlationId);

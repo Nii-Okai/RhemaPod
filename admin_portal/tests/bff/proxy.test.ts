@@ -363,6 +363,30 @@ describe("BFF proxy — header hygiene", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
   });
+
+  it("forwards the real client IP as X-Forwarded-For / X-Real-IP for the backend rate limiter", async () => {
+    let seenXff: string | null = null;
+    let seenRealIp: string | null = null;
+    server.use(
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenXff = request.headers.get("x-forwarded-for");
+        seenRealIp = request.headers.get("x-real-ip");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "x-forwarded-for": "203.0.113.9, 10.0.0.1" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(seenXff).toBe("203.0.113.9");
+    expect(seenRealIp).toBe("203.0.113.9");
+  });
 });
 
 describe("BFF proxy — auth-path blocklist (security M1)", () => {
@@ -407,6 +431,131 @@ describe("BFF proxy — auth-path blocklist (security M1)", () => {
 
     expect(res.status).toBe(200);
     expect(called).toBe(true);
+  });
+
+  it.each([
+    ["auth", "login"],
+    ["auth", "refresh"],
+    ["auth", "register"],
+    ["auth", "reset-password"],
+    ["auth", "forgot-password"],
+    ["auth", "logout"],
+  ])("404s the blocked prefix %s/%s", async (...segments) => {
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        cookies: { rp_at: makeJwt(3600) },
+      }),
+      ctx(segments),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s a case-variant blocked path (AUTH/Login)", async () => {
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        cookies: { rp_at: makeJwt(3600) },
+      }),
+      ctx(["AUTH", "Login"]),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s an empty-segment bypass (['', 'auth', 'login']) and never calls upstream (N2)", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { email: "a@b.c", password: "pw" },
+        sameOrigin: true,
+      }),
+      ctx(["", "auth", "login"]),
+    );
+
+    expect(res.status).toBe(404);
+    expect(called).toBe(false);
+  });
+});
+
+describe("BFF proxy — request body size cap (security N1)", () => {
+  it("413s a body over the cap and never calls upstream", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const huge = "x".repeat(1_000_001);
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "content-type": "application/json" },
+        body: huge,
+        sameOrigin: true,
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(413);
+    expect(called).toBe(false);
+  });
+
+  it("413s even when Content-Length understates the real body (stream-counted)", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const huge = "x".repeat(1_000_001);
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "content-type": "application/json", "content-length": "10" },
+        body: huge,
+        sameOrigin: true,
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(413);
+    expect(called).toBe(false);
+  });
+
+  it("lets a normal-sized body through", async () => {
+    let seenBody: string | null = null;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, async ({ request }) => {
+        seenBody = await request.text();
+        return HttpResponse.json({ id: "s-1" }, { status: 201 });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { title: "a normal sermon" },
+        sameOrigin: true,
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(201);
+    expect(seenBody).toBe(JSON.stringify({ title: "a normal sermon" }));
   });
 });
 

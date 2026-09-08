@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { clientIpFrom, forwardedForHeaders } from "@/lib/auth/client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 import { clearAuthCookies, readAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
@@ -28,7 +29,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         `${API_BASE_URL}${BACKEND_API_PREFIX}/auth/logout`,
         {
           method: "POST",
-          headers: { authorization: `Bearer ${accessToken}` },
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            ...forwardedForHeaders(clientIpFrom(req)),
+          },
           cache: "no-store",
         },
       );

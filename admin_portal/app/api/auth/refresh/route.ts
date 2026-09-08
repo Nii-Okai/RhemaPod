@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { clientIpFrom } from "@/lib/auth/client-ip";
 import {
   clearedUnauthorized,
   readAuthCookies,
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return clearedUnauthorized("Not authenticated.");
   }
 
-  const result = await refreshTokens(refreshToken);
+  const result = await refreshTokens(refreshToken, clientIpFrom(req));
   if (!result.ok) {
     // A 5xx is a transient backend blip — relay 503 and KEEP the cookies so a
     // retry can still succeed. Only a real auth failure (401 — reuse/expired)

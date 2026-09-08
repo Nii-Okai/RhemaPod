@@ -16,10 +16,15 @@
  *      promise, so exactly one `/auth/refresh` call goes out.
  *
  * A resolved rotation is also kept in the map keyed by the *old* refresh token
- * for a short window (`RESULT_TTL_MS`) rather than being dropped the instant it
- * settles: a straggler tab — or a second parallel page load — that still holds
- * the pre-rotation token then gets handed the new pair instead of racing into a
- * backend reuse-detection 401 that would clear cookies for the whole browser.
+ * for a short window (`RESULT_TTL_MS`, 2s) rather than being dropped the instant
+ * it settles: a straggler tab — or a second parallel page load — that still
+ * holds the pre-rotation token then gets handed the new pair instead of racing
+ * into a backend reuse-detection 401 that would clear cookies for the whole
+ * browser. The flip side is that for those 2s a genuinely *replayed* old
+ * refresh token on this instance also gets a fresh pair without tripping the
+ * backend's reuse detection — the window is kept short to bound that, and the
+ * proper fix is the backend reuse-grace window (GATE 3 #9), which supersedes
+ * this entirely.
  *
  * ⚠️ SINGLE NEXT INSTANCE ONLY. The dedupe map and the short-lived result
  * retention are both per Node process. Phase 1 ships as a single instance (or
@@ -28,8 +33,9 @@
  * topology changes, not after users get logged out.
  */
 
-import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 import { logError, logWarn } from "../log";
+import { forwardedForHeaders } from "./client-ip";
+import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 
 export interface RefreshOk {
   ok: true;
@@ -47,17 +53,27 @@ export interface RefreshFail {
 
 export type RefreshResult = RefreshOk | RefreshFail;
 
-/** How long a resolved rotation stays addressable by the old refresh token. */
-const RESULT_TTL_MS = 10_000;
+/**
+ * How long a resolved rotation stays addressable by the old refresh token.
+ * Short by design — it doubles as a same-instance replay window for the old
+ * token (see the module comment); GATE 3 #9 is the real fix.
+ */
+const RESULT_TTL_MS = 2_000;
 
 const inFlight = new Map<string, Promise<RefreshResult>>();
 
-async function callRefresh(refreshToken: string): Promise<RefreshResult> {
+async function callRefresh(
+  refreshToken: string,
+  clientIp?: string | null,
+): Promise<RefreshResult> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}${BACKEND_API_PREFIX}/auth/refresh`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...forwardedForHeaders(clientIp ?? null),
+      },
       body: JSON.stringify({ refresh_token: refreshToken }),
       cache: "no-store",
     });
@@ -110,11 +126,14 @@ async function callRefresh(refreshToken: string): Promise<RefreshResult> {
  * NB: there is no `await` between the map lookup and the map set, so the first
  * synchronous caller always wins the race — the dedupe is real, not best-effort.
  */
-export function refreshTokens(refreshToken: string): Promise<RefreshResult> {
+export function refreshTokens(
+  refreshToken: string,
+  clientIp?: string | null,
+): Promise<RefreshResult> {
   const existing = inFlight.get(refreshToken);
   if (existing) return existing;
 
-  const pending = callRefresh(refreshToken).then((result) => {
+  const pending = callRefresh(refreshToken, clientIp).then((result) => {
     if (result.ok) {
       // Keep serving this resolved pair to stragglers for a short window. The
       // timer must not hold the process open on its own.

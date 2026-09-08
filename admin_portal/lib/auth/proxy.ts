@@ -24,6 +24,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { logWarn } from "../log";
+import { clientIpFrom } from "./client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 import {
   clearedUnauthorized,
@@ -81,7 +82,14 @@ const BLOCKED_PROXY_PREFIXES = [
 ];
 
 function isBlockedProxyPath(segments: string[]): boolean {
-  const path = segments.join("/").toLowerCase();
+  // Normalize before matching: drop empty segments (a `//` in the URL —
+  // `/api/bff//auth/login` → ["", "auth", "login"] — which nginx `merge_slashes`
+  // would collapse upstream, so it must not slip the blocklist here) and
+  // lowercase. (security N2)
+  const path = segments
+    .filter((segment) => segment.length > 0)
+    .join("/")
+    .toLowerCase();
   return BLOCKED_PROXY_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );
@@ -94,6 +102,48 @@ function jsonError(status: number, detail: string): NextResponse {
 /** 503 for a transient backend failure — cookies are left intact. */
 function serviceUnavailable(): NextResponse {
   return jsonError(503, "The service is unavailable. Try again shortly.");
+}
+
+/**
+ * Read the request body, counting bytes off the stream and aborting the moment
+ * the total passes `MAX_BODY_BYTES` — a `Content-Length` pre-check only stops
+ * honest clients (a chunked or understated-length body would otherwise buffer
+ * unbounded on this single-instance Node process). Returns the buffered body,
+ * `undefined` for an empty body, or `"too-large"` to reject with 413.
+ * (security N1)
+ */
+async function readCappedBody(
+  req: NextRequest,
+): Promise<ArrayBuffer | undefined | "too-large"> {
+  if (!req.body) {
+    const buf = await req.arrayBuffer();
+    if (buf.byteLength > MAX_BODY_BYTES) return "too-large";
+    return buf.byteLength > 0 ? buf : undefined;
+  }
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return "too-large";
+    }
+    chunks.push(value);
+  }
+
+  if (total === 0) return undefined;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
 }
 
 function buildTargetUrl(req: NextRequest, pathSegments: string[]): string {
@@ -122,6 +172,14 @@ async function forward(
   }
   headers.set(CORRELATION_HEADER, correlationIdFor(req));
   headers.set("authorization", `Bearer ${accessToken}`);
+
+  // Real browser IP for the backend rate limiter (§A.10). The BFF is a
+  // trusted proxy in the portal deployment; this header carries the client.
+  const clientIp = clientIpFrom(req);
+  if (clientIp) {
+    headers.set("x-forwarded-for", clientIp);
+    headers.set("x-real-ip", clientIp);
+  }
 
   return fetch(targetUrl, {
     method: req.method,
@@ -177,7 +235,8 @@ export async function handleBffRequest(
     return jsonError(401, "Not authenticated.");
   }
 
-  // Buffer the body once so the (rare) retry can replay it. JSON only, capped.
+  // Buffer the body once so the (rare) retry can replay it. JSON only, capped
+  // by counting bytes off the stream (see `readCappedBody`).
   const method = req.method.toUpperCase();
   let body: ArrayBuffer | undefined;
   if (method !== "GET" && method !== "HEAD") {
@@ -185,10 +244,11 @@ export async function handleBffRequest(
     if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
       return jsonError(413, "Request body too large.");
     }
-    body = await req.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) {
+    const capped = await readCappedBody(req);
+    if (capped === "too-large") {
       return jsonError(413, "Request body too large.");
     }
+    body = capped;
   }
 
   const targetUrl = buildTargetUrl(req, pathSegments);
@@ -196,9 +256,11 @@ export async function handleBffRequest(
   let rotated: RefreshOk | null = null;
   let bearer = accessToken;
 
+  const clientIp = clientIpFrom(req);
+
   // Step 2 — preemptive refresh.
   if ((!bearer || isExpiringSoon(bearer)) && refreshToken) {
-    const result = await refreshTokens(refreshToken);
+    const result = await refreshTokens(refreshToken, clientIp);
     if (result.ok) {
       rotated = result;
       bearer = result.accessToken;
@@ -222,7 +284,7 @@ export async function handleBffRequest(
 
   // Step 4 — one reactive refresh + retry, only if we have not refreshed yet.
   if (upstream.status === 401 && refreshToken && !rotated) {
-    const result = await refreshTokens(refreshToken);
+    const result = await refreshTokens(refreshToken, clientIp);
     if (result.ok) {
       rotated = result;
       upstream = await forward(req, targetUrl, result.accessToken, body);

@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isApiError } from "@/lib/api/errors";
 import { createServerApiClient } from "@/lib/api/server";
+import { clientIpFrom } from "@/lib/auth/client-ip";
 import { setAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
@@ -40,8 +41,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return badRequest("Email and password are required.");
   }
   const remember = payload.remember !== false;
+  const clientIp = clientIpFrom(req);
 
-  const upstream = await postUpstream("/auth/login", { email, password });
+  const upstream = await postUpstream("/auth/login", { email, password }, clientIp);
   if (!upstream.ok) {
     return relayUpstreamError(upstream);
   }
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // The token pair carries no user — fetch it with the fresh access token.
   let user: { id: string; email: string; name: string | null; role: string };
   try {
-    const client = await createServerApiClient(tokens.access_token);
+    const client = await createServerApiClient(tokens.access_token, clientIp);
     const { data } = await client.GET("/api/v1/auth/me");
     if (!data) throw new Error("empty /auth/me");
     user = {
