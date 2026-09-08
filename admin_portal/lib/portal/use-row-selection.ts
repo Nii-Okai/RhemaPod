@@ -35,20 +35,26 @@ export function toggleKey(
  * they appear in `orderedKeys` (i.e. the CURRENT row order — a filter or sort
  * changes what "the range" means, deliberately).
  *
- * Falls back to `[targetKey]` when there is no usable anchor: no anchor set
- * yet, or the anchored row is no longer on the page. An anchor that is still
- * on the page but has since been DESELECTED is still a valid anchor — the
- * range is recomputed from its position and re-selects it.
+ * - `targetKey` not on the current page ⇒ `[]` (a no-op — never a phantom
+ *   select of a key that has no row).
+ * - no usable anchor (none set yet, or the anchored row has scrolled off the
+ *   page) ⇒ `[targetKey]`. This is what makes a Shift-click on a fresh page
+ *   after a page change add only the target while keeping the prior page's
+ *   picks (the design's "selection survives a page change").
+ * - an anchor that is still on the page but has since been DESELECTED is still
+ *   a valid anchor — the range is recomputed from its position and re-selects
+ *   it.
  */
 export function rangeKeys(
   orderedKeys: readonly string[],
   anchorKey: string | null,
   targetKey: string,
 ): string[] {
+  const b = orderedKeys.indexOf(targetKey);
+  if (b === -1) return [];
   if (anchorKey == null) return [targetKey];
   const a = orderedKeys.indexOf(anchorKey);
-  const b = orderedKeys.indexOf(targetKey);
-  if (a === -1 || b === -1) return [targetKey];
+  if (a === -1) return [targetKey];
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   return orderedKeys.slice(lo, hi + 1);
 }
@@ -85,7 +91,7 @@ export function isIndeterminate(
 /**
  * Select-all when nothing / some is selected; clear the current page's keys
  * when everything on it is already selected. Keys NOT on the current page are
- * left untouched either way.
+ * left untouched either way. Returns a new Set.
  */
 export function toggleAll(
   selected: ReadonlySet<string>,
@@ -127,6 +133,14 @@ export type RowSelection = {
   clear: () => void;
 };
 
+/**
+ * Controlled/uncontrolled wrapper over the pure functions above.
+ *
+ * The returned callbacks are NOT memoised: every consumer site is an inline
+ * closure in JSX that re-creates each render regardless, and the arrays these
+ * operate over are page-sized, so `useCallback` here only bought identity
+ * churn on its own deps. `isSelected` is a plain closure for the same reason.
+ */
 export function useRowSelection(
   options: UseRowSelectionOptions,
 ): RowSelection {
@@ -134,6 +148,20 @@ export function useRowSelection(
     options;
 
   const controlled = selectedKeys != null;
+  const hasDefault = defaultSelectedKeys != null;
+
+  // Dev-only: passing both the controlled and the uncontrolled prop is a bug.
+  // We treat the hook as controlled (above) and ignore `defaultSelectedKeys`.
+  React.useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && controlled && hasDefault) {
+      console.warn(
+        "useRowSelection: received both `selectedKeys` (controlled) and " +
+          "`defaultSelectedKeys` (uncontrolled). `defaultSelectedKeys` is " +
+          "ignored; the hook is treated as controlled.",
+      );
+    }
+  }, [controlled, hasDefault]);
+
   const [internal, setInternal] = React.useState<Set<string>>(
     () => new Set(defaultSelectedKeys ?? []),
   );
@@ -141,41 +169,32 @@ export function useRowSelection(
 
   const anchorRef = React.useRef<string | null>(null);
 
-  const commit = React.useCallback(
-    (next: Set<string>) => {
-      if (!controlled) setInternal(next);
-      onSelectionChange?.(next);
-    },
-    [controlled, onSelectionChange],
-  );
+  const commit = (next: Set<string>) => {
+    if (!controlled) setInternal(next);
+    onSelectionChange?.(next);
+  };
 
-  const toggle = React.useCallback(
-    (key: string) => {
+  const toggle = (key: string) => {
+    anchorRef.current = key;
+    commit(toggleKey(selected, key));
+  };
+
+  const selectRange = (key: string) => {
+    const anchor = anchorRef.current;
+    commit(applyRange(selected, orderedKeys, anchor, key));
+    if (anchor == null || orderedKeys.indexOf(anchor) === -1) {
       anchorRef.current = key;
-      commit(toggleKey(selected, key));
-    },
-    [commit, selected],
-  );
+    }
+  };
 
-  const selectRange = React.useCallback(
-    (key: string) => {
-      const anchor = anchorRef.current;
-      commit(applyRange(selected, orderedKeys, anchor, key));
-      if (anchor == null || orderedKeys.indexOf(anchor) === -1) {
-        anchorRef.current = key;
-      }
-    },
-    [commit, selected, orderedKeys],
-  );
-
-  const toggleAllCb = React.useCallback(() => {
+  const toggleAllCb = () => {
     commit(toggleAll(selected, orderedKeys));
-  }, [commit, selected, orderedKeys]);
+  };
 
-  const clear = React.useCallback(() => {
+  const clear = () => {
     anchorRef.current = null;
     commit(new Set());
-  }, [commit]);
+  };
 
   return {
     selected,

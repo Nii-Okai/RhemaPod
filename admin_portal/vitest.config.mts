@@ -1,20 +1,53 @@
 import { fileURLToPath } from "node:url";
 
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 
-// The API-client suite is pure transport + error mapping exercised through MSW
-// (plan §A.11 — assert on the wire, never a mocked fetch). It needs no DOM, so
-// the default `node` environment is right; component/hook rendering arrives
-// with the screens that need it (W7+).
+// `@` → the admin_portal root, so `@/lib/...` / `@/components/...` resolve the
+// same way `tsconfig` "paths" does. Shared by both projects below.
+const alias = {
+  "@": fileURLToPath(new URL("./", import.meta.url)),
+};
+
+// Two test projects (plan Amendment A4 — `happy-dom` approved by Isaac at W6):
+//
+//   node — pure logic + MSW transport suites. Plan §A.11: assert on the wire,
+//          never a mocked fetch; reducers assert on logic, not on render. No
+//          DOM. These are the `*.test.{ts,tsx}` files EXCEPT `*.dom.test.*`.
+//
+//   dom  — component / hook render tests under happy-dom (Vitest's lighter
+//          alternative to jsdom). These are the `*.dom.test.{ts,tsx}` files —
+//          the DataTable interaction + a11y surface (roving focus, the
+//          header⇄bulk-bar swap, keyboard selection) that was untestable
+//          without a DOM.
 export default defineConfig({
   test: {
-    environment: "node",
-    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-    setupFiles: ["./tests/setup.ts"],
+    projects: [
+      {
+        extends: true,
+        resolve: { alias },
+        test: {
+          name: "node",
+          environment: "node",
+          include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+          exclude: [
+            ...configDefaults.exclude,
+            "tests/**/*.dom.test.ts",
+            "tests/**/*.dom.test.tsx",
+          ],
+          setupFiles: ["./tests/setup.ts"],
+        },
+      },
+      {
+        extends: true,
+        resolve: { alias },
+        test: {
+          name: "dom",
+          environment: "happy-dom",
+          include: ["tests/**/*.dom.test.ts", "tests/**/*.dom.test.tsx"],
+          setupFiles: ["./tests/setup.dom.ts"],
+        },
+      },
+    ],
   },
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./", import.meta.url)),
-    },
-  },
+  resolve: { alias },
 });

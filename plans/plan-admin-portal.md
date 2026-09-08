@@ -983,3 +983,22 @@ handlers, so a raw `TokenPair` (incl. the 30-day refresh) can never reach a
 JS-readable response body via the generic pass-through. `auth/me` stays allowed
 — the portal calls it through the proxy. 404 not 403: the proxy does not
 confirm the route shape.
+
+## A4 — `happy-dom` added to the GATE 1 dependency list (W6 fix pass, 2026-09-08)
+
+`happy-dom` (dev) is added to the GATE 1 §1 dependency table. **Approved by
+Isaac at the W6 fix pass**, alongside the `reviewer-gilfoyle` "Request changes"
+verdict on the DataTable primitive.
+
+- Rationale: the DataTable is the one primitive whose whole mandate is
+  "a11y vs the CSS-grid mandate" — its correctness *is* the interaction and
+  focus behaviour (roving tabindex, the header⇄bulk-bar swap, keyboard
+  selection, the select-all focus hand-off gilfoyle flagged). None of that is
+  reachable by the pure-logic + MSW model GATE 1 provisioned; it needs a DOM
+  renderer. `@testing-library/react` / `-user-event` / `-jest-dom` were already
+  on the GATE 1 list (dev) for "W7+"; `happy-dom` is the missing environment
+  and is Vitest's lighter option (chosen over `jsdom`).
+- Scope: `vitest.config.mts` now runs two projects — `node` (unchanged: pure
+  logic + MSW, `environment: "node"`) and `dom` (`tests/**/*.dom.test.{ts,tsx}`,
+  `environment: "happy-dom"`). No production dependency; no change to the
+  runtime bundle.

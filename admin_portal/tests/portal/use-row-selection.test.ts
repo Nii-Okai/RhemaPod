@@ -61,6 +61,13 @@ describe("toggleAll", () => {
     expect([...toggleAll(new Set(PAGE1), PAGE1)]).toEqual([]);
   });
 
+  it("does not mutate the input set", () => {
+    const src = new Set(["b"]);
+    const out = toggleAll(src, PAGE1);
+    expect([...src]).toEqual(["b"]);
+    expect(out).not.toBe(src);
+  });
+
   it("leaves keys that are not on the current page untouched", () => {
     const sel = new Set(["z"]);
     expect([...toggleAll(sel, PAGE1)].sort()).toEqual(["a", "b", "c", "d", "z"]);
@@ -86,12 +93,13 @@ describe("rangeKeys", () => {
     expect(rangeKeys(PAGE1, "b", "b")).toEqual(["b"]);
   });
 
-  it("anchor missing from the current order => just the target", () => {
+  it("anchor missing from the current order => just the target (cross-page shift keeps prior picks)", () => {
     expect(rangeKeys(PAGE1, "gone", "c")).toEqual(["c"]);
   });
 
-  it("target missing from the current order => just the target", () => {
-    expect(rangeKeys(PAGE1, "a", "missing")).toEqual(["missing"]);
+  it("target missing from the current order => no-op (never a phantom key with no row)", () => {
+    expect(rangeKeys(PAGE1, "a", "missing")).toEqual([]);
+    expect(rangeKeys(PAGE1, null, "missing")).toEqual([]);
   });
 
   it("is computed over the CURRENT (re-ordered) key list", () => {
@@ -104,6 +112,18 @@ describe("applyRange", () => {
   it("unions the range onto the existing selection", () => {
     const out = applyRange(new Set(["x"]), PAGE1, "a", "c");
     expect([...out].sort()).toEqual(["a", "b", "c", "x"]);
+  });
+
+  it("does not mutate the input set", () => {
+    const src = new Set(["x"]);
+    const out = applyRange(src, PAGE1, "a", "c");
+    expect([...src]).toEqual(["x"]);
+    expect(out).not.toBe(src);
+  });
+
+  it("an unknown target is a no-op — selection is returned unchanged", () => {
+    const out = applyRange(new Set(["x"]), PAGE1, "a", "missing");
+    expect([...out].sort()).toEqual(["x"]);
   });
 
   it("re-selects an anchor that was since deselected", () => {

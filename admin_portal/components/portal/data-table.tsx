@@ -18,7 +18,9 @@ import {
    (README §"DataTable" / Screen 3, plan §A.6). A grid of divs forfeits every
    free table semantic, so this component re-supplies them: `role="grid"` /
    `role="row"` / `role="columnheader"` / `role="gridcell"`, `aria-selected`,
-   `aria-rowcount` / `aria-colcount`, and a keyboard model over the rows.
+   `aria-rowcount` / `aria-colcount`, and a keyboard model over the rows. When
+   the table is display-only (no selection, no row click) it downgrades to
+   `role="table"` / `role="cell"` — honest for a surface with no focus model.
 
    --- a11y model (the D6 "a11y vs the CSS-grid mandate" call) --------------
    Rows are the focusable unit, with a roving tabindex: exactly one row is in
@@ -33,9 +35,16 @@ import {
    renders the slot and stops event propagation so a menu click never triggers
    the row.
 
+   The active row is tracked by KEY, not index, so removing a row above the
+   focused one does not teleport focus, and removing the focused row itself
+   hands focus to the nearest survivor (or the grid container when the page
+   empties) rather than dropping it on `<body>`.
+
    The per-row checkbox is pointer-operable but `tabIndex={-1}` — keyboard
    selection is Space on the focused row, and the row's `aria-selected` already
-   announces the state. The header select-all IS a real tab stop.
+   announces the state. The header select-all IS a real tab stop; because it
+   unmounts when the header⇄bulk-bar swaps, activating it hands focus to the
+   equivalent select-all in the bar that mounts (see `selectAllGestureRef`).
 
    --- selection ----------------------------------------------------------
    Opt-in via `selectable`. Controlled (`selectedKeys` + `onSelectionChange`)
@@ -44,7 +53,8 @@ import {
 
    When `selected.size > 0` the 38px column header is replaced (not overlaid —
    no row shifting) by the 44px clay bulk bar: `${n} selected` + a `bulkActions`
-   slot.
+   slot. An off-screen `role="status"` region announces the count so a
+   keyboard/SR multi-select is not silent.
    ========================================================================== */
 
 export type DataTableColumnAlign = "start" | "center" | "end";
@@ -165,6 +175,12 @@ const ALIGN_CLASS: Record<DataTableColumnAlign, string> = {
   end: "justify-end text-right",
 };
 
+// Focus hand-off has to run before paint (a lost `document.activeElement`
+// between commit and paint is user-visible), but `useLayoutEffect` warns under
+// SSR where it is a no-op anyway. Standard isomorphic shim.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
 /* --- component --------------------------------------------------------- */
 
 function DataTable<Row>(props: DataTableProps<Row>) {
@@ -192,10 +208,13 @@ function DataTable<Row>(props: DataTableProps<Row>) {
     className,
   } = props;
 
-  const orderedKeys = React.useMemo(
-    () => rows.map(rowKey),
-    [rows, rowKey],
-  );
+  // Every real consumer writes `rowKey={(r) => r.id}` inline — a fresh identity
+  // each render — so an `orderedKeys` `useMemo` keyed on `rowKey` never held,
+  // and stabilising `rowKey` behind a ref trips this codebase's
+  // `react-hooks/refs` rule (calling a ref-closing fn during render). The list
+  // is one page (≤ the pagination limit), so `rows.map(rowKey)` per render is
+  // nothing next to the O(n) selection derivations that run anyway. No memo.
+  const orderedKeys = rows.map(rowKey);
 
   const selectionOptions: UseRowSelectionOptions = {
     orderedKeys,
@@ -233,23 +252,119 @@ function DataTable<Row>(props: DataTableProps<Row>) {
   });
 
   const interactive = selectable || typeof onRowClick === "function";
+  const gridRole = interactive ? "grid" : "table";
+  const cellRole = interactive ? "gridcell" : "cell";
 
-  const [activeIndex, setActiveIndex] = React.useState(0);
-  const active = rows.length > 0 ? Math.min(activeIndex, rows.length - 1) : 0;
-  const rowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
-  const focusRow = React.useCallback((i: number) => {
-    setActiveIndex(i);
-    rowRefs.current[i]?.focus();
-  }, []);
+  /* --- roving focus, tracked by row KEY -------------------------------- */
 
-  const setSelectAllRef = React.useCallback(
+  const gridRef = React.useRef<HTMLDivElement | null>(null);
+  const rowRefs = React.useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const [activeKey, setActiveKey] = React.useState<string | null>(null);
+  // The last index the active row occupied — the fallback anchor when that row
+  // is removed and we need the "nearest survivor".
+  const lastActiveIndexRef = React.useRef(0);
+  // Whether keyboard focus is currently somewhere inside this table. Set by the
+  // wrapper's bubbling onFocus/onBlur AND by our own focus-moving handlers (so
+  // it holds even if a synthetic focus event is missed). Used to decide whether
+  // reconciling a removed active row should also move DOM focus, or leave it be.
+  const gridHadFocusRef = React.useRef(false);
+
+  const activeKeyIndex = activeKey == null ? -1 : orderedKeys.indexOf(activeKey);
+  const activeIndex = activeKeyIndex === -1 ? 0 : activeKeyIndex;
+
+  const focusRowAt = (i: number) => {
+    if (orderedKeys.length === 0) return;
+    const clamped = Math.max(0, Math.min(i, orderedKeys.length - 1));
+    const k = orderedKeys[clamped];
+    setActiveKey(k);
+    lastActiveIndexRef.current = clamped;
+    gridHadFocusRef.current = true;
+    rowRefs.current.get(k)?.focus();
+  };
+
+  // Reconcile the active row when the key list changes. If the active row is
+  // gone: hand focus to the nearest survivor (or the grid container when the
+  // page is now empty) — but only if focus was inside the table, so a
+  // programmatic `rows` swap while the user is elsewhere never steals focus.
+  // If the active row survives, focus stays put — React keeps its DOM node
+  // (keyed render), so there is nothing to do.
+  useIsomorphicLayoutEffect(() => {
+    if (activeKey == null) return;
+    if (orderedKeys.indexOf(activeKey) !== -1) return;
+
+    // The removed row was the focused element, so the browser has already
+    // dropped focus to <body>; `gridHadFocusRef` is the pre-removal signal.
+    const active = document.activeElement;
+    const orphaned = active == null || active === document.body;
+    const shouldRestore = gridHadFocusRef.current && orphaned;
+
+    if (orderedKeys.length === 0) {
+      setActiveKey(null);
+      if (shouldRestore) gridRef.current?.focus();
+      return;
+    }
+
+    const idx = Math.max(
+      0,
+      Math.min(lastActiveIndexRef.current, orderedKeys.length - 1),
+    );
+    const nextKey = orderedKeys[idx];
+    setActiveKey(nextKey);
+    lastActiveIndexRef.current = idx;
+    if (shouldRestore) rowRefs.current.get(nextKey)?.focus();
+  }, [orderedKeys, activeKey]);
+
+  /* --- select-all focus hand-off across the header⇄bulk-bar swap ------ */
+
+  const columnsSelectAllRef = React.useRef<HTMLInputElement | null>(null);
+  const bulkSelectAllRef = React.useRef<HTMLInputElement | null>(null);
+  // Set only by the two select-all checkboxes (the controls that unmount on a
+  // mode swap). A row toggle that crosses the 0 boundary does NOT set it — the
+  // row stays mounted and keeps focus.
+  const selectAllGestureRef = React.useRef(false);
+
+  const setColumnsSelectAllRef = React.useCallback(
     (el: HTMLInputElement | null) => {
+      columnsSelectAllRef.current = el;
+      if (el) el.indeterminate = selection.indeterminate;
+    },
+    [selection.indeterminate],
+  );
+  const setBulkSelectAllRef = React.useCallback(
+    (el: HTMLInputElement | null) => {
+      bulkSelectAllRef.current = el;
       if (el) el.indeterminate = selection.indeterminate;
     },
     [selection.indeterminate],
   );
 
-  const rowStyle = { gridTemplateColumns: template } as React.CSSProperties;
+  const onToggleAll = () => {
+    selectAllGestureRef.current = true;
+    gridHadFocusRef.current = true;
+    selection.toggleAll();
+  };
+
+  useIsomorphicLayoutEffect(() => {
+    if (!selectAllGestureRef.current) return;
+    selectAllGestureRef.current = false;
+    if (!selectable) return;
+    const target =
+      mode === "bulk"
+        ? bulkSelectAllRef.current
+        : columnsSelectAllRef.current;
+    target?.focus();
+  }, [mode, selectable]);
+
+  // Clear a gesture flag that did not result in a mode swap (e.g. select-all
+  // while already indeterminate → still "bulk"), so it cannot mis-fire on a
+  // later prop-driven mode change.
+  React.useEffect(() => {
+    selectAllGestureRef.current = false;
+  });
+
+  const rowStyle: React.CSSProperties = { gridTemplateColumns: template };
+
+  const liveCount = selection.selected.size;
 
   function renderCells(row: Row, key: string) {
     let colIndex = 0;
@@ -260,7 +375,7 @@ function DataTable<Row>(props: DataTableProps<Row>) {
       cells.push(
         <div
           key="__select"
-          role="gridcell"
+          role={cellRole}
           aria-colindex={colIndex}
           className="flex items-center justify-center"
           onClick={(e) => e.stopPropagation()}
@@ -280,7 +395,7 @@ function DataTable<Row>(props: DataTableProps<Row>) {
       cells.push(
         <div
           key={col.key}
-          role="gridcell"
+          role={cellRole}
           aria-colindex={colIndex}
           className={cn(
             "flex min-w-0 items-center",
@@ -297,7 +412,7 @@ function DataTable<Row>(props: DataTableProps<Row>) {
       cells.push(
         <div
           key="__actions"
-          role="gridcell"
+          role={cellRole}
           aria-colindex={colIndex}
           className="flex items-center justify-center"
           onClick={(e) => e.stopPropagation()}
@@ -317,7 +432,28 @@ function DataTable<Row>(props: DataTableProps<Row>) {
         "overflow-hidden rounded-16 border border-border bg-surface",
         className,
       )}
+      onFocus={() => {
+        gridHadFocusRef.current = true;
+      }}
+      onBlur={(e) => {
+        // Focus left the whole table subtree for a real element elsewhere.
+        // (Focus dropped to <body> because the active row was removed is NOT
+        // this — relatedTarget is null there — so the reconcile effect can
+        // still restore it.)
+        if (
+          e.relatedTarget != null &&
+          !e.currentTarget.contains(e.relatedTarget as Node)
+        ) {
+          gridHadFocusRef.current = false;
+        }
+      }}
     >
+      {selectable ? (
+        <div role="status" aria-live="polite" className="sr-only">
+          {liveCount > 0 ? `${liveCount} selected` : ""}
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto">
         <div style={minWidth ? { minWidth } : undefined}>
           {/* --- bulk bar (replaces the header while rows are selected) --- */}
@@ -328,9 +464,9 @@ function DataTable<Row>(props: DataTableProps<Row>) {
               className="sticky top-0 z-10 flex h-[44px] items-center gap-12 border-b border-clay-100 bg-clay-50 px-20"
             >
               <Checkbox
-                ref={setSelectAllRef}
+                ref={setBulkSelectAllRef}
                 checked={selection.allSelected}
-                onChange={selection.toggleAll}
+                onChange={onToggleAll}
                 aria-label="Select all rows"
               />
               <span className="text-[13px] font-semibold text-clay-700">
@@ -344,12 +480,15 @@ function DataTable<Row>(props: DataTableProps<Row>) {
           ) : null}
 
           <div
-            role="grid"
+            ref={gridRef}
+            role={gridRole}
+            tabIndex={interactive ? -1 : undefined}
             aria-label={caption}
             aria-rowcount={rows.length + (mode === "bulk" ? 0 : 1)}
             aria-colcount={colCount}
             aria-multiselectable={selectable || undefined}
             aria-busy={loading || undefined}
+            className="outline-none"
           >
             {/* --- column header --- */}
             {mode === "columns" ? (
@@ -366,9 +505,9 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                     className="flex items-center justify-center"
                   >
                     <Checkbox
-                      ref={setSelectAllRef}
+                      ref={setColumnsSelectAllRef}
                       checked={selection.allSelected}
-                      onChange={selection.toggleAll}
+                      onChange={onToggleAll}
                       aria-label="Select all rows"
                       disabled={rows.length === 0}
                     />
@@ -408,7 +547,12 @@ function DataTable<Row>(props: DataTableProps<Row>) {
               />
             ) : rows.length === 0 ? (
               <div role="row" aria-rowindex={2}>
-                <div role="gridcell" aria-colindex={1} className="px-20 py-14">
+                <div
+                  role={cellRole}
+                  aria-colindex={1}
+                  aria-colspan={colCount}
+                  className="px-20 py-14"
+                >
                   {empty ?? null}
                 </div>
               </div>
@@ -420,17 +564,26 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                   <div
                     key={key}
                     ref={(el) => {
-                      rowRefs.current[i] = el;
+                      const m = rowRefs.current;
+                      if (el) m.set(key, el);
+                      else m.delete(key);
                     }}
                     role="row"
                     aria-rowindex={i + (mode === "bulk" ? 1 : 2)}
                     aria-selected={selectable ? selected : undefined}
                     tabIndex={
-                      interactive ? (i === active ? 0 : -1) : undefined
+                      interactive ? (i === activeIndex ? 0 : -1) : undefined
                     }
                     style={rowStyle}
+                    onFocus={() => {
+                      gridHadFocusRef.current = true;
+                      setActiveKey(key);
+                      lastActiveIndexRef.current = i;
+                    }}
                     onClick={(e) => {
-                      setActiveIndex(i);
+                      gridHadFocusRef.current = true;
+                      setActiveKey(key);
+                      lastActiveIndexRef.current = i;
                       if (selectable && e.shiftKey) {
                         e.preventDefault();
                         selection.selectRange(key);
@@ -439,22 +592,23 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                       onRowClick?.(row);
                     }}
                     onKeyDown={(e) => {
+                      gridHadFocusRef.current = true;
                       switch (e.key) {
                         case "ArrowDown":
                           e.preventDefault();
-                          focusRow(Math.min(i + 1, rows.length - 1));
+                          focusRowAt(i + 1);
                           break;
                         case "ArrowUp":
                           e.preventDefault();
-                          focusRow(Math.max(i - 1, 0));
+                          focusRowAt(i - 1);
                           break;
                         case "Home":
                           e.preventDefault();
-                          focusRow(0);
+                          focusRowAt(0);
                           break;
                         case "End":
                           e.preventDefault();
-                          focusRow(rows.length - 1);
+                          focusRowAt(rows.length - 1);
                           break;
                         case " ":
                           if (selectable) {
