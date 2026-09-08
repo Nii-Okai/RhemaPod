@@ -34,11 +34,9 @@ export function useSermonAdmin(sermonId: string | undefined) {
         }),
       ),
     enabled: Boolean(sermonId),
-    // A 404 here is "gone or not yours" — a settled answer, not a transient
-    // fault. Never retry it (the shared client already skips 4xx retries; this
-    // is belt-and-braces and documents intent).
-    retry: (failureCount, error) =>
-      !isApiError(error) && failureCount < 2,
+    // Retry policy inherited from the global client (§A.4): 5xx twice, never a
+    // 4xx — so a 404 ("gone or not yours") is not retried. A per-hook override
+    // here previously also disabled the global 5xx retry.
   });
 }
 

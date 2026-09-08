@@ -80,7 +80,15 @@ export function useEditorWorkflow(options: UseEditorWorkflowOptions) {
       const { data } = await api.POST(path, {
         params: { path: { sermon_id: sermonId } },
       });
-      return { status: (data?.status ?? "draft") as SermonStatus };
+      // `/submit` and `/withdraw` both return `StatusResponse {id, status}`, so
+      // the server's own status is authoritative. `data` is only ever missing
+      // on a non-2xx, which `throwOnError` has already rejected — so this
+      // fallback is defensive, and it targets the action's OWN outcome, never a
+      // blanket "draft" that would wipe an optimistic Pending-review badge on a
+      // *successful* submit.
+      const fallback: SermonStatus =
+        action === "submit" ? "pending_review" : "draft";
+      return { status: (data?.status ?? fallback) as SermonStatus };
     },
     onMutate: (action) => {
       if (action === "submit") options.onOptimistic("pending_review");

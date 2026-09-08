@@ -8,9 +8,9 @@
  * acceptance criterion). Someone else's sermon is 404; the card renders a quiet
  * inline line for that rather than crashing.
  *
- * The backend orders ascending (oldest first); the design timeline is
- * newest-first, so `toTimeline` reverses and shapes each row. It is pure and
- * exported for its unit test.
+ * The design timeline is newest-first; `toTimeline` sorts by `created_at`
+ * descending (not trusting the backend's array order) and shapes each row. It
+ * is pure and exported for its unit test.
  */
 
 "use client";
@@ -18,7 +18,6 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api, unwrap } from "@/lib/api/client";
-import { isApiError } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
 import { queryKeys } from "@/lib/query/keys";
 
@@ -63,12 +62,13 @@ const TONE: Record<string, TimelineTone> = {
 };
 
 /**
- * `ApprovalLogItem[]` (oldest-first) → timeline rows (newest-first).
+ * `ApprovalLogItem[]` → timeline rows, newest-first.
  *
- * The backend gives `actor_id` but no actor name on this contract, so the
- * headline is the transition ("Rejected", "Approved", …) without a "by <name>"
- * — noted as a contract gap in W8's report. The note (the load-bearing part
- * for an editor) is carried verbatim.
+ * Sorted by `created_at` descending rather than relying on the backend's array
+ * order. The backend gives `actor_id` but no actor name on this contract, so
+ * the headline is the transition ("Rejected", "Approved", …) without a "by
+ * <name>" — noted as a contract gap in W8's report. The note (the load-bearing
+ * part for an editor) is carried verbatim.
  */
 export function toTimeline(items: ApprovalLogItem[]): TimelineEntry[] {
   return items
@@ -79,7 +79,7 @@ export function toTimeline(items: ApprovalLogItem[]): TimelineEntry[] {
       note: item.note && item.note.trim().length > 0 ? item.note : null,
       timestamp: item.created_at,
     }))
-    .reverse();
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
 export function useApprovalLog(sermonId: string | undefined) {
@@ -93,6 +93,7 @@ export function useApprovalLog(sermonId: string | undefined) {
         }),
       ),
     enabled: Boolean(sermonId),
-    retry: (failureCount, error) => !isApiError(error) && failureCount < 2,
+    // Retry policy is inherited from the global client (§A.4): 5xx twice, never
+    // a 4xx. A per-hook override here previously disabled that.
   });
 }

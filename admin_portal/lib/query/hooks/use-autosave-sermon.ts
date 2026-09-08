@@ -6,10 +6,15 @@
  *  - **Debounce.** Any tracked-field change calls `queue(patch)`, which merges
  *    the patch into a single pending payload and (re)arms a 2s timer.
  *  - **Flush on blur / Save draft / unmount.** `flush()` cancels the timer and
- *    saves immediately; the unmount cleanup flushes a last time (the request is
- *    issued through the module `api` client, not a component-scoped mutation, so
- *    it still completes after the tree is gone — only the `setState`s are
- *    suppressed).
+ *    saves immediately and returns a promise the caller can await (so a submit
+ *    never races a debounced PATCH). The unmount cleanup flushes a last time
+ *    **only in edit-mode** — an abandoned `/sermons/new` that never got a title
+ *    creates nothing. The request is issued through the module `api` client,
+ *    not a component-scoped mutation, so it still completes after the tree is
+ *    gone — only the `setState`s (and `onCreated`) are suppressed.
+ *  - **One automatic retry on a transient failure.** A network error or a 5xx
+ *    schedules a single delayed retry so a blip self-heals; a 4xx never
+ *    retries, and a second failure stays "Not saved" until the user acts.
  *  - **Serialized queue, coalesced payload.** At most one request in flight;
  *    edits made mid-flight accumulate and are sent as one follow-up PATCH when
  *    it settles — never a queue of racing requests.
@@ -43,6 +48,10 @@ import { queryKeys } from "@/lib/query/keys";
 
 export type SermonTier = components["schemas"]["ContentTier"] | null;
 
+/** Wire bodies — the tracked partial lines up 1:1 with these, so no cast. */
+type SermonCreateBody = components["schemas"]["SermonCreate"];
+type SermonUpdateBody = components["schemas"]["SermonUpdate"];
+
 /** The subset of the sermon the editor form owns. Field names line up 1:1 with
     `SermonCreate` / `SermonUpdate`, so a tracked partial is also the wire
     payload. */
@@ -71,6 +80,9 @@ export interface UseAutosaveSermonOptions {
   /** Debounce window. Defaults to 2000ms (§A.4); overridable so a test can run
       on real timers with a short window. */
   debounceMs?: number;
+  /** Delay before the single automatic retry of a transient (network / 5xx)
+      failure. Defaults to 4000ms; overridable for tests. */
+  retryMs?: number;
 }
 
 export interface UseAutosaveSermonResult {
@@ -81,13 +93,16 @@ export interface UseAutosaveSermonResult {
   errorMessage: string | null;
   /** Merge a field change into the pending payload and arm the 2s debounce. */
   queue: (patch: SermonPatch) => void;
-  /** Save now — blur, the explicit Save draft button, unmount. */
-  flush: () => void;
+  /** Save now — blur, the explicit Save draft button. Resolves when the
+      in-flight save (if any) settles, so callers can `await` it before a
+      workflow transition. */
+  flush: () => Promise<void>;
   /** Pending edits exist or a save is in flight. */
   isDirty: boolean;
 }
 
 const DEFAULT_DEBOUNCE_MS = 2000;
+const DEFAULT_RETRY_MS = 4000;
 
 function messageFor(err: unknown): string {
   if (isApiError(err)) {
@@ -112,6 +127,10 @@ export function useAutosaveSermon(
   const pendingRef = useRef<SermonPatch>({});
   const inFlightRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One automatic retry per failed flush: set true when we schedule it, back
+  // to false on a success or any fresh user action (queue / flush).
+  const autoRetriedRef = useRef(false);
   const mountedRef = useRef(true);
   const runFlushRef = useRef<() => Promise<void>>(async () => {});
 
@@ -147,6 +166,10 @@ export function useAutosaveSermon(
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     if (inFlightRef.current) return;
     if (!hasKeys(pendingRef.current)) return;
 
@@ -173,21 +196,27 @@ export function useAutosaveSermon(
     let errored = false;
     try {
       if (creating) {
-        const body = { ...payload, title: (payload.title ?? "").trim() };
-        const created = await unwrap(
-          api.POST("/api/v1/sermons", { body: body as never }),
-        );
+        const body: SermonCreateBody = {
+          ...payload,
+          title: (payload.title ?? "").trim(),
+        };
+        const created = await unwrap(api.POST("/api/v1/sermons", { body }));
         idRef.current = created.id;
-        onCreatedRef.current(created.id);
+        // Only touch the URL / parent state if this hook is still mounted — an
+        // abandoned /sermons/new whose POST resolves late must not rewrite the
+        // address bar of whatever page the user is now on.
+        if (mountedRef.current) onCreatedRef.current(created.id);
       } else {
+        const body: SermonUpdateBody = payload;
         await unwrap(
           api.PATCH("/api/v1/sermons/{sermon_id}", {
             params: { path: { sermon_id: idRef.current as string } },
-            body: payload as never,
+            body,
           }),
         );
       }
       const now = Date.now();
+      autoRetriedRef.current = false;
       if (mountedRef.current) {
         setSavedAt(now);
         setErrorMessage(null);
@@ -203,6 +232,23 @@ export function useAutosaveSermon(
         setStatus("error");
         setErrorMessage(messageFor(err));
         setIsDirty(true);
+      }
+      // A transient failure (offline, or a backend 5xx) gets exactly one
+      // automatic retry so a blip self-heals without a user action. A 4xx is a
+      // real rejection — never retried. A further failure holds at "Not saved"
+      // until the user acts (queue / flush reset the budget).
+      const transient = !isApiError(err) || err.status >= 500;
+      if (
+        transient &&
+        !autoRetriedRef.current &&
+        mountedRef.current &&
+        hasKeys(pendingRef.current)
+      ) {
+        autoRetriedRef.current = true;
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          void runFlushRef.current();
+        }, options.retryMs ?? DEFAULT_RETRY_MS);
       }
     } finally {
       inFlightRef.current = false;
@@ -227,8 +273,23 @@ export function useAutosaveSermon(
 
   const queue = (patch: SermonPatch): void => {
     pendingRef.current = { ...pendingRef.current, ...patch };
-    setStatus("saving");
-    setErrorMessage(null);
+    // A fresh edit restores the automatic-retry budget and cancels any pending
+    // retry — the debounce below carries the new value instead.
+    autoRetriedRef.current = false;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    // Don't flash "Saving…" on /sermons/new before there's a title to POST —
+    // nothing is going to fire until one exists.
+    const willFire =
+      idRef.current != null ||
+      (typeof pendingRef.current.title === "string" &&
+        pendingRef.current.title.trim().length > 0);
+    if (willFire) {
+      setStatus("saving");
+      setErrorMessage(null);
+    }
     setIsDirty(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(
@@ -237,8 +298,11 @@ export function useAutosaveSermon(
     );
   };
 
-  const flush = (): void => {
-    void runFlushRef.current();
+  const flush = (): Promise<void> => {
+    // An explicit user flush (blur, Save draft, submit) restores the retry
+    // budget too.
+    autoRetriedRef.current = false;
+    return runFlushRef.current();
   };
 
   // Flush once more on unmount. The fetch is issued through `api` (module
@@ -246,11 +310,21 @@ export function useAutosaveSermon(
   useEffect(() => {
     mountedRef.current = true;
     return () => {
+      // Mark unmounted FIRST so runFlush's synchronous setStatus/setIsDirty
+      // prologue can't run on a dead hook.
+      mountedRef.current = false;
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (hasKeys(pendingRef.current) && !inFlightRef.current) {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      // Flush a last time ONLY in edit-mode. An abandoned /sermons/new that
+      // never got a title must create nothing — a silent create-on-unmount is
+      // a sermon the user never asked for.
+      if (
+        idRef.current != null &&
+        hasKeys(pendingRef.current) &&
+        !inFlightRef.current
+      ) {
         void runFlushRef.current();
       }
-      mountedRef.current = false;
     };
   }, []);
 

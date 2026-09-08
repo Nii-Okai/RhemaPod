@@ -31,11 +31,17 @@ vi.mock("next/link", () => ({
   }: {
     href: string | { toString(): string };
     children: React.ReactNode;
-  }) => (
-    <a href={typeof href === "string" ? href : href.toString()} {...props}>
-      {children}
-    </a>
-  ),
+  }) => {
+    // `onNavigate` is a next/link-only prop (the editor uses it for the
+    // unsaved-changes guard); strip it so React doesn't warn about an unknown
+    // attribute on a plain <a>.
+    delete (props as Record<string, unknown>).onNavigate;
+    return (
+      <a href={typeof href === "string" ? href : href.toString()} {...props}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

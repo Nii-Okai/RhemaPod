@@ -61,12 +61,15 @@ export function DetailsCard({
 
   const commitTag = () => {
     const tag = normaliseTag(draftTag);
+    // Clear the draft + close the entry BEFORE the side effects. Pressing
+    // Enter closes the input, which fires its `onBlur` → a second `commitTag`;
+    // by then `draftTag` is "" so that call is a no-op instead of a double add.
+    setDraftTag("");
+    setAdding(false);
     if (tag && !values.tags.includes(tag)) {
       onChange({ tags: [...values.tags, tag] });
       onCommit();
     }
-    setDraftTag("");
-    setAdding(false);
   };
 
   const removeTag = (tag: string) => {

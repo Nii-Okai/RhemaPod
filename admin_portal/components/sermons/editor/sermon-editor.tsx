@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -16,6 +16,7 @@ import { EditorSkeleton } from "@/components/sermons/editor/editor-skeleton";
 import { MediaJobsCard } from "@/components/sermons/editor/media-jobs-card";
 import { SaveStamp } from "@/components/sermons/editor/save-stamp";
 import { ThumbnailCard } from "@/components/sermons/editor/thumbnail-card";
+import { useUnsavedChangesGuard } from "@/components/sermons/editor/use-unsaved-guard";
 
 import { isApiError } from "@/lib/api/errors";
 import { useApprovalLog, toTimeline } from "@/lib/query/hooks/use-approval-log";
@@ -198,7 +199,18 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   const approvalLog = useApprovalLog(sermonId);
   const uploads = useSermonUploads(sermonId);
 
+  // A no-op after this editor's own unmount — a create POST that resolves late
+  // must not rewrite the address bar of whatever page the user moved to.
+  const editorMountedRef = useRef(true);
+  useEffect(() => {
+    editorMountedRef.current = true;
+    return () => {
+      editorMountedRef.current = false;
+    };
+  }, []);
+
   const handleCreated = useCallback((newId: string) => {
+    if (!editorMountedRef.current) return;
     setSermonId(newId);
     setSeededId(newId);
     // Shallow URL update — App Router has no shallow `router.replace`, and a
@@ -239,7 +251,12 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   }
 
   const displayStatus: SermonStatus = statusOverride ?? serverStatus;
-  const locked = mode === "edit" && IN_REVIEW.includes(displayStatus);
+  // The DTO's own `locked` is authoritative — a backend lock for ANY reason
+  // (not just in-review) disables the form + autosave. OR in the optimistic
+  // in-review check so a just-submitted sermon locks before the refetch lands.
+  const locked =
+    (current?.locked ?? false) ||
+    (mode === "edit" && IN_REVIEW.includes(displayStatus));
 
   const titleEmpty = form.title.trim().length === 0;
   const titleError =
@@ -258,11 +275,22 @@ function EditorForm({ mode, initial }: EditorFormProps) {
     },
     [autosave],
   );
-  const commit = useCallback(() => autosave.flush(), [autosave]);
+  const commit = useCallback(() => {
+    void autosave.flush();
+  }, [autosave]);
+
+  // Warn on tab close / refresh / in-editor nav while there is unsaved work in
+  // flight or errored (plan W8 acceptance). Sidebar / Back-button residual is
+  // documented in status.md.
+  const { confirmLeave } = useUnsavedChangesGuard(
+    autosave.isDirty ||
+      autosave.status === "error" ||
+      autosave.status === "saving",
+  );
 
   const onSaveDraft = () => {
     setTitleTouched(true);
-    autosave.flush();
+    void autosave.flush();
   };
 
   const canSubmit =
@@ -275,14 +303,15 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   const onSubmit = () => {
     setTitleTouched(true);
     if (titleEmpty || !sermonId) return;
-    autosave.flush();
     setWorkflowError(null);
-    workflow.submit();
+    // Let a debounced PATCH land BEFORE the status transition, or it could
+    // arrive after `/submit` and clobber the freshly-locked sermon.
+    void autosave.flush().then(() => workflow.submit());
   };
 
   const onWithdraw = () => {
     setWorkflowError(null);
-    workflow.withdraw();
+    void autosave.flush().then(() => workflow.withdraw());
   };
 
   const timeline = approvalLog.data ? toTimeline(approvalLog.data) : undefined;
@@ -295,6 +324,9 @@ function EditorForm({ mode, initial }: EditorFormProps) {
         <nav className="flex min-w-0 items-center gap-8 text-[13px]">
           <Link
             href="/sermons"
+            onNavigate={(e) => {
+              if (!confirmLeave()) e.preventDefault();
+            }}
             className="shrink-0 font-medium text-clay-600 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
           >
             ← Sermons

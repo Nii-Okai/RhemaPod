@@ -21,7 +21,7 @@ const row = (
 });
 
 describe("toTimeline", () => {
-  it("reverses ascending history to newest-first", () => {
+  it("orders ascending history newest-first", () => {
     const entries = toTimeline([
       row("pending_review", "2026-09-01T10:00:00Z"),
       row("under_review", "2026-09-02T10:00:00Z"),
@@ -31,6 +31,20 @@ describe("toTimeline", () => {
       "Rejected",
       "Review started",
       "Submitted for review",
+    ]);
+  });
+
+  it("sorts by created_at descending, not by array order", () => {
+    // Backend hands them back shuffled — the timeline must still be newest-first.
+    const entries = toTimeline([
+      row("under_review", "2026-09-02T10:00:00Z"),
+      row("rejected", "2026-09-03T10:00:00Z"),
+      row("pending_review", "2026-09-01T10:00:00Z"),
+    ]);
+    expect(entries.map((e) => e.timestamp)).toEqual([
+      "2026-09-03T10:00:00Z",
+      "2026-09-02T10:00:00Z",
+      "2026-09-01T10:00:00Z",
     ]);
   });
 
