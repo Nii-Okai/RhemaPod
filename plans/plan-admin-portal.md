@@ -934,3 +934,52 @@ point, so the eventual CI job is thin.
 Creating the editor/manager accounts needed to *test* the workflow requires curl or the seed script.
 *Mitigation:* the seed script is **approved** (GATE 3 #8) and lands at W7, ahead of every work item
 that needs multi-role data. Residual risk is only the window before it lands.
+
+---
+
+# Amendments
+
+Post-approval amendments. Each is a recorded, deliberate deviation from the
+approved plan body above; the plan body is otherwise still the contract.
+
+## A1 — Cookie spec supersedes §A.2 (W4 fix pass, 2026-09-08)
+
+Mandatory `security-reviewer` adjudication on the W4 BFF (verdict: SHIP WITH
+FIXES) supersedes the §A.2 "Token storage" attribute table.
+
+| cookie  | name (prod)      | name (dev) | Path   | SameSite | Secure    |
+|---------|------------------|------------|--------|----------|-----------|
+| access  | `__Host-rp_at`   | `rp_at`    | `/`    | Lax      | prod only |
+| refresh | `__Secure-rp_rt` | `rp_rt`    | `/api` | Strict   | prod only |
+
+- The `__Host-` / `__Secure-` prefixes are invalid without `Secure` (`__Host-`
+  also requires `Path=/` and no `Domain`); on `http://localhost` in dev a
+  prefixed cookie is rejected outright, so the bare names are used there. Name
+  and `Secure` are gated on the same `IS_PROD` (`NODE_ENV === 'production'`)
+  condition.
+- Rationale: §A.2's `rp_at=/api, rp_rt=/api/auth` split broke the approved
+  control flow — the RSC bootstrap reads `rp_at` on document navigations (not
+  under `/api`), and the proxy reads `rp_rt` under `/api/bff/*` (not under
+  `/api/auth`). `rp_at` widens to `/`; `rp_rt` sits at `/api`, which covers both
+  `/api/bff/*` and `/api/auth/*` while keeping the 30-day credential off
+  document navigations and the `/_next` asset stream.
+- The per-cookie `Path` is applied in **both** `setAuthCookies` and
+  `clearAuthCookies` (shared specs) — a split in only one place would mean
+  logout stops clearing `rp_rt`.
+
+## A2 — Deployment assumption (W4 fix pass, 2026-09-08)
+
+The portal runs on a hostname with **no attacker-influenceable sibling
+subdomains** under the registrable domain (no vendor CNAMEs, marketing site,
+status page). If that stops holding, or the portal moves onto a shared domain,
+revisit whether `rp_rt` should take `__Host-` (accepting `Path=/`).
+
+## A3 — Generic proxy auth blocklist (W4 fix pass, security M1, 2026-09-08)
+
+`/api/bff/[...path]` returns **404** for path prefixes `auth/login`,
+`auth/refresh`, `auth/register`, `auth/reset-password`, `auth/forgot-password`,
+`auth/logout`. Those flows run only through the dedicated `/api/auth/*`
+handlers, so a raw `TokenPair` (incl. the 30-day refresh) can never reach a
+JS-readable response body via the generic pass-through. `auth/me` stays allowed
+— the portal calls it through the proxy. 404 not 403: the proxy does not
+confirm the route shape.

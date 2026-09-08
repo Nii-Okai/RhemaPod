@@ -1,39 +1,54 @@
 /**
- * The two auth cookies and their attributes (plan §A.2 "Token storage").
+ * The two auth cookies and their attributes.
  *
  * Both tokens live in httpOnly cookies — the browser never holds a bearer
  * token and never reads one from `document.cookie`. The cookie *value* is a
  * backend-signed JWT; there is deliberately no second Next-side signature
- * (§A.2 "No Next-side cookie signing secret").
+ * (plan §A.2 "No Next-side cookie signing secret").
  *
- * ── Path reconciliation (flagged for the mandatory security-reviewer) ──
- * The GATE 2 attribute table scopes `rp_at` to `Path=/api` and `rp_rt` to
- * `Path=/api/auth`. Cookie `Path` is a *browser send-filter*, not server-side
- * scoping, and two pieces of the same approved design cannot work under those
- * paths:
+ * ── Cookie spec (W4 fix pass — supersedes the plan §A.2 attribute table) ──
+ * Ruled by the mandatory security-reviewer pass on W4:
  *
- *   • `(portal)/layout.tsx` reads `rp_at` server-side on document navigations
- *     to `/sermons`, `/review`, … — none of which match `Path=/api`.
- *   • the `/api/bff/[...path]` proxy must read `rp_rt` to self-refresh on a
- *     401 and to dedupe concurrent refreshes (a GATE 2 acceptance criterion) —
- *     `/api/bff/*` never matches `Path=/api/auth`.
+ *   | cookie  | name (prod)      | name (dev) | Path   | SameSite | Secure    |
+ *   |---------|------------------|------------|--------|----------|-----------|
+ *   | access  | `__Host-rp_at`   | `rp_at`    | `/`    | Lax      | prod only |
+ *   | refresh | `__Secure-rp_rt` | `rp_rt`    | `/api` | Strict   | prod only |
  *
- * Widening both to `Path=/` is the smallest change that makes the approved
- * control flow function. The load-bearing protections are unchanged: HttpOnly,
- * SameSite (Lax on the access cookie, Strict on the refresh cookie),
- * Secure in production, and no JS readability. `rp_rt` keeping `SameSite=Strict`
- * is what actually defends the long-lived credential here.
+ *   • The `__Host-` / `__Secure-` prefixes are INVALID without `Secure`
+ *     (`__Host-` also requires `Path=/` and no `Domain`). On `http://localhost`
+ *     in dev a prefixed cookie is rejected outright by the browser, so the bare
+ *     names are used there. Name and `Secure` are gated on the SAME `IS_PROD`
+ *     condition.
+ *   • The plan's `rp_at=/api, rp_rt=/api/auth` split broke the approved control
+ *     flow — the RSC bootstrap reads `rp_at` on document navigations (not under
+ *     `/api`) and the proxy reads `rp_rt` under `/api/bff/*` (not under
+ *     `/api/auth`). `rp_at` widens to `/`; `rp_rt` sits at `/api`, which covers
+ *     both `/api/bff/*` and `/api/auth/*` while keeping the 30-day credential
+ *     off document navigations and the `/_next` asset stream.
+ *   • The per-cookie `Path` is applied in BOTH `setAuthCookies` and
+ *     `clearAuthCookies` (via the shared specs below) — a split in only one
+ *     place means logout stops clearing `rp_rt`.
+ *
+ * Deployment assumption this rests on: the portal runs on a hostname with no
+ * attacker-influenceable sibling subdomains under the registrable domain. If
+ * that stops holding, revisit whether `rp_rt` should take `__Host-` (accepting
+ * `Path=/`).
  */
 
-import type { NextRequest, NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { IS_PROD } from "./config";
 
-export const AT_COOKIE = "rp_at";
-export const RT_COOKIE = "rp_rt";
+export const AT_COOKIE = IS_PROD ? "__Host-rp_at" : "rp_at";
+export const RT_COOKIE = IS_PROD ? "__Secure-rp_rt" : "rp_rt";
 
-/** See the Path reconciliation note above. */
-const COOKIE_PATH = "/";
+/**
+ * Per-cookie name + Path + SameSite, shared by set and clear so they can never
+ * drift. `rp_at` at `/` (RSC reads it on navigations); `rp_rt` at `/api`
+ * (covers `/api/bff/*` and `/api/auth/*`, nothing else).
+ */
+const AT_SPEC = { name: AT_COOKIE, path: "/", sameSite: "lax" as const };
+const RT_SPEC = { name: RT_COOKIE, path: "/api", sameSite: "strict" as const };
 
 /**
  * Refresh-token lifetime. FastAPI's `refresh_token_expire_days` is 30 and the
@@ -67,8 +82,8 @@ export interface SetAuthCookiesInput {
   /**
    * "Keep me signed in". When `false`, the refresh cookie is written as a
    * session cookie (no `Max-Age`) so it clears when the browser closes. This
-   * only ever *shortens* the credential lifetime relative to the GATE 2 table,
-   * so it is a security-positive deviation. Defaults to `true`.
+   * only ever *shortens* the credential lifetime relative to the spec, so it
+   * is a security-positive deviation. Defaults to `true`.
    */
   remember?: boolean;
 }
@@ -78,38 +93,55 @@ export function setAuthCookies(
   res: NextResponse,
   { accessToken, refreshToken, accessMaxAge, remember = true }: SetAuthCookiesInput,
 ): void {
-  res.cookies.set(AT_COOKIE, accessToken, {
+  res.cookies.set(AT_SPEC.name, accessToken, {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: AT_SPEC.sameSite,
     secure: IS_PROD,
-    path: COOKIE_PATH,
-    maxAge: accessMaxAge && accessMaxAge > 0
-      ? accessMaxAge
-      : ACCESS_MAX_AGE_FALLBACK_SECONDS,
+    path: AT_SPEC.path,
+    maxAge:
+      accessMaxAge && accessMaxAge > 0
+        ? accessMaxAge
+        : ACCESS_MAX_AGE_FALLBACK_SECONDS,
   });
 
-  res.cookies.set(RT_COOKIE, refreshToken, {
+  res.cookies.set(RT_SPEC.name, refreshToken, {
     httpOnly: true,
-    sameSite: "strict",
+    sameSite: RT_SPEC.sameSite,
     secure: IS_PROD,
-    path: COOKIE_PATH,
+    path: RT_SPEC.path,
     ...(remember ? { maxAge: REFRESH_MAX_AGE_SECONDS } : {}),
   });
 }
 
 /**
- * Clear both cookies with `Max-Age=0` on the exact same attributes they were
- * set with — a mismatched attribute leaves a live cookie behind (§A.2
- * "Logout"). Called on logout and whenever a refresh fails.
+ * Clear both cookies with `Max-Age=0` on the exact same name / Path / SameSite
+ * they were set with — a mismatched attribute leaves a live cookie behind
+ * (plan §A.2 "Logout"). Called on logout and whenever a refresh fails with a
+ * real auth error.
  */
 export function clearAuthCookies(res: NextResponse): void {
-  for (const name of [AT_COOKIE, RT_COOKIE] as const) {
-    res.cookies.set(name, "", {
+  for (const spec of [AT_SPEC, RT_SPEC]) {
+    res.cookies.set(spec.name, "", {
       httpOnly: true,
-      sameSite: name === RT_COOKIE ? "strict" : "lax",
+      sameSite: spec.sameSite,
       secure: IS_PROD,
-      path: COOKIE_PATH,
+      path: spec.path,
       maxAge: 0,
     });
   }
+}
+
+/**
+ * A 401 that also clears both auth cookies — the response for a refresh that
+ * failed with a real auth error (reuse detected / expired RT), and for a
+ * missing refresh cookie. Extracted so the proxy and the `/api/auth/refresh`
+ * route build it identically (a 5xx from `/auth/refresh` must NOT come here —
+ * that is a transient backend blip, not a reason to end every session).
+ */
+export function clearedUnauthorized(
+  detail = "Session expired. Please sign in again.",
+): NextResponse {
+  const res = NextResponse.json({ detail, correlation_id: null }, { status: 401 });
+  clearAuthCookies(res);
+  return res;
 }

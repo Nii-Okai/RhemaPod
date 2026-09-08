@@ -53,6 +53,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: "not json",
         headers: { "content-type": "text/plain" },
+        sameOrigin: true,
       }),
     );
     expect(res.status).toBe(200);

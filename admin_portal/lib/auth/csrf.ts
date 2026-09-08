@@ -19,7 +19,9 @@ import { NextResponse } from "next/server";
 
 import { PORTAL_ORIGIN } from "./config";
 
-const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+// No PUT: neither the generic proxy nor the `/api/auth/*` routes export a PUT
+// handler, and FastAPI has no PUT routes. Re-add it here if any of that changes.
+const MUTATING_METHODS = new Set(["POST", "PATCH", "DELETE"]);
 
 export function isMutating(method: string): boolean {
   return MUTATING_METHODS.has(method.toUpperCase());

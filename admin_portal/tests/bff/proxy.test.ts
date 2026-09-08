@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { GET, POST } from "@/app/api/bff/[...path]/route";
+import { DELETE, GET, POST } from "@/app/api/bff/[...path]/route";
 import { __resetRefreshDedupe } from "@/lib/auth/exchange";
 
 import { server } from "../msw/server";
@@ -241,5 +241,252 @@ describe("BFF proxy — CSRF", () => {
     );
 
     expect(res.status).toBe(201);
+  });
+
+  it("403s a mutating request carrying neither Origin nor Sec-Fetch-Site (fail-closed)", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { title: "x" },
+        // no Origin, no Sec-Fetch-Site, sameOrigin not opted in
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(403);
+    expect(called).toBe(false);
+  });
+});
+
+describe("BFF proxy — null-body upstream statuses", () => {
+  it("relays a 204 without throwing", async () => {
+    server.use(
+      http.delete(`${API}/api/v1/sermons/s-1`, () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
+    );
+
+    const res = await DELETE(
+      makeRequest("http://localhost:3000/api/bff/sermons/s-1", {
+        method: "DELETE",
+        cookies: { rp_at: makeJwt(3600) },
+        sameOrigin: true,
+      }),
+      ctx(["sermons", "s-1"]),
+    );
+
+    expect(res.status).toBe(204);
+  });
+
+  it("relays a 304 without throwing", async () => {
+    server.use(
+      http.get(`${API}/api/v1/sermons`, () =>
+        new HttpResponse(null, { status: 304 }),
+      ),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(304);
+  });
+});
+
+describe("BFF proxy — header hygiene", () => {
+  it("strips inbound Authorization and Cookie; upstream sees only the BFF bearer", async () => {
+    let seenAuth: string | null = null;
+    let seenCookie: string | null = null;
+
+    server.use(
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenAuth = request.headers.get("authorization");
+        seenCookie = request.headers.get("cookie");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const at = makeJwt(3600);
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: at, rp_rt: "rt-secret" },
+        headers: { authorization: "Bearer client-forged" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(seenAuth).toBe(`Bearer ${at}`);
+    expect(seenCookie).toBeNull();
+  });
+
+  it("forwards a client x-correlation-id only when it is UUID-shaped", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seen.push(request.headers.get("x-correlation-id"));
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const uuid = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+    await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "x-correlation-id": uuid },
+      }),
+      ctx(["sermons"]),
+    );
+    await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "x-correlation-id": "not-a-uuid; drop tables" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(seen[0]).toBe(uuid);
+    expect(seen[1]).not.toBe("not-a-uuid; drop tables");
+    expect(seen[1]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+});
+
+describe("BFF proxy — auth-path blocklist (security M1)", () => {
+  it("404s POST /api/bff/auth/login and never calls upstream", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/auth/login", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { email: "a@b.c", password: "pw" },
+        sameOrigin: true,
+      }),
+      ctx(["auth", "login"]),
+    );
+
+    expect(res.status).toBe(404);
+    expect(called).toBe(false);
+  });
+
+  it("still lets GET /api/bff/auth/me through", async () => {
+    let called = false;
+    server.use(
+      http.get(`${API}/api/v1/auth/me`, () => {
+        called = true;
+        return HttpResponse.json({ id: "u-1", email: "a@b.c", role: "editor" });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/auth/me", {
+        cookies: { rp_at: makeJwt(3600) },
+      }),
+      ctx(["auth", "me"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(called).toBe(true);
+  });
+});
+
+describe("BFF proxy — refresh 5xx is not terminal", () => {
+  it("recovers from a non-JWT rp_at by refreshing before forwarding", async () => {
+    let refreshCalls = 0;
+    let seenAuth: string | null = null;
+
+    server.use(
+      http.post(`${API}/api/v1/auth/refresh`, () => {
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "at-fresh",
+          refresh_token: "rt-fresh",
+          expires_in: 900,
+        });
+      }),
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenAuth = request.headers.get("authorization");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: "not-a-jwt", rp_rt: "rt-old" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(refreshCalls).toBe(1);
+    expect(seenAuth).toBe("Bearer at-fresh");
+  });
+
+  it("relays 503 and keeps cookies when a preemptive refresh 5xxs and there is no usable access token", async () => {
+    server.use(
+      http.post(`${API}/api/v1/auth/refresh`, () =>
+        HttpResponse.json({ detail: "db down" }, { status: 500 }),
+      ),
+      http.get(`${API}/api/v1/sermons`, () => HttpResponse.json({ ok: true })),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_rt: "rt-live" }, // no rp_at at all
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(503);
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  it("forwards with the still-valid rp_at when a preemptive refresh 5xxs", async () => {
+    let refreshCalls = 0;
+    let seenAuth: string | null = null;
+    const at = makeJwt(30); // inside the 60s skew but not expired
+
+    server.use(
+      http.post(`${API}/api/v1/auth/refresh`, () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ detail: "db down" }, { status: 503 });
+      }),
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenAuth = request.headers.get("authorization");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: at, rp_rt: "rt-live" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(refreshCalls).toBe(1);
+    expect(res.status).toBe(200);
+    expect(seenAuth).toBe(`Bearer ${at}`);
+    expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 });

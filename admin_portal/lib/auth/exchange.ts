@@ -15,13 +15,21 @@
  *      Concurrent callers presenting the same refresh token await the *same*
  *      promise, so exactly one `/auth/refresh` call goes out.
  *
- * ⚠️ SINGLE NEXT INSTANCE ONLY. The dedupe map is per Node process. Phase 1
- * ships as a single instance (or sticky sessions) by resolved decision 7; a
- * move to multi-instance reopens GATE 3 #9 (a backend reuse-grace window) and
- * must be taken *before* the topology changes, not after users get logged out.
+ * A resolved rotation is also kept in the map keyed by the *old* refresh token
+ * for a short window (`RESULT_TTL_MS`) rather than being dropped the instant it
+ * settles: a straggler tab — or a second parallel page load — that still holds
+ * the pre-rotation token then gets handed the new pair instead of racing into a
+ * backend reuse-detection 401 that would clear cookies for the whole browser.
+ *
+ * ⚠️ SINGLE NEXT INSTANCE ONLY. The dedupe map and the short-lived result
+ * retention are both per Node process. Phase 1 ships as a single instance (or
+ * sticky sessions) by resolved decision 7; a move to multi-instance reopens
+ * GATE 3 #9 (a backend reuse-grace window) and must be taken *before* the
+ * topology changes, not after users get logged out.
  */
 
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
+import { logError, logWarn } from "../log";
 
 export interface RefreshOk {
   ok: true;
@@ -39,6 +47,9 @@ export interface RefreshFail {
 
 export type RefreshResult = RefreshOk | RefreshFail;
 
+/** How long a resolved rotation stays addressable by the old refresh token. */
+const RESULT_TTL_MS = 10_000;
+
 const inFlight = new Map<string, Promise<RefreshResult>>();
 
 async function callRefresh(refreshToken: string): Promise<RefreshResult> {
@@ -51,10 +62,14 @@ async function callRefresh(refreshToken: string): Promise<RefreshResult> {
       cache: "no-store",
     });
   } catch {
+    logError("bff_refresh_upstream_unreachable");
     return { ok: false, status: 503 };
   }
 
   if (!res.ok) {
+    if (res.status >= 500) {
+      logWarn("bff_refresh_upstream_5xx", { status: res.status });
+    }
     return { ok: false, status: res.status };
   }
 
@@ -68,6 +83,7 @@ async function callRefresh(refreshToken: string): Promise<RefreshResult> {
       typeof body.access_token !== "string" ||
       typeof body.refresh_token !== "string"
     ) {
+      logError("bff_refresh_upstream_bad_response");
       return { ok: false, status: 502 };
     }
     return {
@@ -80,13 +96,16 @@ async function callRefresh(refreshToken: string): Promise<RefreshResult> {
           : 15 * 60,
     };
   } catch {
+    logError("bff_refresh_upstream_bad_response");
     return { ok: false, status: 502 };
   }
 }
 
 /**
  * Rotate the token pair. Concurrent calls with the same `refreshToken` in this
- * process share one upstream request and one result.
+ * process share one upstream request and one result; a *successful* result then
+ * stays cached under that same (now-rotated) token for `RESULT_TTL_MS` so a
+ * straggler caller is served the new pair instead of a reuse-detection 401.
  *
  * NB: there is no `await` between the map lookup and the map set, so the first
  * synchronous caller always wins the race — the dedupe is real, not best-effort.
@@ -95,8 +114,19 @@ export function refreshTokens(refreshToken: string): Promise<RefreshResult> {
   const existing = inFlight.get(refreshToken);
   if (existing) return existing;
 
-  const pending = callRefresh(refreshToken).finally(() => {
-    inFlight.delete(refreshToken);
+  const pending = callRefresh(refreshToken).then((result) => {
+    if (result.ok) {
+      // Keep serving this resolved pair to stragglers for a short window. The
+      // timer must not hold the process open on its own.
+      const timer = setTimeout(
+        () => inFlight.delete(refreshToken),
+        RESULT_TTL_MS,
+      ) as unknown as { unref?: () => void };
+      timer.unref?.();
+    } else {
+      inFlight.delete(refreshToken);
+    }
+    return result;
   });
   inFlight.set(refreshToken, pending);
   return pending;

@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 
+import { logError } from "../log";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 
 const CORRELATION_HEADER = "x-correlation-id";
@@ -32,6 +33,7 @@ export async function postUpstream(
       cache: "no-store",
     });
   } catch {
+    logError("bff_auth_upstream_unreachable", { path });
     return {
       status: 503,
       ok: false,

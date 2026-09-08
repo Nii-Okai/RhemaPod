@@ -15,6 +15,7 @@ import { createServerApiClient } from "@/lib/api/server";
 import { setAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
+import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,7 +76,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       role: String(data.role),
     };
   } catch (err) {
-    void isApiError(err);
+    logError("bff_login_profile_load_failed", {
+      status: isApiError(err) ? err.status : null,
+      correlationId: isApiError(err) ? err.correlationId : null,
+    });
     return NextResponse.json(
       { detail: "Signed in, but could not load your profile. Try again.", correlation_id: null },
       { status: 502 },

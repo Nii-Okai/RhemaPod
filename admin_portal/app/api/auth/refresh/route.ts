@@ -9,7 +9,11 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { clearAuthCookies, readAuthCookies, setAuthCookies } from "@/lib/auth/cookies";
+import {
+  clearedUnauthorized,
+  readAuthCookies,
+  setAuthCookies,
+} from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { refreshTokens } from "@/lib/auth/exchange";
 
@@ -22,22 +26,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { refreshToken } = readAuthCookies(req);
   if (!refreshToken) {
-    const res = NextResponse.json(
-      { detail: "Not authenticated.", correlation_id: null },
-      { status: 401 },
-    );
-    clearAuthCookies(res);
-    return res;
+    return clearedUnauthorized("Not authenticated.");
   }
 
   const result = await refreshTokens(refreshToken);
   if (!result.ok) {
-    const res = NextResponse.json(
-      { detail: "Session expired. Please sign in again.", correlation_id: null },
-      { status: 401 },
-    );
-    clearAuthCookies(res);
-    return res;
+    // A 5xx is a transient backend blip — relay 503 and KEEP the cookies so a
+    // retry can still succeed. Only a real auth failure (401 — reuse/expired)
+    // clears the session.
+    if (result.status >= 500) {
+      return NextResponse.json(
+        { detail: "The session service is unavailable. Try again shortly.", correlation_id: null },
+        { status: 503 },
+      );
+    }
+    return clearedUnauthorized();
   }
 
   const res = NextResponse.json({ ok: true }, { status: 200 });

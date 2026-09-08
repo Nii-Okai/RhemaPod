@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 import { clearAuthCookies, readAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
+import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,13 +24,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { accessToken } = readAuthCookies(req);
   if (accessToken) {
     try {
-      await fetch(`${API_BASE_URL}${BACKEND_API_PREFIX}/auth/logout`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
+      const revoke = await fetch(
+        `${API_BASE_URL}${BACKEND_API_PREFIX}/auth/logout`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        },
+      );
+      if (!revoke.ok) {
+        logError("bff_logout_revoke_failed", { status: revoke.status });
+      }
     } catch {
-      // Swallowed by design — the local cookie clear below is what matters.
+      // Swallowed by design — the local cookie clear below is what matters —
+      // but a failing revoke means the session lives on server-side.
+      logError("bff_logout_revoke_failed", { status: null });
     }
   }
 

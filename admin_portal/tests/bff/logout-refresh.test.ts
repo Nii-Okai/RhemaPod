@@ -16,7 +16,7 @@ describe("POST /api/auth/logout", () => {
     let revoked = false;
     server.use(
       http.post(`${API}/api/v1/auth/logout`, ({ request }) => {
-        revoked = request.headers.get("authorization") === `Bearer ${"at"}`;
+        revoked = request.headers.get("authorization") === "Bearer at";
         return HttpResponse.json({ message: "Logged out" });
       }),
     );
@@ -25,6 +25,7 @@ describe("POST /api/auth/logout", () => {
       makeRequest("http://localhost:3000/api/auth/logout", {
         method: "POST",
         cookies: { rp_at: "at", rp_rt: "rt" },
+        sameOrigin: true,
       }),
     );
 
@@ -46,6 +47,7 @@ describe("POST /api/auth/logout", () => {
       makeRequest("http://localhost:3000/api/auth/logout", {
         method: "POST",
         cookies: { rp_at: "at", rp_rt: "rt" },
+        sameOrigin: true,
       }),
     );
 
@@ -80,6 +82,7 @@ describe("POST /api/auth/refresh", () => {
       makeRequest("http://localhost:3000/api/auth/refresh", {
         method: "POST",
         cookies: { rp_at: makeJwt(-5), rp_rt: "rt-1" },
+        sameOrigin: true,
       }),
     );
 
@@ -92,7 +95,10 @@ describe("POST /api/auth/refresh", () => {
 
   it("clears cookies and 401s when there is no rp_rt", async () => {
     const res = await REFRESH(
-      makeRequest("http://localhost:3000/api/auth/refresh", { method: "POST" }),
+      makeRequest("http://localhost:3000/api/auth/refresh", {
+        method: "POST",
+        sameOrigin: true,
+      }),
     );
     expect(res.status).toBe(401);
     const c = parseSetCookies(res);
@@ -111,10 +117,30 @@ describe("POST /api/auth/refresh", () => {
       makeRequest("http://localhost:3000/api/auth/refresh", {
         method: "POST",
         cookies: { rp_rt: "rt-burned" },
+        sameOrigin: true,
       }),
     );
 
     expect(res.status).toBe(401);
     expect(parseSetCookies(res).rp_rt.attrs["max-age"]).toBe("0");
+  });
+
+  it("relays 503 and KEEPS the cookies when the upstream refresh 5xxs", async () => {
+    server.use(
+      http.post(`${API}/api/v1/auth/refresh`, () =>
+        HttpResponse.json({ detail: "db down" }, { status: 500 }),
+      ),
+    );
+
+    const res = await REFRESH(
+      makeRequest("http://localhost:3000/api/auth/refresh", {
+        method: "POST",
+        cookies: { rp_rt: "rt-live" },
+        sameOrigin: true,
+      }),
+    );
+
+    expect(res.status).toBe(503);
+    expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 });

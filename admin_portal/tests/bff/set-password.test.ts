@@ -10,6 +10,7 @@ function req(body: unknown) {
   return makeRequest("http://localhost:3000/api/auth/set-password", {
     method: "POST",
     body,
+    sameOrigin: true,
   });
 }
 

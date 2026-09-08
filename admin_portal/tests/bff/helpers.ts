@@ -26,7 +26,11 @@ export interface ReqInit {
   cookies?: Record<string, string>;
   headers?: Record<string, string>;
   body?: unknown;
-  /** default: adds `sec-fetch-site: same-origin` so the CSRF check passes. */
+  /**
+   * Opt-in: when `true`, adds `sec-fetch-site: same-origin` so the proxy's CSRF
+   * check passes. NOT the default — a mutating request built with neither
+   * `Origin` nor `Sec-Fetch-Site` must be free to hit the fail-closed 403 path.
+   */
   sameOrigin?: boolean;
 }
 
@@ -36,7 +40,7 @@ export function makeRequest(url: string, init: ReqInit = {}): NextRequest {
     cookies = {},
     headers = {},
     body,
-    sameOrigin = true,
+    sameOrigin = false,
   } = init;
 
   const h = new Headers(headers);

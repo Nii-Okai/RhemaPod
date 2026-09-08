@@ -65,7 +65,9 @@ describe("POST /api/auth/login", () => {
     expect(c.rp_rt.value).toBe("rt-1");
     expect(c.rp_rt.attrs.httponly).toBe(true);
     expect(String(c.rp_rt.attrs.samesite).toLowerCase()).toBe("strict");
-    expect(c.rp_rt.attrs.path).toBe("/");
+    // refresh cookie is scoped to /api (covers /api/bff/* and /api/auth/*),
+    // not / — security-reviewer ruling, W4 fix pass
+    expect(c.rp_rt.attrs.path).toBe("/api");
     expect(c.rp_rt.attrs["max-age"]).toBe(String(60 * 60 * 24 * 30));
   });
 

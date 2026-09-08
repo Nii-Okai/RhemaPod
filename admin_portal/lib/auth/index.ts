@@ -23,6 +23,7 @@ export {
   readAuthCookies,
   setAuthCookies,
   clearAuthCookies,
+  clearedUnauthorized,
 } from "./cookies";
 export { csrfGuard, isSameOrigin, isMutating } from "./csrf";
 export { decodeJwtExp, decodeJwtClaims, isExpiringSoon } from "./jwt";

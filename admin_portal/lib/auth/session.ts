@@ -13,16 +13,23 @@
  * returning after >15 min idle re-authenticates on the next hard navigation;
  * an active session stays warm because the proxy refreshes `rp_at` on data
  * calls. (Known Phase 1 rough edge — noted in status.md.)
+ *
+ * Wrapped in React `cache()` so a cold `/` hit — which renders `app/page.tsx`
+ * and `(portal)/layout.tsx`, both of which call this — makes one `/auth/me`
+ * round-trip per request, not two.
  */
+
+import { cache } from "react";
 
 import { isApiError } from "@/lib/api/errors";
 import { createServerApiClient } from "@/lib/api/server";
+import { logError } from "@/lib/log";
 
 import type { SessionUser } from "./session-types";
 
 export type { SessionUser } from "./session-types";
 
-export async function getServerUser(): Promise<SessionUser | null> {
+async function loadServerUser(): Promise<SessionUser | null> {
   let client;
   try {
     client = await createServerApiClient();
@@ -40,9 +47,18 @@ export async function getServerUser(): Promise<SessionUser | null> {
       role: String(data.role),
     };
   } catch (err) {
-    // ApiError (401/404) → no session. Anything else (network, parse) → also
-    // treat as no session and let the layout send the user to /login.
-    void isApiError(err);
+    // 401 / 404 → no session, expected, quiet. Anything else (a 5xx, a network
+    // failure, a parse error) is still "no session" for the user, but it is
+    // worth a line so a backend outage is not invisible.
+    const status = isApiError(err) ? err.status : null;
+    if (status !== 401 && status !== 404) {
+      logError("bff_session_bootstrap_failed", {
+        status,
+        correlationId: isApiError(err) ? err.correlationId : null,
+      });
+    }
     return null;
   }
 }
+
+export const getServerUser = cache(loadServerUser);
