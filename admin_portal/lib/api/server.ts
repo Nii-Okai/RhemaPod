@@ -7,11 +7,13 @@
  * httpOnly cookie. Used by RSC (the `/auth/me` session bootstrap) and by the
  * auth route handlers' follow-up calls.
  *
- * It also forwards the real browser IP as `X-Forwarded-For` / `X-Real-IP` (plan
- * §A.10) so the backend rate limiter keys per staff member, not per BFF
- * instance. The IP is read from the current request's proxy headers; if there
- * is no request scope (e.g. a unit test calling a route function directly) it
- * is simply omitted.
+ * It also forwards the real client IP as a single validated `X-Forwarded-For`
+ * (plan §A.10) so the backend rate limiter keys per staff member, not per BFF
+ * instance. The IP comes only from the configured trusted header
+ * (`CLIENT_IP_HEADER`) — never an inbound proxy header the browser could have
+ * set — via `clientIpFromHeaders`; with no request scope, no trusted header
+ * configured, or a non-IP value, it is simply omitted and the backend falls
+ * back to the BFF peer IP.
  *
  * `lib/api/` layering is intact: this reuses `createApiClient` and only adds
  * middleware on top of its `stripBackendMount` + `throwOnError`.
@@ -20,7 +22,7 @@
 import { cookies, headers } from "next/headers";
 import type { Middleware } from "openapi-fetch";
 
-import { clientIpFromHeaders } from "@/lib/auth/client-ip";
+import { clientIpFromHeaders, setForwardedFor } from "@/lib/auth/client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 import { AT_COOKIE } from "@/lib/auth/cookies";
 
@@ -38,8 +40,7 @@ function bearerMiddleware(token: string | undefined): Middleware {
 function forwardedForMiddleware(clientIp: string): Middleware {
   return {
     onRequest({ request }) {
-      request.headers.set("x-forwarded-for", clientIp);
-      request.headers.set("x-real-ip", clientIp);
+      setForwardedFor(request.headers, clientIp);
       return request;
     },
   };

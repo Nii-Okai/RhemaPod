@@ -22,9 +22,10 @@ export interface UpstreamResponse {
 
 /**
  * POST JSON to `${API_BASE_URL}/api/v1<path>` and read the envelope back.
- * `clientIp` (the real browser IP — plan §A.10) is forwarded as
- * `X-Forwarded-For` / `X-Real-IP` so the backend rate limiter keys per staff
- * member, not per BFF instance.
+ * `clientIp` (the real client IP — plan §A.10, sourced only from the configured
+ * trusted `CLIENT_IP_HEADER`) is forwarded as a single validated
+ * `X-Forwarded-For` so the backend rate limiter keys per staff member, not per
+ * BFF instance. `null` / unvalidated → no header, backend falls back to peer.
  */
 export async function postUpstream(
   path: string,

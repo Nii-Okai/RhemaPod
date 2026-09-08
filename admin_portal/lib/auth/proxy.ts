@@ -24,7 +24,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { logWarn } from "../log";
-import { clientIpFrom } from "./client-ip";
+import { clientIpFrom, setForwardedFor } from "./client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 import {
   clearedUnauthorized,
@@ -68,6 +68,20 @@ const REDIRECT_STATUSES = new Set([300, 301, 302, 303, 307, 308]);
  */
 const MAX_BODY_BYTES = 1_000_000;
 
+/**
+ * Wall-clock ceiling on reading the request body off the stream. Without it a
+ * slow drip that stays under `MAX_BODY_BYTES` parks a handler until Node's
+ * ~300s `requestTimeout` — a cheap way to tie up this single-instance process.
+ * Overridable via `BFF_BODY_READ_TIMEOUT_MS` (mainly so tests need not wait).
+ * (security N1)
+ */
+const DEFAULT_BODY_READ_TIMEOUT_MS = 30_000;
+
+function bodyReadTimeoutMs(): number {
+  const raw = Number(process.env.BFF_BODY_READ_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_BODY_READ_TIMEOUT_MS;
+}
+
 /** `auth/*` credential flows run ONLY through the dedicated `/api/auth/*`
  *  handlers. Blocked here so a same-origin/XSS caller cannot `POST
  *  /api/bff/auth/login` and read a raw `TokenPair` (incl. the 30-day refresh)
@@ -82,13 +96,17 @@ const BLOCKED_PROXY_PREFIXES = [
 ];
 
 function isBlockedProxyPath(segments: string[]): boolean {
-  // Normalize before matching: drop empty segments (a `//` in the URL —
-  // `/api/bff//auth/login` → ["", "auth", "login"] — which nginx `merge_slashes`
-  // would collapse upstream, so it must not slip the blocklist here) and
-  // lowercase. (security N2)
+  // Normalize before matching so slash variants can't slip the blocklist —
+  // nginx `merge_slashes` would collapse these upstream, so we must too:
+  //   ["", "auth", "login"]        (leading //)      → "auth/login"
+  //   ["auth", "", "login"]        (embedded //)     → "auth/login"
+  //   ["auth//login"]              (%2F%2F decoded)  → "auth/login"
+  //   ["/auth", "login"]           (leading-slash segment) → "auth/login"
+  // Collapse runs of "/", strip a leading "/", then lowercase. (security N2)
   const path = segments
-    .filter((segment) => segment.length > 0)
     .join("/")
+    .replace(/\/+/g, "/")
+    .replace(/^\//, "")
     .toLowerCase();
   return BLOCKED_PROXY_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
@@ -108,13 +126,14 @@ function serviceUnavailable(): NextResponse {
  * Read the request body, counting bytes off the stream and aborting the moment
  * the total passes `MAX_BODY_BYTES` — a `Content-Length` pre-check only stops
  * honest clients (a chunked or understated-length body would otherwise buffer
- * unbounded on this single-instance Node process). Returns the buffered body,
- * `undefined` for an empty body, or `"too-large"` to reject with 413.
- * (security N1)
+ * unbounded on this single-instance Node process). A wall-clock timeout
+ * (`bodyReadTimeoutMs`) bounds a slow drip that never trips the size cap.
+ * Returns the buffered body, `undefined` for an empty body, `"too-large"` to
+ * reject with 413, or `"timeout"` to reject with 408. (security N1)
  */
 async function readCappedBody(
   req: NextRequest,
-): Promise<ArrayBuffer | undefined | "too-large"> {
+): Promise<ArrayBuffer | undefined | "too-large" | "timeout"> {
   if (!req.body) {
     const buf = await req.arrayBuffer();
     if (buf.byteLength > MAX_BODY_BYTES) return "too-large";
@@ -122,19 +141,36 @@ async function readCappedBody(
   }
 
   const reader = req.body.getReader();
+  const deadline = AbortSignal.timeout(bodyReadTimeoutMs());
+  const onTimeout = () => {
+    // Unblocks a pending reader.read() (it resolves { done: true }); the
+    // deadline.aborted checks below turn that into a "timeout" result.
+    void reader.cancel().catch(() => {});
+  };
+  deadline.addEventListener("abort", onTimeout, { once: true });
+
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > MAX_BODY_BYTES) {
-      await reader.cancel();
-      return "too-large";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel();
+        return "too-large";
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    if (deadline.aborted) return "timeout";
+    throw new Error("bff_body_read_failed");
+  } finally {
+    deadline.removeEventListener("abort", onTimeout);
   }
+
+  if (deadline.aborted) return "timeout";
 
   if (total === 0) return undefined;
   const out = new Uint8Array(total);
@@ -173,13 +209,12 @@ async function forward(
   headers.set(CORRELATION_HEADER, correlationIdFor(req));
   headers.set("authorization", `Bearer ${accessToken}`);
 
-  // Real browser IP for the backend rate limiter (§A.10). The BFF is a
-  // trusted proxy in the portal deployment; this header carries the client.
-  const clientIp = clientIpFrom(req);
-  if (clientIp) {
-    headers.set("x-forwarded-for", clientIp);
-    headers.set("x-real-ip", clientIp);
-  }
+  // Real client IP for the backend rate limiter (§A.10). Sourced only from the
+  // configured trusted header (CLIENT_IP_HEADER) — never an inbound proxy
+  // header the browser could have set — and forwarded as exactly one validated
+  // X-Forwarded-For. Absent that config, nothing is forwarded and the backend
+  // rate-limits per-BFF (and logs the fallback).
+  setForwardedFor(headers, clientIpFrom(req));
 
   return fetch(targetUrl, {
     method: req.method,
@@ -247,6 +282,10 @@ export async function handleBffRequest(
     const capped = await readCappedBody(req);
     if (capped === "too-large") {
       return jsonError(413, "Request body too large.");
+    }
+    if (capped === "timeout") {
+      logWarn("bff_body_read_timeout", { path: pathSegments.join("/") });
+      return jsonError(408, "Timed out reading the request body.");
     }
     body = capped;
   }

@@ -1,5 +1,6 @@
+import { NextRequest } from "next/server";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DELETE, GET, POST } from "@/app/api/bff/[...path]/route";
 import { __resetRefreshDedupe } from "@/lib/auth/exchange";
@@ -12,7 +13,10 @@ function ctx(path: string[]) {
 }
 
 beforeEach(() => __resetRefreshDedupe());
-afterEach(() => __resetRefreshDedupe());
+afterEach(() => {
+  __resetRefreshDedupe();
+  vi.unstubAllEnvs();
+});
 
 describe("BFF proxy — forwarding", () => {
   it("injects the rp_at bearer, re-adds /api/v1, and relays X-Correlation-ID", async () => {
@@ -364,9 +368,9 @@ describe("BFF proxy — header hygiene", () => {
     );
   });
 
-  it("forwards the real client IP as X-Forwarded-For / X-Real-IP for the backend rate limiter", async () => {
-    let seenXff: string | null = null;
-    let seenRealIp: string | null = null;
+  it("ignores an inbound browser X-Forwarded-For — no CLIENT_IP_HEADER, no forwarded IP", async () => {
+    let seenXff: string | null = "unset";
+    let seenRealIp: string | null = "unset";
     server.use(
       http.get(`${API}/api/v1/sermons`, ({ request }) => {
         seenXff = request.headers.get("x-forwarded-for");
@@ -378,14 +382,69 @@ describe("BFF proxy — header hygiene", () => {
     const res = await GET(
       makeRequest("http://localhost:3000/api/bff/sermons", {
         cookies: { rp_at: makeJwt(3600) },
-        headers: { "x-forwarded-for": "203.0.113.9, 10.0.0.1" },
+        // 100% attacker-controlled in the dev/compose topology — must not leak
+        // through to the backend rate-limit key.
+        headers: {
+          "x-forwarded-for": "203.0.113.9, 10.0.0.1",
+          "x-real-ip": "203.0.113.9",
+        },
       }),
       ctx(["sermons"]),
     );
 
     expect(res.status).toBe(200);
-    expect(seenXff).toBe("203.0.113.9");
-    expect(seenRealIp).toBe("203.0.113.9");
+    expect(seenXff).toBeNull();
+    expect(seenRealIp).toBeNull();
+  });
+
+  it("forwards ONE validated X-Forwarded-For from the configured CLIENT_IP_HEADER, and no X-Real-IP", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "x-real-ip");
+    let seenXff: string | null = "unset";
+    let seenRealIp: string | null = "unset";
+    server.use(
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenXff = request.headers.get("x-forwarded-for");
+        seenRealIp = request.headers.get("x-real-ip");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+        headers: {
+          "x-real-ip": "198.51.100.7", // the trusted-hop value
+          "x-forwarded-for": "203.0.113.9", // attacker noise — still ignored
+        },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(seenXff).toBe("198.51.100.7");
+    expect(seenRealIp).toBeNull();
+  });
+
+  it("forwards nothing when the configured CLIENT_IP_HEADER holds a non-IP value", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "x-real-ip");
+    let seenXff: string | null = "unset";
+    server.use(
+      http.get(`${API}/api/v1/sermons`, ({ request }) => {
+        seenXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "x-real-ip": "not-an-ip" },
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(200);
+    expect(seenXff).toBeNull();
   });
 });
 
@@ -481,6 +540,115 @@ describe("BFF proxy — auth-path blocklist (security M1)", () => {
 
     expect(res.status).toBe(404);
     expect(called).toBe(false);
+  });
+
+  it("404s an encoded-slash segment (['auth//login'] from %2F%2F) and never calls upstream (N2)", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { email: "a@b.c", password: "pw" },
+        sameOrigin: true,
+      }),
+      ctx(["auth//login"]),
+    );
+
+    expect(res.status).toBe(404);
+    expect(called).toBe(false);
+  });
+
+  it("404s a leading-slash first segment (['/auth', 'login']) (N2)", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { email: "a@b.c", password: "pw" },
+        sameOrigin: true,
+      }),
+      ctx(["/auth", "login"]),
+    );
+
+    expect(res.status).toBe(404);
+    expect(called).toBe(false);
+  });
+});
+
+describe("BFF proxy — slow-body read timeout (security N1)", () => {
+  it("408s a body that drips under the size cap, and never calls upstream", async () => {
+    vi.stubEnv("BFF_BODY_READ_TIMEOUT_MS", "50");
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    // One chunk, then the stream neither pushes more nor closes — the read loop
+    // would park indefinitely without the timeout.
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+    });
+    const init = {
+      method: "POST",
+      headers: {
+        cookie: `rp_at=${makeJwt(3600)}`,
+        "content-type": "application/json",
+        "sec-fetch-site": "same-origin",
+      },
+      body: stream,
+      duplex: "half", // required for a stream body; absent from the lib types
+    } as unknown as ConstructorParameters<typeof NextRequest>[1];
+    const req = new NextRequest("http://localhost:3000/api/bff/sermons", init);
+
+    const started = Date.now();
+    const res = await POST(req, ctx(["sermons"]));
+
+    expect(res.status).toBe(408);
+    expect(called).toBe(false);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("lets a normal body through well inside the timeout", async () => {
+    vi.stubEnv("BFF_BODY_READ_TIMEOUT_MS", "2000");
+    let seenBody: string | null = null;
+    server.use(
+      http.post(`${API}/api/v1/sermons`, async ({ request }) => {
+        seenBody = await request.text();
+        return HttpResponse.json({ id: "s-1" }, { status: 201 });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/sermons", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { title: "quick" },
+        sameOrigin: true,
+      }),
+      ctx(["sermons"]),
+    );
+
+    expect(res.status).toBe(201);
+    expect(seenBody).toBe(JSON.stringify({ title: "quick" }));
   });
 });
 
