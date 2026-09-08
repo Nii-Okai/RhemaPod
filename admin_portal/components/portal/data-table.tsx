@@ -265,9 +265,19 @@ function DataTable<Row>(props: DataTableProps<Row>) {
   const lastActiveIndexRef = React.useRef(0);
   // Whether keyboard focus is currently somewhere inside this table. Set by the
   // wrapper's bubbling onFocus/onBlur AND by our own focus-moving handlers (so
-  // it holds even if a synthetic focus event is missed). Used to decide whether
-  // reconciling a removed active row should also move DOM focus, or leave it be.
+  // it holds even if a synthetic focus event is missed). Used as a coarse gate
+  // on whether reconciling a removed active row should also move DOM focus.
   const gridHadFocusRef = React.useRef(false);
+  // Snapshot — refreshed at the end of every commit, and after a focus-out that
+  // did not cause one — of whether DOM focus is *genuinely on the active row*
+  // right now. The reconcile effect reads the PRIOR commit's value so it only
+  // restores focus when the row that just vanished was the one the user was on,
+  // not when they had already clicked into dead page background (which lands
+  // focus on <body> with the same null `relatedTarget` as a row removal).
+  const activeRowFocusedRef = React.useRef(false);
+  // `activeKey` mirrored into a ref so the `onBlur` microtask can re-evaluate
+  // `activeRowFocusedRef` without waiting for a commit.
+  const activeKeyRef = React.useRef<string | null>(null);
 
   const activeKeyIndex = activeKey == null ? -1 : orderedKeys.indexOf(activeKey);
   const activeIndex = activeKeyIndex === -1 ? 0 : activeKeyIndex;
@@ -293,10 +303,13 @@ function DataTable<Row>(props: DataTableProps<Row>) {
     if (orderedKeys.indexOf(activeKey) !== -1) return;
 
     // The removed row was the focused element, so the browser has already
-    // dropped focus to <body>; `gridHadFocusRef` is the pre-removal signal.
+    // dropped focus to <body>. Restore it only if that row actually held focus
+    // as of the last commit (`activeRowFocusedRef`) — a user who had clicked
+    // into dead page background also sits on <body>, and must be left there.
     const active = document.activeElement;
     const orphaned = active == null || active === document.body;
-    const shouldRestore = gridHadFocusRef.current && orphaned;
+    const shouldRestore =
+      gridHadFocusRef.current && activeRowFocusedRef.current && orphaned;
 
     if (orderedKeys.length === 0) {
       setActiveKey(null);
@@ -313,6 +326,17 @@ function DataTable<Row>(props: DataTableProps<Row>) {
     lastActiveIndexRef.current = idx;
     if (shouldRestore) rowRefs.current.get(nextKey)?.focus();
   }, [orderedKeys, activeKey]);
+
+  // Runs AFTER the reconcile effect on every commit: capture whether focus is
+  // truly on the active row now, and mirror `activeKey` for the `onBlur`
+  // microtask. Declared here so the reconcile effect above always reads the
+  // previous commit's snapshot, never one already overwritten this commit.
+  useIsomorphicLayoutEffect(() => {
+    activeKeyRef.current = activeKey;
+    activeRowFocusedRef.current =
+      activeKey != null &&
+      rowRefs.current.get(activeKey) === document.activeElement;
+  });
 
   /* --- select-all focus hand-off across the header⇄bulk-bar swap ------ */
 
@@ -338,9 +362,33 @@ function DataTable<Row>(props: DataTableProps<Row>) {
     [selection.indeterminate],
   );
 
+  // Stable ref callback for every row — identity fixed for the component's
+  // life, so React invokes it only on a row's mount/unmount, not every commit.
+  // The row key rides on `data-rowkey`; the returned cleanup (React 19) drops
+  // the entry when the row unmounts.
+  const setRowRef = React.useCallback((el: HTMLDivElement | null) => {
+    if (el == null) return;
+    const key = el.dataset.rowkey;
+    if (key == null) return;
+    const map = rowRefs.current;
+    map.set(key, el);
+    return () => {
+      map.delete(key);
+    };
+  }, []);
+
   const onToggleAll = () => {
     selectAllGestureRef.current = true;
-    gridHadFocusRef.current = true;
+    // Disarm on a microtask no matter what happens next. A fully-controlled
+    // parent whose `onSelectionChange` ignores the change causes NO re-render,
+    // so neither the hand-off effect below nor the older no-deps backstop would
+    // ever clear the flag — leaving it primed to fire a focus move on the next
+    // unrelated `mode`/`selectable` change. The microtask runs after React's
+    // synchronous commit for this (discrete) event, so a genuine swap still
+    // gets its hand-off first.
+    queueMicrotask(() => {
+      selectAllGestureRef.current = false;
+    });
     selection.toggleAll();
   };
 
@@ -354,13 +402,6 @@ function DataTable<Row>(props: DataTableProps<Row>) {
         : columnsSelectAllRef.current;
     target?.focus();
   }, [mode, selectable]);
-
-  // Clear a gesture flag that did not result in a mode swap (e.g. select-all
-  // while already indeterminate → still "bulk"), so it cannot mis-fire on a
-  // later prop-driven mode change.
-  React.useEffect(() => {
-    selectAllGestureRef.current = false;
-  });
 
   const rowStyle: React.CSSProperties = { gridTemplateColumns: template };
 
@@ -446,6 +487,17 @@ function DataTable<Row>(props: DataTableProps<Row>) {
         ) {
           gridHadFocusRef.current = false;
         }
+        // A focus-out that is NOT a row removal (React re-focuses a survivor
+        // synchronously in the reconcile effect for that case, before this
+        // microtask) produces no commit, so the snapshot effect never re-runs.
+        // Refresh it here so a click into dead page background followed by a
+        // `rows` refresh (W7 polls) cannot "restore" focus into a table the
+        // user has already left.
+        queueMicrotask(() => {
+          const k = activeKeyRef.current;
+          activeRowFocusedRef.current =
+            k != null && rowRefs.current.get(k) === document.activeElement;
+        });
       }}
     >
       {selectable ? (
@@ -563,11 +615,8 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                 return (
                   <div
                     key={key}
-                    ref={(el) => {
-                      const m = rowRefs.current;
-                      if (el) m.set(key, el);
-                      else m.delete(key);
-                    }}
+                    ref={setRowRef}
+                    data-rowkey={key}
                     role="row"
                     aria-rowindex={i + (mode === "bulk" ? 1 : 2)}
                     aria-selected={selectable ? selected : undefined}

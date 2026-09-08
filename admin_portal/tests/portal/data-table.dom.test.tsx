@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -356,5 +356,111 @@ describe("DataTable — non-interactive downgrade (gilfoyle W6 nit)", () => {
     render(<DataTable {...base} rows={ROWS} />);
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+});
+
+describe("DataTable — select-all gesture flag cannot stick (fix-pass 2 #1)", () => {
+  it("a no-op controlled toggle does not arm a focus move on a later mode change", async () => {
+    const onSelectionChange = vi.fn(); // fully controlled, silently ignores it
+    const { rerender } = render(
+      <DataTable
+        {...base}
+        rows={ROWS}
+        selectable
+        selectedKeys={new Set<string>()}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    const outside = document.createElement("button");
+    outside.textContent = "outside";
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(outside).toHaveFocus();
+
+    // Pointer-toggle select-all. The controlled parent drops the change, so
+    // there is NO re-render to clear the in-flight gesture flag — only the
+    // disarm microtask does. `fireEvent.click` does not move DOM focus.
+    fireEvent.click(selectAllBox());
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    expect(outside).toHaveFocus();
+
+    // Model a later, separate tick: the disarm microtask runs here.
+    await act(async () => {});
+
+    // An unrelated prop update now flips columns -> bulk. Pre-fix the stale
+    // flag makes the [mode, selectable] layout effect grab the bulk select-all.
+    rerender(
+      <DataTable
+        {...base}
+        rows={ROWS}
+        selectable
+        selectedKeys={new Set(ROWS.map((r) => r.id))}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    expect(
+      screen.getByRole("toolbar", { name: "Bulk actions" }),
+    ).toBeInTheDocument();
+    expect(outside).toHaveFocus();
+    expect(selectAllBox()).not.toHaveFocus();
+
+    outside.remove();
+  });
+});
+
+describe("DataTable — background click then rows refresh (fix-pass 2 #2)", () => {
+  it("does NOT pull focus back into the grid after a click into dead page background", async () => {
+    const { rerender } = render(
+      <DataTable {...base} rows={ROWS} selectable />,
+    );
+
+    const row = rowOf("Row Two");
+    act(() => {
+      row.focus();
+    });
+    expect(row).toHaveFocus();
+
+    // Click into non-focusable page background: DOM focus falls to <body> and
+    // the focusout carries a null relatedTarget — the exact signature of a row
+    // removal, which is why onBlur alone can't tell them apart.
+    act(() => {
+      row.blur();
+    });
+    await act(async () => {}); // flush the onBlur snapshot-refresh microtask
+    expect(document.body).toHaveFocus();
+
+    // A poll/refresh now drops the row the user already left.
+    rerender(
+      <DataTable {...base} rows={[ROWS[0], ROWS[2], ROWS[3]]} selectable />,
+    );
+
+    expect(document.body).toHaveFocus();
+    expect(
+      (document.activeElement as HTMLElement | null)?.closest('[role="grid"]'),
+    ).toBeNull();
+  });
+
+  it("STILL restores focus to a surviving row when the focused row itself is removed (regression)", () => {
+    const { rerender } = render(
+      <DataTable {...base} rows={ROWS} selectable />,
+    );
+
+    const row = rowOf("Row Two");
+    act(() => {
+      row.focus();
+    });
+    expect(row).toHaveFocus();
+
+    // No background click — the row is removed while it still holds focus.
+    rerender(
+      <DataTable {...base} rows={[ROWS[0], ROWS[2], ROWS[3]]} selectable />,
+    );
+
+    const active = document.activeElement as HTMLElement | null;
+    expect(document.body).not.toHaveFocus();
+    expect(active?.getAttribute("role")).toBe("row");
+    expect(active?.closest('[role="grid"]')).not.toBeNull();
   });
 });
