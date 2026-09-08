@@ -48,6 +48,11 @@ export const queryKeys = {
     all: () => ["review"] as const,
     queue: () => [...queryKeys.review.all(), "queue"] as const,
   },
+  nav: {
+    all: () => ["nav"] as const,
+    /** Trailing counts on the sidebar (sermons total, series count, review queue). */
+    counts: () => [...queryKeys.nav.all(), "counts"] as const,
+  },
   session: {
     all: () => ["session"] as const,
     me: () => [...queryKeys.session.all(), "me"] as const,
