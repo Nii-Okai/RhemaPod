@@ -28,10 +28,193 @@ import {
   Pagination,
   Toast,
   EmptyState,
+  DataTable,
   SERMON_STATUS_PIPELINE,
   UPLOAD_STATUS_PIPELINE,
   type AnyStatus,
+  type DataTableColumn,
 } from "@/components/portal";
+
+type DemoRow = {
+  id: string;
+  title: string;
+  speaker: string;
+  duration: string;
+  tier: "free" | "paid";
+  status: AnyStatus;
+};
+
+const DEMO_ROWS: DemoRow[] = [
+  { id: "s1", title: "The Weight of Mercy", speaker: "Ada Nwosu", duration: "42:18", tier: "paid", status: "published" },
+  { id: "s2", title: "Parable of the Sower", speaker: "Daniel Okoye", duration: "35:04", tier: "free", status: "under_review" },
+  { id: "s3", title: "A Table in the Wilderness", speaker: "Miriam Boateng", duration: "28:47", tier: "free", status: "draft" },
+  { id: "s4", title: "On Patient Endurance", speaker: "Ada Nwosu", duration: "51:12", tier: "paid", status: "pending" },
+  { id: "s5", title: "The Prodigal Returns", speaker: "Samuel Adjei", duration: "39:30", tier: "free", status: "approved" },
+  { id: "s6", title: "Living Water", speaker: "Daniel Okoye", duration: "44:56", tier: "paid", status: "rejected" },
+];
+
+const DEMO_COLUMNS: DataTableColumn<DemoRow>[] = [
+  {
+    key: "title",
+    header: "Sermon",
+    gridWidth: "2.4fr",
+    cell: (r) => (
+      <div className="flex min-w-0 items-center gap-10">
+        <MediaPlaceholder
+          scale="thumb"
+          className="h-[24px] w-[40px] shrink-0 rounded-4"
+          label="thumb"
+        />
+        <span className="truncate text-[14.5px] font-semibold">{r.title}</span>
+      </div>
+    ),
+  },
+  {
+    key: "speaker",
+    header: "Speaker",
+    gridWidth: "1.1fr",
+    cell: (r) => (
+      <span className="truncate text-[14px] text-ink-muted">{r.speaker}</span>
+    ),
+  },
+  {
+    key: "duration",
+    header: "Length",
+    gridWidth: "84px",
+    align: "end",
+    cell: (r) => (
+      <span className="font-mono text-[12.5px] text-ink-muted">
+        {r.duration}
+      </span>
+    ),
+  },
+  {
+    key: "tier",
+    header: "Tier",
+    gridWidth: "74px",
+    cell: (r) => <TierChip tier={r.tier} />,
+  },
+  {
+    key: "status",
+    header: "Status",
+    gridWidth: "1.1fr",
+    cell: (r) => <StatusBadge status={r.status} />,
+  },
+];
+
+function RowMenuGlyph() {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label="Row actions"
+      className="rounded-6 px-6 text-[16px] leading-none text-ink-faint hover:bg-surface-sunken"
+    >
+      &#x22EF;
+    </button>
+  );
+}
+
+function DataTableShowcase() {
+  const [page, setPage] = React.useState(1);
+  return (
+    <div className="flex flex-col gap-16">
+      <div className="flex flex-col gap-6">
+        <span className="text-mono-eyebrow text-ink-faint">
+          idle · selectable · footer range + pagination — click a checkbox to
+          swap the header for the clay bulk bar
+        </span>
+        <DataTable
+          caption="Sermons (showcase)"
+          columns={DEMO_COLUMNS}
+          rows={DEMO_ROWS}
+          rowKey={(r) => r.id}
+          selectable
+          bulkActions={
+            <>
+              <Button size="sm" variant="secondary">
+                Submit for review
+              </Button>
+              <Button size="sm" variant="destructive">
+                Delete
+              </Button>
+            </>
+          }
+          rowActions={() => <RowMenuGlyph />}
+          onRowClick={() => {}}
+          rangeLabel="1–6 of 128"
+          page={page}
+          pageCount={22}
+          onPageChange={setPage}
+        />
+      </div>
+
+      <div className="flex flex-col gap-6">
+        <span className="text-mono-eyebrow text-ink-faint">
+          two rows selected · clay bulk bar · selected rows tinted clay-50
+        </span>
+        <DataTable
+          caption="Sermons (bulk-bar showcase)"
+          columns={DEMO_COLUMNS}
+          rows={DEMO_ROWS}
+          rowKey={(r) => r.id}
+          selectable
+          defaultSelectedKeys={new Set(["s2", "s3"])}
+          bulkActions={
+            <>
+              <Button size="sm" variant="secondary">
+                Submit for review
+              </Button>
+              <Button size="sm" variant="destructive">
+                Delete
+              </Button>
+            </>
+          }
+          rowActions={() => <RowMenuGlyph />}
+          rangeLabel="1–6 of 128"
+        />
+      </div>
+
+      <div className="flex flex-col gap-6">
+        <span className="text-mono-eyebrow text-ink-faint">
+          loading · exact-geometry skeleton rows (#EFE9DF, 60px), no spinner
+        </span>
+        <DataTable
+          caption="Sermons (loading showcase)"
+          columns={DEMO_COLUMNS}
+          rows={[]}
+          rowKey={(r: DemoRow) => r.id}
+          selectable
+          rowActions={() => <RowMenuGlyph />}
+          loading
+          skeletonRows={5}
+          rangeLabel="Loading…"
+        />
+      </div>
+
+      <div className="flex flex-col gap-6">
+        <span className="text-mono-eyebrow text-ink-faint">
+          empty · the screen passes an EmptyState into the `empty` slot
+        </span>
+        <DataTable
+          caption="Sermons (empty showcase)"
+          columns={DEMO_COLUMNS}
+          rows={[]}
+          rowKey={(r: DemoRow) => r.id}
+          selectable
+          rowActions={() => <RowMenuGlyph />}
+          empty={
+            <EmptyState
+              title="No sermons yet"
+              description="Draft your first sermon and it will show up here."
+              action={<Button size="sm">New sermon</Button>}
+            />
+          }
+        />
+      </div>
+    </div>
+  );
+}
 
 /* ============================================================================
    /kit — W2 component showcase.
@@ -504,6 +687,15 @@ export default function KitPage() {
           <Avatar name="Ada Nwosu" size={32} />
           <Avatar name="Ada Nwosu" size={48} />
         </Panel>
+      </Section>
+
+      {/* 10 — DataTable ------------------------------------------------------ */}
+      <Section
+        index="10"
+        title="DataTable"
+        blurb="CSS-grid rows (not <table>), 38px sunken sticky header with mono-eyebrow labels, 60px body rows. Opt-in selection: per-row checkbox, header select-all (indeterminate on a partial page), Space toggles the focused row, Shift-click / Shift-Space range-selects from the anchor. ≥1 selected swaps the 38px header for the 44px clay bulk bar. Sunken footer = rangeLabel + Pagination."
+      >
+        <DataTableShowcase />
       </Section>
     </main>
   );

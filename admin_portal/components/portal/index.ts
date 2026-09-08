@@ -42,3 +42,19 @@ export type { EmptyStateProps } from "./empty-state";
 
 export { PageHeader } from "./page-header";
 export type { PageHeaderProps } from "./page-header";
+
+export {
+  DataTable,
+  gridTemplateColumns,
+  headerMode,
+  footerModel,
+  ariaColCount,
+} from "./data-table";
+export type {
+  DataTableColumn,
+  DataTableColumnAlign,
+  DataTableProps,
+} from "./data-table";
+
+export { DataTableSkeleton } from "./data-table-skeleton";
+export type { DataTableSkeletonProps } from "./data-table-skeleton";
