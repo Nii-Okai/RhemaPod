@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/portal/data-table";
 import { EmptyState } from "@/components/portal/empty-state";
 import { MediaPlaceholder } from "@/components/portal/media-placeholder";
-import { PageHeader } from "@/components/portal/page-header";
+import { PageHeader } from "@/components/portal";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { TierChip } from "@/components/portal/chips";
 import { useSession } from "@/lib/auth/session-context";
@@ -20,6 +20,7 @@ import { useSpeakers } from "@/lib/query/hooks/use-speakers";
 import {
   buildSermonsSearch,
   useSermonsQuery,
+  MERGE_CAP,
   type StatusFilter,
   type TierFilter,
 } from "@/lib/query/hooks/use-sermons-query";
@@ -165,6 +166,14 @@ export function SermonsScreen() {
   const bulkEligibleForSubmit = selectedRows.filter(
     (row) => row.status === "draft" || row.status === "rejected",
   );
+  // Only draft/rejected rows can be submitted. When the selection is a mix,
+  // name the count on the button so it's clear N of M will go — never a silent
+  // partial fire. All-eligible keeps the plain label; 0-eligible disables.
+  const submitLabel =
+    bulkEligibleForSubmit.length > 0 &&
+    bulkEligibleForSubmit.length < selectedRows.length
+      ? `Submit ${bulkEligibleForSubmit.length} for review`
+      : "Submit for review";
 
   const handleBulkSubmit = () => {
     if (bulkEligibleForSubmit.length === 0) return;
@@ -293,9 +302,13 @@ export function SermonsScreen() {
               </Alert>
             )}
             {mergeCapExceeded && (
-              <Alert variant="warning" title="Showing the first 100 of each state">
-                There are more than 100 sermons pending or under review — this
-                page may be incomplete. Filter by speaker or series to narrow it.
+              <Alert
+                variant="warning"
+                title={`Showing the first ${MERGE_CAP} of each state`}
+              >
+                There are more than {MERGE_CAP} sermons pending or under review —
+                this page may be incomplete. Filter by speaker or series to
+                narrow it.
               </Alert>
             )}
             {actionError && (
@@ -334,7 +347,7 @@ export function SermonsScreen() {
                 }
                 onClick={handleBulkSubmit}
               >
-                Submit for review
+                {submitLabel}
               </Button>
               <Button
                 size="sm"
@@ -353,6 +366,7 @@ export function SermonsScreen() {
               title={row.title}
               status={row.status}
               role={role}
+              busy={workflow.isPending}
               onAction={(action) => handleRowAction(row, action)}
             />
           )}

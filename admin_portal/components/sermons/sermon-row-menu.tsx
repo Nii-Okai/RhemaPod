@@ -32,7 +32,11 @@ export interface SermonRowMenuProps {
   role: string;
   /** Fired for every non-"edit" action. */
   onAction: (action: Exclude<RowMenuAction, "edit">) => void;
-  /** Test seam — render the menu already open. */
+  /** A workflow mutation is in flight — disable the menu so a second action
+      can't snapshot the first's optimistic state before it settles. Edit stays
+      reachable (it's navigation, not a mutation). */
+  busy?: boolean;
+  /** Test seam — render the menu already open. Inert outside the test env. */
   defaultOpen?: boolean;
 }
 
@@ -42,12 +46,17 @@ export function SermonRowMenu({
   status,
   role,
   onAction,
+  busy = false,
   defaultOpen,
 }: SermonRowMenuProps) {
   const items = rowMenuItems(status, role);
 
   return (
-    <DropdownMenu defaultOpen={defaultOpen}>
+    <DropdownMenu
+      defaultOpen={
+        process.env.NODE_ENV === "test" ? defaultOpen : undefined
+      }
+    >
       <DropdownMenuTrigger
         aria-label={`Actions for ${title}`}
         className="flex h-[28px] w-[28px] items-center justify-center rounded-8 text-[16px] leading-none text-ink-faint outline-none transition-colors duration-[140ms] ease-out hover:bg-surface-sunken hover:text-ink focus-visible:focus-ring-button data-[state=open]:bg-surface-sunken data-[state=open]:text-ink"
@@ -55,19 +64,27 @@ export function SermonRowMenu({
         <span aria-hidden>···</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        {items.map((item) =>
-          item.action === "edit" ? (
-            <DropdownMenuItem key="edit" asChild>
-              <Link href={`/sermons/${sermonId}`}>{item.label}</Link>
-            </DropdownMenuItem>
-          ) : (
+        {items.map((item) => {
+          if (item.action === "edit") {
+            return (
+              <DropdownMenuItem key="edit" asChild>
+                <Link href={`/sermons/${sermonId}`}>{item.label}</Link>
+              </DropdownMenuItem>
+            );
+          }
+          const itemDisabled = item.disabled || busy;
+          return (
             <DropdownMenuItem
               key={item.action}
-              disabled={item.disabled}
-              title={item.title}
+              disabled={itemDisabled}
+              title={
+                busy && !item.disabled
+                  ? "Please wait — the previous action is still running."
+                  : item.title
+              }
               destructive={item.destructive}
               onSelect={(event) => {
-                if (item.disabled) {
+                if (itemDisabled) {
                   event.preventDefault();
                   return;
                 }
@@ -76,8 +93,8 @@ export function SermonRowMenu({
             >
               {item.label}
             </DropdownMenuItem>
-          ),
-        )}
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

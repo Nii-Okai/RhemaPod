@@ -115,12 +115,16 @@ const page = (items: SermonListItem[], total = items.length) => ({
 
 interface ListHandlerOptions {
   rows?: SermonListItem[];
+  /** Reported `total` for the list query (drives pageCount). Defaults to
+      `rows.length`. Set it higher than `rows.length` to model a page deep in a
+      large list without listing every row. */
+  total?: number;
   onList?: (query: URLSearchParams) => void;
 }
 
 /** One `/api/bff/sermons` handler that serves BOTH the list query and the
     `limit=1` count probes, plus empty speakers/series. */
-function backend({ rows = [draftRow], onList }: ListHandlerOptions = {}) {
+function backend({ rows = [draftRow], total, onList }: ListHandlerOptions = {}) {
   server.use(
     http.get("*/api/bff/speakers", () => HttpResponse.json([])),
     http.get("*/api/bff/series", () => HttpResponse.json([])),
@@ -131,9 +135,18 @@ function backend({ rows = [draftRow], onList }: ListHandlerOptions = {}) {
         return HttpResponse.json(page([], 0));
       }
       onList?.(query);
-      return HttpResponse.json(page(rows));
+      return HttpResponse.json(page(rows, total ?? rows.length));
     }),
   );
+}
+
+/** happy-dom has no `window.confirm`; stub it for a test body. */
+function stubConfirm(result = true): () => void {
+  const original = window.confirm;
+  window.confirm = vi.fn(() => result);
+  return () => {
+    window.confirm = original;
+  };
 }
 
 function renderScreen(role = "editor") {
@@ -191,7 +204,7 @@ describe("SermonsScreen — status → query mapping", () => {
 describe("SermonsScreen — filter bar writes the URL", () => {
   it("changing the status resets the page and replaces (not pushes) history", async () => {
     nav.search = new URLSearchParams("status=drafts&page=3");
-    backend();
+    backend({ total: 100 }); // page 3 is well within range → no clamp
 
     renderScreen();
     await screen.findByText("The Prodigal Son");
@@ -221,15 +234,15 @@ describe("SermonsScreen — empty state", () => {
 });
 
 describe("SermonsScreen — optimistic bulk submit + rollback", () => {
-  it("flips the badge to Pending review, then rolls back to Draft and shows an alert on a 500", async () => {
+  it("flips the badge to Pending review, then rolls back to Draft and shows an alert carrying the backend detail + correlation id on a 500", async () => {
     nav.search = new URLSearchParams("status=drafts");
     backend();
     server.use(
       http.post("*/api/bff/sermons/s-1/submit", async () => {
         await delay(40);
         return HttpResponse.json(
-          { detail: "Nope", correlation_id: "cid-9" },
-          { status: 500 },
+          { detail: "Sermon has no media", correlation_id: "cid-9f2a" },
+          { status: 409 },
         );
       }),
     );
@@ -248,11 +261,166 @@ describe("SermonsScreen — optimistic bulk submit + rollback", () => {
     expect(await screen.findByText("Pending review")).toBeInTheDocument();
     // Rollback + alert.
     expect(await screen.findByText("Draft")).toBeInTheDocument();
-    const alert = await screen.findByText("That action didn’t go through");
-    expect(alert).toBeInTheDocument();
     expect(
-      screen.getByText(/Couldn’t submit “The Prodigal Son”/),
+      await screen.findByText("That action didn’t go through"),
     ).toBeInTheDocument();
+
+    // The alert must surface the backend reason AND the support ref — not just
+    // the sermon title (regression: mutation.onError was dead code, so
+    // ApiError.detail / .correlationId were dropped from every failure).
+    const alertText = await screen.findByText(
+      /Couldn’t submit “The Prodigal Son”\./,
+    );
+    expect(alertText).toHaveTextContent("Sermon has no media");
+    expect(alertText).toHaveTextContent("reference: cid-9f2a");
+  });
+
+  it("partial bulk delete: the rows that succeeded stay gone, the one that failed stays, and the alert names it", async () => {
+    nav.search = new URLSearchParams("status=drafts");
+    const all: SermonListItem[] = [
+      { ...draftRow, id: "s-1", title: "Alpha" },
+      { ...draftRow, id: "s-2", title: "Bravo" },
+      { ...draftRow, id: "s-3", title: "Charlie" },
+    ];
+    const deleted = new Set<string>();
+    server.use(
+      http.get("*/api/bff/speakers", () => HttpResponse.json([])),
+      http.get("*/api/bff/series", () => HttpResponse.json([])),
+      http.get("*/api/bff/sermons", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        if (query.get("limit") === "1") return HttpResponse.json(page([], 0));
+        const live = all.filter((r) => !deleted.has(r.id));
+        return HttpResponse.json(page(live, live.length));
+      }),
+      http.delete("*/api/bff/sermons/s-1", () => {
+        deleted.add("s-1");
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete("*/api/bff/sermons/s-3", () => {
+        deleted.add("s-3");
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete("*/api/bff/sermons/s-2", async () => {
+        await delay(20);
+        return HttpResponse.json(
+          { detail: "Sermon is locked", correlation_id: "cid-lock" },
+          { status: 409 },
+        );
+      }),
+    );
+
+    const restoreConfirm = stubConfirm(true);
+    try {
+      renderScreen();
+      await screen.findByText("Alpha");
+
+      await userEvent.click(
+        screen.getByRole("checkbox", { name: "Select all rows" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+      // The alert is set in the same tick the per-row reconcile runs, so once
+      // it's on screen the succeeded/failed split has been applied.
+      const alertText = await screen.findByText(/Couldn’t delete “Bravo”\./);
+      expect(alertText).toHaveTextContent("Sermon is locked");
+      expect(alertText).toHaveTextContent("reference: cid-lock");
+
+      // Final reconciled state: the two that succeeded stay gone (no rollback
+      // flash + re-vanish), the one that failed stays put.
+      await vi.waitFor(() => {
+        expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+        expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
+        expect(screen.getByText("Bravo")).toBeInTheDocument();
+      });
+    } finally {
+      restoreConfirm();
+    }
+  });
+});
+
+describe("SermonsScreen — bulk submit reflects the eligible count", () => {
+  it("labels the button with N when only some of the selected rows are eligible", async () => {
+    nav.search = new URLSearchParams();
+    backend({
+      rows: [
+        { ...draftRow, id: "s-1", title: "Draft one", status: "draft" },
+        { ...draftRow, id: "s-2", title: "Published one", status: "published" },
+      ],
+    });
+
+    renderScreen();
+    await screen.findByText("Draft one");
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Select all rows" }),
+    );
+
+    // 1 of 2 selected is submittable → the count is on the button.
+    expect(
+      await screen.findByRole("button", { name: "Submit 1 for review" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("SermonsScreen — row menu gated while a mutation is in flight", () => {
+  it("disables another row's menu actions while workflow.isPending, so a 2nd onMutate can't snapshot the 1st's optimistic state", async () => {
+    nav.search = new URLSearchParams("status=drafts");
+    backend({
+      rows: [
+        { ...draftRow, id: "s-1", title: "Alpha" },
+        { ...draftRow, id: "s-2", title: "Bravo" },
+      ],
+    });
+    server.use(
+      http.post("*/api/bff/sermons/s-1/submit", async () => {
+        await delay(300);
+        return HttpResponse.json({ detail: "ok" });
+      }),
+    );
+
+    renderScreen();
+    await screen.findByText("Alpha");
+
+    // Submit Alpha from the bulk bar → enter the pending window.
+    await userEvent.click(screen.getAllByLabelText("Select row")[0]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Submit for review" }),
+    );
+    await screen.findByText("Pending review"); // optimistic → mutation pending
+
+    // Bravo is still a draft; its menu's mutating items must be disabled.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Actions for Bravo" }),
+    );
+    const menu = await screen.findByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Submit for review" }),
+    ).toHaveAttribute("data-disabled");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Delete" }),
+    ).toHaveAttribute("data-disabled");
+  });
+});
+
+describe("SermonsScreen — page clamp after the last page empties", () => {
+  it("drops to the last real page and replaces the URL when the current page is beyond the end", async () => {
+    // URL asks for page 3; the backend only has 10 rows (1 page of 25).
+    nav.search = new URLSearchParams("page=3");
+    backend({
+      rows: Array.from({ length: 10 }, (_, i) => ({
+        ...draftRow,
+        id: `s-${i}`,
+        title: `Sermon ${i}`,
+      })),
+    });
+
+    renderScreen();
+
+    await vi.waitFor(() => {
+      expect(nav.replace).toHaveBeenCalled();
+    });
+    const href = nav.replace.mock.calls.at(-1)![0];
+    expect(href).not.toContain("page=");
   });
 });
 

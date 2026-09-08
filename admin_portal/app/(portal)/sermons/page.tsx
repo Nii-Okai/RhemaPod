@@ -28,6 +28,19 @@ function SermonsFallback() {
         title="Sermons"
         subhead="Draft, review and publish the spoken word."
       />
+      {/* Filter-bar spacer — same 34px row height and layout as
+          <SermonsFilterBar>, so the bar doesn't pop in post-hydration (CLS).
+          `aria-hidden`: the real bar carries the controls. */}
+      <div
+        aria-hidden
+        className="flex flex-wrap items-center gap-10"
+        data-slot="sermons-filter-bar-skeleton"
+      >
+        <span className="h-[34px] w-[268px] rounded-10 bg-neutral-badge" />
+        <span className="h-[32px] w-[168px] rounded-9 bg-border-subtle" />
+        <span className="h-[32px] w-[168px] rounded-9 bg-border-subtle" />
+        <span className="h-[32px] w-[124px] rounded-9 bg-border-subtle" />
+      </div>
       <div className="overflow-hidden rounded-16 border border-border bg-surface">
         <DataTableSkeleton
           gridTemplate="44px 2.4fr 1.1fr 1fr 84px 74px 1.1fr 40px"

@@ -33,8 +33,13 @@
 
 "use client";
 
-import { useMemo } from "react";
-import { useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
+import { useEffect, useMemo } from "react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+  type ReadonlyURLSearchParams,
+} from "next/navigation";
 
 import type { SermonStatus } from "@/components/sermons/sermon-status";
 import type { SermonListParams } from "@/lib/query/keys";
@@ -192,18 +197,30 @@ export function buildSermonsSearch(
   return next.toString();
 }
 
-/** Backend list order: updated_at desc (nulls last), then created_at desc. */
+/** Backend list order: updated_at desc (nulls last), then created_at desc.
+    Compares parsed epoch millis, not raw strings, so it does not depend on the
+    backend emitting fixed-precision ISO-8601 UTC. A missing/unparseable
+    `updated_at` sorts last within its `updated_at` group. */
+function ts(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
 function byRecency(a: SermonListItem, b: SermonListItem): number {
-  const au = a.updated_at ?? "";
-  const bu = b.updated_at ?? "";
-  if (au !== bu) return au < bu ? 1 : -1;
-  return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0;
+  const au = ts(a.updated_at);
+  const bu = ts(b.updated_at);
+  if (au !== bu) return bu - au;
+  return ts(b.created_at) - ts(a.created_at);
 }
 
 export interface SermonsQueryResult {
   state: SermonsUrlState;
   rows: SermonListItem[];
   total: number;
+  /** 1-based, clamped to `[1, pageCount]`. If the URL asked for a higher page
+      (its rows were deleted) this is already the real last page and the hook
+      has queued a `router.replace` to bring the URL in line. */
   page: number;
   pageCount: number;
   pageSize: number;
@@ -260,7 +277,7 @@ export function useSermonsQuery(): SermonsQueryResult {
     { enabled: isUnion },
   );
 
-  return useMemo<SermonsQueryResult>(() => {
+  const result = useMemo<SermonsQueryResult>(() => {
     if (isUnion) {
       const merged = [
         ...(pending.data?.items ?? []),
@@ -268,16 +285,21 @@ export function useSermonsQuery(): SermonsQueryResult {
       ].sort(byRecency);
       const total =
         (pending.data?.total ?? 0) + (under.data?.total ?? 0);
-      const rows = merged.slice(offset, offset + PAGE_SIZE);
       const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      // Clamp a stale/too-high page (e.g. the last page was just deleted) so
+      // the table never renders an empty page or a "101–100 of 50" range. The
+      // effect below `router.replace`s the URL down to match.
+      const clampedPage = Math.min(state.page, pageCount);
+      const clampedOffset = (clampedPage - 1) * PAGE_SIZE;
+      const rows = merged.slice(clampedOffset, clampedOffset + PAGE_SIZE);
       return {
         state,
         rows,
         total,
-        page: state.page,
+        page: clampedPage,
         pageCount,
         pageSize: PAGE_SIZE,
-        rangeLabel: rangeLabel(offset, rows.length, total),
+        rangeLabel: rangeLabel(clampedOffset, rows.length, total),
         isPending: pending.isPending || under.isPending,
         isFetching: pending.isFetching || under.isFetching,
         isError: pending.isError || under.isError,
@@ -292,14 +314,16 @@ export function useSermonsQuery(): SermonsQueryResult {
     const rows = page?.items ?? [];
     const total = page?.total ?? 0;
     const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const clampedPage = Math.min(state.page, pageCount);
+    const displayOffset = (clampedPage - 1) * PAGE_SIZE;
     return {
       state,
       rows,
       total,
-      page: state.page,
+      page: clampedPage,
       pageCount,
       pageSize: PAGE_SIZE,
-      rangeLabel: rangeLabel(offset, rows.length, total),
+      rangeLabel: rangeLabel(displayOffset, rows.length, total),
       isPending: single.isPending,
       isFetching: single.isFetching,
       isError: single.isError,
@@ -308,7 +332,6 @@ export function useSermonsQuery(): SermonsQueryResult {
     };
   }, [
     isUnion,
-    offset,
     state,
     single.data,
     single.isPending,
@@ -326,4 +349,29 @@ export function useSermonsQuery(): SermonsQueryResult {
     under.isError,
     under.error,
   ]);
+
+  // Once data has resolved, if the URL still points past the last page (the
+  // rows on it were just deleted), replace `page` down to the real last page —
+  // once, never in a loop (the replace updates `searchParams`, which re-parses
+  // `state.page` inside the bound and stops this firing again).
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    if (result.isPending || result.isFetching) return;
+    if (state.page <= result.pageCount) return;
+    const search = buildSermonsSearch(searchParams, { page: result.pageCount });
+    router.replace(search ? `${pathname}?${search}` : pathname, {
+      scroll: false,
+    });
+  }, [
+    result.isPending,
+    result.isFetching,
+    result.pageCount,
+    state.page,
+    searchParams,
+    router,
+    pathname,
+  ]);
+
+  return result;
 }
