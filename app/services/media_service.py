@@ -110,6 +110,7 @@ async def create_upload_ticket(
         raw_key=key,
         original_filename=filename,
         content_type=content_type,
+        size_bytes=size_bytes,
         media_type=media_type,
         status=UploadStatus.AWAITING_UPLOAD,
         created_by=actor.id,

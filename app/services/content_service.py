@@ -279,6 +279,56 @@ async def get_sermon_detail(
         media_refs=sermon.media_refs,
         published_at=sermon.published_at,
         created_at=sermon.created_at,
+        updated_at=sermon.updated_at,
+    )
+
+
+def staff_scope_hides(sermon: Sermon, requester: User) -> bool:
+    """Whether the editor-scoping rule keeps this sermon out of `requester`'s view.
+
+    Editors are confined to sermons they created; managers and admins see any.
+    This is the row-level form of the `Sermon.created_by == requester.id`
+    predicate `list_sermons_for_staff` applies in SQL — keep the two in step.
+    A caller that hits this returns 404, never 403: an editor must not be able
+    to tell someone else's sermon exists.
+    """
+    return requester.role == UserRole.EDITOR and sermon.created_by != requester.id
+
+
+async def get_sermon_for_staff(
+    db: AsyncSession, sermon_id: uuid.UUID, requester: User
+) -> SermonDetail:
+    """Load one sermon in ANY status for the staff editor screen.
+
+    Unlike `get_sermon_detail` (published-only for viewers), this is the
+    workflow-aware read: an editor gets their own draft/rejected/pending work,
+    a manager or admin gets anyone's. An editor asking for another editor's
+    sermon gets 404, not 403.
+    """
+    stmt = (
+        select(Sermon)
+        .where(Sermon.id == sermon_id)
+        .options(selectinload(Sermon.media_refs), selectinload(Sermon.tags))
+    )
+    sermon = (await db.execute(stmt)).scalar_one_or_none()
+    if sermon is None or staff_scope_hides(sermon, requester):
+        raise ContentError("Sermon not found", status_code=404)
+
+    series = None
+    if sermon.series_id is not None:
+        series = await db.get(Series, sermon.series_id)
+    tier = effective_tier(sermon, series)
+    has_sub = await _has_subscription(db, requester)
+
+    base = to_list_item(sermon, tier, has_sub)
+    return SermonDetail(
+        **base.model_dump(),
+        status=sermon.status,
+        tags=[t.tag for t in sermon.tags],
+        media_refs=sermon.media_refs,
+        published_at=sermon.published_at,
+        created_at=sermon.created_at,
+        updated_at=sermon.updated_at,
     )
 
 
@@ -391,9 +441,14 @@ async def transition(
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
 
-    # Editors may only submit their own drafts.
-    if action == "submit" and actor.role == UserRole.EDITOR and sermon.created_by != actor.id:
-        raise ContentError("You can only submit your own sermons", status_code=403)
+    # Editors act only on their own sermons. `submit` says so plainly (403);
+    # `withdraw` 404s instead, matching the staff read — an editor must not be
+    # able to probe another editor's sermon by guessing its id.
+    if staff_scope_hides(sermon, actor):
+        if action == "withdraw":
+            raise ContentError("Sermon not found", status_code=404)
+        if action == "submit":
+            raise ContentError("You can only submit your own sermons", status_code=403)
 
     try:
         new_status = resolve_transition(action, sermon.status, actor.role)
@@ -446,6 +501,21 @@ async def approval_history(db: AsyncSession, sermon_id: uuid.UUID) -> list[Appro
         .order_by(ApprovalLog.created_at.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def approval_history_for_staff(
+    db: AsyncSession, sermon_id: uuid.UUID, requester: User
+) -> list[ApprovalLog]:
+    """Approval log for the staff editor screen.
+
+    An editor reads the log for their OWN sermon — it's where they find out why
+    it was rejected. Managers and admins read any sermon's log. Another editor's
+    sermon (or a missing one) is 404, not 403: don't confirm it exists.
+    """
+    sermon = await db.get(Sermon, sermon_id)
+    if sermon is None or staff_scope_hides(sermon, requester):
+        raise ContentError("Sermon not found", status_code=404)
+    return await approval_history(db, sermon_id)
 
 
 # ── Categories (flat) ─────────────────────────────────────────────────────────
@@ -598,6 +668,8 @@ async def list_sermons_for_staff(
     CMS can size its pager."""
     conditions = []
     if requester.role == UserRole.EDITOR:
+        # Row-level equivalent lives in staff_scope_hides() — used by the
+        # single-sermon staff read. Keep the two rules identical.
         conditions.append(Sermon.created_by == requester.id)
     if status_filter is not None:
         conditions.append(Sermon.status == status_filter)

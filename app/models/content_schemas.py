@@ -153,6 +153,9 @@ class SermonDetail(SermonListItem):
     media_refs: list[MediaRefPublic]
     published_at: datetime | None
     created_at: datetime
+    # The editor screen's "saved N min ago" stamp needs a server-side baseline
+    # on first load, before any client-side autosave has run.
+    updated_at: datetime | None = None
 
 
 # ── Approval workflow ─────────────────────────────────────────────────────────
@@ -213,6 +216,11 @@ class UploadJobPublic(BaseModel):
     sermon_id: uuid.UUID
     media_type: _MediaType
     status: _UploadStatus
+    # Carried so a page reloaded mid-upload can still identify the row: the
+    # UploadJob response is otherwise the only thing tying a job id to its file.
+    original_filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
     error_message: str | None
     created_at: datetime
 

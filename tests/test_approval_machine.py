@@ -45,3 +45,32 @@ def test_rejected_can_be_resubmitted():
 def test_unknown_action():
     with pytest.raises(TransitionError):
         resolve_transition("frobnicate", SermonStatus.DRAFT, UserRole.ADMIN)
+
+
+# ── withdraw ─────────────────────────────────────────────────────────────────
+def test_editor_can_withdraw_pending():
+    assert resolve_transition(
+        "withdraw", SermonStatus.PENDING_REVIEW, UserRole.EDITOR
+    ) == SermonStatus.DRAFT
+
+
+def test_editor_can_withdraw_under_review():
+    assert resolve_transition(
+        "withdraw", SermonStatus.UNDER_REVIEW, UserRole.EDITOR
+    ) == SermonStatus.DRAFT
+
+
+def test_manager_can_withdraw():
+    assert resolve_transition(
+        "withdraw", SermonStatus.UNDER_REVIEW, UserRole.MANAGER
+    ) == SermonStatus.DRAFT
+
+
+def test_cannot_withdraw_a_draft():
+    with pytest.raises(TransitionError):
+        resolve_transition("withdraw", SermonStatus.DRAFT, UserRole.EDITOR)
+
+
+def test_cannot_withdraw_a_published_sermon():
+    with pytest.raises(TransitionError):
+        resolve_transition("withdraw", SermonStatus.PUBLISHED, UserRole.MANAGER)

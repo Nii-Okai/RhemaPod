@@ -26,6 +26,14 @@ TRANSITIONS: dict[str, tuple[tuple[SermonStatus, ...], SermonStatus, tuple[UserR
         SermonStatus.UNDER_REVIEW,
         (UserRole.MANAGER, UserRole.ADMIN),
     ),
+    # Pull a submission back to draft. The editor uses this to fix something they
+    # spotted after submitting; a manager/admin can also bounce it without the
+    # rejection paper-trail `reject` leaves.
+    "withdraw": (
+        (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW),
+        SermonStatus.DRAFT,
+        (UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN),
+    ),
     "approve": (
         (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW),
         SermonStatus.APPROVED,

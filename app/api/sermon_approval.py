@@ -104,6 +104,12 @@ async def unpublish(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> Statu
 
 @router.get("/{sermon_id}/approval-log", response_model=list[ApprovalLogItem])
 async def approval_log(
-    sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep
+    sermon_id: uuid.UUID, user: EditorPlus, db: DbDep
 ) -> list[ApprovalLogItem]:
-    return await content_service.approval_history(db, sermon_id)
+    """Managers/admins read any sermon's log; an editor only their own (someone
+    else's is 404). This is where an editor reads why their sermon was rejected."""
+    actor = await _actor(db, user)
+    try:
+        return await content_service.approval_history_for_staff(db, sermon_id, actor)
+    except ContentError as exc:
+        raise _err(exc)

@@ -1858,6 +1858,18 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "required": [
@@ -2587,6 +2599,17 @@
       },
       "UploadJobPublic": {
         "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2611,10 +2634,32 @@
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
           },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
           "sermon_id": {
             "format": "uuid",
             "title": "Sermon Id",
             "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           },
           "status": {
             "$ref": "#/components/schemas/UploadStatus"
@@ -3821,6 +3866,7 @@
     },
     "/api/v1/approvals/sermons/{sermon_id}/approval-log": {
       "get": {
+        "description": "Managers/admins read any sermon's log; an editor only their own (someone\nelse's is 404). This is where an editor reads why their sermon was rejected.",
         "operationId": "approval_log_api_v1_approvals_sermons__sermon_id__approval_log_get",
         "parameters": [
           {
@@ -5678,6 +5724,53 @@
           "sermons"
         ]
       },
+      "get": {
+        "description": "Load a sermon in any status for the editor screen.\n\nThe public `/catalog/sermons/{id}` is published-only; this is the staff\nread. Editors see only their own sermons (someone else's is 404, not 403,\nso existence isn't leaked); managers and admins see any.",
+        "operationId": "get_sermon_api_v1_sermons__sermon_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SermonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Sermon",
+        "tags": [
+          "sermons"
+        ]
+      },
       "patch": {
         "operationId": "update_sermon_api_v1_sermons__sermon_id__patch",
         "parameters": [
@@ -6334,6 +6427,55 @@
         "summary": "List Uploads",
         "tags": [
           "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/withdraw": {
+      "post": {
+        "description": "Pull a pending/under-review sermon back to draft. An editor may withdraw\nonly their own (others 404); managers and admins any. Writes an ApprovalLog\nrow like every other transition.",
+        "operationId": "withdraw_api_v1_sermons__sermon_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw",
+        "tags": [
+          "sermons"
         ]
       }
     },
