@@ -4,6 +4,21 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Requires **Node 24** (see `.nvmrc` / `engines`). Vitest 5 and `next build` will not run on older lines. With `nvm`: `nvm use`. If Node 24 is a keg-only Homebrew install, put it on `PATH` first: `export PATH=/usr/local/opt/node@24/bin:$PATH`.
 
+## Testing
+
+`npm test` runs Vitest across two projects (`vitest.config.mts`):
+
+- **node** — `tests/**/*.test.{ts,tsx}` (excluding `*.dom.*`). Pure logic and
+  the MSW-backed API/BFF transport suites. `environment: "node"`, setup
+  `tests/setup.ts`.
+- **dom** — `tests/**/*.dom.test.{ts,tsx}`. Component and hook render tests
+  under `happy-dom` with `@testing-library/react` + `@testing-library/user-event`.
+  `environment: "happy-dom"`, setup `tests/setup.dom.ts` (jest-dom matchers +
+  `afterEach(cleanup)`).
+
+Run one project with `npx vitest run --project node|dom`. Playwright's one
+happy-path suite is `npm run test:e2e`.
+
 ## Getting Started
 
 First, run the development server:

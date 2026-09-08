@@ -42,3 +42,16 @@ export type { EmptyStateProps } from "./empty-state";
 
 export { PageHeader } from "./page-header";
 export type { PageHeaderProps } from "./page-header";
+
+// `gridTemplateColumns` / `headerMode` / `footerModel` / `ariaColCount` are
+// DataTable-internal composition helpers — imported directly from
+// `./data-table` by its unit test, never re-exported as public surface.
+export { DataTable } from "./data-table";
+export type {
+  DataTableColumn,
+  DataTableColumnAlign,
+  DataTableProps,
+} from "./data-table";
+
+export { DataTableSkeleton } from "./data-table-skeleton";
+export type { DataTableSkeletonProps } from "./data-table-skeleton";
