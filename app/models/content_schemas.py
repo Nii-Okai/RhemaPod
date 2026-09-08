@@ -153,9 +153,15 @@ class SermonDetail(SermonListItem):
     media_refs: list[MediaRefPublic]
     published_at: datetime | None
     created_at: datetime
-    # The editor screen's "saved N min ago" stamp needs a server-side baseline
-    # on first load, before any client-side autosave has run.
-    updated_at: datetime | None = None
+
+
+class SermonAdminDetail(SermonDetail):
+    """Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor
+    screen's "saved N min ago" stamp needs a server-side `updated_at` baseline,
+    which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
+    not carry."""
+
+    updated_at: datetime | None
 
 
 # ── Approval workflow ─────────────────────────────────────────────────────────

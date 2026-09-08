@@ -54,7 +54,14 @@ def test_editor_can_withdraw_pending():
     ) == SermonStatus.DRAFT
 
 
-def test_editor_can_withdraw_under_review():
+def test_machine_still_permits_editor_withdraw_from_under_review():
+    """The state machine stays permissive: `withdraw`'s roles are
+    (EDITOR, MANAGER, ADMIN) for both PENDING_REVIEW and UNDER_REVIEW. The
+    "an editor may only withdraw from PENDING_REVIEW" restriction lives one
+    layer up in `content_service.transition` (a single entry there can't be
+    expressed as a machine transition), and is covered by
+    `test_portal_batch2.test_editor_refused_withdraw_from_under_review`.
+    """
     assert resolve_transition(
         "withdraw", SermonStatus.UNDER_REVIEW, UserRole.EDITOR
     ) == SermonStatus.DRAFT

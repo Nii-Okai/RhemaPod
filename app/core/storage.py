@@ -33,6 +33,8 @@ class Storage(Protocol):
 
     def object_exists(self, bucket: str, key: str) -> bool: ...
 
+    def object_size(self, bucket: str, key: str) -> int | None: ...
+
     def delete_object(self, bucket: str, key: str) -> None: ...
 
 
@@ -55,6 +57,14 @@ class LocalStorage:
 
     def object_exists(self, bucket: str, key: str) -> bool:
         return (bucket, key) in self._objects
+
+    def object_size(self, bucket: str, key: str) -> int | None:
+        """The stub stores no real bytes, so the observed size is genuinely
+        unknown -> None. `confirm_upload` treats None as "can't verify, don't
+        override". Tests that exercise the confirm-time size cap monkeypatch
+        this to return a concrete value (mirroring how they monkeypatch
+        object_exists)."""
+        return None
 
     def delete_object(self, bucket: str, key: str) -> None:
         self._objects.discard((bucket, key))
@@ -148,6 +158,31 @@ class S3Storage:
             raise StorageError(
                 f"Could not verify the uploaded object (S3 error {code}). "
                 "Check the IAM policy grants s3:GetObject on this bucket."
+            ) from exc
+
+    def object_size(self, bucket: str, key: str) -> int | None:
+        """ContentLength of the stored object, or None if it is not there.
+
+        Used at upload-confirm time to enforce the size cap against the real
+        bytes that landed, not the client's declared figure. A non-404 error
+        is an infrastructure fault and is raised, matching object_exists.
+        """
+        from botocore.exceptions import ClientError
+
+        try:
+            head = self._client.head_object(Bucket=bucket, Key=key)
+            return int(head["ContentLength"])
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey") or status == 404:
+                return None
+            log.error(
+                "s3_head_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not size the uploaded object (S3 error {code})."
             ) from exc
 
     def delete_object(self, bucket: str, key: str) -> None:

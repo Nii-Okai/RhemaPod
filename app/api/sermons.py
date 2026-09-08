@@ -8,6 +8,7 @@ from app.core.dependencies import CurrentUser, get_optional_user, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     Page,
+    SermonAdminDetail,
     SermonAdminListItem,
     SermonCreate,
     SermonDetail,
@@ -115,13 +116,17 @@ async def create_sermon(data: SermonCreate, user: EditorPlus, db: DbDep) -> Serm
         raise _err(exc)
 
 
-@router.get("/{sermon_id}", response_model=SermonDetail)
-async def get_sermon(sermon_id: uuid.UUID, user: EditorPlus, db: DbDep) -> SermonDetail:
+@router.get("/{sermon_id}", response_model=SermonAdminDetail)
+async def get_sermon(
+    sermon_id: uuid.UUID, user: EditorPlus, db: DbDep
+) -> SermonAdminDetail:
     """Load a sermon in any status for the editor screen.
 
-    The public `/catalog/sermons/{id}` is published-only; this is the staff
-    read. Editors see only their own sermons (someone else's is 404, not 403,
-    so existence isn't leaked); managers and admins see any.
+    The public `/catalog/sermons/{id}` is published-only and returns a plain
+    `SermonDetail`; this is the staff read and returns `SermonAdminDetail`
+    (adds `updated_at` for the "saved N min ago" baseline). Editors see only
+    their own sermons (someone else's is 404, not 403, so existence isn't
+    leaked); managers and admins see any.
     """
     actor = await _actor(db, user)
     try:

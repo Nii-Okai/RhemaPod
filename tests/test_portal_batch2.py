@@ -171,7 +171,11 @@ async def test_owner_withdraws_from_pending_review(client, engine):
     assert log[-1]["to_status"] == "draft"
 
 
-async def test_owner_withdraws_from_under_review(client, engine):
+async def test_editor_refused_withdraw_from_under_review(client, engine):
+    """Isaac's call: once a manager has picked it up (UNDER_REVIEW), only a
+    manager/admin can send it back — an editor gets a typed 409, not a
+    withdraw. Stops an editor looping withdraw→edit→resubmit past a reviewer's
+    note."""
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     sid = (await client.post(
@@ -181,6 +185,24 @@ async def test_owner_withdraws_from_under_review(client, engine):
     await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr)
 
     r = await client.post(f"/api/v1/sermons/{sid}/withdraw", headers=ed)
+    assert r.status_code == 409
+    assert "manager" in r.json()["detail"].lower()
+    # It did not move.
+    assert (await client.get(
+        f"/api/v1/sermons/{sid}", headers=mgr
+    )).json()["status"] == "under_review"
+
+
+async def test_manager_withdraws_from_under_review(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr)
+
+    r = await client.post(f"/api/v1/sermons/{sid}/withdraw", headers=mgr)
     assert r.status_code == 200
     assert r.json()["status"] == "draft"
 
@@ -200,6 +222,21 @@ async def test_editor_cannot_withdraw_another_editors_sermon(client, engine):
     assert (await client.get(
         f"/api/v1/sermons/{sid}", headers=a
     )).json()["status"] == "pending_review"
+
+
+async def test_editor_submit_of_another_editors_sermon_is_404_not_403(client, engine):
+    """The editor-not-owner case is now normalised to 404 for EVERY
+    editor-reachable transition, `submit` included (was 403) — a probing
+    editor can't tell "exists, forbidden" from "missing"."""
+    a = await make_user(client, engine, "a@example.com", "editor")
+    b = await make_user(client, engine, "b@example.com", "editor")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "A's"}, headers=a
+    )).json()["id"]
+
+    r = await client.post(f"/api/v1/sermons/{sid}/submit", headers=b)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Sermon not found"
 
 
 async def test_withdraw_from_draft_is_rejected_with_typed_error(client, engine):
@@ -282,3 +319,92 @@ async def test_confirm_response_also_carries_the_new_fields(client, engine):
     body = confirm.json()
     assert body["original_filename"] == "x.mp4"
     assert body["size_bytes"] == 999
+
+
+async def test_size_bytes_above_int4_ceiling_round_trips(client, engine):
+    """A declared size past the INT4 ceiling (2**31-1) must persist intact —
+    this is the sole reason UploadJob.size_bytes is BigInteger, not Integer.
+    2**32 (~4.29 GB) is over INT4 but under the 5 GB upload cap."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+
+    big = 2 ** 32
+    payload = {**VIDEO, "filename": "huge.mp4", "size_bytes": big}
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=payload, headers=ed
+    )
+    assert r.status_code == 201
+    job = (await client.get(
+        f"/api/v1/sermons/{sid}/uploads", headers=ed
+    )).json()[0]
+    assert job["size_bytes"] == big
+
+
+# ── 5. confirm-time size cap is enforced against the real object ─────────────
+async def test_confirm_rejects_upload_that_exceeds_cap_and_deletes_object(
+    client, engine, monkeypatch
+):
+    """The declared `size_bytes` is advisory — a client can declare 1 and PUT
+    5 GB. At confirm, the real object length is read from storage; over the cap
+    it is deleted and the confirm 413s, leaving the job un-ready."""
+    from app.core import storage as storage_module
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+
+    payload = {**VIDEO, "filename": "tiny-lie.mp4", "size_bytes": 1}
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=payload, headers=ed
+    )).json()
+
+    store = storage_module.get_storage()
+    six_gb = 6 * 1024 ** 3
+    monkeypatch.setattr(store, "object_size", lambda b, k: six_gb)
+
+    confirm = await client.post(
+        f"/api/v1/uploads/{ticket['job_id']}/confirm", headers=ed
+    )
+    assert confirm.status_code == 413
+
+    # The oversized object was deleted...
+    raw_key = ticket["raw_key"]
+    from app.core.config import get_settings
+    assert not store.object_exists(get_settings().s3_raw_bucket, raw_key)
+
+    # ...and the job never reached a ready/uploaded state.
+    job = (await client.get(
+        f"/api/v1/sermons/{sid}/uploads", headers=ed
+    )).json()[0]
+    assert job["status"] not in ("ready", "uploaded")
+
+
+async def test_confirm_persists_the_observed_size_over_the_declared_one(
+    client, engine, monkeypatch
+):
+    """A within-cap upload records the storage-observed length, overriding
+    whatever the client declared at presign time."""
+    from app.core import storage as storage_module
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+
+    payload = {**VIDEO, "filename": "real.mp4", "size_bytes": 10}
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=payload, headers=ed
+    )).json()
+
+    store = storage_module.get_storage()
+    observed = 4242
+    monkeypatch.setattr(store, "object_size", lambda b, k: observed)
+
+    confirm = await client.post(
+        f"/api/v1/uploads/{ticket['job_id']}/confirm", headers=ed
+    )
+    assert confirm.status_code == 200
+    assert confirm.json()["size_bytes"] == observed

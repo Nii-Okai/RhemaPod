@@ -264,6 +264,22 @@ async def test_staff_can_preview_unpublished_stream(client, engine):
     assert r.status_code == 200
 
 
+async def test_editor_cannot_preview_another_editors_unpublished_stream(client, engine):
+    """BOLA guard: an editor may stream only their OWN unpublished sermon (or a
+    published one). Another editor's draft is 404 — the same non-disclosure the
+    staff GET applies. Manager/admin are unrestricted."""
+    a = await make_user(client, engine, "a@example.com", "editor")
+    b = await make_user(client, engine, "b@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "A"}, headers=a)).json()["id"]
+    await upload_and_process(client, a, sid)
+
+    assert (await client.get(f"/api/v1/sermons/{sid}/stream", headers=b)).status_code == 404
+    # Owner and manager still get playback URLs.
+    assert (await client.get(f"/api/v1/sermons/{sid}/stream", headers=a)).status_code == 200
+    assert (await client.get(f"/api/v1/sermons/{sid}/stream", headers=mgr)).status_code == 200
+
+
 async def test_stream_without_media_returns_409(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     mgr = await make_user(client, engine, "m@example.com", "manager")
