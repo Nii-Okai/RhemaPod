@@ -17,7 +17,7 @@ from app.models.content_schemas import (
     ThumbnailTicket,
     ThumbnailUploadRequest
 )
-from app.models.models import SermonStatus, User, UserRole
+from app.models.models import ContentTier, SermonStatus, User, UserRole
 from app.services import auth_service, content_service
 from app.services.content_service import ContentError, effective_tier, to_list_item
 
@@ -68,6 +68,12 @@ async def list_my_sermons(
     db: DbDep,
     status: SermonStatus | None = None,
     q: str | None = Query(default=None, max_length=200, description="Title contains"),
+    speaker_id: uuid.UUID | None = None,
+    series_id: uuid.UUID | None = None,
+    tier: ContentTier | None = Query(
+        default=None,
+        description="Filter on effective tier (sermon tier, else series tier, else free)",
+    ),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> Page[SermonAdminListItem]:
@@ -75,7 +81,8 @@ async def list_my_sermons(
     see everyone's. Carries workflow fields the catalog card omits."""
     actor = await _actor(db, user)
     rows, total = await content_service.list_sermons_for_staff(
-        db, actor, status, limit=limit, offset=offset, search=q
+        db, actor, status, limit=limit, offset=offset, search=q,
+        speaker_id=speaker_id, series_id=series_id, tier=tier,
     )
     series_map = await content_service.series_for(db, rows)
     names = await content_service.load_ref_names(db, rows)
