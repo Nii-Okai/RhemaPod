@@ -63,6 +63,12 @@ export const queryKeys = {
     all: () => ["series"] as const,
     list: () => [...queryKeys.series.all(), "list"] as const,
   },
+  /** Category options for the editor's Details card select (W8). Same
+      long-cached reference-list treatment as speakers/series. */
+  categories: {
+    all: () => ["categories"] as const,
+    list: () => [...queryKeys.categories.all(), "list"] as const,
+  },
   nav: {
     all: () => ["nav"] as const,
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */

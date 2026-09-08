@@ -335,7 +335,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Approval Log */
+        /**
+         * Approval Log
+         * @description Managers/admins read any sermon's log; an editor only their own (someone
+         *     else's is 404). This is where an editor reads why their sermon was rejected.
+         */
         get: operations["approval_log_api_v1_approvals_sermons__sermon_id__approval_log_get"];
         put?: never;
         post?: never;
@@ -858,7 +862,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Sermon
+         * @description Load a sermon in any status for the editor screen.
+         *
+         *     The public `/catalog/sermons/{id}` is published-only and returns a plain
+         *     `SermonDetail`; this is the staff read and returns `SermonAdminDetail`
+         *     (adds `updated_at` for the "saved N min ago" baseline). Editors see only
+         *     their own sermons (someone else's is 404, not 403, so existence isn't
+         *     leaked); managers and admins see any.
+         */
+        get: operations["get_sermon_api_v1_sermons__sermon_id__get"];
         put?: never;
         post?: never;
         /**
@@ -1048,6 +1062,28 @@ export interface paths {
         get: operations["list_uploads_api_v1_sermons__sermon_id__uploads_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw
+         * @description Pull a pending/under-review sermon back to draft. An editor may withdraw
+         *     only their own (others 404); managers and admins any. Writes an ApprovalLog
+         *     row like every other transition.
+         */
+        post: operations["withdraw_api_v1_sermons__sermon_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1735,6 +1771,59 @@ export interface components {
             title?: string | null;
         };
         /**
+         * SermonAdminDetail
+         * @description Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor
+         *     screen's "saved N min ago" stamp needs a server-side `updated_at` baseline,
+         *     which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
+         *     not carry.
+         */
+        SermonAdminDetail: {
+            /** Category Id */
+            category_id: string | null;
+            /** Category Name */
+            category_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /** Episode Number */
+            episode_number: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Locked */
+            locked: boolean;
+            /** Media Refs */
+            media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Published At */
+            published_at: string | null;
+            /** Series Id */
+            series_id: string | null;
+            /** Series Title */
+            series_title?: string | null;
+            /** Speaker Id */
+            speaker_id: string | null;
+            /** Speaker Name */
+            speaker_name?: string | null;
+            status: components["schemas"]["SermonStatus"];
+            /** Tags */
+            tags: string[];
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+            tier: components["schemas"]["ContentTier"];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
          * SermonAdminListItem
          * @description Staff-facing card. Carries the workflow fields a CMS table needs, which
          *     the public card deliberately omits (created_by would leak staff identity).
@@ -2092,6 +2181,8 @@ export interface components {
         };
         /** UploadJobPublic */
         UploadJobPublic: {
+            /** Content Type */
+            content_type?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2105,11 +2196,15 @@ export interface components {
              */
             id: string;
             media_type: components["schemas"]["MediaType"];
+            /** Original Filename */
+            original_filename?: string | null;
             /**
              * Sermon Id
              * Format: uuid
              */
             sermon_id: string;
+            /** Size Bytes */
+            size_bytes?: number | null;
             status: components["schemas"]["UploadStatus"];
         };
         /** UploadRequest */
@@ -3914,6 +4009,37 @@ export interface operations {
             };
         };
     };
+    get_sermon_api_v1_sermons__sermon_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonAdminDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_sermon_api_v1_sermons__sermon_id__delete: {
         parameters: {
             query?: never;
@@ -4322,6 +4448,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadJobPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_api_v1_sermons__sermon_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */

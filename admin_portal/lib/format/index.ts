@@ -2,6 +2,11 @@
 //
 // W7 (Sermons list): `formatDuration` for the mono duration cell — `31:02`,
 // `1:05:09`; an em dash is rendered by the caller when the value is null.
+//
+// W8 (Sermon editor): `formatRelativeTime` drives the mono "saved N min ago"
+// autosave stamp (§A.4 — the stamp reflects the last successful save, relative
+// and re-rendered on an interval); `formatBytes` labels a read-only upload-job
+// row's size.
 
 /**
  * Seconds → a clock string. Under an hour: `m:ss` (no leading zero on the
@@ -23,4 +28,58 @@ export function formatDuration(totalSeconds: number | null | undefined): string 
   const mm = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
   const ss = String(seconds).padStart(2, "0");
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * A short, human relative-past string for the autosave stamp: `just now`,
+ * `1 min ago`, `42 min ago`, `3 hr ago`, `2 days ago`. Anything a week or more
+ * back falls through to an absolute short date so "saved 340 days ago" never
+ * shows. A future `from` (clock skew) clamps to `just now`.
+ *
+ * `now` is injectable so the interval-driven re-render in the editor and the
+ * unit test both stay deterministic.
+ */
+export function formatRelativeTime(
+  from: number | Date | null | undefined,
+  now: number = Date.now(),
+): string {
+  if (from == null) return "";
+  const then = from instanceof Date ? from.getTime() : from;
+  if (!Number.isFinite(then)) return "";
+
+  const seconds = Math.round((now - then) / 1000);
+  if (seconds < 45) return "just now";
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+
+  return new Date(then).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Bytes → a one-decimal binary size (`1.4 GB`, `812 KB`, `0 B`). Used only for
+ * the read-only upload-job rows in the editor's Media card (W8); the live
+ * "1.4 / 2.2 GB" progress line is the XHR uploader's job in W9.
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded} ${units[unit]}`;
 }
