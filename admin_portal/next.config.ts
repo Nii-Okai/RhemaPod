@@ -26,6 +26,11 @@ const BASELINE_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Dev-only: lets the browser load `/_next/*` dev assets and hit BFF routes
+  // when the page is opened from something other than `localhost` (127.0.0.1,
+  // the LAN IP for a phone/tablet). Ignored in production builds.
+  allowedDevOrigins: ["127.0.0.1", "192.168.1.51"],
+
   async headers() {
     return [
       {
