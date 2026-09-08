@@ -19,7 +19,16 @@ export type { SermonListParams };
 export type SermonListPage = components["schemas"]["Page_SermonAdminListItem_"];
 export type SermonListItem = components["schemas"]["SermonAdminListItem"];
 
-export function useSermons(params: SermonListParams = {}) {
+export interface UseSermonsOptions {
+  /** Gate the query. Used by the "In review" branch of `useSermonsQuery`,
+      which mounts two `useSermons` calls and only runs them for that tab. */
+  enabled?: boolean;
+}
+
+export function useSermons(
+  params: SermonListParams = {},
+  options: UseSermonsOptions = {},
+) {
   return useQuery({
     queryKey: queryKeys.sermons.list(params),
     queryFn: ({ signal }) =>
@@ -30,5 +39,6 @@ export function useSermons(params: SermonListParams = {}) {
         }),
       ),
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   });
 }
