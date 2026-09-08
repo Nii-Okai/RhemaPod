@@ -3848,6 +3848,10 @@ export interface operations {
                 status?: components["schemas"]["SermonStatus"] | null;
                 /** @description Title contains */
                 q?: string | null;
+                speaker_id?: string | null;
+                series_id?: string | null;
+                /** @description Filter on effective tier (sermon tier, else series tier, else free) */
+                tier?: components["schemas"]["ContentTier"] | null;
                 limit?: number;
                 offset?: number;
             };
