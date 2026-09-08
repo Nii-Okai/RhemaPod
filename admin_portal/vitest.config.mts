@@ -21,6 +21,13 @@ const alias = {
 //          without a DOM.
 export default defineConfig({
   test: {
+    // Vitest's default fans out one isolated worker per core (~30 on this
+    // machine); the heavier happy-dom interaction suites then lose their own
+    // `findBy*` races under CPU contention — flaky, machine-dependent, and
+    // nothing to do with the code under test (the base branch fails ~3/5 full
+    // runs without this cap). Capping the pool keeps file isolation intact while
+    // making the run deterministic. (W9 — flagged in status.md)
+    maxWorkers: 3,
     projects: [
       {
         extends: true,
