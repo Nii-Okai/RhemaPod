@@ -72,3 +72,6 @@ status.md
 
 # ── tests (not runtime; rely on dev-group deps that are not installed) ──
 tests/
+
+# ── admin portal (separate Node toolchain; never part of the API image) ──
+admin_portal/
