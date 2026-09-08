@@ -21,6 +21,7 @@ import { putFileWithProgress } from "./xhr-put";
 export async function uploadSermonThumbnail(
   sermonId: string,
   file: File,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   const v = validateImageFile(file);
   if (!v.ok) throw new UploadValidationError(v.message);
@@ -40,8 +41,12 @@ export async function uploadSermonThumbnail(
     throw new TicketError("Couldn’t start the image upload.", err);
   }
 
+  // Same defect class as the media PUT: a half-open socket would hang forever.
+  // `putFileWithProgress` arms its stall watchdog by default; thread a `signal`
+  // through so the caller can cancel too.
   await putFileWithProgress(ticket.upload_url, file, {
     contentType: ticket.headers?.["Content-Type"] ?? v.contentType,
+    signal,
   });
 
   try {

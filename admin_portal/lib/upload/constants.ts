@@ -20,6 +20,20 @@ export const MAX_UPLOAD_GB = Math.floor(MAX_UPLOAD_BYTES / 1024 ** 3);
  *  thumbnails, so this is purely a client courtesy against a fat-finger. */
 export const MAX_THUMBNAIL_BYTES = 10 * 1024 ** 2;
 
+/**
+ * Stall watchdog for the direct-to-storage PUT. `XMLHttpRequest` gives no
+ * `onerror` for a half-open socket (peer vanished, no RST) — the request just
+ * hangs, the row sits in `uploading` forever, and there is no Retry. So we run
+ * a watchdog that is reset on every `upload.onprogress`: if no progress lands
+ * for this long, the PUT is presumed dead, aborted, and surfaced as a
+ * retryable "stalled" failure.
+ *
+ * `xhr.timeout` is additionally set to `4×` this as a hard ceiling so the
+ * otherwise-dead `ontimeout` handler is actually wired for the pathological
+ * case where bytes trickle just often enough to keep resetting the watchdog.
+ */
+export const STALL_TIMEOUT_MS = 90_000;
+
 export type UploadMediaKind = "video" | "audio";
 
 interface AcceptEntry {

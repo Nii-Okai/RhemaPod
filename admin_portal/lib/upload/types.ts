@@ -30,7 +30,11 @@ export interface LocalUpload {
   phase: LocalPhase;
   bytesSent: number;
   etaSeconds: number | null;
-  error: { surface: UploadFailureSurface; message: string } | null;
+  error: {
+    surface: UploadFailureSurface;
+    message: string;
+    retryable: boolean;
+  } | null;
 }
 
 export type UploadRowState =

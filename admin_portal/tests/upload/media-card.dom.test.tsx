@@ -63,9 +63,11 @@ class FakeXHR {
   onabort: (() => void) | null = null;
   ontimeout: (() => void) | null = null;
   status = 0;
+  timeout = 0;
   responseText = "";
   method = "";
   url = "";
+  aborted = false;
   headers: Record<string, string> = {};
 
   open(method: string, url: string) {
@@ -79,6 +81,7 @@ class FakeXHR {
     FakeXHR.instances.push(this);
   }
   abort() {
+    this.aborted = true;
     this.onabort?.();
   }
 
@@ -175,7 +178,8 @@ function backend(initial: Partial<BackendState> = {}) {
   return state;
 }
 
-function renderCard(disabled = false) {
+function renderCard(opts: { disabled?: boolean; stallMs?: number } = {}) {
+  const { disabled = false, stallMs } = opts;
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -184,7 +188,7 @@ function renderCard(disabled = false) {
   });
   const utils = render(
     <QueryClientProvider client={qc}>
-      <UploadProvider sermonId={SERMON_ID}>
+      <UploadProvider sermonId={SERMON_ID} stallMs={stallMs}>
         <MediaJobsCard
           sermonId={SERMON_ID}
           sermonDurationSeconds={1862}
@@ -321,6 +325,79 @@ describe("Media card — PUT failure and retry", () => {
     await waitFor(() => expect(state.ticketCalls).toBe(2));
     await waitFor(() => expect(FakeXHR.instances).toHaveLength(2));
     expect(state.confirmCalls).toBe(0);
+  });
+
+  it("a mid-PUT network drop (status 0 / onerror) → Failed row + a working Retry", async () => {
+    const state = backend();
+    const { fileInput } = renderCard();
+
+    await userEvent.upload(fileInput(), mediaFile());
+    await waitFor(() => expect(FakeXHR.last).toBeDefined());
+    expect(state.ticketCalls).toBe(1);
+
+    // The connection dies mid-transfer: XHR fires `onerror` with status 0.
+    FakeXHR.last!.networkError();
+
+    expect(
+      await screen.findByText(/connection dropped or was blocked/),
+    ).toBeInTheDocument();
+    const retry = await screen.findByRole("button", { name: "Retry upload" });
+    expect(state.confirmCalls).toBe(0);
+
+    // Retry mints a fresh ticket + PUT, still zero confirms.
+    await userEvent.click(retry);
+    await waitFor(() => expect(state.ticketCalls).toBe(2));
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(2));
+    expect(state.confirmCalls).toBe(0);
+  });
+});
+
+/* --- credential / URL invariants (security-reviewer N2) ------------ */
+
+describe("Media card — the direct PUT carries no credentials", () => {
+  it("sets only Content-Type, never Authorization / withCredentials, and never renders the presigned URL", async () => {
+    const state = backend();
+    const { fileInput } = renderCard();
+
+    await userEvent.upload(fileInput(), mediaFile());
+    await waitFor(() => expect(FakeXHR.last).toBeDefined());
+
+    const xhr = FakeXHR.last!;
+    expect(Object.keys(xhr.headers)).toEqual(["Content-Type"]);
+    expect(xhr.headers.Authorization).toBeUndefined();
+    // `withCredentials` is never touched → no cookies on the cross-origin PUT.
+    expect(
+      (xhr as unknown as { withCredentials?: boolean }).withCredentials,
+    ).toBeUndefined();
+
+    // Drive it to a failure and confirm the presigned URL is in neither the
+    // DOM nor the surfaced error copy.
+    xhr.respond(403);
+    await screen.findByText(/upload link expired/);
+    expect(document.body.textContent ?? "").not.toContain(STORAGE_URL);
+    expect(state.confirmCalls).toBe(0);
+  });
+});
+
+/* --- stall watchdog ------------------------------------------------- */
+
+describe("Media card — a stalled PUT (half-open socket)", () => {
+  it("the stall watchdog marks the row Failed + retryable when no progress lands", async () => {
+    // `stallMs: 40` so the watchdog fires within the default findBy timeout;
+    // no progress and no `respond()` — the socket is wedged half-open.
+    const state = backend();
+    const { fileInput } = renderCard({ stallMs: 40 });
+
+    await userEvent.upload(fileInput(), mediaFile());
+    await waitFor(() => expect(FakeXHR.last).toBeDefined());
+
+    expect(await screen.findByText(/stalled/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Retry upload" }),
+    ).toBeInTheDocument();
+    expect(state.confirmCalls).toBe(0);
+    // The wedged XHR was torn down.
+    await waitFor(() => expect(FakeXHR.last!.aborted).toBe(true));
   });
 });
 

@@ -57,6 +57,51 @@ describe("API client — success path", () => {
   });
 });
 
+describe("API client — stripBackendMount preserves the request across the rewrite", () => {
+  // The middleware hand-copies method / headers / credentials / signal into a
+  // fresh `Request`. A future edit dropping any of those fields must fail a
+  // test, not slip through (security-reviewer N2c, gilfoyle 🟡 #5).
+
+  it("keeps the Content-Type header and per-call credentials", async () => {
+    let seen: Request | undefined;
+    server.use(
+      http.post(`${ORIGIN}/api/bff/sermons`, ({ request }) => {
+        seen = request;
+        return HttpResponse.json({ id: "s-1", title: "x" }, { status: 201 });
+      }),
+    );
+
+    await api.POST("/api/v1/sermons", {
+      body: { title: "Grace" },
+      credentials: "include",
+    });
+
+    expect(seen?.headers.get("content-type")).toBe("application/json");
+    expect(seen?.credentials).toBe("include");
+  });
+
+  it("propagates an abort signal through the rewrite", async () => {
+    server.use(
+      http.post(`${ORIGIN}/api/bff/sermons`, async () => {
+        await new Promise((r) => setTimeout(r, 1000));
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+
+    const controller = new AbortController();
+    const pending = api
+      .POST("/api/v1/sermons", {
+        body: { title: "x" },
+        signal: controller.signal,
+      })
+      .catch((e: unknown) => e);
+
+    controller.abort();
+    const err = await pending;
+    expect((err as Error).name).toBe("AbortError");
+  });
+});
+
 describe("API client — error envelope", () => {
   it("throws ApiError with detail + correlation_id on a 404", async () => {
     server.use(
@@ -90,6 +135,7 @@ describe("API client — error envelope", () => {
       http.post(`${ORIGIN}/api/bff/sermons`, async ({ request }) => {
         const body = (await request.json()) as { title?: string };
         expect(body.title).toBe("");
+        expect(request.headers.get("content-type")).toBe("application/json");
         return HttpResponse.json(
           {
             detail: "Validation failed",

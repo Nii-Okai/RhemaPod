@@ -13,6 +13,10 @@
  *    suppress any `awaiting_upload` twin.
  *  - A Retry supersedes its previous job: `retryOfJobId` is removed from the
  *    server list so the old Failed row doesn't linger beside the new attempt.
+ *    Because that local row is released once the *new* job lands in the poll
+ *    (or on any reload), the caller also passes a provider-lifetime
+ *    `supersededJobIds` set so the dead `awaiting_upload` twin does not
+ *    resurrect as an actionable "didn't finish" row next to the good one.
  *  - Order: in-flight/errored local rows first (newest work on top), then the
  *    server list in its own `created_at desc` order.
  */
@@ -20,8 +24,11 @@
 import { formatBytes, formatDuration } from "@/lib/format";
 
 import type { UploadJobPublic } from "./api";
+import { describeUploadFailure, ProcessingError } from "./errors";
 import { formatEta } from "./eta";
 import type { LocalUpload, UploadRow } from "./types";
+
+const NO_SUPERSEDED: ReadonlySet<string> = new Set();
 
 export interface MergeContext {
   /** Sermon duration (seconds) for the "audio · 31:02 · …" ready sub-line —
@@ -184,7 +191,11 @@ function serverRow(job: UploadJobPublic, ctx: MergeContext): UploadRow {
         progressLabel: null,
         etaLabel: null,
         subLine: null,
-        errorMessage: job.error_message ?? "Processing failed.",
+        // Verbatim server `error_message` (design), via the one typed carrier
+        // for surface 6 so the copy path is single-sourced.
+        errorMessage: describeUploadFailure(
+          new ProcessingError(job.error_message ?? "Processing failed."),
+        ).message,
         badgeStatus: "failed",
         retry: {
           kind: "server",
@@ -199,8 +210,14 @@ export function mergeUploadRows(
   local: LocalUpload[],
   server: UploadJobPublic[],
   ctx: MergeContext = {},
+  /** Job ids a Retry has permanently superseded — kept for the provider's
+   *  lifetime by the caller, so a reconcile/reload can't resurrect the dead
+   *  `awaiting_upload` twin (and each stalled-retry click leaking another
+   *  raw-bucket object). Cleanup of the orphaned job itself needs a backend
+   *  cancel/delete route — see status.md `[GATE 3 Batch 3]`. */
+  supersededJobIds: ReadonlySet<string> = NO_SUPERSEDED,
 ): UploadRow[] {
-  const suppressed = new Set<string>();
+  const suppressed = new Set<string>(supersededJobIds);
   for (const u of local) {
     if (u.retryOfJobId) suppressed.add(u.retryOfJobId);
   }

@@ -10,7 +10,7 @@
  */
 
 import { api, unwrap } from "@/lib/api/client";
-import { ApiError, isApiError } from "@/lib/api/errors";
+import { isApiError } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
 
 import { ConfirmError, TicketError } from "./errors";
@@ -90,10 +90,12 @@ export async function confirmUpload(
 
 function toConfirmError(err: unknown): ConfirmError {
   if (isApiError(err)) {
-    return new ConfirmError(err.status, err.detail, err);
-  }
-  if (err instanceof ApiError) {
-    return new ConfirmError(err.status, err.detail, err);
+    // Carry the support handle the same way `toTicketError` does. `describe
+    // UploadFailure` swaps in canned size copy for a 413, so the reference is
+    // only ever surfaced on the other statuses.
+    const ref = err.correlationId ? ` (reference: ${err.correlationId})` : "";
+    const message = err.status === 413 ? err.detail : `${err.detail}${ref}`;
+    return new ConfirmError(err.status, message, err);
   }
   return new ConfirmError(
     0,

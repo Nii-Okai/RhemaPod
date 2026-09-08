@@ -28,8 +28,11 @@ export {
   describeUploadFailure,
   UploadValidationError,
   UploadPutError,
+  UploadAbortedError,
   TicketError,
   ConfirmError,
+  ProcessingError,
+  type UploadFailure,
   type UploadFailureSurface,
 } from "./errors";
 export { uploadSermonThumbnail } from "./thumbnail";

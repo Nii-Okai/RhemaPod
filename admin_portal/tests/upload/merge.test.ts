@@ -72,7 +72,11 @@ describe("mergeUploadRows", () => {
         local({
           jobId: "j1",
           phase: "error",
-          error: { surface: "transfer", message: "The upload link expired." },
+          error: {
+            surface: "transfer",
+            message: "The upload link expired.",
+            retryable: true,
+          },
         }),
       ],
       [job({ id: "j1", status: "awaiting_upload", error_message: null })],
@@ -90,6 +94,22 @@ describe("mergeUploadRows", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].state).toBe("uploading");
+  });
+
+  it("keeps a superseded job filtered out via the provider-lifetime set, even with no local row", () => {
+    // The local retry row has already reconciled away (or the page reloaded);
+    // only the provider-lifetime supersededJobIds set remembers the dead job.
+    const rows = mergeUploadRows(
+      [],
+      [
+        job({ id: "jOld", status: "awaiting_upload" }),
+        job({ id: "jNew", status: "ready" }),
+      ],
+      {},
+      new Set(["jOld"]),
+    );
+    expect(rows.map((r) => r.key)).toEqual(["jNew"]);
+    expect(rows[0].state).toBe("ready");
   });
 
   it("renders a polled 'failed' job with its verbatim error_message + a server Retry", () => {

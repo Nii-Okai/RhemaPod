@@ -44,6 +44,10 @@ export interface UploadRejection {
 interface UploadContextValue {
   uploads: LocalUpload[];
   rejections: UploadRejection[];
+  /** Job ids a Retry has permanently superseded. Held for the provider's
+   *  lifetime and handed to `mergeUploadRows` so the dead `awaiting_upload`
+   *  twin can't resurrect after a reconcile. */
+  supersededJobIds: ReadonlySet<string>;
   /** True while any upload is preparing / uploading / confirming. Drives the
    *  `beforeunload` guard and the caller's own nav guard. */
   hasActiveUploads: boolean;
@@ -75,6 +79,10 @@ export interface UploadProviderProps {
   /** The saved sermon's id. `undefined` for an unsaved `/sermons/new` draft —
    *  `enqueue` rejects until it is set. */
   sermonId: string | undefined;
+  /** Stall-watchdog window for the direct PUT, forwarded to
+   *  `putFileWithProgress`. Defaults to `STALL_TIMEOUT_MS`; overridden only by
+   *  tests that need the watchdog to fire fast. */
+  stallMs?: number;
   children: React.ReactNode;
 }
 
@@ -84,23 +92,44 @@ const ACTIVE_PHASES: ReadonlySet<LocalUpload["phase"]> = new Set([
   "confirming",
 ]);
 
-export function UploadProvider({ sermonId, children }: UploadProviderProps) {
+export function UploadProvider({
+  sermonId,
+  stallMs,
+  children,
+}: UploadProviderProps) {
   const qc = useQueryClient();
 
   const [uploads, setUploads] = React.useState<Record<string, LocalUpload>>({});
   const [rejections, setRejections] = React.useState<UploadRejection[]>([]);
+  const [supersededJobIds, setSupersededJobIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   // Refs mirror state / hold non-render data for the async pipeline.
   const stateRef = React.useRef<Record<string, LocalUpload>>({});
   const filesRef = React.useRef<Map<string, File>>(new Map());
   const abortRef = React.useRef<Map<string, () => void>>(new Map());
   const cancelledRef = React.useRef<Set<string>>(new Set());
+  // clientIds whose `runUpload` is currently executing — a second call for the
+  // same id (fast double-click Retry) is a no-op, so it can't mint a second
+  // ticket/job/PUT and orphan the first abort handle.
+  const runningRef = React.useRef<Set<string>>(new Set());
   const lastCommitRef = React.useRef<Map<string, number>>(new Map());
   const sermonIdRef = React.useRef<string | undefined>(sermonId);
+  const stallMsRef = React.useRef<number | undefined>(stallMs);
 
   React.useEffect(() => {
     sermonIdRef.current = sermonId;
   }, [sermonId]);
+  React.useEffect(() => {
+    stallMsRef.current = stallMs;
+  }, [stallMs]);
+
+  const markSuperseded = React.useCallback((jobId: string) => {
+    setSupersededJobIds((prev) =>
+      prev.has(jobId) ? prev : new Set(prev).add(jobId),
+    );
+  }, []);
 
   const commit = React.useCallback(
     (next: Record<string, LocalUpload>) => {
@@ -123,6 +152,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
     (clientId: string) => {
       filesRef.current.delete(clientId);
       abortRef.current.delete(clientId);
+      runningRef.current.delete(clientId);
       lastCommitRef.current.delete(clientId);
       cancelledRef.current.delete(clientId);
       if (!stateRef.current[clientId]) return;
@@ -147,21 +177,15 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
 
   const runUpload = React.useCallback(
     async (clientId: string) => {
+      // Re-entrancy guard: a second invocation for a clientId already running
+      // (double-click Retry) is a no-op.
+      if (runningRef.current.has(clientId)) return;
+
       const file = filesRef.current.get(clientId);
       const entry = stateRef.current[clientId];
       if (!file || !entry) return;
 
-      const sid = sermonIdRef.current;
-      if (!sid) {
-        patch(clientId, {
-          phase: "error",
-          error: {
-            surface: "ticket",
-            message: "Save the draft before adding media.",
-          },
-        });
-        return;
-      }
+      runningRef.current.add(clientId);
 
       const estimator = new UploadRateEstimator();
       const abortController = new AbortController();
@@ -171,6 +195,19 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
       const cancelled = () => cancelledRef.current.has(clientId);
 
       try {
+        const sid = sermonIdRef.current;
+        if (!sid) {
+          patch(clientId, {
+            phase: "error",
+            error: {
+              surface: "ticket",
+              message: "Save the draft before adding media.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+
         patch(clientId, { phase: "preparing", error: null, bytesSent: 0 });
 
         const ticket = await requestTicket({
@@ -194,6 +231,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
         await putFileWithProgress(ticket.upload_url, file, {
           contentType: putContentType,
           signal: abortController.signal,
+          stallMs: stallMsRef.current,
           onProgress: ({ loaded, total }) => {
             const now = Date.now();
             estimator.sample(loaded, now);
@@ -202,7 +240,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
             lastCommitRef.current.set(clientId, now);
             patch(clientId, {
               bytesSent: loaded,
-              etaSeconds: estimator.remainingSeconds(total, now),
+              etaSeconds: estimator.remainingSeconds(total),
             });
           },
         });
@@ -242,6 +280,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
         });
       } finally {
         abortRef.current.delete(clientId);
+        runningRef.current.delete(clientId);
       }
     },
     [patch, remove, invalidateForSermon],
@@ -300,10 +339,13 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
       const cur = stateRef.current[clientId];
       if (!cur) return;
       if (!filesRef.current.has(clientId)) return;
+      if (runningRef.current.has(clientId)) return; // double-click guard
       cancelledRef.current.delete(clientId);
+      const supersededId = cur.jobId ?? cur.retryOfJobId;
+      if (supersededId) markSuperseded(supersededId);
       patch(clientId, {
         jobId: null,
-        retryOfJobId: cur.jobId ?? cur.retryOfJobId,
+        retryOfJobId: supersededId,
         phase: "preparing",
         bytesSent: 0,
         etaSeconds: null,
@@ -311,7 +353,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
       });
       void runUpload(clientId);
     },
-    [patch, runUpload],
+    [patch, runUpload, markSuperseded],
   );
 
   const retryServer = React.useCallback(
@@ -324,6 +366,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
         ]);
         return;
       }
+      markSuperseded(jobId);
       const clientId = crypto.randomUUID();
       filesRef.current.set(clientId, file);
       commit({
@@ -344,7 +387,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
       });
       void runUpload(clientId);
     },
-    [commit, runUpload],
+    [commit, runUpload, markSuperseded],
   );
 
   const cancel = React.useCallback(
@@ -403,6 +446,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
     () => ({
       uploads: uploadList,
       rejections,
+      supersededJobIds,
       hasActiveUploads,
       enqueue,
       retry,
@@ -414,6 +458,7 @@ export function UploadProvider({ sermonId, children }: UploadProviderProps) {
     [
       uploadList,
       rejections,
+      supersededJobIds,
       hasActiveUploads,
       enqueue,
       retry,

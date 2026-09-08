@@ -12,18 +12,19 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { isApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/query/keys";
+import { describeUploadFailure, UploadValidationError } from "@/lib/upload";
 import { uploadSermonThumbnail } from "@/lib/upload/thumbnail";
 
 export interface UseThumbnailUploadOptions {
   sermonId: string | undefined;
 }
 
+/** Route thumbnail failures through the same mapper the media pipeline uses,
+ *  so the user sees "The upload link expired…", not "upload PUT failed
+ *  (status 403)". */
 function messageFor(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message;
-  if (isApiError(err)) return err.detail;
-  return "Couldn’t replace the image. Try again.";
+  return describeUploadFailure(err).message;
 }
 
 export function useThumbnailUpload({ sermonId }: UseThumbnailUploadOptions) {
@@ -31,7 +32,9 @@ export function useThumbnailUpload({ sermonId }: UseThumbnailUploadOptions) {
 
   const mutation = useMutation<string | null, Error, File>({
     mutationFn: async (file) => {
-      if (!sermonId) throw new Error("Save the draft before adding an image.");
+      if (!sermonId) {
+        throw new UploadValidationError("Save the draft before adding an image.");
+      }
       return uploadSermonThumbnail(sermonId, file);
     },
     onSuccess: () => {

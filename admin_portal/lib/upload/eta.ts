@@ -4,7 +4,7 @@
  * '3 min remaining' without it jittering").
  *
  * Pure. The uploader feeds it `(bytesSent, now)` on every `xhr.upload.onprogress`
- * tick; the row reads `remainingSeconds(total, now)` and renders `formatEta`.
+ * tick; the row reads `remainingSeconds(total)` and renders `formatEta`.
  */
 
 interface Sample {
@@ -48,14 +48,14 @@ export class UploadRateEstimator {
   /**
    * Seconds until `total` bytes are sent at the current smoothed rate, or
    * `null` when there is no usable rate yet or the transfer already looks
-   * complete. Never negative, never `Infinity`/`NaN`.
+   * complete. Never negative, never `Infinity`/`NaN`. Derived purely from the
+   * retained samples — the caller's wall clock is not needed.
    */
-  remainingSeconds(total: number, now: number): number | null {
+  remainingSeconds(total: number): number | null {
     const rate = this.bytesPerSecond();
     if (rate == null || !Number.isFinite(rate) || rate <= 0) return null;
     const last = this.samples[this.samples.length - 1];
     const sent = last ? last.loaded : 0;
-    void now;
     const left = total - sent;
     if (left <= 0) return 0;
     return left / rate;
@@ -76,6 +76,9 @@ export function formatEta(remainingSeconds: number | null): string {
     return "calculating…";
   }
   if (remainingSeconds < 45) return "less than a minute remaining";
+  // Cap the top end — a post-burst trickle rate can otherwise produce
+  // "about 417 hr remaining", which reads as broken.
+  if (remainingSeconds >= 24 * 3600) return "more than a day remaining";
   const minutes = Math.round(remainingSeconds / 60);
   if (minutes < 60) return `about ${minutes} min remaining`;
   const hours = Math.floor(minutes / 60);

@@ -39,7 +39,6 @@ import {
    ========================================================================== */
 
 const ACCEPT_HINT = "MP4, MOV, MP3, M4A · up to 5 GB";
-const READY_STATES: ReadonlyArray<UploadRow["state"]> = ["ready"];
 
 export interface MediaJobsCardProps {
   sermonId: string | undefined;
@@ -61,28 +60,31 @@ export function MediaJobsCard({
     [uploadsQuery.data],
   );
 
-  const rows = React.useMemo(
-    () =>
-      mergeUploadRows(upload.uploads, serverJobs, {
-        durationSeconds: sermonDurationSeconds,
-        renditionCount: null,
-      }),
-    [upload.uploads, serverJobs, sermonDurationSeconds],
+  // A ready row only ever comes from a server job (no local phase reaches
+  // "ready"), so this gate needs no merge pass.
+  const anyReady = React.useMemo(
+    () => serverJobs.some((j) => j.status === "ready"),
+    [serverJobs],
   );
-  const anyReady = rows.some((r) => READY_STATES.includes(r.state));
 
   const mediaQuery = useSermonMedia(sermonId, anyReady);
   const renditionCount = mediaQuery.data?.length ?? null;
 
-  // Second pass once the rendition count is in hand — cheap, only the "ready"
-  // rows change.
   const finalRows = React.useMemo(
     () =>
-      mergeUploadRows(upload.uploads, serverJobs, {
-        durationSeconds: sermonDurationSeconds,
-        renditionCount,
-      }),
-    [upload.uploads, serverJobs, sermonDurationSeconds, renditionCount],
+      mergeUploadRows(
+        upload.uploads,
+        serverJobs,
+        { durationSeconds: sermonDurationSeconds, renditionCount },
+        upload.supersededJobIds,
+      ),
+    [
+      upload.uploads,
+      upload.supersededJobIds,
+      serverJobs,
+      sermonDurationSeconds,
+      renditionCount,
+    ],
   );
 
   // Release the File once the job has landed in the server list.
@@ -120,10 +122,29 @@ export function MediaJobsCard({
     }
   };
 
+  // A drag-drop is always a fresh add, never a retry of a specific job. Clear
+  // any target left behind by a Retry click whose OS file dialog was then
+  // cancelled (no `change` event fires on cancel) — otherwise the drop is
+  // misrouted as a supersede of a stale job id.
+  const clearRetryTarget = React.useCallback(() => {
+    retryTargetRef.current = null;
+  }, []);
+
+  // Belt-and-braces: browsers that fire the input `cancel` event let us clear
+  // the stale target the moment the dialog is dismissed. (React has no typed
+  // `onCancel` for <input>, hence the native listener.)
+  React.useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.addEventListener("cancel", clearRetryTarget);
+    return () => el.removeEventListener("cancel", clearRetryTarget);
+  }, [clearRetryTarget]);
+
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
     if (disabled) return;
+    clearRetryTarget();
     handleFiles(e.dataTransfer.files);
   };
 
@@ -159,7 +180,9 @@ export function MediaJobsCard({
         aria-disabled={disabled}
         onDragOver={(e) => {
           e.preventDefault();
-          if (!disabled) setDragActive(true);
+          if (disabled) return;
+          clearRetryTarget();
+          setDragActive(true);
         }}
         onDragLeave={() => setDragActive(false)}
         onDrop={onDrop}
