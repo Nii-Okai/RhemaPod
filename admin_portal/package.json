@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "gen:api": "openapi-typescript ../openapi.json -o lib/api/schema.d.ts",
     "test": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
     "verify": "npm run build && npm run typecheck && npm run lint && npm run test"
   },
   "engines": {

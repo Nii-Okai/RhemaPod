@@ -1,11 +1,36 @@
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 
-/* Placeholder frame for the (portal) route group.
+import { QueryProvider } from "@/lib/query/provider";
+import { getServerUser } from "@/lib/auth/session";
+import { SessionProvider } from "@/lib/auth/session-context";
 
-   The real shell — a Server Component that bootstraps GET /auth/me,
-   feeds a client SessionProvider and renders the role-gated sidebar +
-   top bar — is W5 (plan §A.4 / §A.7). For W1 this only wraps the
-   token-audit reference page. */
-export default function PortalLayout({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-canvas text-ink">{children}</div>;
+/**
+ * `(portal)` bootstrap (plan §A.2 "Session bootstrap", §A.4, §A.7).
+ *
+ * Server Component: resolve the signed-in user server-side from `rp_at`; on any
+ * failure send them to `/login`. On success, mount the client `SessionProvider`
+ * (the value W5's role-gated nav reads) and the React Query provider W3
+ * delivered but left unwired.
+ *
+ * The full shell — sidebar, top bar, role-gated nav — is W5. This is the
+ * minimal bootstrap W4 needs.
+ */
+export default async function PortalLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const user = await getServerUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  return (
+    <SessionProvider user={user}>
+      <QueryProvider>
+        <div className="min-h-screen bg-canvas text-ink">{children}</div>
+      </QueryProvider>
+    </SessionProvider>
+  );
 }

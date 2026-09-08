@@ -1,17 +1,29 @@
-import { NextResponse } from "next/server";
+/**
+ * The generic authenticated pass-through (plan §A.2). Every browser data call
+ * routes through here; `lib/auth/proxy.ts` carries the logic (CSRF on mutating
+ * methods, preemptive + reactive refresh with per-process dedupe, the single
+ * `Authorization` header, X-Correlation-ID relay).
+ */
 
-// Placeholder — implemented in W4. The single authenticated pass-through to
-// /api/v1/<path>: Origin/Sec-Fetch-Site CSRF check on mutating methods,
-// preemptive refresh, one 401 retry, the one place an Authorization header is
-// attached. Plan §A.2. Every browser data call routes through here.
-function notImplemented() {
-  return NextResponse.json({ detail: "Not implemented" }, { status: 501 });
+import type { NextRequest } from "next/server";
+
+import { handleBffRequest } from "@/lib/auth/proxy";
+
+// Node runtime: the refresh dedupe map is module-scope process state, which the
+// Edge runtime does not give us (§A.2, resolved decision 7 — single instance).
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type RouteContext = { params: Promise<{ path: string[] }> };
+
+async function proxy(req: NextRequest, ctx: RouteContext) {
+  const { path } = await ctx.params;
+  return handleBffRequest(req, path);
 }
 
 export {
-  notImplemented as GET,
-  notImplemented as POST,
-  notImplemented as PUT,
-  notImplemented as PATCH,
-  notImplemented as DELETE,
+  proxy as GET,
+  proxy as POST,
+  proxy as PATCH,
+  proxy as DELETE,
 };
