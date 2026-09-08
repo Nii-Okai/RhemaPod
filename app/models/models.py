@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from sqlalchemy import ForeignKey, Integer, Text  # noqa: E402
+from sqlalchemy import BigInteger, ForeignKey, Integer, Text  # noqa: E402
 from sqlalchemy.orm import relationship  # noqa: E402
 
 from app.db.database import Base
@@ -324,6 +324,10 @@ class UploadJob(Base):
     raw_key: Mapped[str] = mapped_column(String(512), nullable=False)
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Client-declared content length at presign time. Nullable: older jobs
+    # predate the column and the client may omit it. BigInteger — media files
+    # routinely exceed the INT4 ceiling (~2.1 GB).
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     media_type: Mapped[MediaType] = mapped_column(
         Enum(MediaType, name="media_type", native_enum=False, length=10), nullable=False
     )

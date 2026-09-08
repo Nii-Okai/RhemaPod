@@ -35,6 +35,9 @@ Required when `ENVIRONMENT=production`:
 Inject these from AWS Secrets Manager / GCP Secret Manager / Vault — not a file
 on disk.
 
+`S3_PUBLIC_ENDPOINT` is a **dev-only** shim (see §7). The preflight refuses to
+boot in production if it is set to a localhost/compose value; leave it unset.
+
 ## 3. Deploy sequence
 
 ```bash
@@ -152,6 +155,34 @@ Browser uploads need a CORS rule on the raw bucket:
 ```
 
 Both buckets must block all public access — playback uses signed URLs.
+
+### Local dev: MinIO in compose
+
+`docker compose up` now runs a `minio` service plus a one-shot `createbuckets`
+that makes `sermon-raw` and `sermon-media`. This exists so the browser-direct
+presigned PUT is exercised for real — the in-process `LocalStorage` stub fakes
+both the URL and the object's existence, so a broken upload still `confirm`s.
+
+Two dev-only wrinkles, both handled in `docker-compose.yml`:
+
+- **Presigned-URL host.** The API container reaches MinIO at `http://minio:9000`
+  (`S3_ENDPOINT_URL`), but the browser must PUT to a host it can resolve.
+  `S3Storage` keeps two boto3 clients: one bound to `S3_ENDPOINT_URL` for its
+  own reads/writes (`object_exists`, `delete`), and one bound to
+  `S3_PUBLIC_ENDPOINT` (`http://localhost:9000`) used only to sign the
+  presigned URLs the browser follows. Signing for the browser's host is
+  required — SigV4 signs the `Host` header even for query-string auth, so a URL
+  signed for `minio:9000` is rejected with `SignatureDoesNotMatch` when the PUT
+  lands on `localhost:9000`. Presigning is offline HMAC, so the presign client
+  never needs to reach its endpoint. `S3_PUBLIC_ENDPOINT` is **dev-only** — the
+  config preflight refuses to boot in production if it is a localhost/compose
+  value. On real AWS S3 both sides use one host, so leave it unset.
+- **Browser CORS.** The MinIO server is started with
+  `MINIO_API_CORS_ALLOW_ORIGIN=${PORTAL_ORIGIN:-http://localhost:3000}`, which
+  allows the portal's dev origin to PUT cross-origin. Change `PORTAL_ORIGIN` in
+  `.env` if the portal runs elsewhere. (MinIO's server-wide CORS allow-list is
+  used rather than a per-bucket `mc cors` rule — `mc cors` support varies by
+  release; the server env var is stable.)
 
 ## 8. Operational behaviour when Redis is down
 

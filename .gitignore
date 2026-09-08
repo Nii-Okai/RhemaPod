@@ -33,5 +33,14 @@ dump.rdb
 .DS_Store
 
 # Project-specific
-docs/
+# Ignore docs/ contents by default, but TRACK ADRs and code reviews. Git cannot
+# re-include a path whose parent dir is wholesale-excluded, so exclude the
+# entries (docs/*) rather than the directory (docs/) — that keeps git
+# recursing so the negations below take effect. The design bundle
+# docs/design_admin_portal/ stays ignored.
+docs/*
+!docs/adr/
+!docs/adr/**
+!docs/reviews/
+!docs/reviews/**
 status.md

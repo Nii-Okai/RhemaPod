@@ -155,6 +155,15 @@ class SermonDetail(SermonListItem):
     created_at: datetime
 
 
+class SermonAdminDetail(SermonDetail):
+    """Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor
+    screen's "saved N min ago" stamp needs a server-side `updated_at` baseline,
+    which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
+    not carry."""
+
+    updated_at: datetime | None
+
+
 # ── Approval workflow ─────────────────────────────────────────────────────────
 class RejectRequest(BaseModel):
     note: str | None = None
@@ -213,6 +222,11 @@ class UploadJobPublic(BaseModel):
     sermon_id: uuid.UUID
     media_type: _MediaType
     status: _UploadStatus
+    # Carried so a page reloaded mid-upload can still identify the row: the
+    # UploadJob response is otherwise the only thing tying a job id to its file.
+    original_filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
     error_message: str | None
     created_at: datetime
 

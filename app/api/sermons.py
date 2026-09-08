@@ -8,6 +8,7 @@ from app.core.dependencies import CurrentUser, get_optional_user, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     Page,
+    SermonAdminDetail,
     SermonAdminListItem,
     SermonCreate,
     SermonDetail,
@@ -115,6 +116,25 @@ async def create_sermon(data: SermonCreate, user: EditorPlus, db: DbDep) -> Serm
         raise _err(exc)
 
 
+@router.get("/{sermon_id}", response_model=SermonAdminDetail)
+async def get_sermon(
+    sermon_id: uuid.UUID, user: EditorPlus, db: DbDep
+) -> SermonAdminDetail:
+    """Load a sermon in any status for the editor screen.
+
+    The public `/catalog/sermons/{id}` is published-only and returns a plain
+    `SermonDetail`; this is the staff read and returns `SermonAdminDetail`
+    (adds `updated_at` for the "saved N min ago" baseline). Editors see only
+    their own sermons (someone else's is 404, not 403, so existence isn't
+    leaked); managers and admins see any.
+    """
+    actor = await _actor(db, user)
+    try:
+        return await content_service.get_sermon_for_staff(db, sermon_id, actor)
+    except ContentError as exc:
+        raise _err(exc)
+
+
 @router.patch("/{sermon_id}", response_model=SermonDetail)
 async def update_sermon(
     sermon_id: uuid.UUID, data: SermonUpdate, user: EditorPlus, db: DbDep
@@ -145,6 +165,19 @@ async def submit(sermon_id: uuid.UUID, user: EditorPlus, db: DbDep) -> StatusRes
     actor = await _actor(db, user)
     try:
         s = await content_service.transition(db, sermon_id, "submit", actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return StatusResponse(id=s.id, status=s.status)
+
+
+@router.post("/{sermon_id}/withdraw", response_model=StatusResponse)
+async def withdraw(sermon_id: uuid.UUID, user: EditorPlus, db: DbDep) -> StatusResponse:
+    """Pull a pending/under-review sermon back to draft. An editor may withdraw
+    only their own (others 404); managers and admins any. Writes an ApprovalLog
+    row like every other transition."""
+    actor = await _actor(db, user)
+    try:
+        s = await content_service.transition(db, sermon_id, "withdraw", actor)
     except ContentError as exc:
         raise _err(exc)
     return StatusResponse(id=s.id, status=s.status)

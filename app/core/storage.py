@@ -33,6 +33,8 @@ class Storage(Protocol):
 
     def object_exists(self, bucket: str, key: str) -> bool: ...
 
+    def object_size(self, bucket: str, key: str) -> int | None: ...
+
     def delete_object(self, bucket: str, key: str) -> None: ...
 
 
@@ -56,6 +58,14 @@ class LocalStorage:
     def object_exists(self, bucket: str, key: str) -> bool:
         return (bucket, key) in self._objects
 
+    def object_size(self, bucket: str, key: str) -> int | None:
+        """The stub stores no real bytes, so the observed size is genuinely
+        unknown -> None. `confirm_upload` treats None as "can't verify, don't
+        override". Tests that exercise the confirm-time size cap monkeypatch
+        this to return a concrete value (mirroring how they monkeypatch
+        object_exists)."""
+        return None
+
     def delete_object(self, bucket: str, key: str) -> None:
         self._objects.discard((bucket, key))
 
@@ -70,25 +80,56 @@ class S3Storage:
                 "STORAGE_BACKEND=local for development."
             ) from exc
 
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint_url,
+        client_config = None
+        if settings.s3_endpoint_url:
+            from botocore.config import Config as BotoConfig
+
+            # A custom endpoint means MinIO / R2 / another S3-compatible store.
+            # Force path-style addressing (bucket in the path, not the hostname)
+            # — MinIO does not serve virtual-host-style buckets without extra DNS
+            # setup — and pin SigV4.
+            client_config = BotoConfig(
+                s3={"addressing_style": "path"}, signature_version="s3v4"
+            )
+
+        common = dict(
             region_name=settings.s3_region,
             aws_access_key_id=settings.s3_access_key_id,
             aws_secret_access_key=settings.s3_secret_access_key,
+            config=client_config,
         )
+
+        # Client for this process's own reads/writes (object_exists, delete).
+        self._client = boto3.client(
+            "s3", endpoint_url=settings.s3_endpoint_url, **common
+        )
+
+        # Client used ONLY to mint presigned URLs the BROWSER will follow. When
+        # the browser reaches storage on a different host than this process does
+        # (compose: browser → localhost:9000, API → minio:9000), the URL must be
+        # signed for the browser's host: SigV4 signs the Host header even for
+        # query-string auth, so a signature made for minio:9000 fails when the
+        # request lands with Host: localhost:9000. Presigning is offline HMAC, so
+        # pointing this client at a host THIS process cannot reach is harmless.
+        # Unset s3_public_endpoint (real AWS S3) → same client, no split.
+        if settings.s3_public_endpoint:
+            self._presign_client = boto3.client(
+                "s3", endpoint_url=settings.s3_public_endpoint, **common
+            )
+        else:
+            self._presign_client = self._client
 
     def presigned_upload_url(
         self, bucket: str, key: str, content_type: str, expires_in: int
     ) -> str:
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             "put_object",
             Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
             ExpiresIn=expires_in,
         )
 
     def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=expires_in,
@@ -117,6 +158,31 @@ class S3Storage:
             raise StorageError(
                 f"Could not verify the uploaded object (S3 error {code}). "
                 "Check the IAM policy grants s3:GetObject on this bucket."
+            ) from exc
+
+    def object_size(self, bucket: str, key: str) -> int | None:
+        """ContentLength of the stored object, or None if it is not there.
+
+        Used at upload-confirm time to enforce the size cap against the real
+        bytes that landed, not the client's declared figure. A non-404 error
+        is an infrastructure fault and is raised, matching object_exists.
+        """
+        from botocore.exceptions import ClientError
+
+        try:
+            head = self._client.head_object(Bucket=bucket, Key=key)
+            return int(head["ContentLength"])
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey") or status == 404:
+                return None
+            log.error(
+                "s3_head_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not size the uploaded object (S3 error {code})."
             ) from exc
 
     def delete_object(self, bucket: str, key: str) -> None:

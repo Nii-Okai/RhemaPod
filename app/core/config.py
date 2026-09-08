@@ -1,5 +1,6 @@
 import ipaddress
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,6 +67,15 @@ class Settings(BaseSettings):
     # --- Media / storage (Phase 4) ---
     # S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
     s3_endpoint_url: str | None = None          # None = real AWS S3
+    # Host the BROWSER uses to reach object storage, when it differs from the
+    # host THIS process uses (s3_endpoint_url). Presigned upload/download URLs
+    # are signed for this host so the browser can follow them — SigV4 signs the
+    # Host header, so a URL signed for the internal host is rejected when the
+    # request arrives on the public one. This process still does its own reads
+    # and writes (object_exists, delete) via s3_endpoint_url. Dev/compose only:
+    # the API container reaches MinIO at http://minio:9000, the browser needs
+    # http://localhost:9000. Leave unset for real AWS S3 (one host for both).
+    s3_public_endpoint: str | None = None
     s3_region: str = "eu-north-1"
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
@@ -177,6 +187,55 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("s3_public_endpoint")
+    @classmethod
+    def s3_public_endpoint_is_a_clean_origin(cls, v: str | None) -> str | None:
+        """Structural check on S3_PUBLIC_ENDPOINT, in EVERY environment.
+
+        It is only ever a ``scheme://host[:port]`` the browser will follow to
+        object storage — never carrying credentials, a path, a query, or a
+        fragment. ``http://`` is allowed only for a localhost / compose host
+        (the dev shim); anything else must be ``https://``. The production
+        preflight's denylist stays as a second layer.
+        """
+        if v is None:
+            return v
+
+        parts = urlsplit(v)
+        if parts.scheme not in ("http", "https"):
+            raise ValueError("S3_PUBLIC_ENDPOINT must be an http:// or https:// URL")
+        if not parts.hostname:
+            raise ValueError("S3_PUBLIC_ENDPOINT must include a host")
+        if parts.username or parts.password:
+            raise ValueError(
+                "S3_PUBLIC_ENDPOINT must not contain credentials (user:pass@)"
+            )
+        if parts.path not in ("", "/"):
+            raise ValueError(
+                "S3_PUBLIC_ENDPOINT must be scheme://host[:port] with no path"
+            )
+        if parts.query or parts.fragment:
+            raise ValueError(
+                "S3_PUBLIC_ENDPOINT must not contain a query or fragment"
+            )
+
+        host = parts.hostname.lower()
+        dev_hosts = {
+            "localhost", "127.0.0.1", "0.0.0.0", "::1",
+            "minio", "host.docker.internal",
+        }
+        is_dev_host = (
+            host in dev_hosts
+            or host.endswith(".localhost")
+            or host.endswith(".invalid")
+        )
+        if parts.scheme == "http" and not is_dev_host:
+            raise ValueError(
+                "S3_PUBLIC_ENDPOINT may only use http:// for a localhost/compose "
+                "host (the dev-only presign shim); use https:// for a real host"
+            )
+        return v
+
     @field_validator("trusted_proxies")
     @classmethod
     def trusted_proxies_are_scoped(cls, v: list[str]) -> list[str]:
@@ -264,6 +323,27 @@ class Settings(BaseSettings):
             problems.append("ALLOWED_ORIGINS must use https in production")
         if self.frontend_base_url.startswith("http://"):
             problems.append("FRONTEND_BASE_URL must use https in production")
+        if self.s3_endpoint_url and not self.s3_endpoint_url.lower().startswith(
+            "https://"
+        ):
+            problems.append(
+                "S3_ENDPOINT_URL must use https in production — an http endpoint "
+                "sends credentials and objects in cleartext to the object store. "
+                "Unset it for real AWS S3."
+            )
+        if self.s3_public_endpoint:
+            low = self.s3_public_endpoint.lower()
+            local_markers = (
+                "localhost", "127.0.0.1", "0.0.0.0", "::1",
+                "minio:", "host.docker.internal", ".invalid",
+            )
+            if low.startswith("http://") or any(m in low for m in local_markers):
+                problems.append(
+                    "S3_PUBLIC_ENDPOINT must be a real https host, not a "
+                    "localhost/compose value — it is a dev-only shim for signing "
+                    "presigned URLs for a browser that cannot resolve the "
+                    "internal storage host. Unset it in production."
+                )
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by

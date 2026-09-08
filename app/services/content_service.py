@@ -27,6 +27,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import cache_aside, get_redis
 from app.models.content_schemas import (
+    SermonAdminDetail,
     SermonCreate,
     SermonDetail,
     SermonListItem,
@@ -244,27 +245,60 @@ async def invalidate_catalog_cache() -> None:
         log.warning("catalog_cache_invalidation_failed")
 
 
+# ── Editor-ownership rule (one definition, two representations) ────────────────
+# The rule: an editor may only touch sermons they created; a manager or admin
+# may touch any. It is needed both as a row-level check on an already-loaded
+# Sermon (staff_scope_hides) and as a SQL predicate for list queries
+# (editor_scope_filter). These two are twins — change one, change the other —
+# and everything else routes through them rather than re-inlining the test.
+def staff_scope_hides(sermon: Sermon, requester: User) -> bool:
+    """Row-level form: does the editor-scoping rule hide this sermon from
+    `requester`? A caller that hits this returns 404, never 403 — an editor
+    must not be able to tell someone else's sermon exists. `created_by` NULL
+    fails safe (hidden from an editor)."""
+    return requester.role == UserRole.EDITOR and sermon.created_by != requester.id
+
+
+def editor_scope_filter(requester: User):
+    """Query-level twin of `staff_scope_hides`: the SQLAlchemy predicate that
+    confines an editor to their own sermons, or None for manager/admin (no
+    restriction)."""
+    if requester.role == UserRole.EDITOR:
+        return Sermon.created_by == requester.id
+    return None
+
+
+def ensure_editor_can_access(
+    sermon: Sermon, requester: User, *, action: str, hide: bool = False
+) -> None:
+    """Enforce the editor-ownership rule, raising the right typed error.
+
+    `hide=True`  -> 404 "Sermon not found" (don't disclose existence).
+    `hide=False` -> 403 "You can only <action> your own sermons".
+
+    This is the single place the 403/404 message-and-status choice is made, so
+    the four callers that used to inline `role == EDITOR and created_by != id`
+    now differ only in `action`/`hide`.
+    """
+    if not staff_scope_hides(sermon, requester):
+        return
+    if hide:
+        raise ContentError("Sermon not found", status_code=404)
+    raise ContentError(f"You can only {action} your own sermons", status_code=403)
+
+
 # ── Sermon detail ─────────────────────────────────────────────────────────────
-async def get_sermon_detail(
-    db: AsyncSession, sermon_id: uuid.UUID, user: User | None
+async def _assemble_sermon_detail(
+    db: AsyncSession, sermon: Sermon, user: User | None
 ) -> SermonDetail:
-    stmt = (
-        select(Sermon)
-        .where(Sermon.id == sermon_id)
-        .options(selectinload(Sermon.media_refs), selectinload(Sermon.tags))
-    )
-    sermon = (await db.execute(stmt)).scalar_one_or_none()
-    if sermon is None:
-        raise ContentError("Sermon not found", status_code=404)
+    """Shared tail of the public and staff sermon-detail reads: resolve the
+    effective tier + entitlement and build the `SermonDetail`.
 
-    # Viewers only see published content; editors/managers can see any of their
-    # own work-in-progress via the editor endpoints, not here.
-    is_staff = user is not None and user.role in (
-        UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN
-    )
-    if sermon.status not in VIEWER_VISIBLE_STATUSES and not is_staff:
-        raise ContentError("Sermon not found", status_code=404)
-
+    `sermon` must already have `media_refs` and `tags` eager-loaded. Callers
+    apply their own access guard first — published-visibility for the public
+    read, editor-ownership for the staff read; those axes are orthogonal and
+    are deliberately NOT folded in here.
+    """
     series = None
     if sermon.series_id is not None:
         series = await db.get(Series, sermon.series_id)
@@ -280,6 +314,57 @@ async def get_sermon_detail(
         published_at=sermon.published_at,
         created_at=sermon.created_at,
     )
+
+
+async def _load_sermon_with_detail_rels(
+    db: AsyncSession, sermon_id: uuid.UUID
+) -> Sermon | None:
+    stmt = (
+        select(Sermon)
+        .where(Sermon.id == sermon_id)
+        .options(selectinload(Sermon.media_refs), selectinload(Sermon.tags))
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_sermon_detail(
+    db: AsyncSession, sermon_id: uuid.UUID, user: User | None
+) -> SermonDetail:
+    """Public catalog detail read: published sermons only for viewers. Staff
+    can see any status here too, but the workflow-aware read for the editor
+    screen is `get_sermon_for_staff` (which also enforces editor ownership)."""
+    sermon = await _load_sermon_with_detail_rels(db, sermon_id)
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+
+    # Viewers only see published content; editors/managers can see any of their
+    # own work-in-progress via the editor endpoints, not here.
+    is_staff = user is not None and user.role in (
+        UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN
+    )
+    if sermon.status not in VIEWER_VISIBLE_STATUSES and not is_staff:
+        raise ContentError("Sermon not found", status_code=404)
+
+    return await _assemble_sermon_detail(db, sermon, user)
+
+
+async def get_sermon_for_staff(
+    db: AsyncSession, sermon_id: uuid.UUID, requester: User
+) -> SermonAdminDetail:
+    """Load one sermon in ANY status for the staff editor screen.
+
+    Unlike `get_sermon_detail` (published-only for viewers), this is the
+    workflow-aware read: an editor gets their own draft/rejected/pending work,
+    a manager or admin gets anyone's. An editor asking for another editor's
+    sermon gets 404, not 403. Carries `updated_at` (the "saved N min ago"
+    baseline) via `SermonAdminDetail`; the public `SermonDetail` does not.
+    """
+    sermon = await _load_sermon_with_detail_rels(db, sermon_id)
+    if sermon is None or staff_scope_hides(sermon, requester):
+        raise ContentError("Sermon not found", status_code=404)
+
+    detail = await _assemble_sermon_detail(db, sermon, requester)
+    return SermonAdminDetail(**detail.model_dump(), updated_at=sermon.updated_at)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -370,12 +455,22 @@ async def _load_editable(db: AsyncSession, sermon_id: uuid.UUID, editor: User) -
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
     # Editors may only edit their own drafts; managers/admins may edit any.
-    if editor.role == UserRole.EDITOR and sermon.created_by != editor.id:
-        raise ContentError("You can only edit your own sermons", status_code=403)
+    ensure_editor_can_access(sermon, editor, action="edit")
     return sermon
 
 
 # ── Approval workflow ─────────────────────────────────────────────────────────
+# Per-action (status_code, message) for the editor-not-owner case in
+# `transition`. Every editor-reachable action currently normalises to a 404
+# that is byte-identical to a missing sermon; the map is the seam for a future
+# action that needs to say something else.
+_EDITOR_SCOPE_DENIED_DEFAULT: tuple[int, str] = (404, "Sermon not found")
+_EDITOR_SCOPE_DENIED: dict[str, tuple[int, str]] = {
+    "submit": _EDITOR_SCOPE_DENIED_DEFAULT,
+    "withdraw": _EDITOR_SCOPE_DENIED_DEFAULT,
+}
+
+
 async def transition(
     db: AsyncSession,
     sermon_id: uuid.UUID,
@@ -391,9 +486,30 @@ async def transition(
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
 
-    # Editors may only submit their own drafts.
-    if action == "submit" and actor.role == UserRole.EDITOR and sermon.created_by != actor.id:
-        raise ContentError("You can only submit your own sermons", status_code=403)
+    # Editors act only on their own sermons. Every action an editor can reach
+    # normalises to 404 for a non-owner — a probing editor must not be able to
+    # tell one sermon's id from another by the error it gets back. Kept as a
+    # map rather than an if/elif chain so an action that ever wants a different
+    # disclosure posture is a one-line entry, not a new branch.
+    if staff_scope_hides(sermon, actor):
+        status_code, message = _EDITOR_SCOPE_DENIED.get(
+            action, _EDITOR_SCOPE_DENIED_DEFAULT
+        )
+        raise ContentError(message, status_code=status_code)
+
+    # Isaac's call: an editor may withdraw only from PENDING_REVIEW. Once a
+    # manager has picked it up (UNDER_REVIEW), only a manager/admin can send it
+    # back — otherwise an editor could withdraw→edit→resubmit in a loop and a
+    # reviewer's rejection note would never land.
+    if (
+        action == "withdraw"
+        and actor.role == UserRole.EDITOR
+        and sermon.status == SermonStatus.UNDER_REVIEW
+    ):
+        raise ContentError(
+            "A manager is reviewing this — ask them to send it back.",
+            status_code=409,
+        )
 
     try:
         new_status = resolve_transition(action, sermon.status, actor.role)
@@ -446,6 +562,21 @@ async def approval_history(db: AsyncSession, sermon_id: uuid.UUID) -> list[Appro
         .order_by(ApprovalLog.created_at.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def approval_history_for_staff(
+    db: AsyncSession, sermon_id: uuid.UUID, requester: User
+) -> list[ApprovalLog]:
+    """Approval log for the staff editor screen.
+
+    An editor reads the log for their OWN sermon — it's where they find out why
+    it was rejected. Managers and admins read any sermon's log. Another editor's
+    sermon (or a missing one) is 404, not 403: don't confirm it exists.
+    """
+    sermon = await db.get(Sermon, sermon_id)
+    if sermon is None or staff_scope_hides(sermon, requester):
+        raise ContentError("Sermon not found", status_code=404)
+    return await approval_history(db, sermon_id)
 
 
 # ── Categories (flat) ─────────────────────────────────────────────────────────
@@ -597,8 +728,9 @@ async def list_sermons_for_staff(
     everyone's. Returns (rows, total) — total is the count before paging, so a
     CMS can size its pager."""
     conditions = []
-    if requester.role == UserRole.EDITOR:
-        conditions.append(Sermon.created_by == requester.id)
+    scope_clause = editor_scope_filter(requester)
+    if scope_clause is not None:
+        conditions.append(scope_clause)
     if status_filter is not None:
         conditions.append(Sermon.status == status_filter)
     if search:

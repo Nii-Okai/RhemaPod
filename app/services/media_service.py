@@ -36,7 +36,12 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.services.content_service import ContentError, effective_tier
+from app.services.content_service import (
+    ContentError,
+    effective_tier,
+    ensure_editor_can_access,
+    staff_scope_hides,
+)
 
 settings = get_settings()
 log = get_logger("media")
@@ -61,8 +66,7 @@ async def _load_sermon_for_editor(
     )).scalar_one_or_none()
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
-    if actor.role == UserRole.EDITOR and sermon.created_by != actor.id:
-        raise ContentError("You can only upload to your own sermons", status_code=403)
+    ensure_editor_can_access(sermon, actor, action="upload to")
     # Uploading to live content would swap the file under viewers mid-playback.
     if sermon.status == SermonStatus.PUBLISHED:
         raise ContentError(
@@ -110,6 +114,7 @@ async def create_upload_ticket(
         raw_key=key,
         original_filename=filename,
         content_type=content_type,
+        size_bytes=size_bytes,
         media_type=media_type,
         status=UploadStatus.AWAITING_UPLOAD,
         created_by=actor.id,
@@ -155,6 +160,28 @@ async def confirm_upload(
             "No uploaded file found for this job — complete the PUT first",
             status_code=409,
         )
+
+    # The declared `size_bytes` at presign time is advisory — nothing binds it
+    # to the PUT. Enforce the cap here against the bytes that actually landed,
+    # and record the observed size (overriding the client's figure). Over the
+    # cap: delete the object so a rejected upload leaves nothing behind, and
+    # 413 exactly as the presign path would have.
+    observed_size = store.object_size(settings.s3_raw_bucket, job.raw_key)
+    if observed_size is not None:
+        if observed_size > settings.max_upload_bytes:
+            try:
+                store.delete_object(settings.s3_raw_bucket, job.raw_key)
+            except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
+                log.warning(
+                    "oversize_upload_cleanup_failed",
+                    job_id=str(job.id), key=job.raw_key,
+                )
+            raise ContentError(
+                f"File exceeds the maximum upload size of "
+                f"{settings.max_upload_bytes // (1024 ** 3)} GB",
+                status_code=413,
+            )
+        job.size_bytes = observed_size
 
     job.status = UploadStatus.UPLOADED
     job.error_message = None
@@ -306,7 +333,12 @@ async def get_stream(
     is_staff = user is not None and user.role in (
         UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN
     )
-    if sermon.status != SermonStatus.PUBLISHED and not is_staff:
+    # An editor may preview only their OWN unpublished sermon; a manager/admin
+    # any. Without the ownership test, any editor could pull signed playback
+    # URLs for another editor's unpublished draft (BOLA). Non-owner editor on
+    # an unpublished sermon -> 404, consistent with the staff read.
+    hidden_by_scope = user is not None and staff_scope_hides(sermon, user)
+    if sermon.status != SermonStatus.PUBLISHED and (not is_staff or hidden_by_scope):
         raise ContentError("Sermon not found", status_code=404)
 
     series = await db.get(Series, sermon.series_id) if sermon.series_id else None

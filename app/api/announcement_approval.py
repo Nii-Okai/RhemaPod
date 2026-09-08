@@ -113,4 +113,7 @@ async def archive_announcement(
 async def approval_log(
     announcement_id: uuid.UUID, user: ManagerPlus, db: DbDep
 ) -> list[AnnouncementApprovalLogItem]:
+    # Stays ManagerPlus (the sermon approval-log moved to EditorPlus in GATE 3
+    # Batch 2): announcements have no per-editor ownership scoping, so there is
+    # no "owning editor" who would need to read their own rejection note here.
     return await announcement_service.approval_history(db, announcement_id)

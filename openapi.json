@@ -1423,6 +1423,207 @@
         "title": "SeriesUpdate",
         "type": "object"
       },
+      "SermonAdminDetail": {
+        "description": "Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor\nscreen's \"saved N min ago\" stamp needs a server-side `updated_at` baseline,\nwhich the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must\nnot carry.",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "media_refs": {
+            "items": {
+              "$ref": "#/components/schemas/MediaRefPublic"
+            },
+            "title": "Media Refs",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id"
+          },
+          "series_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Title"
+          },
+          "speaker_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Id"
+          },
+          "speaker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SermonStatus"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ContentTier"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "thumbnail_url",
+          "duration_seconds",
+          "speaker_id",
+          "category_id",
+          "series_id",
+          "episode_number",
+          "tier",
+          "locked",
+          "status",
+          "tags",
+          "media_refs",
+          "published_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SermonAdminDetail",
+        "type": "object"
+      },
       "SermonAdminListItem": {
         "description": "Staff-facing card. Carries the workflow fields a CMS table needs, which\nthe public card deliberately omits (created_by would leak staff identity).",
         "properties": {
@@ -2587,6 +2788,17 @@
       },
       "UploadJobPublic": {
         "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2611,10 +2823,32 @@
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
           },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
           "sermon_id": {
             "format": "uuid",
             "title": "Sermon Id",
             "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           },
           "status": {
             "$ref": "#/components/schemas/UploadStatus"
@@ -3821,6 +4055,7 @@
     },
     "/api/v1/approvals/sermons/{sermon_id}/approval-log": {
       "get": {
+        "description": "Managers/admins read any sermon's log; an editor only their own (someone\nelse's is 404). This is where an editor reads why their sermon was rejected.",
         "operationId": "approval_log_api_v1_approvals_sermons__sermon_id__approval_log_get",
         "parameters": [
           {
@@ -5678,6 +5913,53 @@
           "sermons"
         ]
       },
+      "get": {
+        "description": "Load a sermon in any status for the editor screen.\n\nThe public `/catalog/sermons/{id}` is published-only and returns a plain\n`SermonDetail`; this is the staff read and returns `SermonAdminDetail`\n(adds `updated_at` for the \"saved N min ago\" baseline). Editors see only\ntheir own sermons (someone else's is 404, not 403, so existence isn't\nleaked); managers and admins see any.",
+        "operationId": "get_sermon_api_v1_sermons__sermon_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SermonAdminDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Sermon",
+        "tags": [
+          "sermons"
+        ]
+      },
       "patch": {
         "operationId": "update_sermon_api_v1_sermons__sermon_id__patch",
         "parameters": [
@@ -6334,6 +6616,55 @@
         "summary": "List Uploads",
         "tags": [
           "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/withdraw": {
+      "post": {
+        "description": "Pull a pending/under-review sermon back to draft. An editor may withdraw\nonly their own (others 404); managers and admins any. Writes an ApprovalLog\nrow like every other transition.",
+        "operationId": "withdraw_api_v1_sermons__sermon_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw",
+        "tags": [
+          "sermons"
         ]
       }
     },
