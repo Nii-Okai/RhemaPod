@@ -32,12 +32,31 @@ export const BFF_BASE_URL = "/api/bff";
 const BACKEND_MOUNT_PREFIX = "/api/v1/";
 
 const stripBackendMount: Middleware = {
-  onRequest({ request }) {
+  async onRequest({ request }) {
     const url = new URL(request.url);
     const rewritten = url.pathname.replace(BACKEND_MOUNT_PREFIX, "/");
     if (rewritten === url.pathname) return undefined;
     url.pathname = rewritten;
-    return new Request(url, request);
+    // Re-issue against the rewritten URL. The body MUST be buffered, not
+    // forwarded as a stream: `new Request(url, requestWithUnconsumedBody)`
+    // produces a streaming-body request, and Chromium then requires HTTP/2 for
+    // the upload — which fails ALPN against a plaintext (dev) origin
+    // (`net::ERR_ALPN_NEGOTIATION_FAILED` / "Failed to fetch"). A buffered body
+    // sends as an ordinary request over HTTP/1.1. JSON payloads only here, so
+    // buffering is cheap. (W9 — this is the first browser POST-with-body path.)
+    const method = request.method.toUpperCase();
+    const body =
+      method === "GET" || method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer();
+    return new Request(url, {
+      method: request.method,
+      headers: request.headers,
+      body,
+      credentials: request.credentials,
+      redirect: request.redirect,
+      signal: request.signal,
+    });
   },
 };
 

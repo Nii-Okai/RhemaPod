@@ -1,41 +1,60 @@
 "use client";
 
+import * as React from "react";
+
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { MediaPlaceholder } from "@/components/portal/media-placeholder";
+import { useThumbnailUpload } from "@/lib/query/hooks/use-thumbnail-upload";
+import { IMAGE_ACCEPT_ATTR } from "@/lib/upload";
 
 /* =============================================================================
-   Thumbnail card (design Screen 4, right column, top).
+   Thumbnail card (design Screen 4, right column, top) — plan W9 item 4.
 
-   W8 SCOPE: display only. "Replace image" is STUBBED — disabled with a
-   "W9" title.
+   "Replace image" wires the same ticket → XHR PUT → confirm pattern as the
+   Media card, against the sermon thumbnail endpoints:
+     POST /api/v1/sermons/{id}/thumbnail-url
+     PUT  <upload_url>            (direct to storage)
+     POST /api/v1/sermons/{id}/thumbnail/confirm?thumbnail_key=…
 
-   Why stubbed, not wired: `POST /sermons/{id}/thumbnail-url` →
-   PUT → `POST /sermons/{id}/thumbnail/confirm` is a clean contract and the
-   compose MinIO now supports a real browser-direct presigned PUT, BUT that is
-   exactly the surface W9's mandatory `security-reviewer` pass covers
-   (presigned-URL handling + CORS posture, plan W9 review). W8's review is
-   autosave concurrency only. Wiring an ad-hoc PUT here would ship an
-   un-security-reviewed upload path and duplicate the `lib/upload` uploader W9
-   builds. Deferring it costs one disabled button.
+   On success the returned `thumbnail_url` swaps the striped placeholder
+   immediately (optimistic), and the sermon detail is invalidated so every
+   other surface catches up.
    ========================================================================== */
 
 export interface ThumbnailCardProps {
+  sermonId: string | undefined;
   thumbnailUrl: string | null;
   title: string;
+  /** Locked (in review) or no saved sermon yet. */
+  disabled: boolean;
 }
 
-export function ThumbnailCard({ thumbnailUrl, title }: ThumbnailCardProps) {
+export function ThumbnailCard({
+  sermonId,
+  thumbnailUrl,
+  title,
+  disabled,
+}: ThumbnailCardProps) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const { replace, isPending, errorMessage, uploadedUrl, reset } =
+    useThumbnailUpload({ sermonId });
+
+  // Prefer the freshly-uploaded URL until the invalidated detail catches up.
+  const shown = uploadedUrl ?? thumbnailUrl;
+  const canReplace = !disabled && Boolean(sermonId) && !isPending;
+
   return (
     <Card className="flex flex-col gap-12 p-20">
       <CardHeader>
         <CardTitle>Thumbnail</CardTitle>
       </CardHeader>
 
-      {thumbnailUrl ? (
+      {shown ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={thumbnailUrl}
+          src={shown}
           alt={`Thumbnail for ${title}`}
           className="aspect-video w-full rounded-10 border border-border object-cover"
         />
@@ -47,14 +66,48 @@ export function ThumbnailCard({ thumbnailUrl, title }: ThumbnailCardProps) {
         />
       )}
 
+      {errorMessage ? (
+        <Alert variant="error" title="Couldn’t replace the image">
+          <span className="flex items-center gap-10">
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={reset}
+              className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
+            >
+              Dismiss
+            </button>
+          </span>
+        </Alert>
+      ) : null}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={IMAGE_ACCEPT_ATTR}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) replace(file);
+        }}
+      />
+
       <div>
         <Button
           size="sm"
           variant="secondary"
-          disabled
-          title="Image upload arrives in W9"
+          disabled={!canReplace}
+          onClick={() => inputRef.current?.click()}
+          title={
+            !sermonId
+              ? "Save the draft before adding an image"
+              : disabled
+                ? "Locked while the sermon is in review"
+                : undefined
+          }
         >
-          Replace image
+          {isPending ? "Uploading…" : "Replace image"}
         </Button>
       </div>
     </Card>

@@ -33,7 +33,7 @@ import {
   isNotFound,
   type SermonAdminDetail,
 } from "@/lib/query/hooks/use-sermon-admin";
-import { useSermonUploads } from "@/lib/query/hooks/use-sermon-uploads";
+import { UploadProvider } from "@/lib/upload";
 import { useSeriesList, type SeriesListItem } from "@/lib/query/hooks/use-series";
 import { useSpeakers } from "@/lib/query/hooks/use-speakers";
 
@@ -197,7 +197,6 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   const current: SermonAdminDetail | null = live.data ?? initial;
 
   const approvalLog = useApprovalLog(sermonId);
-  const uploads = useSermonUploads(sermonId);
 
   // A no-op after this editor's own unmount — a create POST that resolves late
   // must not rewrite the address bar of whatever page the user moved to.
@@ -318,146 +317,150 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   const heading = form.title.trim() || "Untitled sermon";
 
   return (
-    <div className="flex flex-col gap-16">
-      {/* breadcrumb + save row */}
-      <div className="flex flex-wrap items-center justify-between gap-12">
-        <nav className="flex min-w-0 items-center gap-8 text-[13px]">
-          <Link
-            href="/sermons"
-            onNavigate={(e) => {
-              if (!confirmLeave()) e.preventDefault();
-            }}
-            className="shrink-0 font-medium text-clay-600 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
-          >
-            ← Sermons
-          </Link>
-          <span className="text-ink-faint">/</span>
-          <span className="truncate text-ink-muted">{heading}</span>
-        </nav>
-
-        <div className="flex items-center gap-10">
-          <SaveStamp
-            status={autosave.status}
-            savedAt={autosave.savedAt}
-            unsaved={!sermonId}
-          />
-          {locked ? (
-            <Button
-              size="md"
-              variant="secondary"
-              disabled={workflow.isPending}
-              onClick={onWithdraw}
+    <UploadProvider sermonId={sermonId}>
+      <div className="flex flex-col gap-16">
+        {/* breadcrumb + save row */}
+        <div className="flex flex-wrap items-center justify-between gap-12">
+          <nav className="flex min-w-0 items-center gap-8 text-[13px]">
+            <Link
+              href="/sermons"
+              onNavigate={(e) => {
+                if (!confirmLeave()) e.preventDefault();
+              }}
+              className="shrink-0 font-medium text-clay-600 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
             >
-              Withdraw
-            </Button>
-          ) : (
-            <>
+              ← Sermons
+            </Link>
+            <span className="text-ink-faint">/</span>
+            <span className="truncate text-ink-muted">{heading}</span>
+          </nav>
+
+          <div className="flex items-center gap-10">
+            <SaveStamp
+              status={autosave.status}
+              savedAt={autosave.savedAt}
+              unsaved={!sermonId}
+            />
+            {locked ? (
               <Button
                 size="md"
                 variant="secondary"
-                disabled={autosave.status === "saving" && !autosave.isDirty}
-                onClick={onSaveDraft}
+                disabled={workflow.isPending}
+                onClick={onWithdraw}
               >
-                Save draft
+                Withdraw
               </Button>
-              <Button
-                size="md"
-                variant="primary"
-                disabled={!canSubmit}
-                onClick={onSubmit}
-              >
-                Submit for review
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* title + status */}
-      <div className="flex flex-wrap items-center gap-12">
-        <h1 className="text-page-title text-ink">{heading}</h1>
-        <StatusBadge status={toBadgeStatus(displayStatus)} />
-      </div>
-
-      {/* body */}
-      <div className="grid items-start gap-16 min-[1100px]:grid-cols-[1.7fr_1fr]">
-        <div className="flex flex-col gap-16">
-          {(autosave.status === "error" || workflowError) && (
-            <div className="flex flex-col gap-8">
-              {autosave.status === "error" && autosave.errorMessage ? (
-                <Alert variant="error" title="Your last change didn’t save">
-                  {autosave.errorMessage}
-                </Alert>
-              ) : null}
-              {workflowError ? (
-                <Alert variant="error" title="That action didn’t go through">
-                  <span className="flex items-center gap-10">
-                    <span>{workflowError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setWorkflowError(null)}
-                      className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
-                    >
-                      Dismiss
-                    </button>
-                  </span>
-                </Alert>
-              ) : null}
-            </div>
-          )}
-
-          {locked ? (
-            <Alert variant="warning" title="This sermon is in review">
-              Fields are locked while a manager reviews it. Withdraw it to keep
-              editing.
-            </Alert>
-          ) : null}
-
-          <DetailsCard
-            values={form}
-            onChange={change}
-            onCommit={commit}
-            disabled={locked}
-            titleError={titleError}
-            speakers={speakers.data}
-            categories={categories.data}
-            series={series.data}
-          />
-
-          <MediaJobsCard
-            jobs={uploads.data}
-            isLoading={uploads.isLoading}
-            isError={uploads.isError}
-          />
+            ) : (
+              <>
+                <Button
+                  size="md"
+                  variant="secondary"
+                  disabled={autosave.status === "saving" && !autosave.isDirty}
+                  onClick={onSaveDraft}
+                >
+                  Save draft
+                </Button>
+                <Button
+                  size="md"
+                  variant="primary"
+                  disabled={!canSubmit}
+                  onClick={onSubmit}
+                >
+                  Submit for review
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col gap-16">
-          <ThumbnailCard
-            thumbnailUrl={current?.thumbnail_url ?? null}
-            title={heading}
-          />
-          <AccessCard
-            tier={form.tier}
-            standalone={standalone}
-            seriesTier={seriesTier}
-            disabled={locked}
-            onChange={(tier) => {
-              change({ tier });
-              commit();
-            }}
-          />
-          <ApprovalLogCard
-            entries={timeline}
-            isLoading={approvalLog.isLoading}
-            isError={approvalLog.isError}
-            notFound={
-              approvalLog.isError &&
-              isApiError(approvalLog.error) &&
-              approvalLog.error.status === 404
-            }
-          />
+        {/* title + status */}
+        <div className="flex flex-wrap items-center gap-12">
+          <h1 className="text-page-title text-ink">{heading}</h1>
+          <StatusBadge status={toBadgeStatus(displayStatus)} />
+        </div>
+
+        {/* body */}
+        <div className="grid items-start gap-16 min-[1100px]:grid-cols-[1.7fr_1fr]">
+          <div className="flex flex-col gap-16">
+            {(autosave.status === "error" || workflowError) && (
+              <div className="flex flex-col gap-8">
+                {autosave.status === "error" && autosave.errorMessage ? (
+                  <Alert variant="error" title="Your last change didn’t save">
+                    {autosave.errorMessage}
+                  </Alert>
+                ) : null}
+                {workflowError ? (
+                  <Alert variant="error" title="That action didn’t go through">
+                    <span className="flex items-center gap-10">
+                      <span>{workflowError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowError(null)}
+                        className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
+                      >
+                        Dismiss
+                      </button>
+                    </span>
+                  </Alert>
+                ) : null}
+              </div>
+            )}
+
+            {locked ? (
+              <Alert variant="warning" title="This sermon is in review">
+                Fields are locked while a manager reviews it. Withdraw it to keep
+                editing.
+              </Alert>
+            ) : null}
+
+            <DetailsCard
+              values={form}
+              onChange={change}
+              onCommit={commit}
+              disabled={locked}
+              titleError={titleError}
+              speakers={speakers.data}
+              categories={categories.data}
+              series={series.data}
+            />
+
+            <MediaJobsCard
+              sermonId={sermonId}
+              sermonDurationSeconds={current?.duration_seconds ?? null}
+              disabled={locked || !sermonId}
+            />
+          </div>
+
+          <div className="flex flex-col gap-16">
+            <ThumbnailCard
+              sermonId={sermonId}
+              thumbnailUrl={current?.thumbnail_url ?? null}
+              title={heading}
+              disabled={locked || !sermonId}
+            />
+            <AccessCard
+              tier={form.tier}
+              standalone={standalone}
+              seriesTier={seriesTier}
+              disabled={locked}
+              onChange={(tier) => {
+                change({ tier });
+                commit();
+              }}
+            />
+            <ApprovalLogCard
+              entries={timeline}
+              isLoading={approvalLog.isLoading}
+              isError={approvalLog.isError}
+              notFound={
+                approvalLog.isError &&
+                isApiError(approvalLog.error) &&
+                approvalLog.error.status === 404
+              }
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </UploadProvider>
   );
 }

@@ -21,6 +21,14 @@ const alias = {
 //          without a DOM.
 export default defineConfig({
   test: {
+    // Scheduler starvation of `findBy*` at the default fan-out: Vitest spins one
+    // isolated worker per core (~30 here) and the heavier happy-dom interaction
+    // suites then lose their own async races under CPU contention — flaky,
+    // machine-dependent, nothing to do with the code under test (the base branch
+    // fails ~3/5 full runs without this cap). Capping the pool keeps file
+    // isolation intact while making the run deterministic. Drop to 1 if it
+    // flakes again. (W9 — flagged in status.md)
+    maxWorkers: 3,
     projects: [
       {
         extends: true,
