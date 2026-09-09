@@ -20,6 +20,7 @@ import {
   reviewCountLine,
 } from "@/lib/review/summary";
 import { SubmissionCard } from "@/components/review/submission-card";
+import { SermonPlayerDialog } from "@/components/review/sermon-player-dialog";
 
 /* =============================================================================
    ReviewScreen — Review queue (design Screen 5, plan W10). Manager/Admin only
@@ -101,6 +102,12 @@ export function ReviewScreen() {
         return next;
       }),
     [],
+  );
+
+  // The sermon whose media player dialog is open (id + title for the heading),
+  // or null when closed. "Watch" on a card opens it.
+  const [playerFor, setPlayerFor] = useState<{ id: string; title: string } | null>(
+    null,
   );
 
   const [toast, setToast] = useState<string | null>(null);
@@ -257,7 +264,9 @@ export function ReviewScreen() {
                 onCancelReject={() =>
                   patchCard(item.id, { mode: "idle", note: "" })
                 }
-                onWatch={() => actions.watch(item)}
+                onPlay={() =>
+                  setPlayerFor({ id: item.id, title: item.title })
+                }
                 onApproveOnly={() => actions.approve(item)}
                 onApproveAndPublish={() => actions.approveAndPublish(item)}
                 onSendRejection={() => actions.reject(item, state.note)}
@@ -287,6 +296,12 @@ export function ReviewScreen() {
           />
         </div>
       ) : null}
+
+      <SermonPlayerDialog
+        sermonId={playerFor?.id ?? null}
+        title={playerFor?.title ?? ""}
+        onClose={() => setPlayerFor(null)}
+      />
     </>
   );
 }

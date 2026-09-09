@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,15 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    a 13.5px ink-muted meta line · a 14/1.55 description capped at 62ch · a mono
    provenance line · the action row.
 
+   The title links to `/sermons/{id}` (the staff detail/editor route); the
+   action buttons sit beside it, not inside the link, so they never navigate.
+
+   "Watch" opens a media player for the sermon (`onPlay` → a <video>/<audio>
+   dialog fed by `GET /sermons/{id}/stream`). It is disabled when the sermon
+   has no processed renditions yet. (The review take-over / claim action is a
+   separate, later concern — `review_claimed_by` still drives the read-only
+   "Under review · <name>" label below.)
+
    Claim state. Structural decisions key off `item.status` directly (interim —
    TODO(batch): compare `review_claimed_by_id` once the backend returns it):
      - status `under_review`   → treated as claimed regardless of whether the
@@ -29,9 +39,6 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
                                  NO "Approve only"; otherwise "Under review ·
                                  <name>" if a name exists, else just "Under
                                  review". Actions stay (a manager can override).
-     - status `pending_review` → the ONLY state that shows "Watch"
-                                 (start-review). It 409s on anything already
-                                 under review, so it never renders otherwise.
 
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
    revealing the labelled textarea plus [Approve & publish] and [Send rejection]
@@ -59,7 +66,8 @@ export interface SubmissionCardProps {
   onNoteChange: (value: string) => void;
   onStartReject: () => void;
   onCancelReject: () => void;
-  onWatch: () => void;
+  /** Open the media player for this sermon. */
+  onPlay: () => void;
   onApproveOnly: () => void;
   onApproveAndPublish: () => void;
   onSendRejection: () => void;
@@ -90,17 +98,16 @@ export function SubmissionCard({
   onNoteChange,
   onStartReject,
   onCancelReject,
-  onWatch,
+  onPlay,
   onApproveOnly,
   onApproveAndPublish,
   onSendRejection,
   now,
 }: SubmissionCardProps) {
   const noteId = useId();
-  // Interim: `under_review` status IS the claim signal (a null-name claimer must
-  // not fall through to an unclaimed card with a forever-409ing "Watch").
   const underReview = item.status === "under_review";
-  const canWatch = item.status === "pending_review";
+  // "Watch" plays the processed media; nothing to play until a rendition exists.
+  const hasMedia = item.renditions_ready > 0;
   const duration =
     item.duration_seconds != null
       ? formatDuration(item.duration_seconds)
@@ -133,8 +140,13 @@ export function SubmissionCard({
 
         <div className="flex min-w-0 flex-1 flex-col gap-9">
           <div className="flex flex-wrap items-center gap-10">
-            <h3 className="font-serif text-[22px] leading-[1.2] tracking-[-0.01em] text-ink">
-              {item.title}
+            <h3 className="font-serif text-[22px] leading-[1.2] tracking-[-0.01em]">
+              <Link
+                href={`/sermons/${item.id}`}
+                className="text-ink outline-none hover:text-clay-700 hover:underline focus-visible:focus-ring-button"
+              >
+                {item.title}
+              </Link>
             </h3>
             <StatusBadge
               status={toBadgeStatus(item.status)}
@@ -229,16 +241,15 @@ export function SubmissionCard({
               >
                 Reject with note
               </Button>
-              {canWatch ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={onWatch}
-                >
-                  Watch
-                </Button>
-              ) : null}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || !hasMedia}
+                onClick={onPlay}
+                title={hasMedia ? undefined : "No media uploaded yet"}
+              >
+                Watch
+              </Button>
               {underReview ? (
                 <span className="text-[13px] font-medium text-slate">
                   {mine

@@ -270,15 +270,10 @@ export function SermonsScreen() {
 
   return (
     <>
-      <PageHeader
-        title="Sermons"
-        subhead={countLine}
-        actions={
-          <Button asChild size="md" className="h-[34px] rounded-9 px-14 text-[13px]">
-            <Link href="/sermons/new">New sermon</Link>
-          </Button>
-        }
-      />
+      {/* No page-header "New sermon" action: the global top bar already carries
+          one, and two identical create buttons top-right read as a bug. The
+          empty-state prompt below keeps a create affordance for a cold start. */}
+      <PageHeader title="Sermons" subhead={countLine} />
 
       <SermonsFilterBar
         status={state.status}

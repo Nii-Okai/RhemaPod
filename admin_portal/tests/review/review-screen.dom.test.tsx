@@ -21,8 +21,9 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
 /* W10 — the Review queue, rendered (happy-dom). Every backend call is MSW,
    never a mocked fetch (§A.11). Covers: the >48h alert, "Under review · you"
    dropping "Approve only", the inline reject flow (guard + rollback with the
-   note preserved), approve-and-publish as two ordered calls + the toast, Watch
-   as an optimistic claim, and the empty state. */
+   note preserved), approve-and-publish as two ordered calls + the toast, the
+   card title linking to /sermons/{id}, "Watch" opening a media player, and the
+   empty state. */
 
 /* --- next/navigation + next/link, mocked ----------------------------- */
 
@@ -471,84 +472,92 @@ describe("ReviewScreen — approve & publish", () => {
   });
 });
 
-describe("ReviewScreen — concurrent actions", () => {
-  it("keeps each card's actions disabled while its own mutation is in flight (not just the most recent)", async () => {
-    const calls: string[] = [];
-    backend(
-      [
-        item({ id: "a1", title: "First up" }),
-        item({ id: "a2", title: "Second up" }),
-      ],
-      { calls, startReviewDelayMs: 80 },
-    );
+describe("ReviewScreen — card title links to the sermon page", () => {
+  it("wraps the title in a link to /sermons/{id}; the action buttons are not inside it", async () => {
+    backend([item({ id: "a1", title: "Read me on the detail page" })]);
+    renderScreen();
 
-    renderScreen({ name: "Mia Okafor" });
-    const user = userEvent.setup();
-    await screen.findByText("First up");
+    const link = await screen.findByRole("link", {
+      name: "Read me on the detail page",
+    });
+    expect(link).toHaveAttribute("href", "/sermons/a1");
 
-    await user.click(
-      within(cardFor("First up")).getByRole("button", { name: "Watch" }),
-    );
-    await user.click(
-      within(cardFor("Second up")).getByRole("button", { name: "Watch" }),
-    );
-
-    // Both start-review calls are outstanding → BOTH cards' actions disabled.
+    // The approve/reject actions sit beside the title, not within the link.
+    const card = cardFor("Read me on the detail page");
     expect(
-      within(cardFor("First up")).getByRole("button", {
-        name: "Approve & publish",
-      }),
-    ).toBeDisabled();
+      within(link).queryByRole("button", { name: "Approve & publish" }),
+    ).toBeNull();
     expect(
-      within(cardFor("Second up")).getByRole("button", {
-        name: "Approve & publish",
-      }),
-    ).toBeDisabled();
-
-    await waitFor(() =>
-      expect(calls.filter((c) => c === "start-review")).toHaveLength(2),
-    );
-
-    // Once settled, actions are live again.
-    await waitFor(() =>
-      expect(
-        within(cardFor("First up")).getByRole("button", {
-          name: "Approve & publish",
-        }),
-      ).toBeEnabled(),
-    );
+      within(card).getByRole("button", { name: "Approve & publish" }),
+    ).toBeInTheDocument();
   });
 });
 
-describe("ReviewScreen — Watch", () => {
-  it("optimistically claims the card: status → under review, 'Under review · you', no Watch/Approve only", async () => {
-    const calls: string[] = [];
-    // Delay the server's answer so the optimistic claim is observed first.
-    backend([item({ id: "a1", title: "Claim me" })], {
-      calls,
-      startReviewDelayMs: 40,
-    });
+describe("ReviewScreen — Watch plays the sermon media", () => {
+  const stream = (
+    variants: Array<{ type: "video" | "audio"; url: string; quality?: string }>,
+  ) =>
+    http.get("*/api/bff/sermons/:id/stream", ({ params }) =>
+      HttpResponse.json({
+        sermon_id: params.id,
+        expires_in: 3600,
+        variants: variants.map((v) => ({ quality: v.quality ?? null, ...v })),
+      }),
+    );
 
-    renderScreen({ name: "Mia Okafor" });
+  it("fetches the stream URL and mounts a <video> player in a dialog", async () => {
+    backend([item({ id: "a1", title: "Watch me", renditions_ready: 3 })]);
+    let hit = 0;
+    server.use(
+      http.get("*/api/bff/sermons/:id/stream", ({ params }) => {
+        hit += 1;
+        return HttpResponse.json({
+          sermon_id: params.id,
+          expires_in: 3600,
+          variants: [
+            { quality: "720p", type: "video", url: "https://cdn.test/a1.mp4" },
+          ],
+        });
+      }),
+    );
+
+    renderScreen();
     const user = userEvent.setup();
-    await screen.findByText("Claim me");
+    await screen.findByText("Watch me");
 
     await user.click(screen.getByRole("button", { name: "Watch" }));
 
-    // Optimistic — visible before the (delayed) response resolves.
-    expect(
-      await screen.findByText("Under review · you"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Watch" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Approve only" }),
-    ).not.toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    const player = await within(dialog).findByTestId("sermon-player");
+    expect(player.tagName).toBe("VIDEO");
+    expect(player).toHaveAttribute("src", "https://cdn.test/a1.mp4");
+    expect(hit).toBe(1);
+  });
 
-    await waitFor(() => expect(calls).toContain("start-review"));
-    // Still claimed after the settle refetch.
-    expect(screen.getByText("Under review · you")).toBeInTheDocument();
+  it("mounts an <audio> player when the media ref is audio", async () => {
+    backend([item({ id: "a1", title: "Listen", renditions_ready: 1 })]);
+    server.use(
+      stream([{ type: "audio", url: "https://cdn.test/a1.m4a" }]),
+    );
+
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByText("Listen");
+    await user.click(screen.getByRole("button", { name: "Watch" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const player = await within(dialog).findByTestId("sermon-player");
+    expect(player.tagName).toBe("AUDIO");
+    expect(player).toHaveAttribute("src", "https://cdn.test/a1.m4a");
+  });
+
+  it("disables Watch when the sermon has no processed renditions", async () => {
+    backend([item({ id: "a1", title: "Nothing yet", renditions_ready: 0 })]);
+    renderScreen();
+
+    const watch = await screen.findByRole("button", { name: "Watch" });
+    expect(watch).toBeDisabled();
+    expect(watch).toHaveAttribute("title", "No media uploaded yet");
   });
 });
 

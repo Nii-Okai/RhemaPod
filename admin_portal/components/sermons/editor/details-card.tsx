@@ -155,7 +155,18 @@ export function DetailsCard({
             value={values.series_id ?? ""}
             disabled={disabled}
             onChange={(e) => {
-              onChange({ series_id: e.target.value || null });
+              const nextSeriesId = e.target.value || null;
+              const patch: SermonPatch = { series_id: nextSeriesId };
+              // Prefill Category from the picked series, but only when the
+              // editor hasn't chosen one — never clobber an explicit choice.
+              // Clearing the series (nextSeriesId === null) leaves Category be.
+              if (nextSeriesId && !values.category_id) {
+                const inherited =
+                  series?.find((s) => s.id === nextSeriesId)?.category_id ??
+                  null;
+                if (inherited) patch.category_id = inherited;
+              }
+              onChange(patch);
               onCommit();
             }}
           >

@@ -7,6 +7,8 @@ import { useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getBrowserQueryClient } from "@/lib/query/provider";
+import { queryKeys } from "@/lib/query/keys";
 
 import { Field } from "../_components/field";
 
@@ -55,6 +57,12 @@ export function LoginForm() {
 
     if (res.ok) {
       // The BFF has set rp_at / rp_rt on this response; navigate into the portal.
+      // The browser QueryClient is a singleton that survives a sign-out, so a
+      // new session must not inherit the previous user's cached nav counts —
+      // drop every `nav` key so the sidebar refetches for this session.
+      getBrowserQueryClient()?.invalidateQueries({
+        queryKey: queryKeys.nav.all(),
+      });
       router.replace("/");
       router.refresh();
       return;

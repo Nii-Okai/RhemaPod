@@ -48,6 +48,11 @@ export const queryKeys = {
       [...queryKeys.sermons.detail(sermonId), "uploads"] as const,
     approvalLog: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "approval-log"] as const,
+    /** Signed playback URLs (`GET /sermons/{id}/stream`). Nested under
+        `detail(id)` so a sermon-scoped invalidation also drops it; short-lived
+        (the URLs carry an `expires_in`), fetched only while a player is open. */
+    stream: (sermonId: string) =>
+      [...queryKeys.sermons.detail(sermonId), "stream"] as const,
     /** The Sermons-list header count line (`N total · N published · …`, W7).
         Its own sub-tree, not a `list()` variant — it is four `limit=1`
         `total` probes, not a page of rows (§A.9 "Sermons list counts"). */
