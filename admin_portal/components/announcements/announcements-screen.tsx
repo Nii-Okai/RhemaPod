@@ -282,7 +282,11 @@ export function AnnouncementsScreen() {
         }
       />
 
-      <div className="grid grid-cols-1 items-start gap-16 md:grid-cols-[1.4fr_1fr]">
+      {/* Split matches the app-shell / editor / series-detail breakpoint
+          (min-[1100px]). Below it the list DataTable (minWidth 520) + its ···
+          row menu and pagination no longer fit a ~1fr column — stack instead
+          (W14 responsive pass). */}
+      <div className="grid grid-cols-1 items-start gap-16 min-[1100px]:grid-cols-[1.4fr_1fr]">
         <div className="flex min-w-0 flex-col gap-12">
           <div className="w-[184px]">
             <Select

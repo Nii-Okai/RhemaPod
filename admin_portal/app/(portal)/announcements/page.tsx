@@ -27,7 +27,9 @@ function AnnouncementsFallback() {
         title="Announcements"
         subhead="Visibility is computed from status, publish date and expiry — nothing flips on a timer."
       />
-      <div className="grid grid-cols-1 items-start gap-16 md:grid-cols-[1.4fr_1fr]">
+      {/* Breakpoint matches AnnouncementsScreen (min-[1100px]) so the skeleton
+          geometry does not jump on hydration (W14 responsive pass). */}
+      <div className="grid grid-cols-1 items-start gap-16 min-[1100px]:grid-cols-[1.4fr_1fr]">
         <div className="flex min-w-0 flex-col gap-12">
           <span
             aria-hidden
