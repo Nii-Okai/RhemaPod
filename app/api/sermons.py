@@ -71,6 +71,7 @@ async def list_my_sermons(
     q: str | None = Query(default=None, max_length=200, description="Title contains"),
     speaker_id: uuid.UUID | None = None,
     series_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
     tier: ContentTier | None = Query(
         default=None,
         description="Filter on effective tier (sermon tier, else series tier, else free)",
@@ -83,7 +84,7 @@ async def list_my_sermons(
     actor = await _actor(db, user)
     rows, total = await content_service.list_sermons_for_staff(
         db, actor, status, limit=limit, offset=offset, search=q,
-        speaker_id=speaker_id, series_id=series_id, tier=tier,
+        speaker_id=speaker_id, series_id=series_id, category_id=category_id, tier=tier,
     )
     series_map = await content_service.series_for(db, rows)
     names = await content_service.load_ref_names(db, rows)

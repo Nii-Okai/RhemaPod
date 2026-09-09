@@ -879,6 +879,7 @@ async def list_sermons_for_staff(
     search: str | None = None,
     speaker_id: uuid.UUID | None = None,
     series_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
     tier: ContentTier | None = None,
 ) -> tuple[list[Sermon], int]:
     """Editors see their own sermons across all statuses; managers/admins see
@@ -896,6 +897,8 @@ async def list_sermons_for_staff(
         conditions.append(Sermon.speaker_id == speaker_id)
     if series_id is not None:
         conditions.append(Sermon.series_id == series_id)
+    if category_id is not None:
+        conditions.append(Sermon.category_id == category_id)
 
     # Effective tier = sermon.tier ?? series.tier ?? free — the SQL form of
     # effective_tier() above, mirroring the pattern search_service uses. Filter

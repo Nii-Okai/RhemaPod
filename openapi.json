@@ -6047,6 +6047,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
             "description": "Filter on effective tier (sermon tier, else series tier, else free)",
             "in": "query",
             "name": "tier",
