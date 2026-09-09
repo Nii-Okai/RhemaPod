@@ -68,6 +68,10 @@ export const queryKeys = {
   series: {
     all: () => ["series"] as const,
     list: () => [...queryKeys.series.all(), "list"] as const,
+    /** One series by id — the Series manager edit screen (W11). Nested under
+        `all()` so a create/delete that invalidates the domain also drops it. */
+    detail: (seriesId: string) =>
+      [...queryKeys.series.all(), "detail", seriesId] as const,
   },
   /** Category options for the editor's Details card select (W8). Same
       long-cached reference-list treatment as speakers/series. */
