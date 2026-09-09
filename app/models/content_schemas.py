@@ -159,8 +159,16 @@ class SermonAdminDetail(SermonDetail):
     """Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor
     screen's "saved N min ago" stamp needs a server-side `updated_at` baseline,
     which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
-    not carry."""
+    not carry.
 
+    `tier` is deliberately re-typed here: on the STAFF read it is the raw
+    `Sermon.tier` column, which is NULL when the sermon inherits its tier from
+    its series (or the free default). The public `SermonDetail.tier` stays the
+    *resolved* effective tier — the editor screen has to tell "inherit" apart
+    from an explicit "free", which the resolved value hides.
+    """
+
+    tier: ContentTier | None = None
     updated_at: datetime | None
 
 
@@ -175,6 +183,10 @@ class ApprovalLogItem(BaseModel):
     from_status: str | None
     to_status: str
     actor_id: uuid.UUID
+    # Display name of the actor: users.full_name, else the email local-part,
+    # else None. Lets the editor's approval-log card read "Rejected by Ada
+    # Nwosu" rather than a bare "Rejected".
+    actor_name: str | None = None
     note: str | None
     created_at: datetime
 
@@ -182,6 +194,39 @@ class ApprovalLogItem(BaseModel):
 class StatusResponse(BaseModel):
     id: uuid.UUID
     status: SermonStatus
+
+
+class ReviewQueueItem(BaseModel):
+    """One sermon awaiting review, carrying the timing and readiness fields the
+    W10 queue screen needs: "waiting N days", the >48h alert, and whether any
+    renditions exist to review yet. Ordered oldest-submitted-first by the queue
+    endpoint (longest wait at the top)."""
+
+    id: uuid.UUID
+    title: str
+    description: str | None
+    duration_seconds: int | None
+    speaker_id: uuid.UUID | None
+    speaker_name: str | None = None
+    category_id: uuid.UUID | None
+    category_name: str | None = None
+    series_id: uuid.UUID | None
+    series_title: str | None = None
+    # True when the sermon belongs to no series (series_id is None).
+    is_standalone: bool
+    # Resolved effective tier: sermon tier, else series tier, else free.
+    tier: ContentTier
+    # pending_review or under_review (the only two statuses in the queue).
+    status: SermonStatus
+    # created_at of the most recent ApprovalLog row that moved this sermon to
+    # pending_review — i.e. when the editor last submitted it. Drives the
+    # "waiting N days" copy and the >48h alert, and is the queue's sort key.
+    submitted_at: datetime | None
+    # Number of MediaRef rows attached to the sermon (0 = nothing uploaded).
+    renditions_ready: int
+    # For under_review items: the display name of whoever ran start-review
+    # (users.full_name / email local-part / None). None for pending_review.
+    review_claimed_by: str | None = None
 
 
 
@@ -375,6 +420,10 @@ class AnnouncementApprovalLogItem(BaseModel):
     from_status: str | None
     to_status: str
     actor_id: uuid.UUID
+    # Same shape as ApprovalLogItem.actor_name (full_name / email local-part /
+    # None). The announcement editor isn't built yet, but the field is cheap
+    # to fill and keeps the two approval-log DTOs symmetric.
+    actor_name: str | None = None
     note: str | None
     created_at: datetime
 

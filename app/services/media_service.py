@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import storage as storage_module
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.rate_limit import check_rate_limit
 from app.models.content_schemas import StreamResponse, StreamVariant, UploadTicket
 from app.models.models import (
     ContentTier,
@@ -95,6 +96,40 @@ async def create_upload_ticket(
 ) -> UploadTicket:
     sermon = await _load_sermon_for_editor(db, sermon_id, actor)
     _validate_content_type(media_type, content_type)
+
+    # Cap concurrent open jobs for this sermon. Retry-spam otherwise mints
+    # unbounded awaiting_upload rows and orphan raw-bucket objects — the BFF
+    # hides the client IP, so the global per-IP limiter never sees it (CWE-770).
+    open_states = (
+        UploadStatus.AWAITING_UPLOAD,
+        UploadStatus.UPLOADED,
+        UploadStatus.PROCESSING,
+    )
+    open_count = (await db.execute(
+        select(func.count())
+        .select_from(UploadJob)
+        .where(UploadJob.sermon_id == sermon.id, UploadJob.status.in_(open_states))
+    )).scalar_one()
+    if open_count >= settings.max_open_upload_jobs_per_sermon:
+        raise ContentError(
+            "Too many uploads in progress for this sermon — finish or cancel "
+            "one first.",
+            status_code=429,
+        )
+
+    # Light retry rate-limit on top of the hard cap. Redis fixed-window, fails
+    # open: a Redis outage falls back to the per-sermon cap above, which is the
+    # real ceiling.
+    if not await check_rate_limit(
+        f"upload_ticket:{sermon.id}",
+        settings.upload_ticket_rate_limit,
+        settings.upload_ticket_rate_window_seconds,
+    ):
+        raise ContentError(
+            "Too many upload attempts for this sermon — wait a moment and try "
+            "again.",
+            status_code=429,
+        )
 
     if size_bytes is not None and size_bytes > settings.max_upload_bytes:
         raise ContentError(
@@ -303,6 +338,65 @@ async def list_jobs(
         .order_by(UploadJob.created_at.desc())
     )).scalars().all()
     return list(rows)
+
+
+# States a job may be deleted from. `processing` (mid-transcode) and `ready`
+# (renditions already produced — manage those via the media endpoints) are not
+# here: deleting the row from either would strand work or MediaRefs.
+_DELETABLE_JOB_STATES = (
+    UploadStatus.AWAITING_UPLOAD,
+    UploadStatus.UPLOADED,
+    UploadStatus.FAILED,
+)
+
+
+async def delete_upload_job(
+    db: AsyncSession, job_id: uuid.UUID, actor: User
+) -> None:
+    """Cancel a superseded or stalled upload job and best-effort drop its raw
+    object.
+
+    Owner-scoped: an editor may only touch a job whose sermon they created —
+    another editor's job, or an unknown id, is 404 (existence is not
+    disclosed). Manager/admin: any job.
+
+    Refused with 409 unless the job is in awaiting_upload / uploaded / failed;
+    a job mid-transcode (`processing`) or already `ready` cannot be deleted
+    this way. Storage cleanup is best-effort — the row is gone regardless, and
+    a leftover object is a sweep's problem, not a 500.
+    """
+    job = await db.get(UploadJob, job_id)
+    if job is None:
+        raise ContentError("Upload job not found", status_code=404)
+
+    sermon = await db.get(Sermon, job.sermon_id)
+    if sermon is None or staff_scope_hides(sermon, actor):
+        raise ContentError("Upload job not found", status_code=404)
+
+    if job.status not in _DELETABLE_JOB_STATES:
+        detail = f"Cannot delete an upload job that is '{job.status.value}'"
+        if job.status == UploadStatus.PROCESSING:
+            detail += " — it is still transcoding"
+        elif job.status == UploadStatus.READY:
+            detail += " — remove its renditions via the media endpoints instead"
+        raise ContentError(detail, status_code=409)
+
+    raw_key = job.raw_key
+    await db.delete(job)
+    await db.commit()
+
+    try:
+        storage_module.get_storage().delete_object(settings.s3_raw_bucket, raw_key)
+    except Exception:  # noqa: BLE001 - best-effort; row already deleted
+        log.warning(
+            "upload_job_raw_object_delete_failed",
+            job_id=str(job_id), key=raw_key,
+        )
+
+    log.info(
+        "upload_job_deleted",
+        job_id=str(job_id), sermon_id=str(sermon.id), by=str(actor.id),
+    )
 
 
 # ── Streaming ─────────────────────────────────────────────────────────────────

@@ -1,20 +1,21 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_role
 from app.db.database import get_db
 from app.models.content_schemas import (
     ApprovalLogItem,
+    Page,
     RejectRequest,
-    SermonListItem,
+    ReviewQueueItem,
     StatusResponse,
 )
-from app.models.models import Series, User, UserRole
+from app.models.models import User, UserRole
 from app.services import auth_service, content_service
-from app.services.content_service import ContentError, effective_tier, to_list_item
+from app.services.content_service import ContentError
 
 router = APIRouter(prefix="/approvals/sermons", tags=["sermon approvals"])
 
@@ -37,17 +38,23 @@ def _err(exc: ContentError) -> HTTPException:
 
 
 # Review queue (managers/admins)
-@router.get("/review-queue", response_model=list[SermonListItem])
-async def review_queue(user: ManagerPlus, db: DbDep) -> list[SermonListItem]:
-    rows = await content_service.review_queue(db)
-    series_map: dict = {}
-    for s in rows:
-        if s.series_id and s.series_id not in series_map:
-            series_map[s.series_id] = await db.get(Series, s.series_id)
-    return [
-        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_subscription=True)
-        for s in rows
-    ]
+@router.get("/review-queue", response_model=Page[ReviewQueueItem])
+async def review_queue(
+    user: ManagerPlus,
+    db: DbDep,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> Page[ReviewQueueItem]:
+    """Sermons waiting on a reviewer, longest-waiting first. Each row carries
+    `status`, `submitted_at`, `renditions_ready` and (for under-review items)
+    `review_claimed_by`, so the W10 screen can render "waiting N days", the
+    >48h alert, and "Under review · <name>"."""
+    items, total = await content_service.review_queue_page(
+        db, limit=limit, offset=offset
+    )
+    return Page[ReviewQueueItem](
+        items=items, total=total, limit=limit, offset=offset
+    )
 
 
 @router.post("/{sermon_id}/start-review", response_model=StatusResponse)
