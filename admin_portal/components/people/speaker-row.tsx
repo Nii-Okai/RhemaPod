@@ -41,8 +41,8 @@ export interface SpeakerRowProps {
   onDelete: () => void;
   /** A delete for this row is in flight — disables the menu. */
   deleting?: boolean;
-  /** Test seam — render the `···` menu already open. */
-  defaultMenuOpen?: boolean;
+  /** Clear the panel's card-top `<Alert>` after a successful inline edit. */
+  onSuccess?: () => void;
 }
 
 function deleteCopy(name: string, count: number | undefined): string {
@@ -58,7 +58,7 @@ export function SpeakerRow({
   onError,
   onDelete,
   deleting = false,
-  defaultMenuOpen,
+  onSuccess,
 }: SpeakerRowProps) {
   const count = useEntityCount("speaker", speaker.id);
   const update = useUpdateSpeaker();
@@ -89,7 +89,10 @@ export function SpeakerRow({
     update.mutate(
       { id: speaker.id, patch },
       {
-        onSuccess: () => setEditing(false),
+        onSuccess: () => {
+          setEditing(false);
+          onSuccess?.();
+        },
         onError: (err) =>
           onError(errorText(err, "Couldn’t save the speaker.")),
       },
@@ -111,6 +114,7 @@ export function SpeakerRow({
         <Input
           aria-label="Name"
           inputSize="dense"
+          autoFocus
           value={name}
           error={nameEmpty}
           onChange={(e) => setName(e.target.value)}
@@ -171,11 +175,7 @@ export function SpeakerRow({
         {entityCountLabel(count.data)}
       </span>
 
-      <DropdownMenu
-        defaultOpen={
-          process.env.NODE_ENV === "test" ? defaultMenuOpen : undefined
-        }
-      >
+      <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`Actions for ${speaker.name}`}
           className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-8 text-[16px] leading-none text-ink-faint outline-none transition-colors duration-[140ms] ease-out hover:bg-canvas hover:text-ink focus-visible:focus-ring-button data-[state=open]:bg-canvas data-[state=open]:text-ink"

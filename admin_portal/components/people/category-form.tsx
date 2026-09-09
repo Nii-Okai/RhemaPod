@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { EditorField } from "@/components/sermons/editor/field";
 import { isApiError } from "@/lib/api/errors";
 import { errorText } from "@/lib/people/error-text";
-import { isValidSlug, slugify } from "@/lib/people/slug";
+import { SLUG_MAX_LENGTH, isValidSlug, slugify } from "@/lib/people/slug";
 import {
   useCreateCategory,
   useDeleteCategory,
@@ -37,7 +37,10 @@ const SLUG_HINT = "Lowercase letters, numbers and hyphens only.";
 export interface CategoryFormProps {
   mode: "create" | "edit";
   category?: Category;
+  /** Close without a mutation landing (Cancel, or an edit with no changes). */
   onDone: () => void;
+  /** A create / update / delete succeeded — close *and* clear the card alert. */
+  onSaved: () => void;
   onError: (message: string) => void;
 }
 
@@ -55,6 +58,7 @@ export function CategoryForm({
   mode,
   category,
   onDone,
+  onSaved,
   onError,
 }: CategoryFormProps) {
   const isEdit = mode === "edit" && category != null;
@@ -63,7 +67,8 @@ export function CategoryForm({
   const [slug, setSlug] = React.useState(category?.slug ?? "");
   // An existing slug is authoritative — never auto-resync it from the name.
   const [slugEdited, setSlugEdited] = React.useState(isEdit);
-  const [nameTouched, setNameTouched] = React.useState(false);
+  // The user has interacted with the form — gates the inline name + slug errors.
+  const [touched, setTouched] = React.useState(false);
   const [slugTaken, setSlugTaken] = React.useState(false);
 
   const create = useCreateCategory();
@@ -73,12 +78,14 @@ export function CategoryForm({
   const busy = create.isPending || update.isPending || remove.isPending;
 
   const nameError =
-    nameTouched && name.trim() === "" ? "A name is required." : null;
+    touched && name.trim() === "" ? "A name is required." : null;
   const slugError = slugTaken
     ? "That slug is taken."
-    : nameTouched && !isValidSlug(slug)
-      ? `Enter a valid slug — ${SLUG_HINT.toLowerCase()}`
-      : null;
+    : touched && slug.length > SLUG_MAX_LENGTH
+      ? `Keep the slug to ${SLUG_MAX_LENGTH} characters or fewer.`
+      : touched && !isValidSlug(slug)
+        ? `Enter a valid slug — ${SLUG_HINT.toLowerCase()}`
+        : null;
 
   const handleName = (value: string) => {
     setName(value);
@@ -102,14 +109,14 @@ export function CategoryForm({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    setNameTouched(true);
+    setTouched(true);
     if (name.trim() === "" || !isValidSlug(slug)) return;
 
     if (!isEdit) {
       create.mutate(
         { name: name.trim(), slug },
         {
-          onSuccess: onDone,
+          onSuccess: onSaved,
           onError: (err) =>
             onMutationError(err, "Couldn’t create the category."),
         },
@@ -127,7 +134,7 @@ export function CategoryForm({
     update.mutate(
       { id: category.id, patch },
       {
-        onSuccess: onDone,
+        onSuccess: onSaved,
         onError: (err) => onMutationError(err, "Couldn’t save the category."),
       },
     );
@@ -137,7 +144,7 @@ export function CategoryForm({
     if (!isEdit) return;
     if (!window.confirm(deleteCopy(category.name, count.data))) return;
     remove.mutate(category.id, {
-      onSuccess: onDone,
+      onSuccess: onSaved,
       onError: (err) => onError(errorText(err, "Couldn’t delete the category.")),
     });
   };
@@ -157,7 +164,7 @@ export function CategoryForm({
           value={name}
           error={Boolean(nameError)}
           onChange={(e) => handleName(e.target.value)}
-          onBlur={() => setNameTouched(true)}
+          onBlur={() => setTouched(true)}
           placeholder="e.g. Sunday Morning"
         />
       </EditorField>
@@ -175,7 +182,7 @@ export function CategoryForm({
           value={slug}
           error={Boolean(slugError)}
           onChange={(e) => handleSlug(e.target.value)}
-          onBlur={() => setNameTouched(true)}
+          onBlur={() => setTouched(true)}
           placeholder="sunday-morning"
           spellCheck={false}
           autoCapitalize="off"

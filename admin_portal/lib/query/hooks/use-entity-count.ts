@@ -26,8 +26,20 @@ import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/lib/api/client";
 import { queryKeys, type SermonListParams } from "@/lib/query/keys";
 import type { SermonListPage } from "@/lib/query/hooks/use-sermons";
+import { OPTIMISTIC_ID_PREFIX } from "@/lib/query/hooks/use-speakers";
 
 export type EntityCountKind = "speaker" | "category";
+
+/**
+ * True when `id` is a real, persisted entity id worth probing for — i.e. not
+ * the create-mode `""` (a category being drafted) and not an optimistic-create
+ * sentinel (`optimistic:<uuid>`, minted by `useCreateSpeaker`). The backend
+ * 422s a malformed `speaker_id` / `category_id`, and that 422 would then be
+ * retried per the query-retry count, so the probe must not run for either.
+ */
+export function isPersistedId(id: string): boolean {
+  return id !== "" && !id.startsWith(OPTIMISTIC_ID_PREFIX);
+}
 
 /** The list params (and therefore the query key) for one entity's count probe. */
 export function entityCountParams(
@@ -43,9 +55,9 @@ export function useEntityCount(kind: EntityCountKind, id: string) {
   const params = entityCountParams(kind, id);
   return useQuery({
     queryKey: queryKeys.sermons.list(params),
-    // `id === ""` is the "no entity yet" case (a category being *created*) — no
-    // probe to make, and an empty `category_id` 422s at the backend.
-    enabled: id !== "",
+    // Only probe for a persisted id — never the create-mode `""` nor an
+    // optimistic-create sentinel; the backend 422s both (see `isPersistedId`).
+    enabled: isPersistedId(id),
     queryFn: ({ signal }) =>
       unwrap(
         api.GET("/api/v1/sermons", { params: { query: params }, signal }),

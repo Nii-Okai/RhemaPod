@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Tag } from "@/components/ui/tag";
-import { EmptyState } from "@/components/portal/empty-state";
+import { EmptyState } from "@/components/portal";
 import {
   entityCountLabel,
   useEntityCount,
@@ -55,6 +55,12 @@ export function CategoriesCard() {
   const [alert, setAlert] = React.useState<string | null>(null);
 
   const close = () => setEditing(null);
+  // A mutation landed — drop any stale card-top alert from an earlier failure,
+  // not just when the next form opens.
+  const handleSaved = () => {
+    setAlert(null);
+    setEditing(null);
+  };
 
   return (
     <section
@@ -151,6 +157,7 @@ export function CategoriesCard() {
           mode={editing.mode}
           category={editing.mode === "edit" ? editing.category : undefined}
           onDone={close}
+          onSaved={handleSaved}
           onError={setAlert}
         />
       ) : null}

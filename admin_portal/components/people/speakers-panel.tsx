@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/portal/empty-state";
+import { EmptyState } from "@/components/portal";
 import { errorText } from "@/lib/people/error-text";
 import { useDeleteSpeaker, useSpeakers } from "@/lib/query/hooks/use-speakers";
 import { SpeakerRow } from "./speaker-row";
@@ -121,6 +121,7 @@ export function SpeakersPanel({ onAddSpeaker }: SpeakersPanelProps) {
               key={speaker.id}
               speaker={speaker}
               onError={setAlert}
+              onSuccess={() => setAlert(null)}
               onDelete={() => deleteSpeaker(speaker.id)}
               deleting={remove.isPending && remove.variables === speaker.id}
             />

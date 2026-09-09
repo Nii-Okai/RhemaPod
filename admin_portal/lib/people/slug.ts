@@ -16,6 +16,10 @@
 /** The exact pattern the backend enforces on `CategoryCreate.slug`. */
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** `CategoryCreate.slug` is `max_length=140` (`content_schemas.py`). Mirrored
+    here so an over-long slug surfaces as an inline field error, not a 422. */
+export const SLUG_MAX_LENGTH = 140;
+
 /**
  * A display name → a candidate slug. Lowercase; any run of non-`[a-z0-9]`
  * collapses to one `-`; no leading, trailing or repeated `-`. Returns `""` when
@@ -29,8 +33,9 @@ export function slugify(input: string): string {
     .replace(/-+$/, "");
 }
 
-/** True when `slug` is exactly what the backend will accept (non-empty, the
-    pattern). Used to block submit and to render the inline field error. */
+/** True when `slug` is exactly what the backend will accept (non-empty, within
+    the length cap, and matching the pattern). Used to block submit and to
+    render the inline field error. */
 export function isValidSlug(slug: string): boolean {
-  return SLUG_PATTERN.test(slug);
+  return slug.length <= SLUG_MAX_LENGTH && SLUG_PATTERN.test(slug);
 }

@@ -68,6 +68,38 @@ describe("useEntityCount", () => {
     expect(seen).toHaveLength(2);
   });
 
+  it("makes no request for a non-persisted id — the create-mode '' and the optimistic-create sentinel are both suppressed", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("*/api/bff/sermons", ({ request }) => {
+        seen.push(request.url);
+        return HttpResponse.json({ items: [], total: 0, limit: 1, offset: 0 });
+      }),
+    );
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const wrap = makeWrapper(client);
+
+    const empty = renderHook(() => useEntityCount("category", ""), {
+      wrapper: wrap,
+    });
+    const optimistic = renderHook(
+      () => useEntityCount("speaker", "optimistic:1e2d3c4b"),
+      { wrapper: wrap },
+    );
+
+    // The query never leaves idle and the probe URL is never hit.
+    expect(empty.result.current.fetchStatus).toBe("idle");
+    expect(optimistic.result.current.fetchStatus).toBe("idle");
+    expect(empty.result.current.data).toBeUndefined();
+    expect(entityCountLabel(optimistic.result.current.data)).toBe("—");
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen).toEqual([]);
+  });
+
   it("uses category_id for the category kind", async () => {
     const seen: Array<Record<string, string>> = [];
     server.use(

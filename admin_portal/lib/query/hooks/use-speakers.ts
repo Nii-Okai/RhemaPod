@@ -33,6 +33,11 @@ export type Speaker = components["schemas"]["SpeakerPublic"];
 export type SpeakerCreate = components["schemas"]["SpeakerCreate"];
 export type SpeakerUpdate = components["schemas"]["SpeakerUpdate"];
 
+/** Prefix on the id of an optimistic-create row that has no server identity
+    yet. Not a valid UUID, so any keyed-by-id side effect (notably the
+    `useEntityCount` sermon probe) must skip it — see `isPersistedId`. */
+export const OPTIMISTIC_ID_PREFIX = "optimistic:";
+
 const listKey = queryKeys.speakers.list();
 
 export function useSpeakers() {
@@ -65,7 +70,7 @@ export function useCreateSpeaker() {
         const optimistic: Speaker = {
           // Namespaced so a stray render of the temp row can't collide with a
           // real UUID; replaced wholesale by the `onSettled` refetch.
-          id: `optimistic:${crypto.randomUUID()}`,
+          id: `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`,
           name: body.name,
           bio: body.bio ?? null,
         };
@@ -130,9 +135,17 @@ export function useUpdateSpeaker() {
   });
 }
 
+interface DeleteContext {
+  /** The row this delete removed — re-inserted on failure. Rolling back only
+      this id (not a whole-list snapshot) keeps a *concurrent* delete's own
+      optimistic removal intact: a stale snapshot would resurrect the row the
+      other delete already took out until the `onSettled` refetch healed it. */
+  removed?: Speaker;
+}
+
 export function useDeleteSpeaker() {
   const qc = useQueryClient();
-  return useMutation<void, Error, string, ListContext>({
+  return useMutation<void, Error, string, DeleteContext>({
     mutationFn: async (id) => {
       await api.DELETE("/api/v1/speakers/{speaker_id}", {
         params: { path: { speaker_id: id } },
@@ -140,17 +153,25 @@ export function useDeleteSpeaker() {
     },
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: listKey });
-      const previous = qc.getQueryData<Speaker[]>(listKey);
-      if (previous) {
+      const current = qc.getQueryData<Speaker[]>(listKey);
+      const removed = current?.find((s) => s.id === id);
+      if (current) {
         qc.setQueryData<Speaker[]>(
           listKey,
-          previous.filter((s) => s.id !== id),
+          current.filter((s) => s.id !== id),
         );
       }
-      return { previous };
+      return { removed };
     },
     onError: (_err, _id, context) => {
-      if (context?.previous) qc.setQueryData(listKey, context.previous);
+      const removed = context?.removed;
+      if (!removed) return;
+      qc.setQueryData<Speaker[]>(listKey, (current) => {
+        const list = current ?? [];
+        return list.some((s) => s.id === removed.id)
+          ? list
+          : [...list, removed].sort(byName);
+      });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.speakers.all() });
