@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -117,29 +116,27 @@ export function ReviewScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // approve-ok / publish-fail: the sermon IS approved but not live, and its card
-  // has left the queue (approved is filtered out) — so the message can't live on
-  // the card. It's screen-level and persistent (no auto-dismiss); the manager
-  // finishes the publish from the sermon page.
-  const [publishGap, setPublishGap] = useState<{
-    id: string;
-    title: string;
-    detail: string;
-  } | null>(null);
-
   const actions = useReviewActions({
     meName: session.name,
+    meId: session.id,
     onError: (vars, message) => patchCard(vars.item.id, { error: message }),
     onApprovedNotPublished: (vars, detail) =>
-      setPublishGap({ id: vars.item.id, title: vars.item.title, detail }),
+      // approve-ok / publish-fail: the approve committed, only publishing threw.
+      // The row refetches as `approved` and stays in the queue (#12), where its
+      // card now offers a "Publish" retry — so clear any half-open reject `mode`
+      // (else the card lands on the reject textarea, not the Publish button) and
+      // surface the failure as a transient, dismissible card-top alert. No
+      // standing screen banner: the fix is right there on the card.
+      patchCard(vars.item.id, {
+        mode: "idle",
+        note: "",
+        error: `Approved, but publishing failed. ${detail}`,
+      }),
     onSuccess: (vars) => {
-      // reject / approve leave the queue; startReview keeps the card (now
-      // under_review) but its local state is spent. Either way, drop this
-      // card's transient UI.
+      // reject / approve / publish leave the queue; startReview and takeOver
+      // keep the card (now under_review, claimed by me) but its local state is
+      // spent. Either way, drop this card's transient UI.
       resetCard(vars.item.id);
-      // A later successful action on the same sermon (e.g. the publish retry
-      // going through) clears the standing "approved but not published" notice.
-      setPublishGap((prev) => (prev?.id === vars.item.id ? null : prev));
     },
     onPublished: () => setToast("Published to the app"),
   });
@@ -169,22 +166,30 @@ export function ReviewScreen() {
   const overdue = overdueItems(items, now);
   const countLine = reviewCountLine(total, oldestWaitDays(items, now));
 
-  // TODO(batch): compare `review_claimed_by_id` once the backend returns it —
-  // the name match below is best-effort (namesakes collide; a null-name claimer
-  // can't be attributed). Interim rule: anything `under_review` is treated as
-  // claimed regardless of whether the name resolved, and "Start review" is only
-  // ever offered on a `pending_review` card (see `SubmissionCard`), so it can't
-  // 409.
+  // Claim state keys off `review_claimed_by_id` (raw user id) vs the session id —
+  // exact, unlike the old best-effort display-name match. Batch 6 #9:
+  //   - `mine`            — I hold the claim → normal actions, no take-over.
+  //   - `claimedElsewhere` — someone else holds it (id resolved, not me),
+  //                          regardless of role or whether their name resolved →
+  //                          "Take over review" is offered.
+  //   - `claimLocked`     — `claimedElsewhere` AND I'm not an admin → the
+  //                          approve/reject actions are disabled until I take
+  //                          over. Admins bypass the lock (backend does too).
+  const isAdmin = session.role === "admin";
   const claimFor = (item: ReviewQueueItem) => {
     if (item.status !== "under_review") {
-      return { mine: false, claimedByOther: null };
+      return { mine: false, claimedByOther: null, claimedElsewhere: false, claimLocked: false };
     }
-    const claimant = item.review_claimed_by?.trim() || null;
-    const mine =
-      claimant != null &&
-      session.name != null &&
-      claimant.toLowerCase() === session.name.trim().toLowerCase();
-    return { mine, claimedByOther: mine ? null : claimant };
+    const claimantId = item.review_claimed_by_id ?? null;
+    const claimantName = item.review_claimed_by?.trim() || null;
+    const mine = claimantId != null && claimantId === session.id;
+    const claimedElsewhere = claimantId != null && claimantId !== session.id;
+    return {
+      mine,
+      claimedByOther: mine ? null : claimantName,
+      claimedElsewhere,
+      claimLocked: claimedElsewhere && !isAdmin,
+    };
   };
 
   return (
@@ -203,34 +208,6 @@ export function ReviewScreen() {
         </Alert>
       ) : null}
 
-      {publishGap ? (
-        <Alert variant="error" title="Approved, but not published">
-          <span className="flex flex-col gap-4">
-            <span>
-              “{publishGap.title}” was approved, but publishing failed. Publish
-              it from its{" "}
-              <Link
-                href={`/sermons/${publishGap.id}`}
-                className="font-semibold underline underline-offset-2"
-              >
-                sermon page
-              </Link>
-              .
-            </span>
-            <span className="flex flex-wrap items-center gap-10 text-ink-faint">
-              <span>{publishGap.detail}</span>
-              <button
-                type="button"
-                onClick={() => setPublishGap(null)}
-                className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
-              >
-                Dismiss
-              </button>
-            </span>
-          </span>
-        </Alert>
-      ) : null}
-
       {isPending ? (
         <div className="flex flex-col gap-18">
           <ReviewCardSkeleton />
@@ -245,7 +222,8 @@ export function ReviewScreen() {
       ) : (
         <div className="flex flex-col gap-18">
           {items.map((item) => {
-            const { mine, claimedByOther } = claimFor(item);
+            const { mine, claimedByOther, claimedElsewhere, claimLocked } =
+              claimFor(item);
             const state = cardState(item.id);
             return (
               <SubmissionCard
@@ -253,6 +231,8 @@ export function ReviewScreen() {
                 item={item}
                 mine={mine}
                 claimedByOther={claimedByOther}
+                claimedElsewhere={claimedElsewhere}
+                claimLocked={claimLocked}
                 busy={actions.isPending(item.id)}
                 error={state.error}
                 onDismissError={() => patchCard(item.id, { error: null })}
@@ -267,11 +247,13 @@ export function ReviewScreen() {
                   patchCard(item.id, { mode: "idle", note: "" })
                 }
                 onStartReview={() => actions.startReview(item)}
+                onTakeOver={() => actions.takeOver(item)}
                 onPlay={() =>
                   setPlayerFor({ id: item.id, title: item.title })
                 }
                 onApproveOnly={() => actions.approve(item)}
                 onApproveAndPublish={() => actions.approveAndPublish(item)}
+                onPublish={() => actions.publish(item)}
                 onSendRejection={() => actions.reject(item, state.note)}
               />
             );
