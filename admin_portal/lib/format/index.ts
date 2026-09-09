@@ -114,6 +114,18 @@ function toEpoch(
 }
 
 /**
+ * A URL `?page=` value → a safe 1-based page number: a non-finite, sub-1, or
+ * fractional input floors/clamps to `1`. One home for the clamp the Review
+ * queue screen, its `useReviewQueue` hook and its `loadReviewQueue` loader all
+ * need — they must agree on the page they render, fetch and key on (W10 review
+ * pass).
+ */
+export function clampPage(value: number | string | null | undefined): number {
+  const n = typeof value === "number" ? value : Number(value ?? Number.NaN);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+}
+
+/**
  * Bytes → a one-decimal binary size (`1.4 GB`, `812 KB`, `0 B`). Used only for
  * the read-only upload-job rows in the editor's Media card (W8); the live
  * "1.4 / 2.2 GB" progress line is the XHR uploader's job in W9.

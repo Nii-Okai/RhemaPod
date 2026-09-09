@@ -21,6 +21,23 @@
  * `StatusResponse {id, status}` only — **no subscriber count** — so the success
  * toast is the bare "Published to the app" (gap noted for a later batch).
  *
+ * Because `approve_and_publish` is two calls, it has a partial-failure mode:
+ * `approve` 200s (the sermon is now `approved`, the log row is committed) and
+ * then `publish` throws. `runAction` tags that failure with its **phase** via
+ * `ReviewActionError { phase, approved, cause }`:
+ *   - `phase === "approve"`  → nothing committed. Full rollback, generic
+ *                              "Couldn’t approve …" — handled by `onError`.
+ *   - `phase === "publish"`  → the approve DID commit. The card must **not**
+ *                              revert to a pending badge (a lie); instead the
+ *                              screen gets a persistent, card-independent
+ *                              message ("approved but not published — publish
+ *                              it from its sermon page") via
+ *                              `onApprovedNotPublished`.
+ * A retried `approve_and_publish` on a sermon that is already `approved` (a
+ * stale tab, or a race) skips `approve` — either because `vars.item.status`
+ * already reads `approved`, or by catching the specific "already `approved`"
+ * 409 from `approveCall` — and goes straight to `publish`. No 409 dead-end.
+ *
  * `reject` is optimistic *here* (design Screen 5 shows the card leaving on
  * send), which is a deliberate departure from §A.4's "Reject is not optimistic"
  * for the *editor* screen: the manager's typed note is preserved by the screen
@@ -39,6 +56,7 @@
 
 "use client";
 
+import { useState } from "react";
 import {
   useMutation,
   useQueryClient,
@@ -73,6 +91,41 @@ const VERB: Record<ReviewActionKind, string> = {
   reject: "reject",
 };
 
+/** Which leg of `approve_and_publish` threw. `approved` is whether the approve
+    call committed before the failure (always true for `phase: "publish"`). */
+export type ReviewActionPhase = "approve" | "publish";
+
+export class ReviewActionError extends Error {
+  readonly phase: ReviewActionPhase;
+  readonly approved: boolean;
+  /** The original transport error (an `ApiError`, usually). */
+  override readonly cause: unknown;
+
+  constructor(phase: ReviewActionPhase, approved: boolean, cause: unknown) {
+    super(`approve_and_publish failed during the ${phase} phase`);
+    this.name = "ReviewActionError";
+    this.phase = phase;
+    this.approved = approved;
+    this.cause = cause;
+    Object.setPrototypeOf(this, ReviewActionError.prototype);
+  }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled review action kind: ${String(value)}`);
+}
+
+/** The backend's "can't re-approve" 409: `resolve_transition` raises
+    `Cannot 'approve' a sermon in status 'approved'` → `ContentError(409)`. Any
+    other 409 (e.g. still a draft) is a real failure and must not be swallowed. */
+function isAlreadyApprovedConflict(err: unknown): boolean {
+  return (
+    isApiError(err) &&
+    err.status === 409 &&
+    /in status ['’]approved['’]/i.test(err.detail)
+  );
+}
+
 type QueueSnapshot = Array<[readonly unknown[], ReviewQueuePage | undefined]>;
 
 function currentQueues(qc: QueryClient): QueueSnapshot {
@@ -95,6 +148,26 @@ function removeFromQueues(qc: QueryClient, id: string): void {
       ...data,
       items: kept,
       total: Math.max(0, data.total - (data.items.length - kept.length)),
+    });
+  }
+}
+
+/** Flip `id` to `approved` in every rendered page that still shows it. A no-op
+    on the common path (the card was already removed in `onMutate`); it only
+    matters for a stale tab / race where the row is still visible after an
+    approve-ok / publish-fail — there it stops the card lying with a pending
+    badge. */
+function markApprovedInQueues(qc: QueryClient, id: string): void {
+  for (const [key, data] of currentQueues(qc)) {
+    if (!data) continue;
+    if (!data.items.some((item) => item.id === id)) continue;
+    qc.setQueryData<ReviewQueuePage>(key, {
+      ...data,
+      items: data.items.map((item) =>
+        item.id === id
+          ? { ...item, status: "approved", review_claimed_by: null }
+          : item,
+      ),
     });
   }
 }
@@ -154,12 +227,33 @@ async function runAction(vars: ReviewActionVars): Promise<void> {
     case "approve":
       await approveCall(id);
       return;
-    case "approvePublish":
-      // Two ordered calls — there is no combined route. If `approve` throws,
-      // `publish` never runs and the whole mutation rejects → rollback.
-      await approveCall(id);
-      await publishCall(id);
+    case "approvePublish": {
+      // Two ordered calls — there is no combined route. The failure of each leg
+      // is reported with its phase so `onError` can tell "nothing happened"
+      // from "approved but not published".
+      let approved = vars.item.status === "approved";
+      if (!approved) {
+        try {
+          await approveCall(id);
+          approved = true;
+        } catch (err) {
+          if (isAlreadyApprovedConflict(err)) {
+            // A prior attempt's approve landed (its publish must have failed),
+            // or a concurrent reviewer approved it. Don't dead-end on the 409 —
+            // fall through and just publish.
+            approved = true;
+          } else {
+            throw new ReviewActionError("approve", false, err);
+          }
+        }
+      }
+      try {
+        await publishCall(id);
+      } catch (err) {
+        throw new ReviewActionError("publish", approved, err);
+      }
       return;
+    }
     case "reject": {
       const note = vars.note?.trim() ?? "";
       if (!note) {
@@ -170,6 +264,8 @@ async function runAction(vars: ReviewActionVars): Promise<void> {
       await rejectCall(id, note);
       return;
     }
+    default:
+      return assertNever(vars.kind);
   }
 }
 
@@ -177,10 +273,18 @@ export interface UseReviewActionsOptions {
   /** The signed-in reviewer's display name — the optimistic `review_claimed_by`
       for "Watch", and what the screen compares for "· you". */
   meName: string | null;
-  /** A card's action failed. `vars` identifies the card; render `message` as an
-      `<Alert>` at the top of it. The screen keeps the card's `rejecting` mode +
-      typed note, so a rejection rollback re-shows the textarea intact. */
+  /** A card's action failed with nothing committed (a plain failure, or the
+      `approve` leg of `approve_and_publish`). `vars` identifies the card;
+      render `message` as an `<Alert>` at the top of it. The screen keeps the
+      card's `rejecting` mode + typed note, so a rejection rollback re-shows the
+      textarea intact. */
   onError: (vars: ReviewActionVars, message: string) => void;
+  /** `approve_and_publish` where the **approve committed** but `publish` then
+      failed. The card must NOT go back to a pending badge — the screen shows a
+      persistent, screen-level message that survives the card leaving the queue
+      ("'<title>' was approved, but publishing failed — publish it from its
+      sermon page"). `detail` is the underlying publish error, for support. */
+  onApprovedNotPublished: (vars: ReviewActionVars, detail: string) => void;
   /** A card's action went through. The screen clears that card's local state. */
   onSuccess?: (vars: ReviewActionVars) => void;
   /** `approvePublish` reached `publish`. Fire the "Published to the app" toast. */
@@ -194,9 +298,22 @@ interface Context {
 export function useReviewActions(options: UseReviewActionsOptions) {
   const qc = useQueryClient();
 
+  // The set of card ids with a mutation in flight. `mutation.variables` only
+  // ever holds the *most recent* call, so it can't gate two cards acted on in
+  // quick succession — the first would re-enable and double-submit (→ 409).
+  // Tracked per id: added in `onMutate`, removed in `onSettled`.
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
   const mutation = useMutation<void, Error, ReviewActionVars, Context>({
     mutationFn: runAction,
     onMutate: async (vars) => {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.add(vars.item.id);
+        return next;
+      });
       await qc.cancelQueries({ queryKey: queryKeys.review.queue() });
       const snapshot = currentQueues(qc);
       if (vars.kind === "watch") {
@@ -207,17 +324,38 @@ export function useReviewActions(options: UseReviewActionsOptions) {
       return { snapshot };
     },
     onError: (err, vars, context) => {
+      if (err instanceof ReviewActionError && err.phase === "publish") {
+        // The approve committed. Do NOT restore the pending badge — leave the
+        // card removed (it's no longer pending), and for any page still showing
+        // it (stale tab / race) make it read `approved`. The screen surfaces a
+        // persistent, card-independent message pointing at the sermon page.
+        markApprovedInQueues(qc, vars.item.id);
+        options.onApprovedNotPublished(
+          vars,
+          messageFor(err.cause, `Publishing “${vars.item.title}” failed.`),
+        );
+        return;
+      }
+      // Plain failure, or the approve leg failed — nothing committed. Full
+      // rollback + the generic message.
       if (context) restoreQueues(qc, context.snapshot);
+      const cause = err instanceof ReviewActionError ? err.cause : err;
       options.onError(
         vars,
-        messageFor(err, `Couldn’t ${VERB[vars.kind]} “${vars.item.title}”.`),
+        messageFor(cause, `Couldn’t ${VERB[vars.kind]} “${vars.item.title}”.`),
       );
     },
     onSuccess: (_data, vars) => {
       if (vars.kind === "approvePublish") options.onPublished?.(vars);
       options.onSuccess?.(vars);
     },
-    onSettled: () => {
+    onSettled: (_data, _err, vars) => {
+      setPendingIds((prev) => {
+        if (!prev.has(vars.item.id)) return prev;
+        const next = new Set(prev);
+        next.delete(vars.item.id);
+        return next;
+      });
       qc.invalidateQueries({ queryKey: queryKeys.review.queue() });
       qc.invalidateQueries({ queryKey: queryKeys.sermons.lists() });
       qc.invalidateQueries({ queryKey: queryKeys.sermons.counts() });
@@ -226,12 +364,10 @@ export function useReviewActions(options: UseReviewActionsOptions) {
   });
 
   return {
-    isPending: mutation.isPending,
-    /** The card id currently mutating, or null — so the screen can scope
-        "busy" to one card instead of freezing the whole list. */
-    pendingId: mutation.isPending
-      ? (mutation.variables?.item.id ?? null)
-      : null,
+    /** True while a mutation for `id` is in flight — scopes "busy" to one card
+        instead of freezing the whole list, and holds for every id acted on
+        concurrently (not just the most recent). */
+    isPending: (id: string) => pendingIds.has(id),
     watch: (item: ReviewQueueItem) => mutation.mutate({ kind: "watch", item }),
     approve: (item: ReviewQueueItem) =>
       mutation.mutate({ kind: "approve", item }),

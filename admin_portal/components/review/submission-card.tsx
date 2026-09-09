@@ -21,13 +21,17 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    a 13.5px ink-muted meta line · a 14/1.55 description capped at 62ch · a mono
    provenance line · the action row.
 
-   Claim state (from `review_claimed_by` vs the session name, resolved by the
-   screen into `mine` / `claimedByOther`):
-     - mine           → slate "Under review · you", and NO "Approve only"
-     - claimedByOther  → slate "Under review · <name>", actions kept (a manager
-                        can override — README describes only the "· you" drop)
-   "Watch" (start-review) is shown only for an unclaimed `pending_review` card —
-   it 409s on anything already under review.
+   Claim state. Structural decisions key off `item.status` directly (interim —
+   TODO(batch): compare `review_claimed_by_id` once the backend returns it):
+     - status `under_review`   → treated as claimed regardless of whether the
+                                 claimer's name resolved. `mine` (name match,
+                                 best effort) → slate "Under review · you" and
+                                 NO "Approve only"; otherwise "Under review ·
+                                 <name>" if a name exists, else just "Under
+                                 review". Actions stay (a manager can override).
+     - status `pending_review` → the ONLY state that shows "Watch"
+                                 (start-review). It 409s on anything already
+                                 under review, so it never renders otherwise.
 
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
    revealing the labelled textarea plus [Approve & publish] and [Send rejection]
@@ -93,7 +97,10 @@ export function SubmissionCard({
   now,
 }: SubmissionCardProps) {
   const noteId = useId();
-  const underReview = mine || claimedByOther != null;
+  // Interim: `under_review` status IS the claim signal (a null-name claimer must
+  // not fall through to an unclaimed card with a forever-409ing "Watch").
+  const underReview = item.status === "under_review";
+  const canWatch = item.status === "pending_review";
   const duration =
     item.duration_seconds != null
       ? formatDuration(item.duration_seconds)
@@ -222,7 +229,7 @@ export function SubmissionCard({
               >
                 Reject with note
               </Button>
-              {!underReview ? (
+              {canWatch ? (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -234,7 +241,11 @@ export function SubmissionCard({
               ) : null}
               {underReview ? (
                 <span className="text-[13px] font-medium text-slate">
-                  Under review · {mine ? "you" : claimedByOther}
+                  {mine
+                    ? "Under review · you"
+                    : claimedByOther
+                      ? `Under review · ${claimedByOther}`
+                      : "Under review"}
                 </span>
               ) : null}
             </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clampPage,
   formatBytes,
   formatDuration,
   formatRelativeTime,
@@ -55,6 +56,24 @@ describe("formatBytes", () => {
     expect(formatBytes(null)).toBe("—");
     expect(formatBytes(undefined)).toBe("—");
     expect(formatBytes(-1)).toBe("—");
+  });
+});
+
+describe("clampPage", () => {
+  it("passes through a valid 1-based page", () => {
+    expect(clampPage(1)).toBe(1);
+    expect(clampPage(7)).toBe(7);
+    expect(clampPage("3")).toBe(3);
+  });
+
+  it("floors a fraction and clamps anything sub-1 / non-finite / junk to 1", () => {
+    expect(clampPage(2.9)).toBe(2);
+    expect(clampPage(0)).toBe(1);
+    expect(clampPage(-4)).toBe(1);
+    expect(clampPage(Number.NaN)).toBe(1);
+    expect(clampPage("not a page")).toBe(1);
+    expect(clampPage(null)).toBe(1);
+    expect(clampPage(undefined)).toBe(1);
   });
 });
 

@@ -18,6 +18,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api, unwrap, type ApiClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { clampPage } from "@/lib/format";
 import { queryKeys } from "@/lib/query/keys";
 
 export type ReviewQueueItem = components["schemas"]["ReviewQueueItem"];
@@ -30,7 +31,7 @@ export async function loadReviewQueue(
   page: number,
   client: ApiClient = api,
 ): Promise<ReviewQueuePage> {
-  const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  const safePage = clampPage(page);
   return unwrap(
     client.GET("/api/v1/approvals/sermons/review-queue", {
       params: {
@@ -60,8 +61,7 @@ export function useReviewQueue({
 }: {
   page: number;
 }): UseReviewQueueResult {
-  const requestedPage =
-    Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  const requestedPage = clampPage(page);
 
   const query = useQuery({
     queryKey: queryKeys.review.queue({ page: requestedPage }),

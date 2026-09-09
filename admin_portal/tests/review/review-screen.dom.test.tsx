@@ -44,6 +44,21 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => nav.search,
 }));
 
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: {
+    href: string | { toString(): string };
+    children: React.ReactNode;
+  }) => (
+    <a href={typeof href === "string" ? href : href.toString()} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   server.resetHandlers();
@@ -87,6 +102,13 @@ interface BackendOpts {
   /** Delay the `start-review` response so the optimistic claim is observable
       before the server answers. */
   startReviewDelayMs?: number;
+  /** Fail the first N `publish` calls with 500 (then succeed). `approve` still
+      200s — this is the approve-ok / publish-fail partial-failure path. */
+  publishFailTimes?: number;
+  /** `approve` flips the row to `approved` and KEEPS it in the queue instead of
+      dropping it — simulates a stale tab / not-yet-refetched queue so the
+      already-approved retry is observable on-screen. */
+  keepApproved?: boolean;
 }
 
 /** One review-queue endpoint served from a mutable list, plus the four action
@@ -95,8 +117,15 @@ interface BackendOpts {
     pending/under review). Every handler mutates `live`, so the post-settle
     refetch reflects the transition. */
 function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
-  const { calls, rejectBodies, startReviewDelayMs = 0 } = opts;
+  const {
+    calls,
+    rejectBodies,
+    startReviewDelayMs = 0,
+    publishFailTimes = 0,
+    keepApproved = false,
+  } = opts;
   let live = [...initial];
+  let publishCalls = 0;
   server.use(
     http.get("*/api/bff/approvals/sermons/review-queue", () =>
       HttpResponse.json({ items: live, total: live.length, limit: 25, offset: 0 }),
@@ -116,11 +145,36 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
     ),
     http.post("*/api/bff/approvals/sermons/:id/approve", ({ params }) => {
       calls?.push("approve");
-      live = live.filter((r) => r.id !== params.id);
+      const current = live.find((r) => r.id === params.id);
+      if (current && current.status === "approved") {
+        // Mirrors `resolve_transition`: re-approving is a 409.
+        return HttpResponse.json(
+          {
+            detail: `Cannot 'approve' a sermon in status 'approved'`,
+            correlation_id: "cid-approve-409",
+          },
+          { status: 409 },
+        );
+      }
+      if (keepApproved) {
+        live = live.map((r) =>
+          r.id === params.id ? { ...r, status: "approved" } : r,
+        );
+      } else {
+        live = live.filter((r) => r.id !== params.id);
+      }
       return HttpResponse.json({ id: params.id, status: "approved" });
     }),
     http.post("*/api/bff/approvals/sermons/:id/publish", ({ params }) => {
       calls?.push("publish");
+      publishCalls += 1;
+      if (publishCalls <= publishFailTimes) {
+        return HttpResponse.json(
+          { detail: "Encoder queue unreachable", correlation_id: "cid-pub-1" },
+          { status: 500 },
+        );
+      }
+      live = live.filter((r) => r.id !== params.id);
       return HttpResponse.json({ id: params.id, status: "published" });
     }),
     http.post(
@@ -325,6 +379,144 @@ describe("ReviewScreen — approve & publish", () => {
       expect(screen.queryByText("Ship it")).not.toBeInTheDocument(),
     );
     expect(calls).toEqual(["approve", "publish"]);
+  });
+
+  it("approve-ok / publish-fail: shows a persistent honest message pointing at the sermon page, not a badge revert + generic error", async () => {
+    const calls: string[] = [];
+    backend([item({ id: "s7", title: "Half shipped" })], {
+      calls,
+      publishFailTimes: 1,
+      keepApproved: true,
+    });
+
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByText("Half shipped");
+
+    await user.click(
+      screen.getByRole("button", { name: "Approve & publish" }),
+    );
+
+    // approve committed, publish failed → screen-level, persistent message that
+    // names the sermon and links to its page.
+    const alert = await screen.findByText(/was approved, but publishing failed/);
+    expect(alert).toHaveTextContent(/Half shipped.* was approved/);
+    const link = screen.getByRole("link", { name: "sermon page" });
+    expect(link).toHaveAttribute("href", "/sermons/s7");
+
+    // NOT the generic approve-and-publish failure, and NO card-top alert.
+    expect(
+      screen.queryByText(/Couldn.t approve and publish/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/That action didn.t go through/),
+    ).not.toBeInTheDocument();
+
+    // approve was called once; publish was attempted.
+    expect(calls).toEqual(["approve", "publish"]);
+
+    // The message persists (no auto-dismiss) through the settle refetch.
+    await waitFor(() =>
+      expect(screen.getByText(/Encoder queue unreachable/)).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/was approved, but publishing failed/),
+    ).toBeInTheDocument();
+  });
+
+  it("retrying approve-and-publish on an already-approved sermon issues only publish — no 409 dead-end", async () => {
+    const calls: string[] = [];
+    backend([item({ id: "s7", title: "Half shipped" })], {
+      calls,
+      publishFailTimes: 1,
+      keepApproved: true,
+    });
+
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByText("Half shipped");
+
+    // First attempt: approve 200, publish 500.
+    await user.click(
+      screen.getByRole("button", { name: "Approve & publish" }),
+    );
+    await screen.findByText(/was approved, but publishing failed/);
+
+    // The card is still on screen (stale queue), now showing an approved badge.
+    await waitFor(() =>
+      expect(
+        within(cardFor("Half shipped")).getByText(/approved/i),
+      ).toBeInTheDocument(),
+    );
+    calls.length = 0;
+
+    // Retry from the still-visible card.
+    await user.click(
+      within(cardFor("Half shipped")).getByRole("button", {
+        name: "Approve & publish",
+      }),
+    );
+
+    // Only publish — approve is skipped for an already-approved row, so no 409.
+    expect(await screen.findByText("Published to the app")).toBeInTheDocument();
+    expect(calls).toEqual(["publish"]);
+    expect(calls).not.toContain("approve");
+    await waitFor(() =>
+      expect(screen.queryByText("Half shipped")).not.toBeInTheDocument(),
+    );
+    // The standing "approved but not published" notice is cleared on success.
+    expect(
+      screen.queryByText(/was approved, but publishing failed/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewScreen — concurrent actions", () => {
+  it("keeps each card's actions disabled while its own mutation is in flight (not just the most recent)", async () => {
+    const calls: string[] = [];
+    backend(
+      [
+        item({ id: "a1", title: "First up" }),
+        item({ id: "a2", title: "Second up" }),
+      ],
+      { calls, startReviewDelayMs: 80 },
+    );
+
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+    await screen.findByText("First up");
+
+    await user.click(
+      within(cardFor("First up")).getByRole("button", { name: "Watch" }),
+    );
+    await user.click(
+      within(cardFor("Second up")).getByRole("button", { name: "Watch" }),
+    );
+
+    // Both start-review calls are outstanding → BOTH cards' actions disabled.
+    expect(
+      within(cardFor("First up")).getByRole("button", {
+        name: "Approve & publish",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(cardFor("Second up")).getByRole("button", {
+        name: "Approve & publish",
+      }),
+    ).toBeDisabled();
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c === "start-review")).toHaveLength(2),
+    );
+
+    // Once settled, actions are live again.
+    await waitFor(() =>
+      expect(
+        within(cardFor("First up")).getByRole("button", {
+          name: "Approve & publish",
+        }),
+      ).toBeEnabled(),
+    );
   });
 });
 
