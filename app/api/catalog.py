@@ -38,9 +38,16 @@ async def get_sermon(
 
 
 @router.get("/categories", response_model=list[CategoryPublic])
-async def get_categories(db: ReadDbDep) -> list[CategoryPublic]:
-    """All categories. Flat — categories have no parent."""
-    rows = await content_service.list_categories_with_counts(db)
+async def get_categories(db: ReadDbDep, user: OptionalUser) -> list[CategoryPublic]:
+    """All categories. Flat — categories have no parent.
+
+    Public-first: the common (anonymous) caller gets a published-only
+    `sermon_count`. A logged-in staffer (editor/manager/admin) hitting this
+    route gets the true all-status count — see `staff_sees_full_counts`.
+    """
+    rows = await content_service.list_categories_with_counts(
+        db, include_unpublished=content_service.staff_sees_full_counts(user)
+    )
     return [
         CategoryPublic(**content_service.category_to_public(cat, sermon_count))
         for cat, sermon_count in rows

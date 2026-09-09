@@ -27,6 +27,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import cache_aside, get_redis
 from app.models.content_schemas import (
+    MAX_PAGE_SIZE,
     ApprovalLogItem,
     ReviewQueueItem,
     SermonAdminDetail,
@@ -56,7 +57,8 @@ log = get_logger("content")
 CATALOG_TTL_SECONDS = 300  # 5 minutes
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
-MAX_PAGE_SIZE = 100
+# MAX_PAGE_SIZE is defined in app.models.content_schemas (imported above) so the
+# request schemas and these service clamps share one source of truth.
 
 
 async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
@@ -80,23 +82,39 @@ async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
 _REVIEW_LOCK_STATUSES = (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)
 
 
-def episode_number_move_locked(
-    sermon: Sermon, target_episode_number: int | None
+def episode_position_move_locked(
+    sermon: Sermon,
+    *,
+    target_episode_number: int | None = None,
+    new_series_id: uuid.UUID | None = None,
+    series_id_provided: bool = False,
 ) -> bool:
-    """True when `sermon` is in review and `target_episode_number` would move it.
+    """True when `sermon` is in review and the given change would move it.
 
     An episode in ``pending_review`` / ``under_review`` is an immovable fixed
-    point: its ``episode_number`` cannot change until the review finishes. Both
-    entry points that can renumber an episode — the single-row
-    ``PATCH /sermons/{id}`` and the bulk ``PUT /series/{id}/episode-order`` —
-    route their check through here. A target equal to the current number (or
-    ``None`` = "not being set") is not a move.
+    point until the review finishes — along BOTH position axes:
+
+    * ``target_episode_number`` — a number different from the current one.
+    * ``series_id`` — moving the episode to a different series at all. Pass
+      ``series_id_provided=True`` only when the PATCH actually carries
+      ``series_id`` (so ``new_series_id=None`` means "detach from its series",
+      a real move, not "not supplied").
+
+    Both entry points route through here: the single-row ``PATCH /sermons/{id}``
+    (which can change either axis) and the bulk
+    ``PUT /series/{id}/episode-order`` (episode number only). A target equal to
+    the current value — or not supplied — is not a move.
     """
-    return (
-        sermon.status in _REVIEW_LOCK_STATUSES
-        and target_episode_number is not None
+    if sermon.status not in _REVIEW_LOCK_STATUSES:
+        return False
+    if (
+        target_episode_number is not None
         and target_episode_number != sermon.episode_number
-    )
+    ):
+        return True
+    if series_id_provided and new_series_id != sermon.series_id:
+        return True
+    return False
 
 
 class ContentError(Exception):
@@ -468,15 +486,20 @@ async def update_sermon(
     ):
         fields["episode_number"] = await next_episode_number(db, new_series)
 
-    # An in-review episode's position is locked. Scope: `episode_number` only —
-    # other field edits on a pending_review / under_review sermon keep whatever
-    # behaviour they have now. Same rule as the bulk episode-order endpoint.
-    if "episode_number" in fields and episode_number_move_locked(
-        sermon, fields["episode_number"]
+    # An in-review episode's position is locked along both axes — its episode
+    # number AND its series. Moving it to another series (even while echoing its
+    # current number) is as much a position change as renumbering it. Other
+    # field edits on a pending_review / under_review sermon are unaffected. Same
+    # predicate the bulk episode-order endpoint uses.
+    if episode_position_move_locked(
+        sermon,
+        target_episode_number=fields.get("episode_number"),
+        new_series_id=fields.get("series_id"),
+        series_id_provided="series_id" in fields,
     ):
         raise ContentError(
-            "This sermon is in review — its episode number is locked until the "
-            "review finishes.",
+            "This sermon is in review — its position (episode number and "
+            "series) is locked until the review finishes.",
             status_code=409,
         )
 
@@ -784,20 +807,46 @@ async def create_category(db: AsyncSession, name: str, slug: str) -> Category:
     return cat
 
 
-async def list_categories(db: AsyncSession) -> list[Category]:
-    rows = (await db.execute(select(Category).order_by(Category.name))).scalars().all()
-    return list(rows)
+# ── Public-DTO count scoping (Option B) ──────────────────────────────────────
+# `sermon_count` / `episode_count` on CategoryPublic / SpeakerPublic /
+# SeriesPublic ride on routes that have no auth dependency. Counting every
+# status there lets an anonymous caller diff the DTO count against the published
+# catalog and read the size of the draft / pending / rejected pipeline. So the
+# count is scoped to who is asking:
+#   * unauthenticated, or a `viewer`  -> PUBLISHED sermons only
+#   * editor / manager / admin        -> the true, all-status count
+# The staff portal always calls these authenticated (through the BFF), so it
+# keeps accurate totals for the W12 delete-confirmation copy and the people
+# screens. `user` may be a `User` or the lighter `CurrentUser` — both carry
+# `.role` — or `None`.
+_FULL_COUNT_ROLES = (UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN)
 
 
-# Backwards-compatible alias.
-list_categories_flat = list_categories
+def staff_sees_full_counts(user: object | None) -> bool:
+    """True when `user` should see the unfiltered (all-status) public-DTO
+    counts. The single predicate the six/seven public read routes share so the
+    role tuple is not inlined per route."""
+    return user is not None and getattr(user, "role", None) in _FULL_COUNT_ROLES
 
 
-def _category_public_stmt():
-    """Category rows + a correlated count of the sermons attached to each."""
+def _published_only_count_clause(include_unpublished: bool):
+    """The extra WHERE term that scopes a `sermon_count` subquery to published
+    content, or nothing when the caller is entitled to the full count."""
+    return [] if include_unpublished else [Sermon.status == SermonStatus.PUBLISHED]
+
+
+def _category_public_stmt(include_unpublished: bool):
+    """Category rows + a correlated count of the sermons attached to each.
+
+    `include_unpublished=False` scopes the count to published sermons — see
+    `staff_sees_full_counts`.
+    """
     sermon_count = (
         select(func.count(Sermon.id))
-        .where(Sermon.category_id == Category.id)
+        .where(
+            Sermon.category_id == Category.id,
+            *_published_only_count_clause(include_unpublished),
+        )
         .correlate(Category)
         .scalar_subquery()
         .label("sermon_count")
@@ -806,17 +855,17 @@ def _category_public_stmt():
 
 
 async def list_categories_with_counts(
-    db: AsyncSession,
+    db: AsyncSession, include_unpublished: bool = False
 ) -> list[tuple[Category, int]]:
-    stmt = _category_public_stmt().order_by(Category.name)
+    stmt = _category_public_stmt(include_unpublished).order_by(Category.name)
     return [tuple(row) for row in (await db.execute(stmt)).all()]
 
 
 async def get_category_with_count(
-    db: AsyncSession, category_id: uuid.UUID
+    db: AsyncSession, category_id: uuid.UUID, include_unpublished: bool = False
 ) -> tuple[Category, int]:
     row = (await db.execute(
-        _category_public_stmt().where(Category.id == category_id)
+        _category_public_stmt(include_unpublished).where(Category.id == category_id)
     )).one_or_none()
     if row is None:
         raise ContentError("Category not found", status_code=404)
@@ -878,11 +927,18 @@ async def get_speaker(db: AsyncSession, speaker_id: uuid.UUID) -> Speaker:
     return speaker
 
 
-def _speaker_public_stmt():
-    """Speaker rows + a correlated count of the sermons attached to each."""
+def _speaker_public_stmt(include_unpublished: bool):
+    """Speaker rows + a correlated count of the sermons attached to each.
+
+    `include_unpublished=False` scopes the count to published sermons — see
+    `staff_sees_full_counts`.
+    """
     sermon_count = (
         select(func.count(Sermon.id))
-        .where(Sermon.speaker_id == Speaker.id)
+        .where(
+            Sermon.speaker_id == Speaker.id,
+            *_published_only_count_clause(include_unpublished),
+        )
         .correlate(Speaker)
         .scalar_subquery()
         .label("sermon_count")
@@ -891,17 +947,17 @@ def _speaker_public_stmt():
 
 
 async def list_speakers_with_counts(
-    db: AsyncSession,
+    db: AsyncSession, include_unpublished: bool = False
 ) -> list[tuple[Speaker, int]]:
-    stmt = _speaker_public_stmt().order_by(Speaker.name)
+    stmt = _speaker_public_stmt(include_unpublished).order_by(Speaker.name)
     return [tuple(row) for row in (await db.execute(stmt)).all()]
 
 
 async def get_speaker_with_count(
-    db: AsyncSession, speaker_id: uuid.UUID
+    db: AsyncSession, speaker_id: uuid.UUID, include_unpublished: bool = False
 ) -> tuple[Speaker, int]:
     row = (await db.execute(
-        _speaker_public_stmt().where(Speaker.id == speaker_id)
+        _speaker_public_stmt(include_unpublished).where(Speaker.id == speaker_id)
     )).one_or_none()
     if row is None:
         raise ContentError("Speaker not found", status_code=404)
@@ -951,10 +1007,18 @@ async def get_series(db: AsyncSession, series_id: uuid.UUID) -> Series:
 # Per-series episode count + resolved category name, computed in the read query
 # via a correlated count subquery + an outer join (same style as
 # `review_queue_page`'s per-row subqueries). One query, no round-trip per row.
-def _series_public_stmt():
+def _series_public_stmt(include_unpublished: bool):
+    """Series rows + a correlated episode count + the resolved category name.
+
+    `include_unpublished=False` scopes the episode count to published sermons —
+    see `staff_sees_full_counts`.
+    """
     episode_count = (
         select(func.count(Sermon.id))
-        .where(Sermon.series_id == Series.id)
+        .where(
+            Sermon.series_id == Series.id,
+            *_published_only_count_clause(include_unpublished),
+        )
         .correlate(Series)
         .scalar_subquery()
         .label("episode_count")
@@ -964,16 +1028,18 @@ def _series_public_stmt():
     ).outerjoin(Category, Category.id == Series.category_id)
 
 
-async def list_series(db: AsyncSession) -> list[tuple[Series, int, str | None]]:
-    stmt = _series_public_stmt().order_by(Series.title)
+async def list_series(
+    db: AsyncSession, include_unpublished: bool = False
+) -> list[tuple[Series, int, str | None]]:
+    stmt = _series_public_stmt(include_unpublished).order_by(Series.title)
     return [tuple(row) for row in (await db.execute(stmt)).all()]
 
 
 async def get_series_public(
-    db: AsyncSession, series_id: uuid.UUID
+    db: AsyncSession, series_id: uuid.UUID, include_unpublished: bool = False
 ) -> tuple[Series, int, str | None]:
     row = (await db.execute(
-        _series_public_stmt().where(Series.id == series_id)
+        _series_public_stmt(include_unpublished).where(Series.id == series_id)
     )).one_or_none()
     if row is None:
         raise ContentError("Series not found", status_code=404)
@@ -988,21 +1054,26 @@ _SERIES_STATUS_TRANSITIONS = {
 
 
 def _check_series_status_change(
-    series: Series, new_status: SermonStatus, editor: User
+    series: Series, new_status: SermonStatus | None, editor: User
 ) -> None:
     """Guard the privileged `status` field on `SeriesUpdate`.
 
-    Only manager/admin may set it (editor -> 403, mirroring the other
-    privileged-field guards in this module). Allowed transitions are
-    ``draft -> published`` and ``published -> draft`` only; any other target is
-    422. A no-op (target == current) is allowed.
+    No-op first: ``status`` absent from the resolved payload, an explicit
+    ``null`` (which the ``SermonStatus | None`` schema permits — it must not
+    500), or a value equal to the current status are all silent passes, with no
+    role check. This lets an editor send a full-object PATCH that echoes the
+    unchanged ``status`` alongside a real edit without a spurious 403.
+
+    Only then: a real change is manager/admin-only (editor -> 403, mirroring the
+    other privileged-field guards here), and restricted to ``draft ->
+    published`` / ``published -> draft``; any other target is 422.
     """
+    if new_status is None or new_status == series.status:
+        return
     if editor.role == UserRole.EDITOR:
         raise ContentError(
             "Only a manager can publish or unpublish a series", status_code=403
         )
-    if new_status == series.status:
-        return
     if (series.status, new_status) not in _SERIES_STATUS_TRANSITIONS:
         raise ContentError(
             "A series can only move between draft and published, not "
@@ -1013,13 +1084,20 @@ def _check_series_status_change(
 
 async def update_series(
     db: AsyncSession, series_id: uuid.UUID, fields: dict, editor: User
-) -> Series:
+) -> None:
+    """Apply a `SeriesUpdate` patch. The router re-reads via `get_series_public`
+    for the response, so nothing is returned here."""
     series = await get_series(db, series_id)
     if editor.role == UserRole.EDITOR and series.created_by != editor.id:
         raise ContentError("You can only edit your own series", status_code=403)
 
     if "status" in fields:
         _check_series_status_change(series, fields["status"], editor)
+        # An explicit `{"status": null}` is a schema-legal no-op (guarded
+        # above). Drop it so the write loop below can't null a non-nullable
+        # column.
+        if fields["status"] is None:
+            del fields["status"]
 
     if "category_id" in fields and fields["category_id"] is not None:
         if await db.get(Category, fields["category_id"]) is None:
@@ -1029,13 +1107,11 @@ async def update_series(
     for key, value in fields.items():
         setattr(series, key, value)
     await db.commit()
-    await db.refresh(series)
 
     # A tier change alters the effective tier of inheriting episodes in the
     # public catalog, so bust the cache.
     if tier_changed:
         await invalidate_catalog_cache()
-    return series
 
 
 async def delete_series(db: AsyncSession, series_id: uuid.UUID) -> None:
@@ -1070,6 +1146,14 @@ async def reorder_series_episodes(
     ``under_review`` is an immovable fixed point: if the new order would change
     its number the whole operation is refused with 409, naming the locked
     episode(s). All rows are written in one transaction or none.
+
+    NOTE (known race, accepted): the episode set is read with a plain SELECT —
+    no ``FOR UPDATE``, no version check. Two managers reordering the same series
+    concurrently both read, both validate, and the later commit wins; the
+    loser's ordering is silently overwritten. This is manager/admin-gated and
+    single-series, so contention is near zero, and ``next_episode_number``
+    already documents accepting the same class of race on create. Revisit with
+    row locking only if reorder contention ever shows up in practice.
     """
     series = await get_series(db, series_id)  # 404 if missing
 
@@ -1105,7 +1189,7 @@ async def reorder_series_episodes(
     locked = [
         by_id[eid]
         for position, eid in enumerate(episode_ids, start=1)
-        if episode_number_move_locked(by_id[eid], position)
+        if episode_position_move_locked(by_id[eid], target_episode_number=position)
     ]
     if locked:
         named = ", ".join(

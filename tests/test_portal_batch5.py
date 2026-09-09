@@ -65,6 +65,22 @@ async def _start_review(client, mgr, sermon_id):
     )
 
 
+async def _publish(client, ed, mgr, sermon_id):
+    """Drive a sermon draft -> published through the approval workflow."""
+    await client.post(f"/api/v1/sermons/{sermon_id}/submit", headers=ed)
+    await client.post(
+        f"/api/v1/approvals/sermons/{sermon_id}/start-review", headers=mgr
+    )
+    await client.post(
+        f"/api/v1/approvals/sermons/{sermon_id}/approve", headers=mgr
+    )
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sermon_id}/publish", headers=mgr
+    )
+    assert r.status_code == 200, r.text
+    return r
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. PUT /series/{id}/episode-order
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -157,6 +173,24 @@ async def test_episode_order_empty_list_is_422(client, engine):
         headers=mgr,
     )
     assert resp.status_code == 422  # schema min_length=1
+
+
+async def test_episode_order_over_page_size_is_422(client, engine):
+    """episode_ids is capped at MAX_PAGE_SIZE (100) so the schema ceiling matches
+    what the paginated drag client can actually assemble."""
+    import uuid as _uuid
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    series = await _series(client, ed, "S")
+    await _episode(client, ed, series["id"], "E1")
+
+    resp = await client.put(
+        f"/api/v1/series/{series['id']}/episode-order",
+        json={"episode_ids": [str(_uuid.uuid4()) for _ in range(101)]},
+        headers=mgr,
+    )
+    assert resp.status_code == 422  # schema max_length=100, rejected before load
 
 
 async def test_episode_order_refused_when_in_review_episode_would_move(client, engine):
@@ -299,6 +333,36 @@ async def test_patch_title_only_on_in_review_still_ok(client, engine):
     assert resp.json()["status"] == "pending_review"
 
 
+async def test_patch_series_id_on_pending_review_is_409(client, engine):
+    """Moving an in-review sermon to a different series is a position change —
+    locked the same as renumbering, even when episode_number is untouched."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    s1 = await _series(client, ed, "S1")
+    s2 = await _series(client, ed, "S2")
+    e1 = await _episode(client, ed, s1["id"], "E1")  # number 1
+    await _submit(client, ed, e1["id"])  # -> pending_review
+
+    resp = await client.patch(
+        f"/api/v1/sermons/{e1['id']}", json={"series_id": s2["id"]}, headers=ed
+    )
+    assert resp.status_code == 409
+    # Not moved.
+    assert await _episode_numbers(client, ed, s2["id"]) == {}
+
+
+async def test_patch_series_id_on_draft_is_200(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    s1 = await _series(client, ed, "S1")
+    s2 = await _series(client, ed, "S2")
+    e1 = await _episode(client, ed, s1["id"], "E1")
+
+    resp = await client.patch(
+        f"/api/v1/sermons/{e1['id']}", json={"series_id": s2["id"]}, headers=ed
+    )
+    assert resp.status_code == 200
+    assert resp.json()["series_id"] == s2["id"]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. Minimal series publish — status on SeriesUpdate
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -362,15 +426,57 @@ async def test_illegal_series_status_target_is_422(client, engine):
     assert resp.status_code == 422
 
 
+async def test_manager_patch_null_status_is_noop_200(client, engine):
+    """`{"status": null}` is schema-legal (SermonStatus | None) — it must be a
+    silent no-op, not an AttributeError -> unhandled 500."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    series = await _series(client, ed, "Grace")
+
+    resp = await client.patch(
+        f"/api/v1/series/{series['id']}",
+        json={"status": None, "description": "still draft"},
+        headers=mgr,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "draft"
+    assert resp.json()["description"] == "still draft"
+
+
+async def test_editor_full_object_patch_echoing_unchanged_status_is_200(client, engine):
+    """An editor doing a full-object PATCH that echoes the (unchanged) status
+    alongside a real edit must pass — the no-op check precedes the role gate."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    series = await _series(client, ed, "Grace")
+
+    resp = await client.patch(
+        f"/api/v1/series/{series['id']}",
+        json={"status": "draft", "title": "Grace renamed"},
+        headers=ed,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Grace renamed"
+    assert resp.json()["status"] == "draft"
+
+    # A real change by an editor is still 403.
+    denied = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=ed
+    )
+    assert denied.status_code == 403
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. Count fields on the public DTOs
 # ═══════════════════════════════════════════════════════════════════════════════
-async def _get_series_card(client, series_id):
-    listed = (await client.get("/api/v1/series")).json()
+async def _get_series_card(client, series_id, headers=None):
+    listed = (await client.get("/api/v1/series", headers=headers or {})).json()
     return next(s for s in listed if s["id"] == series_id)
 
 
-async def test_series_episode_count_and_category_name(client, engine):
+async def test_series_episode_count_scoped_to_caller(client, engine):
+    """episode_count is Option-B scoped: anon/viewer see published episodes
+    only; staff (editor+) see the true all-status count. category_name is not
+    status-scoped."""
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     cat = (await client.post(
@@ -380,32 +486,42 @@ async def test_series_episode_count_and_category_name(client, engine):
     with_cat = await _series(client, ed, "With cat", category_id=cat["id"])
     no_cat = await _series(client, ed, "No cat")
 
-    # Create response already carries the (zero) count + resolved category name.
+    # Create response is a staff call — carries the (zero) count + category name.
     assert with_cat["episode_count"] == 0
     assert with_cat["category_name"] == "Teaching"
     assert no_cat["category_name"] is None
 
-    await _episode(client, ed, with_cat["id"], "E1")
+    e1 = await _episode(client, ed, with_cat["id"], "E1")
     await _episode(client, ed, with_cat["id"], "E2")
     await _episode(client, ed, with_cat["id"], "E3")
     await _episode(client, ed, no_cat["id"], "Solo")
+    await _publish(client, ed, mgr, e1["id"])  # 1 of 3 published in with_cat
 
-    # by-id
+    # anon by-id — published-only
     a = (await client.get(f"/api/v1/series/{with_cat['id']}")).json()
-    assert a["episode_count"] == 3
+    assert a["episode_count"] == 1
     assert a["category_name"] == "Teaching"
     b = (await client.get(f"/api/v1/series/{no_cat['id']}")).json()
-    assert b["episode_count"] == 1
+    assert b["episode_count"] == 0
     assert b["category_name"] is None
 
-    # list
-    assert (await _get_series_card(client, with_cat["id"]))["episode_count"] == 3
-    assert (await _get_series_card(client, no_cat["id"]))["episode_count"] == 1
+    # staff by-id — full count
+    a_staff = (await client.get(f"/api/v1/series/{with_cat['id']}", headers=ed)).json()
+    assert a_staff["episode_count"] == 3
+    b_staff = (await client.get(f"/api/v1/series/{no_cat['id']}", headers=ed)).json()
+    assert b_staff["episode_count"] == 1
+
+    # list — same split
+    assert (await _get_series_card(client, with_cat["id"]))["episode_count"] == 1
+    assert (await _get_series_card(client, no_cat["id"]))["episode_count"] == 0
+    assert (await _get_series_card(client, with_cat["id"], ed))["episode_count"] == 3
+    assert (await _get_series_card(client, no_cat["id"], ed))["episode_count"] == 1
     assert (await _get_series_card(client, with_cat["id"]))["category_name"] == "Teaching"
 
 
-async def test_speaker_sermon_count_after_attach_detach(client, engine):
+async def test_speaker_sermon_count_scoped_to_caller(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
     speaker = (await client.post(
         "/api/v1/speakers", json={"name": "Pastor A"}, headers=ed
     )).json()
@@ -421,21 +537,37 @@ async def test_speaker_sermon_count_after_attach_detach(client, engine):
         json={"title": "S2", "speaker_id": speaker["id"]},
         headers=ed,
     )).json()
+    await _publish(client, ed, mgr, s1["id"])  # 1 of 2 published
 
-    assert (await client.get(f"/api/v1/speakers/{speaker['id']}")).json()["sermon_count"] == 2
-    listed = (await client.get("/api/v1/speakers")).json()
-    assert next(s for s in listed if s["id"] == speaker["id"])["sermon_count"] == 2
+    def _card(listed, sid):
+        return next(s for s in listed if s["id"] == sid)
 
-    # Detach one sermon from the speaker.
+    # anon — published-only
+    assert (await client.get(f"/api/v1/speakers/{speaker['id']}")).json()["sermon_count"] == 1
+    assert _card((await client.get("/api/v1/speakers")).json(), speaker["id"])["sermon_count"] == 1
+
+    # staff (editor+) — full count
+    assert (await client.get(
+        f"/api/v1/speakers/{speaker['id']}", headers=ed
+    )).json()["sermon_count"] == 2
+    assert _card(
+        (await client.get("/api/v1/speakers", headers=ed)).json(), speaker["id"]
+    )["sermon_count"] == 2
+
+    # Detach the published sermon — anon drops to 0, staff to 1.
     await client.patch(
         f"/api/v1/sermons/{s1['id']}", json={"speaker_id": None}, headers=ed
     )
-    assert (await client.get(f"/api/v1/speakers/{speaker['id']}")).json()["sermon_count"] == 1
+    assert (await client.get(f"/api/v1/speakers/{speaker['id']}")).json()["sermon_count"] == 0
+    assert (await client.get(
+        f"/api/v1/speakers/{speaker['id']}", headers=ed
+    )).json()["sermon_count"] == 1
 
 
-async def test_category_sermon_count_on_admin_and_public_endpoints(client, engine):
+async def test_category_sermon_count_scoped_to_caller(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
     cat = (await client.post(
         "/api/v1/categories", json={"name": "Worship", "slug": "worship"}, headers=mgr
     )).json()
@@ -451,15 +583,32 @@ async def test_category_sermon_count_on_admin_and_public_endpoints(client, engin
         json={"title": "S2", "category_id": cat["id"]},
         headers=ed,
     )).json()
+    await _publish(client, ed, mgr, s1["id"])  # 1 of 2 published
 
-    # by-id (admin), list (admin), and the public catalog list all carry it.
-    assert (await client.get(f"/api/v1/categories/{cat['id']}")).json()["sermon_count"] == 2
-    admin_list = (await client.get("/api/v1/categories")).json()
-    assert next(c for c in admin_list if c["id"] == cat["id"])["sermon_count"] == 2
-    public_list = (await client.get("/api/v1/catalog/categories")).json()
-    assert next(c for c in public_list if c["id"] == cat["id"])["sermon_count"] == 2
+    def _c(rows):
+        return next(c for c in rows if c["id"] == cat["id"])["sermon_count"]
+
+    # anon — published-only, across by-id, admin list route, public catalog route
+    assert (await client.get(f"/api/v1/categories/{cat['id']}")).json()["sermon_count"] == 1
+    assert _c((await client.get("/api/v1/categories")).json()) == 1
+    assert _c((await client.get("/api/v1/catalog/categories")).json()) == 1
+    # viewer role — also published-only
+    assert _c((await client.get("/api/v1/catalog/categories", headers=viewer)).json()) == 1
+    assert (await client.get(
+        f"/api/v1/categories/{cat['id']}", headers=viewer
+    )).json()["sermon_count"] == 1
+
+    # staff (editor+) — full count on every one of those routes
+    assert (await client.get(
+        f"/api/v1/categories/{cat['id']}", headers=ed
+    )).json()["sermon_count"] == 2
+    assert _c((await client.get("/api/v1/categories", headers=ed)).json()) == 2
+    assert _c((await client.get("/api/v1/catalog/categories", headers=ed)).json()) == 2
 
     await client.patch(
         f"/api/v1/sermons/{s1['id']}", json={"category_id": None}, headers=ed
     )
-    assert (await client.get(f"/api/v1/categories/{cat['id']}")).json()["sermon_count"] == 1
+    assert (await client.get(f"/api/v1/categories/{cat['id']}")).json()["sermon_count"] == 0
+    assert (await client.get(
+        f"/api/v1/categories/{cat['id']}", headers=ed
+    )).json()["sermon_count"] == 1

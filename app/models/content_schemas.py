@@ -7,6 +7,12 @@ from app.models.models import ContentTier, MediaType, SermonStatus
 from app.models.models import MediaType as _MediaType  # noqa: E402
 from app.models.models import UploadStatus as _UploadStatus  # noqa: E402
 
+# Largest page any list endpoint will serve. Lives here (models layer) so both
+# the service `.limit()` clamps and the request schemas that must not accept
+# more ids than a client could ever paginate can share one definition without a
+# service -> schema import cycle.
+MAX_PAGE_SIZE = 100
+
 # ── Categories ────────────────────────────────────────────────────────────────
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -93,9 +99,18 @@ class SeriesPublic(BaseModel):
 
 
 class EpisodeOrderRequest(BaseModel):
-    """Full ordered list of a series' episode (sermon) ids for a bulk reorder."""
+    """Full ordered list of a series' episode (sermon) ids for a bulk reorder.
 
-    episode_ids: list[uuid.UUID] = Field(min_length=1)
+    Ceiling: ``MAX_PAGE_SIZE`` ids. The drag client assembles this list from
+    ``GET /sermons?series_id=``, which is itself capped at ``MAX_PAGE_SIZE`` per
+    page, and this endpoint requires the *complete* ordered set — so a series
+    with more episodes than that cannot be reordered through the portal at all.
+    Reordering a >``MAX_PAGE_SIZE``-episode series is out of scope for this
+    batch; the cap makes that limit an explicit 422 rather than a silent
+    partial write.
+    """
+
+    episode_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_PAGE_SIZE)
 
 
 class EpisodeOrderItem(BaseModel):

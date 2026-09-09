@@ -895,13 +895,14 @@
         "type": "object"
       },
       "EpisodeOrderRequest": {
-        "description": "Full ordered list of a series' episode (sermon) ids for a bulk reorder.",
+        "description": "Full ordered list of a series' episode (sermon) ids for a bulk reorder.\n\nCeiling: ``MAX_PAGE_SIZE`` ids. The drag client assembles this list from\n``GET /sermons?series_id=``, which is itself capped at ``MAX_PAGE_SIZE`` per\npage, and this endpoint requires the *complete* ordered set \u2014 so a series\nwith more episodes than that cannot be reordered through the portal at all.\nReordering a >``MAX_PAGE_SIZE``-episode series is out of scope for this\nbatch; the cap makes that limit an explicit 422 rather than a silent\npartial write.",
         "properties": {
           "episode_ids": {
             "items": {
               "format": "uuid",
               "type": "string"
             },
+            "maxItems": 100,
             "minItems": 1,
             "title": "Episode Ids",
             "type": "array"
@@ -5031,7 +5032,7 @@
     },
     "/api/v1/catalog/categories": {
       "get": {
-        "description": "All categories. Flat \u2014 categories have no parent.",
+        "description": "All categories. Flat \u2014 categories have no parent.\n\nPublic-first: the common (anonymous) caller gets a published-only\n`sermon_count`. A logged-in staffer (editor/manager/admin) hitting this\nroute gets the true all-status count \u2014 see `staff_sees_full_counts`.",
         "operationId": "get_categories_api_v1_catalog_categories_get",
         "responses": {
           "200": {
@@ -5049,6 +5050,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Categories",
         "tags": [
           "catalog"
@@ -5152,6 +5158,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Categories",
         "tags": [
           "categories"
@@ -5278,6 +5289,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Category",
         "tags": [
           "categories"
@@ -5692,6 +5708,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Series",
         "tags": [
           "series"
@@ -5818,6 +5839,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Series",
         "tags": [
           "series"
@@ -5882,7 +5908,7 @@
     },
     "/api/v1/series/{series_id}/episode-order": {
       "put": {
-        "description": "Bulk atomic reorder of a series' episodes.\n\nBody is the full ordered list of the series' episode (sermon) ids. Every id\nmust be an episode of this series and the set must be exactly the current\nepisode set \u2014 otherwise 422, naming what is wrong. Episodes are renumbered\n``1..N`` by position. An episode in ``pending_review`` / ``under_review`` is\na fixed point: if the new order would change its number the whole request is\nrefused with 409, naming the locked episode(s). All rows are written in one\ntransaction or none. Returns the reordered ``{id, episode_number}`` list.",
+        "description": "Bulk atomic reorder of a series' episodes.\n\nBody is the full ordered list of the series' episode (sermon) ids. Every id\nmust be an episode of this series and the set must be exactly the current\nepisode set \u2014 otherwise 422, naming what is wrong. Episodes are renumbered\n``1..N`` by position. An episode in ``pending_review`` / ``under_review`` is\na fixed point: if the new order would change its number the whole request is\nrefused with 409, naming the locked episode(s). All rows are written in one\ntransaction or none. Returns the reordered ``{id, episode_number}`` list.\n\nCeiling: at most ``MAX_PAGE_SIZE`` (100) ids. The drag client sources the\nfull episode set from ``GET /sermons?series_id=``, which pages at\n``MAX_PAGE_SIZE``, and this endpoint needs the complete ordered list \u2014 so a\nseries with more episodes than that cannot be reordered through the portal.\nThat is out of scope for this batch; the cap turns it into an explicit 422\nrather than a silent partial write.",
         "operationId": "reorder_episode_order_api_v1_series__series_id__episode_order_put",
         "parameters": [
           {
@@ -7136,6 +7162,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Speakers",
         "tags": [
           "speakers"
@@ -7262,6 +7293,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Speaker",
         "tags": [
           "speakers"

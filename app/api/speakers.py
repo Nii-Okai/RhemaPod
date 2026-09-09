@@ -41,19 +41,32 @@ async def create_speaker(data: SpeakerCreate, user: EditorPlus, db: DbDep) -> Sp
     db.add(speaker)
     await db.commit()
     await db.refresh(speaker)
-    return _speaker_public(await content_service.get_speaker_with_count(db, speaker.id))
+    return _speaker_public(
+        await content_service.get_speaker_with_count(
+            db, speaker.id, include_unpublished=True
+        )
+    )
 
 
 @router.get("", response_model=list[SpeakerPublic])
-async def list_speakers(db: ReadDbDep) -> list[SpeakerPublic]:
-    rows = await content_service.list_speakers_with_counts(db)
+async def list_speakers(db: ReadDbDep, user: OptionalUser) -> list[SpeakerPublic]:
+    # Count scoping (Option B): staff callers get the true all-status count,
+    # anon/viewer get published-only. See `staff_sees_full_counts`.
+    rows = await content_service.list_speakers_with_counts(
+        db, include_unpublished=content_service.staff_sees_full_counts(user)
+    )
     return [_speaker_public(row) for row in rows]
 
 
 @router.get("/{speaker_id}", response_model=SpeakerPublic)
-async def get_speaker(speaker_id: uuid.UUID, db: ReadDbDep) -> SpeakerPublic:
+async def get_speaker(
+    speaker_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> SpeakerPublic:
     try:
-        row = await content_service.get_speaker_with_count(db, speaker_id)
+        row = await content_service.get_speaker_with_count(
+            db, speaker_id,
+            include_unpublished=content_service.staff_sees_full_counts(user),
+        )
     except ContentError as exc:
         raise _err(exc)
     return _speaker_public(row)
@@ -68,7 +81,9 @@ async def update_speaker(
         speaker = await content_service.update_speaker(
             db, speaker_id, name=data.name, bio=data.bio, bio_set="bio" in provided
         )
-        row = await content_service.get_speaker_with_count(db, speaker.id)
+        row = await content_service.get_speaker_with_count(
+            db, speaker.id, include_unpublished=True
+        )
     except ContentError as exc:
         raise _err(exc)
     return _speaker_public(row)

@@ -85,18 +85,31 @@ async def create_series(data: SeriesCreate, user: EditorPlus, db: DbDep) -> Seri
     db.add(series)
     await db.commit()
     await db.refresh(series)
-    return _series_public(await content_service.get_series_public(db, series.id))
+    return _series_public(
+        await content_service.get_series_public(
+            db, series.id, include_unpublished=True
+        )
+    )
 
 
 @router.get("", response_model=list[SeriesPublic])
-async def list_series(db: ReadDbDep) -> list[SeriesPublic]:
-    rows = await content_service.list_series(db)
+async def list_series(db: ReadDbDep, user: OptionalUser) -> list[SeriesPublic]:
+    # Count scoping (Option B): staff callers get the true all-status
+    # episode_count, anon/viewer get published-only. See `staff_sees_full_counts`.
+    rows = await content_service.list_series(
+        db, include_unpublished=content_service.staff_sees_full_counts(user)
+    )
     return [_series_public(row) for row in rows]
 
 @router.get("/{series_id}", response_model=SeriesPublic)
-async def get_series(series_id: uuid.UUID, db: ReadDbDep) -> SeriesPublic:
+async def get_series(
+    series_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> SeriesPublic:
     try:
-        row = await content_service.get_series_public(db, series_id)
+        row = await content_service.get_series_public(
+            db, series_id,
+            include_unpublished=content_service.staff_sees_full_counts(user),
+        )
     except ContentError as exc:
         raise _err(exc)
     return _series_public(row)
@@ -110,7 +123,9 @@ async def update_series(
     fields = data.model_dump(exclude_unset=True)
     try:
         await content_service.update_series(db, series_id, fields, actor)
-        row = await content_service.get_series_public(db, series_id)
+        row = await content_service.get_series_public(
+            db, series_id, include_unpublished=True
+        )
     except ContentError as exc:
         raise _err(exc)
     return _series_public(row)
@@ -141,6 +156,13 @@ async def reorder_episode_order(
     a fixed point: if the new order would change its number the whole request is
     refused with 409, naming the locked episode(s). All rows are written in one
     transaction or none. Returns the reordered ``{id, episode_number}`` list.
+
+    Ceiling: at most ``MAX_PAGE_SIZE`` (100) ids. The drag client sources the
+    full episode set from ``GET /sermons?series_id=``, which pages at
+    ``MAX_PAGE_SIZE``, and this endpoint needs the complete ordered list — so a
+    series with more episodes than that cannot be reordered through the portal.
+    That is out of scope for this batch; the cap turns it into an explicit 422
+    rather than a silent partial write.
     """
     actor = await _staff(db, user)
     try:
