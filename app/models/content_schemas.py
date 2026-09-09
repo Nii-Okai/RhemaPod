@@ -14,9 +14,40 @@ from app.models.models import UploadStatus as _UploadStatus  # noqa: E402
 MAX_PAGE_SIZE = 100
 
 # ── Categories ────────────────────────────────────────────────────────────────
+def _clean_category_name(v: str) -> str:
+    """Normalise a category name written by an editor/manager.
+
+    `category_name` is echoed on the *unauthenticated* `list_series` /
+    `get_series` responses (and the sermon catalog DTOs), and editors may now
+    write it, so the raw string is sanitised at the edge:
+
+    * strip leading/trailing whitespace, collapse internal whitespace runs to a
+      single space;
+    * reject (ValueError -> 422) any C0/C1 control character, DEL, or the angle
+      brackets `<` / `>`.
+
+    `slug` needs no equivalent — its `Field` pattern already server-side
+    constrains it to `[a-z0-9-]`.
+    """
+    cleaned = " ".join(v.split())
+    if not cleaned:
+        raise ValueError("A category name is required")
+    if any(
+        ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F or c in "<>"
+        for c in cleaned
+    ):
+        raise ValueError("Category name must not contain control characters or < >")
+    return cleaned
+
+
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     slug: str = Field(min_length=1, max_length=140, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v: str) -> str:
+        return _clean_category_name(v)
 
 
 class CategoryUpdate(BaseModel):
@@ -25,6 +56,11 @@ class CategoryUpdate(BaseModel):
         default=None, min_length=1, max_length=140,
         pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
     )
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v: str | None) -> str | None:
+        return v if v is None else _clean_category_name(v)
 
 
 class CategoryPublic(BaseModel):
@@ -295,7 +331,8 @@ class ReviewQueueItem(BaseModel):
     episode_number: int | None = None
     # Resolved effective tier: sermon tier, else series tier, else free.
     tier: ContentTier
-    # pending_review or under_review (the only two statuses in the queue).
+    # pending_review, under_review, or approved (an approved sermon stays in the
+    # queue until it is published — Batch 6 #12).
     status: SermonStatus
     # created_at of the most recent ApprovalLog row that moved this sermon to
     # pending_review — i.e. when the editor last submitted it. Drives the
@@ -303,10 +340,12 @@ class ReviewQueueItem(BaseModel):
     submitted_at: datetime | None
     # Number of MediaRef rows attached to the sermon (0 = nothing uploaded).
     renditions_ready: int
-    # For under_review items: the display name of whoever ran start-review
-    # (users.full_name / email local-part / None). None for pending_review.
+    # For under_review / approved items: the display name of the manager who
+    # most recently claimed the sermon (ran start-review or took it over). Not
+    # necessarily whoever ran `approve` — an admin or a peer manager may have.
+    # None for pending_review.
     review_claimed_by: str | None = None
-    # For under_review items: the raw user id of whoever ran start-review, so the
+    # For under_review / approved items: the raw user id of that reviewer, so the
     # client can match it against the session user id instead of string-matching
     # `review_claimed_by` (namesakes, null names). None for pending_review.
     review_claimed_by_id: uuid.UUID | None = None

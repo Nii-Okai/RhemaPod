@@ -51,7 +51,11 @@ async def review_queue(
     """Sermons waiting on a reviewer, longest-waiting first. Each row carries
     `status`, `submitted_at`, `renditions_ready` and (for under-review items)
     `review_claimed_by`, so the W10 screen can render "waiting N days", the
-    >48h alert, and "Under review · <name>"."""
+    >48h alert, and "Under review · <name>".
+
+    Batch 6 #12: an `approved` (not yet published) sermon stays in this list —
+    "approve only" is not the end of the workflow. Publishing removes it.
+    """
     items, total = await content_service.review_queue_page(
         db, limit=limit, offset=offset
     )
@@ -65,6 +69,25 @@ async def start_review(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> St
     actor = await _actor(db, user)
     try:
         s = await content_service.transition(db, sermon_id, "start_review", actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return StatusResponse(id=s.id, status=s.status)
+
+
+@router.post("/{sermon_id}/take-over-review", response_model=StatusResponse)
+async def take_over_review(
+    sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep
+) -> StatusResponse:
+    """Reassign an in-progress review to the caller (Batch 6 #9).
+
+    Only valid while the sermon is `under_review`. Status is unchanged; an
+    ApprovalLog row records the hand-off and moves the review claim, so the
+    caller can then `approve` / `reject` / `publish`. 409 if the caller already
+    holds the claim; 422 if the sermon is not under review.
+    """
+    actor = await _actor(db, user)
+    try:
+        s = await content_service.take_over_review(db, sermon_id, actor)
     except ContentError as exc:
         raise _err(exc)
     return StatusResponse(id=s.id, status=s.status)

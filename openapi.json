@@ -4363,7 +4363,7 @@
     },
     "/api/v1/approvals/sermons/review-queue": {
       "get": {
-        "description": "Sermons waiting on a reviewer, longest-waiting first. Each row carries\n`status`, `submitted_at`, `renditions_ready` and (for under-review items)\n`review_claimed_by`, so the W10 screen can render \"waiting N days\", the\n>48h alert, and \"Under review \u00b7 <name>\".",
+        "description": "Sermons waiting on a reviewer, longest-waiting first. Each row carries\n`status`, `submitted_at`, `renditions_ready` and (for under-review items)\n`review_claimed_by`, so the W10 screen can render \"waiting N days\", the\n>48h alert, and \"Under review \u00b7 <name>\".\n\nBatch 6 #12: an `approved` (not yet published) sermon stays in this list \u2014\n\"approve only\" is not the end of the workflow. Publishing removes it.",
         "operationId": "review_queue_api_v1_approvals_sermons_review_queue_get",
         "parameters": [
           {
@@ -4673,6 +4673,55 @@
           }
         ],
         "summary": "Start Review",
+        "tags": [
+          "sermon approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/sermons/{sermon_id}/take-over-review": {
+      "post": {
+        "description": "Reassign an in-progress review to the caller (Batch 6 #9).\n\nOnly valid while the sermon is `under_review`. Status is unchanged; an\nApprovalLog row records the hand-off and moves the review claim, so the\ncaller can then `approve` / `reject` / `publish`. 409 if the caller already\nholds the claim; 422 if the sermon is not under review.",
+        "operationId": "take_over_review_api_v1_approvals_sermons__sermon_id__take_over_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Take Over Review",
         "tags": [
           "sermon approvals"
         ]

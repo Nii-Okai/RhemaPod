@@ -36,7 +36,7 @@ def _category_public(row: tuple[object, int]) -> CategoryPublic:
 
 # Categories
 @router.post("", response_model=CategoryPublic, status_code=status.HTTP_201_CREATED)
-async def create_category(data: CategoryCreate, user: ManagerPlus, db: DbDep) -> CategoryPublic:
+async def create_category(data: CategoryCreate, user: EditorPlus, db: DbDep) -> CategoryPublic:
     try:
         cat = await content_service.create_category(db, data.name, data.slug)
         row = await content_service.get_category_with_count(
@@ -73,7 +73,7 @@ async def get_category(
 
 @router.patch("/{category_id}", response_model=CategoryPublic)
 async def update_category(
-    category_id: uuid.UUID, data: CategoryUpdate, user: ManagerPlus, db: DbDep
+    category_id: uuid.UUID, data: CategoryUpdate, user: EditorPlus, db: DbDep
 ) -> CategoryPublic:
     try:
         cat = await content_service.update_category(
