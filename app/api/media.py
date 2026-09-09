@@ -44,7 +44,11 @@ def _err(exc: ContentError) -> HTTPException:
             status_code=403,
             detail={"upgrade_required": True, "reason": "subscription_needed"},
         )
-    return HTTPException(status_code=exc.status_code, detail=exc.message)
+    return HTTPException(
+        status_code=exc.status_code,
+        detail=exc.message,
+        headers=exc.headers or None,
+    )
 
 
 @router.post(
@@ -108,6 +112,25 @@ async def list_uploads(
     except ContentError as exc:
         raise _err(exc)
     return [UploadJobPublic.model_validate(j) for j in jobs]
+
+
+@router.delete("/uploads/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_upload_job(
+    job_id: uuid.UUID, user: EditorPlus, db: DbDep
+) -> Response:
+    """Cancel a superseded or stalled upload job and best-effort delete its raw
+    object.
+
+    Owner-scoped: an editor may only delete a job whose sermon they created
+    (another editor's job, or an unknown id, is 404); managers and admins any.
+    Refused with 409 while the job is transcoding or already ready.
+    """
+    actor = await _actor(db, user)
+    try:
+        await media_service.delete_upload_job(db, job_id, actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/sermons/{sermon_id}/stream", response_model=StreamResponse)

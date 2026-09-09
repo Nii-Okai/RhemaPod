@@ -229,7 +229,9 @@ async def test_review_queue_shows_pending(client, engine):
     await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
 
     queue = (await client.get("/api/v1/approvals/sermons/review-queue", headers=manager)).json()
-    assert any(item["id"] == sid for item in queue)
+    # GATE 3 Batch 3: the queue is now a Page[ReviewQueueItem] envelope.
+    assert any(item["id"] == sid for item in queue["items"])
+    assert queue["total"] >= 1
 
 
 # ── categories ────────────────────────────────────────────────────────────────

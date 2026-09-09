@@ -33,7 +33,7 @@ describe("loadNavCounts", () => {
     server.use(
       sermons(200, { items: [], total: 128, limit: 1, offset: 0 }),
       series(200, new Array(14).fill({ id: "x" })),
-      reviewQueue(200, new Array(3).fill({ id: "x" })),
+      reviewQueue(200, { items: [], total: 3, limit: 1, offset: 0 }),
     );
 
     await expect(loadNavCounts(client)).resolves.toEqual({
@@ -61,7 +61,7 @@ describe("loadNavCounts", () => {
     server.use(
       sermons(403, FORBIDDEN),
       series(200, []),
-      reviewQueue(200, []),
+      reviewQueue(200, { items: [], total: 0, limit: 1, offset: 0 }),
     );
 
     await expect(loadNavCounts(client)).resolves.toEqual({
@@ -75,7 +75,7 @@ describe("loadNavCounts", () => {
     server.use(
       sermons(500, { detail: "boom", correlation_id: "c" }),
       series(200, []),
-      reviewQueue(200, []),
+      reviewQueue(200, { items: [], total: 0, limit: 1, offset: 0 }),
     );
 
     await expect(loadNavCounts(client)).rejects.toMatchObject({ status: 500 });

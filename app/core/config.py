@@ -10,6 +10,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # disables the preflight below and exposes /docs.
 KNOWN_ENVIRONMENTS = {"development", "test", "staging", "production"}
 
+# Environments a browser — or an attacker — can reach directly. A subset of the
+# production preflight (cleartext object-storage endpoints) must also hold here:
+# staging routinely runs with real S3 credentials on a public hostname, so an
+# http:// endpoint there leaks exactly as it would in production.
+INTERNET_REACHABLE_ENVIRONMENTS = {"staging", "production"}
+
 # Substrings that mark a SECRET_KEY as a placeholder rather than a real secret.
 # The first entry is the exact value shipped in .env.example.
 _PLACEHOLDER_SECRET_MARKERS = (
@@ -22,6 +28,45 @@ _PLACEHOLDER_SECRET_MARKERS = (
     "placeholder",
     "example-secret",
 )
+
+
+# Hosts that mark an S3_PUBLIC_ENDPOINT as a dev-only compose shim rather than
+# a real object-storage origin.
+_LOCAL_ENDPOINT_MARKERS = (
+    "localhost", "127.0.0.1", "0.0.0.0", "::1",
+    "minio:", "host.docker.internal", ".invalid",
+)
+
+
+def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
+    """The one home for "a cleartext / compose-shim object-storage endpoint is
+    forbidden". Returns a list of problem strings (empty = clean).
+
+    Called by both preflights: `internet_reachable_preflight` (so it also fires
+    for staging, which `production_preflight` early-returns past) and
+    `production_preflight` (so a prod boot fails on it directly, not only via
+    the second validator).
+    """
+    problems: list[str] = []
+
+    if settings.s3_endpoint_url and not settings.s3_endpoint_url.lower().startswith(
+        "https://"
+    ):
+        problems.append(
+            "S3_ENDPOINT_URL must use https outside development — an http "
+            "endpoint sends credentials and objects in cleartext to the "
+            "object store. Unset it for real AWS S3."
+        )
+    if settings.s3_public_endpoint:
+        low = settings.s3_public_endpoint.lower()
+        if low.startswith("http://") or any(m in low for m in _LOCAL_ENDPOINT_MARKERS):
+            problems.append(
+                "S3_PUBLIC_ENDPOINT must be a real https host, not a "
+                "localhost/compose value — it is a dev-only shim for signing "
+                "presigned URLs for a browser that cannot resolve the "
+                "internal storage host. Unset it outside development."
+            )
+    return problems
 
 
 class Settings(BaseSettings):
@@ -87,6 +132,17 @@ class Settings(BaseSettings):
     upload_url_expire_seconds: int = 14400      # 4 hours
     # Uploads that never completed are swept after this long.
     stale_upload_hours: int = 24
+    # Cap on concurrent open upload jobs (awaiting_upload / uploaded /
+    # processing) per sermon. Retry-spam past this leaves unbounded jobs and
+    # orphan raw-bucket objects; the ticket endpoint 429s at the cap.
+    max_open_upload_jobs_per_sermon: int = 5
+    # Light per-sermon rate-limit on upload-ticket minting (Redis, fails open).
+    # The BFF hides the client IP, so the global per-IP limiter cannot see this.
+    upload_ticket_rate_limit: int = 10
+    upload_ticket_rate_window_seconds: int = 60
+    # Hard cap on a cover-image object, re-checked against real bytes at
+    # thumbnail-confirm time (the presign signature only pins content-type).
+    max_thumbnail_bytes: int = 10 * 1024 * 1024   # 10 MB
     # How long a playback URL stays valid.
     stream_url_expire_seconds: int = 21600      # 6 hours
     # Optional CDN in front of the media bucket. When set, playback URLs are
@@ -138,6 +194,11 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def is_internet_reachable(self) -> bool:
+        """True for staging and production — see INTERNET_REACHABLE_ENVIRONMENTS."""
+        return self.environment.lower() in INTERNET_REACHABLE_ENVIRONMENTS
 
     # Backend readiness — used by the production preflight below.
     @property
@@ -323,27 +384,11 @@ class Settings(BaseSettings):
             problems.append("ALLOWED_ORIGINS must use https in production")
         if self.frontend_base_url.startswith("http://"):
             problems.append("FRONTEND_BASE_URL must use https in production")
-        if self.s3_endpoint_url and not self.s3_endpoint_url.lower().startswith(
-            "https://"
-        ):
-            problems.append(
-                "S3_ENDPOINT_URL must use https in production — an http endpoint "
-                "sends credentials and objects in cleartext to the object store. "
-                "Unset it for real AWS S3."
-            )
-        if self.s3_public_endpoint:
-            low = self.s3_public_endpoint.lower()
-            local_markers = (
-                "localhost", "127.0.0.1", "0.0.0.0", "::1",
-                "minio:", "host.docker.internal", ".invalid",
-            )
-            if low.startswith("http://") or any(m in low for m in local_markers):
-                problems.append(
-                    "S3_PUBLIC_ENDPOINT must be a real https host, not a "
-                    "localhost/compose value — it is a dev-only shim for signing "
-                    "presigned URLs for a browser that cannot resolve the "
-                    "internal storage host. Unset it in production."
-                )
+        # Cleartext / compose-shim object-storage endpoints: the rule and its
+        # message text live in `_forbid_cleartext_object_storage`.
+        # `internet_reachable_preflight` runs the same helper so the check also
+        # fires for staging (which this validator early-returns past).
+        problems.extend(_forbid_cleartext_object_storage(self))
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by
@@ -352,6 +397,30 @@ class Settings(BaseSettings):
         if problems:
             raise ValueError(
                 "Production preflight failed:\n  - " + "\n  - ".join(problems)
+            )
+        return self
+
+    @model_validator(mode="after")
+    def internet_reachable_preflight(self) -> "Settings":
+        """Cleartext object-storage checks that must hold for staging as well as
+        production.
+
+        ``production_preflight`` above early-returns for every non-production
+        environment, so on a staging box with real S3 keys an ``http://``
+        ``S3_ENDPOINT_URL`` (or a compose-shim ``S3_PUBLIC_ENDPOINT``) would
+        otherwise sail through. Message text mirrors the old production-only
+        wording so existing error-matching keeps working. Runs for production
+        too — it is a second layer there, not a replacement.
+        """
+        if not self.is_internet_reachable:
+            return self
+
+        problems = _forbid_cleartext_object_storage(self)
+
+        if problems:
+            raise ValueError(
+                "Environment preflight failed (staging/production):\n  - "
+                + "\n  - ".join(problems)
             )
         return self
 

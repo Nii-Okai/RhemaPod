@@ -109,6 +109,17 @@
             "title": "Actor Id",
             "type": "string"
           },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -497,6 +508,17 @@
             "format": "uuid",
             "title": "Actor Id",
             "type": "string"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
           },
           "created_at": {
             "format": "date-time",
@@ -1021,6 +1043,37 @@
         "title": "Page[AnnouncementAdminItem]",
         "type": "object"
       },
+      "Page_ReviewQueueItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ReviewQueueItem]",
+        "type": "object"
+      },
       "Page_SermonAdminListItem_": {
         "properties": {
           "items": {
@@ -1216,6 +1269,159 @@
           "new_password"
         ],
         "title": "ResetPasswordRequest",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "description": "One sermon awaiting review, carrying the timing and readiness fields the\nW10 queue screen needs: \"waiting N days\", the >48h alert, and whether any\nrenditions exist to review yet. Ordered oldest-submitted-first by the queue\nendpoint (longest wait at the top).",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "renditions_ready": {
+            "title": "Renditions Ready",
+            "type": "integer"
+          },
+          "review_claimed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Claimed By"
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id"
+          },
+          "series_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Title"
+          },
+          "speaker_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Id"
+          },
+          "speaker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SermonStatus"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ContentTier"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "duration_seconds",
+          "speaker_id",
+          "category_id",
+          "series_id",
+          "tier",
+          "status",
+          "submitted_at",
+          "renditions_ready"
+        ],
+        "title": "ReviewQueueItem",
         "type": "object"
       },
       "RoleUpdateRequest": {
@@ -1424,7 +1630,7 @@
         "type": "object"
       },
       "SermonAdminDetail": {
-        "description": "Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor\nscreen's \"saved N min ago\" stamp needs a server-side `updated_at` baseline,\nwhich the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must\nnot carry.",
+        "description": "Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor\nscreen's \"saved N min ago\" stamp needs a server-side `updated_at` baseline,\nwhich the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must\nnot carry.\n\n`tier` keeps the inherited meaning \u2014 the *resolved* effective tier (sermon\ntier, else series tier, else free), same as `SermonDetail`. The editor\nscreen also needs the raw column to drive the tier radio, so that is a\nseparate field: `tier_override` is `Sermon.tier` verbatim \u2014 NULL when the\nsermon inherits from its series (or the free default), otherwise the\nexplicit choice. Reassigning `tier`'s meaning in a subclass was an LSP trap\nthat the Series/Announcements editors would have cloned.",
         "properties": {
           "category_id": {
             "anyOf": [
@@ -1584,6 +1790,16 @@
           },
           "tier": {
             "$ref": "#/components/schemas/ContentTier"
+          },
+          "tier_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "title": "Title",
@@ -4025,21 +4241,53 @@
     },
     "/api/v1/approvals/sermons/review-queue": {
       "get": {
+        "description": "Sermons waiting on a reviewer, longest-waiting first. Each row carries\n`status`, `submitted_at`, `renditions_ready` and (for under-review items)\n`review_claimed_by`, so the W10 screen can render \"waiting N days\", the\n>48h alert, and \"Under review \u00b7 <name>\".",
         "operationId": "review_queue_api_v1_approvals_sermons_review_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SermonListItem"
-                  },
-                  "title": "Response Review Queue Api V1 Approvals Sermons Review Queue Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/Page_ReviewQueueItem_"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -6997,6 +7245,48 @@
         "summary": "Billing Portal",
         "tags": [
           "subscriptions"
+        ]
+      }
+    },
+    "/api/v1/uploads/{job_id}": {
+      "delete": {
+        "description": "Cancel a superseded or stalled upload job and best-effort delete its raw\nobject.\n\nOwner-scoped: an editor may only delete a job whose sermon they created\n(another editor's job, or an unknown id, is 404); managers and admins any.\nRefused with 409 while the job is transcoding or already ready.",
+        "operationId": "delete_upload_job_api_v1_uploads__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Upload Job",
+        "tags": [
+          "media"
         ]
       }
     },

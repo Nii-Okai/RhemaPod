@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,6 +27,8 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import cache_aside, get_redis
 from app.models.content_schemas import (
+    ApprovalLogItem,
+    ReviewQueueItem,
     SermonAdminDetail,
     SermonCreate,
     SermonDetail,
@@ -75,10 +77,31 @@ async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
 
 
 class ContentError(Exception):
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        headers: dict[str, str] | None = None,
+    ):
         self.message = message
         self.status_code = status_code
+        # Optional response headers the router boundary should attach — e.g.
+        # `Retry-After` on a 429. Kept on the typed error so the service, which
+        # knows the limiter window, is the one that sets it.
+        self.headers = headers
         super().__init__(message)
+
+
+def display_name(full_name: str | None) -> str | None:
+    """Best human label for a user: `full_name` when set and non-blank, else
+    None. One definition for every DTO that denormalises an actor's name.
+
+    Deliberately no email fallback: an editor reads their own sermon's
+    approval log, so falling back to a reviewer's email local-part leaked an
+    inferred corporate address. `None` lets the client render "a reviewer"."""
+    if full_name and full_name.strip():
+        return full_name.strip()
+    return None
 
 
 # ── Tier & locked resolution ──────────────────────────────────────────────────
@@ -364,7 +387,14 @@ async def get_sermon_for_staff(
         raise ContentError("Sermon not found", status_code=404)
 
     detail = await _assemble_sermon_detail(db, sermon, requester)
-    return SermonAdminDetail(**detail.model_dump(), updated_at=sermon.updated_at)
+    # `tier` stays the resolved effective tier (from `_assemble_sermon_detail`);
+    # `tier_override` carries the raw `Sermon.tier` column (NULL = inherit) so
+    # the editor's tier radio can tell "inherit" from an explicit "free".
+    return SermonAdminDetail(
+        **detail.model_dump(),
+        updated_at=sermon.updated_at,
+        tier_override=sermon.tier,
+    )
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -546,27 +576,148 @@ async def transition(
     return sermon
 
 
-async def review_queue(db: AsyncSession) -> list[Sermon]:
-    stmt = (
-        select(Sermon)
-        .where(Sermon.status.in_((SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)))
-        .order_by(Sermon.updated_at.asc().nullslast())
+async def review_queue_page(
+    db: AsyncSession, limit: int = 25, offset: int = 0
+) -> tuple[list[ReviewQueueItem], int]:
+    """Sermons in pending_review / under_review, longest-waiting first.
+
+    Pagination shape mirrors `list_sermons_for_staff`: returns (page, total)
+    where `total` is the count before limit/offset so the W10 screen can size
+    its pager.
+
+    Two per-row values come from correlated subqueries against `approval_log`
+    rather than new columns:
+
+    * `submitted_at` — `max(created_at)` over the rows that moved this sermon
+      to `pending_review` (the editor's last submit). It is also the sort key:
+      ascending, so the longest wait sits at the top.
+    * `review_claimed_by` — the actor of the most recent `to_status =
+      under_review` row, resolved to a display name; only populated for
+      `under_review` items.
+    """
+    statuses = (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)
+    base_where = Sermon.status.in_(statuses)
+
+    submitted_at_sq = (
+        select(func.max(ApprovalLog.created_at))
+        .where(
+            ApprovalLog.sermon_id == Sermon.id,
+            ApprovalLog.to_status == SermonStatus.PENDING_REVIEW.value,
+        )
+        .correlate(Sermon)
+        .scalar_subquery()
     )
-    return list((await db.execute(stmt)).scalars().all())
+    # Render the subquery once (SELECT) and order by its label, not the
+    # expression again — one execution per row instead of two.
+    submitted_at_col = submitted_at_sq.label("submitted_at")
+    claimed_actor_sq = (
+        select(ApprovalLog.actor_id)
+        .where(
+            ApprovalLog.sermon_id == Sermon.id,
+            ApprovalLog.to_status == SermonStatus.UNDER_REVIEW.value,
+        )
+        .order_by(ApprovalLog.created_at.desc())
+        .limit(1)
+        .correlate(Sermon)
+        .scalar_subquery()
+    )
+
+    total = (await db.execute(
+        select(func.count()).select_from(Sermon).where(base_where)
+    )).scalar_one()
+
+    rows = (await db.execute(
+        select(
+            Sermon,
+            submitted_at_col,
+            claimed_actor_sq.label("claimed_actor_id"),
+        )
+        .where(base_where)
+        .order_by(
+            nullslast(literal_column("submitted_at").asc()),
+            Sermon.created_at.asc(),
+        )
+        .limit(max(1, min(limit, MAX_PAGE_SIZE)))
+        .offset(max(0, offset))
+    )).all()
+
+    sermons = [row[0] for row in rows]
+    names = await load_ref_names(db, sermons)
+    series_map = await series_for(db, sermons)
+
+    media_counts: dict[uuid.UUID, int] = {}
+    sermon_ids = [s.id for s in sermons]
+    if sermon_ids:
+        for sid, count in (await db.execute(
+            select(MediaRef.sermon_id, func.count())
+            .where(MediaRef.sermon_id.in_(sermon_ids))
+            .group_by(MediaRef.sermon_id)
+        )).all():
+            media_counts[sid] = count
+
+    actor_ids = {row[2] for row in rows if row[2] is not None}
+    actor_names: dict[uuid.UUID, str | None] = {}
+    if actor_ids:
+        for uid, full_name in (await db.execute(
+            select(User.id, User.full_name).where(User.id.in_(actor_ids))
+        )).all():
+            actor_names[uid] = display_name(full_name)
+
+    items = [
+        ReviewQueueItem(
+            id=sermon.id,
+            title=sermon.title,
+            description=sermon.description,
+            duration_seconds=sermon.duration_seconds,
+            speaker_id=sermon.speaker_id,
+            speaker_name=names.speakers.get(sermon.speaker_id),
+            category_id=sermon.category_id,
+            category_name=names.categories.get(sermon.category_id),
+            series_id=sermon.series_id,
+            series_title=names.series.get(sermon.series_id),
+            tier=effective_tier(sermon, series_map.get(sermon.series_id)),
+            status=sermon.status,
+            submitted_at=submitted_at,
+            renditions_ready=media_counts.get(sermon.id, 0),
+            review_claimed_by=(
+                actor_names.get(claimed_actor_id)
+                if sermon.status == SermonStatus.UNDER_REVIEW
+                else None
+            ),
+        )
+        for sermon, submitted_at, claimed_actor_id in rows
+    ]
+    return items, total
 
 
-async def approval_history(db: AsyncSession, sermon_id: uuid.UUID) -> list[ApprovalLog]:
-    stmt = (
-        select(ApprovalLog)
+async def _approval_log_items(
+    db: AsyncSession, sermon_id: uuid.UUID
+) -> list[ApprovalLogItem]:
+    """Approval-log rows for a sermon, oldest first, each carrying the actor's
+    display name (left join on `users`; NULL-safe if the row's actor was
+    since deleted — RESTRICT makes that rare, not impossible)."""
+    rows = (await db.execute(
+        select(ApprovalLog, User.full_name)
+        .outerjoin(User, User.id == ApprovalLog.actor_id)
         .where(ApprovalLog.sermon_id == sermon_id)
         .order_by(ApprovalLog.created_at.asc())
-    )
-    return list((await db.execute(stmt)).scalars().all())
+    )).all()
+    return [
+        ApprovalLogItem(
+            from_status=entry.from_status,
+            to_status=entry.to_status,
+            actor_id=entry.actor_id,
+            actor_name=display_name(full_name),
+            note=entry.note,
+            created_at=entry.created_at,
+        )
+        for entry, full_name in rows
+    ]
 
 
 async def approval_history_for_staff(
     db: AsyncSession, sermon_id: uuid.UUID, requester: User
-) -> list[ApprovalLog]:
+) -> list[ApprovalLogItem]:
     """Approval log for the staff editor screen.
 
     An editor reads the log for their OWN sermon — it's where they find out why
@@ -576,7 +727,7 @@ async def approval_history_for_staff(
     sermon = await db.get(Sermon, sermon_id)
     if sermon is None or staff_scope_hides(sermon, requester):
         raise ContentError("Sermon not found", status_code=404)
-    return await approval_history(db, sermon_id)
+    return await _approval_log_items(db, sermon_id)
 
 
 # ── Categories (flat) ─────────────────────────────────────────────────────────
@@ -861,9 +1012,26 @@ async def confirm_thumbnail(
     if not key.startswith(expected_prefix):
         raise ContentError("Thumbnail key does not belong to this item", 400)
 
-    if not storage_module.get_storage().object_exists(settings.s3_media_bucket, key):
+    store = storage_module.get_storage()
+    if not store.object_exists(settings.s3_media_bucket, key):
         raise ContentError(
             "No uploaded image found — complete the PUT first", status_code=409
+        )
+
+    # The presign signature pins content-type but not length — a client can PUT
+    # a multi-GB "image". Re-check the real object size, mirroring the Batch-2
+    # media-confirm fix. `None` (stub backend / size unknowable) → proceed, as
+    # the media path does; a concrete oversize → delete the object and 413.
+    size = store.object_size(settings.s3_media_bucket, key)
+    if size is not None and size > settings.max_thumbnail_bytes:
+        try:
+            store.delete_object(settings.s3_media_bucket, key)
+        except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
+            log.warning("oversize_thumbnail_cleanup_failed", key=key)
+        raise ContentError(
+            f"Thumbnail is larger than the "
+            f"{settings.max_thumbnail_bytes // (1024 * 1024)} MB limit.",
+            status_code=413,
         )
 
     entity.thumbnail_key = key
