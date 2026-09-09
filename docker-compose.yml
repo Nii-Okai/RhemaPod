@@ -78,7 +78,14 @@ services:
       # Browser uploads PUT cross-origin from the portal's dev origin. MinIO's
       # server-wide CORS allow-list is the clean, version-stable way to permit
       # it (per-bucket `mc cors` support varies by mc release).
-      MINIO_API_CORS_ALLOW_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:3000}
+      #
+      # DEV-ONLY wildcard. A single fixed origin (`http://localhost:3000`) breaks
+      # the moment the portal is opened on any other dev host — `127.0.0.1:3000`,
+      # a LAN IP — because MinIO then returns no `Access-Control-Allow-*` and the
+      # browser blocks the presigned PUT ("connection dropped or was blocked").
+      # Production does NOT use this: it points at a real S3 bucket whose CORS
+      # rule is scoped to the deployed portal origin — see DEPLOYMENT.md §7.
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       # Loopback only. 9000 = S3 API (matches S3_PUBLIC_ENDPOINT), 9001 = console.
       - "127.0.0.1:9000:9000"

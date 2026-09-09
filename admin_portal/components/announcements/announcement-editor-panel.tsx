@@ -185,10 +185,10 @@ export function AnnouncementEditorPanel({
   const parsedPublish = parseLocalDateTime(form.publishAt);
   const parsedExpires = parseLocalDateTime(form.expiresAt);
   const publishAtError = !parsedPublish.ok
-    ? "Use the format YYYY-MM-DD HH:mm."
+    ? "Enter a valid date and time."
     : null;
   const expiresAtError = !parsedExpires.ok
-    ? "Use the format YYYY-MM-DD HH:mm."
+    ? "Enter a valid date and time."
     : parsedPublish.ok &&
         parsedExpires.ok &&
         parsedPublish.iso &&
@@ -482,12 +482,11 @@ export function AnnouncementEditorPanel({
           >
             <Input
               id="announcement-publish-at"
-              className="font-mono text-[13.5px]"
+              type="datetime-local"
               value={form.publishAt}
               error={Boolean(publishAtError)}
               disabled={locked}
               onChange={(e) => set("publishAt", e.target.value)}
-              placeholder="YYYY-MM-DD HH:mm"
             />
           </EditorField>
           <EditorField
@@ -497,12 +496,11 @@ export function AnnouncementEditorPanel({
           >
             <Input
               id="announcement-expires-at"
-              className="font-mono text-[13.5px]"
+              type="datetime-local"
               value={form.expiresAt}
               error={Boolean(expiresAtError)}
               disabled={locked}
               onChange={(e) => set("expiresAt", e.target.value)}
-              placeholder="YYYY-MM-DD HH:mm"
             />
           </EditorField>
         </div>

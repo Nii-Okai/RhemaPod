@@ -9,7 +9,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -167,6 +167,18 @@ describe("AnnouncementEditorPanel — Save", () => {
     expect(body).toEqual({ title: "Baptism Sunday — sign up" });
   });
 
+  it("Publish at / Expires at are native datetime-local pickers", () => {
+    renderPanel({ announcement: item() });
+    expect(screen.getByLabelText("Publish at")).toHaveAttribute(
+      "type",
+      "datetime-local",
+    );
+    expect(screen.getByLabelText("Expires at")).toHaveAttribute(
+      "type",
+      "datetime-local",
+    );
+  });
+
   it("blocks Save when the expiry is not after the publish time (no request)", async () => {
     let patched = false;
     server.use(
@@ -178,14 +190,13 @@ describe("AnnouncementEditorPanel — Save", () => {
 
     renderPanel({ announcement: item() });
 
-    await userEvent.type(
-      screen.getByLabelText("Publish at"),
-      "2026-09-10 09:00",
-    );
-    await userEvent.type(
-      screen.getByLabelText("Expires at"),
-      "2026-09-08 09:00",
-    );
+    // datetime-local takes/gives `YYYY-MM-DDTHH:mm` (local, no zone).
+    fireEvent.change(screen.getByLabelText("Publish at"), {
+      target: { value: "2026-09-10T09:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Expires at"), {
+      target: { value: "2026-09-08T09:00" },
+    });
 
     expect(
       await screen.findByText("The expiry must be after the publish time."),
@@ -195,6 +206,37 @@ describe("AnnouncementEditorPanel — Save", () => {
     expect(save).toBeDisabled();
     await userEvent.click(save);
     expect(patched).toBe(false);
+  });
+
+  it("sends the picked publish/expiry as ISO on the wire", async () => {
+    let publishAt: unknown = "__unset__";
+    server.use(
+      http.patch(`*/api/bff/announcements/${A_ID}`, async ({ request }) => {
+        const sent = (await request.json()) as Record<string, unknown>;
+        publishAt = sent.publish_at;
+        return HttpResponse.json(item());
+      }),
+    );
+
+    renderPanel({ announcement: item() });
+
+    fireEvent.change(screen.getByLabelText("Publish at"), {
+      target: { value: "2026-09-10T09:00" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(publishAt).not.toBe("__unset__"));
+    expect(typeof publishAt).toBe("string");
+    const iso = publishAt as string;
+    // A fully-qualified instant (ends in Z), and the same wall-clock the picker
+    // showed once read back in the local zone.
+    expect(iso).toMatch(/Z$/);
+    const d = new Date(iso);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(8); // September
+    expect(d.getDate()).toBe(10);
+    expect(d.getHours()).toBe(9);
+    expect(d.getMinutes()).toBe(0);
   });
 });
 

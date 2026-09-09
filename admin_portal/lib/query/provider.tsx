@@ -35,3 +35,17 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
+
+/**
+ * The one browser-side `QueryClient` — the same instance `<QueryProvider>`
+ * hands the portal tree. Exposed for the few call sites that must reach the
+ * cache from OUTSIDE the provider (the `(public)` login form lives above
+ * `(portal)/layout.tsx`, where the provider is mounted): on a fresh sign-in it
+ * invalidates the previous session's cached nav counts so the sidebar doesn't
+ * open on stale numbers. Returns `undefined` on the server — there is no
+ * shared client there.
+ */
+export function getBrowserQueryClient(): QueryClient | undefined {
+  if (typeof window === "undefined") return undefined;
+  return getQueryClient();
+}

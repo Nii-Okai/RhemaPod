@@ -86,6 +86,14 @@ export function useNavCounts(): NavCounts {
     queryKey: queryKeys.nav.counts(),
     queryFn: () => loadNavCounts(),
     staleTime: 60_000,
+    // The sidebar mounts fresh right after a sign-in. The browser `QueryClient`
+    // is a singleton that outlives the sign-out → sign-in round trip, so within
+    // `staleTime` it would otherwise hand the new session the previous user's
+    // cached counts and never refetch. Always revalidate on mount — three
+    // cheap `limit=1` probes — so the new session's counts are correct without
+    // an F5. (The login form also invalidates `nav` keys; this covers a mount
+    // that races ahead of that.)
+    refetchOnMount: "always",
   });
   return data ?? EMPTY_COUNTS;
 }

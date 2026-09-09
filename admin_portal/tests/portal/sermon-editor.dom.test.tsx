@@ -79,7 +79,13 @@ function detail(over: Partial<SermonAdminDetail> = {}): SermonAdminDetail {
 
 interface BackendOpts {
   sermon?: SermonAdminDetail;
-  series?: Array<{ id: string; title: string; tier: "free" | "paid" }>;
+  series?: Array<{
+    id: string;
+    title: string;
+    tier: "free" | "paid";
+    category_id?: string | null;
+  }>;
+  categories?: Array<{ id: string; name: string }>;
   approvalLog?: Array<{
     from_status: string | null;
     to_status: string;
@@ -94,14 +100,23 @@ function backend(opts: BackendOpts = {}) {
   server.use(
     http.get(`*/api/bff/sermons/${SERMON_ID}`, () => HttpResponse.json(sermon)),
     http.get("*/api/bff/speakers", () => HttpResponse.json([])),
-    http.get("*/api/bff/categories", () => HttpResponse.json([])),
+    http.get("*/api/bff/categories", () =>
+      HttpResponse.json(
+        (opts.categories ?? []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.name.toLowerCase().replace(/\s+/g, "-"),
+          sermon_count: 0,
+        })),
+      ),
+    ),
     http.get("*/api/bff/series", () =>
       HttpResponse.json(
         (opts.series ?? []).map((s) => ({
           id: s.id,
           title: s.title,
           description: null,
-          category_id: null,
+          category_id: s.category_id ?? null,
           tier: s.tier,
           status: "published",
           thumbnail_url: null,
@@ -328,5 +343,110 @@ describe("SermonEditor — in-review lock + Withdraw", () => {
     ).toBeInTheDocument();
     // No optimistic change to undo — the badge stays "Under review".
     expect(screen.getByText("Under review")).toBeInTheDocument();
+  });
+});
+
+/* --- draft is always editable (bugfix batch #5) ------------------------- */
+
+describe("SermonEditor — a draft is never locked", () => {
+  it("a draft in a paid series (DTO locked=true) stays fully editable with no in-review banner", async () => {
+    // `SermonAdminDetail.locked` is the per-user paywall flag (paid tier + no
+    // subscription), NOT an editing lock — a draft in a paid series must not
+    // read as "in review".
+    backend({
+      sermon: detail({
+        status: "draft",
+        series_id: "ser-1",
+        tier: "paid",
+        locked: true,
+      }),
+      series: [{ id: "ser-1", title: "Romans", tier: "paid" }],
+    });
+    renderEditor();
+
+    const title = await screen.findByLabelText("Title");
+    expect(title).toBeEnabled();
+    expect(
+      screen.queryByText("This sermon is in review"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save draft" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeInTheDocument();
+  });
+});
+
+/* --- Details: Category prefill from Series (bugfix batch #4) ------------ */
+
+describe("SermonEditor — Series picks a Category", () => {
+  it("prefills Category from the chosen series when Category is empty", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ series_id: null, category_id: null }),
+      series: [
+        { id: "ser-1", title: "Luke", tier: "free", category_id: "cat-teaching" },
+      ],
+      categories: [{ id: "cat-teaching", name: "Teaching" }],
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Series"),
+      "ser-1",
+    );
+
+    await vi.waitFor(() =>
+      expect(bodies).toEqual([
+        { series_id: "ser-1", category_id: "cat-teaching" },
+      ]),
+    );
+  });
+
+  it("does NOT overwrite a Category the editor already chose", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ series_id: null, category_id: "cat-faith" }),
+      series: [
+        { id: "ser-1", title: "Luke", tier: "free", category_id: "cat-teaching" },
+      ],
+      categories: [
+        { id: "cat-faith", name: "Faith" },
+        { id: "cat-teaching", name: "Teaching" },
+      ],
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Series"),
+      "ser-1",
+    );
+
+    await vi.waitFor(() =>
+      expect(bodies).toEqual([{ series_id: "ser-1" }]),
+    );
+  });
+
+  it("clearing the series leaves the Category untouched", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ series_id: "ser-1", category_id: "cat-teaching" }),
+      series: [
+        { id: "ser-1", title: "Luke", tier: "free", category_id: "cat-teaching" },
+      ],
+      categories: [{ id: "cat-teaching", name: "Teaching" }],
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Series"),
+      "", // "Standalone"
+    );
+
+    await vi.waitFor(() => expect(bodies).toEqual([{ series_id: null }]));
   });
 });

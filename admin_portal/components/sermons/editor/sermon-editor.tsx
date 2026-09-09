@@ -224,12 +224,18 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   }
 
   const displayStatus: SermonStatus = statusOverride ?? serverStatus;
-  // The DTO's own `locked` is authoritative — a backend lock for ANY reason
-  // (not just in-review) disables the form + autosave. OR in the optimistic
-  // in-review check so a just-submitted sermon locks before the refetch lands.
-  const locked =
-    (current?.locked ?? false) ||
-    (mode === "edit" && IN_REVIEW.includes(displayStatus));
+  // The editor is read-only ONLY while a manager is reviewing the sermon —
+  // `pending_review` or `under_review`. A `draft` or `rejected` sermon is
+  // always fully editable, series-attached or not, and the backend agrees
+  // (`update_sermon` only guards an in-review sermon's episode/series
+  // position, never a draft's fields).
+  //
+  // `current.locked` is deliberately NOT consulted: on `SermonAdminDetail`
+  // that flag is the per-user paywall signal (paid tier + no subscription),
+  // computed off the resolved tier — so a draft in a paid series would lock
+  // the form and wrongly show the "in review" banner. It has no editing
+  // meaning on the staff screen.
+  const locked = mode === "edit" && IN_REVIEW.includes(displayStatus);
 
   const titleEmpty = form.title.trim().length === 0;
   const titleError =
