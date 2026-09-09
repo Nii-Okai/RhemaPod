@@ -15,9 +15,18 @@
  *   tone         when                                             colour
  *   ────         ────                                             ──────
  *   "live"       is_visible === true                              ink-muted
- *   "scheduled"  not visible, publish_at in the future            ink-muted
- *   "ended"      not visible, publish_at in the past (ran / pulled) ink-faint
+ *   "scheduled"  not visible, has a publish_at, expiry not yet    ink-muted
+ *                past (a future window, OR one whose publish_at
+ *                the client clock just passed while the row waits
+ *                for the next server refetch to flip is_visible)
+ *   "ended"      not visible, expires_at in the past              ink-faint
  *   "unscheduled" no publish_at                                   ink-faint
+ *
+ * The "ended" test is deliberately expiry-only: a row whose `publish_at` has
+ * just slipped past `now` on the client clock (but whose `is_visible` the 60s
+ * refetch hasn't refreshed) is about to go live, not finished — calling it
+ * "ended" (ink-faint) for up to a minute would misread it. Without an expiry
+ * that is genuinely past, such a row stays "scheduled".
  *
  * `is_visible` is the SERVER's computed truth and it WINS the live / not-live
  * decision: if the dates alone would say "should be showing" but `is_visible`
@@ -78,12 +87,15 @@ export function announcementWindow(
   let tone: AnnouncementWindowTone;
   if (item.is_visible) {
     tone = "live";
-  } else if (pub != null && pub > now) {
-    tone = "scheduled";
-  } else if (pub != null) {
+  } else if (pub == null) {
+    tone = "unscheduled";
+  } else if (exp != null && exp <= now) {
     tone = "ended";
   } else {
-    tone = "unscheduled";
+    // Has a publish date, no past expiry: a genuine future window, or a row
+    // whose publish_at just passed and is waiting on the next refetch to flip
+    // is_visible. Either way it is upcoming, not finished.
+    tone = "scheduled";
   }
 
   return { text, tone };

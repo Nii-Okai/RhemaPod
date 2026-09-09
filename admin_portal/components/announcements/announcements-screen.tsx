@@ -58,15 +58,6 @@ import type { AnnouncementRowAction } from "@/components/announcements/row-menu-
    failures land in an `<Alert>` atop the table card, never a toast.
    ========================================================================== */
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  pending_review: "Pending review",
-  approved: "Approved",
-  published: "Published",
-  rejected: "Rejected",
-  archived: "Archived",
-};
-
 function buildSearch(
   current: URLSearchParams,
   patch: {
@@ -137,6 +128,13 @@ export function AnnouncementsScreen() {
       if (vars.kind === "delete" && vars.item.id === selId) {
         pushSearch(buildSearch(searchParams, { sel: null }));
       }
+      // Only tear the reject-note panel down once the POST has actually
+      // landed — a failed reject keeps the panel (and the typed note) so the
+      // manager can read the error and retry.
+      if (vars.kind === "reject") {
+        setRejectTarget(null);
+        setRejectNote("");
+      }
     },
   });
 
@@ -187,9 +185,10 @@ export function AnnouncementsScreen() {
 
   const sendReject = () => {
     if (!rejectTarget) return;
+    setActionError(null);
+    // Keep the panel + note mounted; `workflow.onSuccess` clears them, a
+    // failure leaves them so the note isn't lost.
     workflow.reject(rejectTarget, rejectNote);
-    setRejectTarget(null);
-    setRejectNote("");
   };
 
   const columns: DataTableColumn<AnnouncementAdminItem>[] = React.useMemo(
@@ -297,7 +296,7 @@ export function AnnouncementsScreen() {
               <option value="all">All statuses</option>
               {ANNOUNCEMENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {STATUS_LABEL[s]}
+                  {announcementBadgeLabel(s)}
                 </option>
               ))}
             </Select>

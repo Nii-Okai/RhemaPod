@@ -286,6 +286,134 @@ describe("AnnouncementEditorPanel — manager Publish walks the shortest path", 
   });
 });
 
+/* --- create-mode publish: no orphan drafts ------------------------ */
+
+describe("AnnouncementEditorPanel — create-mode Publish surfaces the draft first", () => {
+  const publishHandlers = (events: string[]) => [
+    http.post("*/api/bff/announcements", async ({ request }) => {
+      events.push("create");
+      const sent = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ ...item(), ...sent }, { status: 201 });
+    }),
+    http.post(`*/api/bff/announcements/${A_ID}/submit`, () => {
+      events.push("submit");
+      return HttpResponse.json({ id: A_ID, status: "pending_review" });
+    }),
+    http.post(`*/api/bff/approvals/announcements/${A_ID}/approve`, () => {
+      events.push("approve");
+      return HttpResponse.json({ id: A_ID, status: "approved" });
+    }),
+    http.post(`*/api/bff/approvals/announcements/${A_ID}/publish`, () => {
+      events.push("publish");
+      return HttpResponse.json({ id: A_ID, status: "published" });
+    }),
+  ];
+
+  it("selects the created row (onCreated) BEFORE walking the transitions", async () => {
+    const events: string[] = [];
+    server.use(...publishHandlers(events));
+
+    const onCreated = vi.fn((row: AnnouncementAdminItem) =>
+      events.push(`select:${row.id}`),
+    );
+    const { onPrimaryDone } = renderPanel({
+      announcement: null,
+      role: "manager",
+      onCreated,
+    });
+
+    await userEvent.type(screen.getByLabelText("Title"), "Youth camp");
+    await userEvent.type(
+      screen.getByLabelText("Body (markdown)"),
+      "Deposits due Friday.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() =>
+      expect(onPrimaryDone).toHaveBeenCalledWith({
+        target: "publish",
+        reachedPublished: true,
+      }),
+    );
+    expect(events).toEqual([
+      "create",
+      `select:${A_ID}`,
+      "submit",
+      "approve",
+      "publish",
+    ]);
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("a retry after a mid-walk 500 resumes on the draft — ONE POST /announcements, no replayed submit", async () => {
+    const events: string[] = [];
+    let createCount = 0;
+    let submitCount = 0;
+    let approveAttempts = 0;
+    server.use(
+      http.post("*/api/bff/announcements", async ({ request }) => {
+        createCount += 1;
+        const sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...item(), ...sent }, { status: 201 });
+      }),
+      http.post(`*/api/bff/announcements/${A_ID}/submit`, () => {
+        submitCount += 1;
+        return HttpResponse.json({ id: A_ID, status: "pending_review" });
+      }),
+      http.post(
+        `*/api/bff/approvals/announcements/${A_ID}/approve`,
+        async () => {
+          approveAttempts += 1;
+          if (approveAttempts === 1) {
+            await delay(10);
+            return HttpResponse.json(
+              { detail: "Upstream boom" },
+              { status: 500 },
+            );
+          }
+          return HttpResponse.json({ id: A_ID, status: "approved" });
+        },
+      ),
+      http.post(`*/api/bff/approvals/announcements/${A_ID}/publish`, () => {
+        events.push("publish");
+        return HttpResponse.json({ id: A_ID, status: "published" });
+      }),
+    );
+
+    const { onPrimaryDone } = renderPanel({
+      announcement: null,
+      role: "manager",
+    });
+
+    await userEvent.type(screen.getByLabelText("Title"), "Youth camp");
+    await userEvent.type(
+      screen.getByLabelText("Body (markdown)"),
+      "Deposits due Friday.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    // Walk stops at approve.
+    expect(await screen.findByText(/Upstream boom/)).toBeInTheDocument();
+    expect(createCount).toBe(1);
+    expect(submitCount).toBe(1);
+
+    // Retry — button is back to "Publish".
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() =>
+      expect(onPrimaryDone).toHaveBeenCalledWith({
+        target: "publish",
+        reachedPublished: true,
+      }),
+    );
+
+    // No second draft; submit not replayed on the already-submitted row.
+    expect(createCount).toBe(1);
+    expect(submitCount).toBe(1);
+    expect(approveAttempts).toBe(2);
+    expect(events).toEqual(["publish"]);
+  });
+});
+
 /* --- image flow ------------------------------------------------ */
 
 describe("AnnouncementEditorPanel — image", () => {

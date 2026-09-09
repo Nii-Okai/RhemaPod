@@ -48,7 +48,6 @@ export function useAnnouncementImageUpload({
   return {
     replace: (file: File) => mutation.mutate(file),
     isPending: mutation.isPending,
-    isError: mutation.isError,
     errorMessage: mutation.error ? messageFor(mutation.error) : null,
     uploadedUrl: mutation.data ?? null,
     reset: mutation.reset,

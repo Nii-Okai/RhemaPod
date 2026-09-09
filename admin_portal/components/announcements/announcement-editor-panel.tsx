@@ -126,12 +126,15 @@ export function AnnouncementEditorPanel({
   );
   const [form, setForm] = React.useState<FormState>(initial);
   const [baseline, setBaseline] = React.useState<FormState>(initial);
-  // Re-seed when the selected row changes underneath us (a different row, or a
-  // refetch after an image confirm) — but only when there are no pending edits.
-  if (baseline !== initial && form === baseline) {
-    setBaseline(initial);
-    setForm(initial);
-  }
+  // A different row (or a fresh → saved transition) remounts this panel via the
+  // screen's `key={selected?.id ?? "new"}`, so `useState(initial)` re-seeds on
+  // its own — no in-render reseed needed.
+
+  // The row this panel created during the current session, before the screen's
+  // selection/refetch has remounted us onto it. Lets a retry after a mid-walk
+  // publish failure resume on the real draft instead of POSTing a second one.
+  const [createdRow, setCreatedRow] =
+    React.useState<AnnouncementAdminItem | null>(null);
 
   const [titleTouched, setTitleTouched] = React.useState(false);
   const [bodyTouched, setBodyTouched] = React.useState(false);
@@ -144,6 +147,12 @@ export function AnnouncementEditorPanel({
     announcementId: announcement?.id,
   });
   const publish = useAnnouncementPublish({
+    onDraftReady: (item) => {
+      setCreatedRow(item);
+      setBaseline(stateFrom(item));
+      // Select the real row now — before the walk — so a retry resumes on it.
+      onCreated(item);
+    },
     onError: (phase, message) =>
       setAlert(
         phase === "save" || phase === "create"
@@ -194,9 +203,13 @@ export function AnnouncementEditorPanel({
 
   /* --- dirty + payloads -------------------------------------------- */
 
+  // `dirty` and `buildPatch` must agree on what "changed" means, or a
+  // whitespace-only edit to a trimmed field leaves the form permanently dirty
+  // and fires a no-op PATCH. Both trim `title` / `description`; `body` is
+  // markdown, compared verbatim on both sides.
   const dirty =
-    form.title !== baseline.title ||
-    form.description !== baseline.description ||
+    form.title.trim() !== baseline.title.trim() ||
+    form.description.trim() !== baseline.description.trim() ||
     form.body !== baseline.body ||
     form.publishAt !== baseline.publishAt ||
     form.expiresAt !== baseline.expiresAt ||
@@ -207,7 +220,7 @@ export function AnnouncementEditorPanel({
     if (form.title.trim() !== baseline.title.trim()) {
       patch.title = form.title.trim();
     }
-    if (form.description !== baseline.description) {
+    if (form.description.trim() !== baseline.description.trim()) {
       patch.description = form.description.trim() || null;
     }
     if (form.body !== baseline.body) patch.body = form.body;
@@ -240,11 +253,16 @@ export function AnnouncementEditorPanel({
     return true;
   };
 
+  // The saved row this panel is working, whether it arrived as a prop or was
+  // just minted here (create walk / a prior Save) and not yet remounted onto.
+  const savedRow = announcement ?? createdRow;
+
   const handleSave = () => {
     if (!guard()) return;
-    if (mode === "create") {
+    if (!savedRow) {
       create.mutate(buildCreateBody(), {
         onSuccess: (item) => {
+          setCreatedRow(item);
           setBaseline(stateFrom(item));
           onCreated(item);
         },
@@ -253,11 +271,16 @@ export function AnnouncementEditorPanel({
       });
       return;
     }
-    if (!announcement || !dirty) return;
+    if (!dirty) return;
     update.mutate(
-      { announcementId: announcement.id, patch: buildPatch() },
+      { announcementId: savedRow.id, patch: buildPatch() },
       {
-        onSuccess: (item) => setBaseline(stateFrom(item)),
+        onSuccess: (item) => {
+          // Keep the local ref fresh too, for the pre-remount window after a
+          // create walk left us on this row.
+          if (!announcement) setCreatedRow(item);
+          setBaseline(stateFrom(item));
+        },
         onError: (err) =>
           setAlert(errorMessage(err, "Couldn’t save the announcement.")),
       },
@@ -267,9 +290,9 @@ export function AnnouncementEditorPanel({
   const handlePrimary = () => {
     if (!guard()) return;
     publish.run({
-      current: announcement,
+      current: savedRow,
       body: buildCreateBody(),
-      patch: mode === "edit" ? buildPatch() : {},
+      patch: savedRow ? buildPatch() : {},
       target,
     });
   };
@@ -294,8 +317,7 @@ export function AnnouncementEditorPanel({
     busy ||
     locked ||
     hasBlockingError ||
-    (mode === "create" && form.title.trim() === "") ||
-    (mode === "edit" && !dirty);
+    (savedRow ? !dirty : form.title.trim() === "");
 
   return (
     <Card className="flex flex-col gap-14 p-20">

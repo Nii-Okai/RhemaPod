@@ -19,10 +19,16 @@
  * `create` / `update` are the same optimistic CRUD mutations the plain "Save"
  * button uses (`use-announcement-mutations.ts`), composed here so a Save that
  * precedes a Publish is one code path.
+ *
+ * CREATE mode: the new draft's id is surfaced via `onDraftReady` the instant the
+ * POST lands — before the transition walk — so the screen can select the real
+ * row. A retry after a mid-walk failure then resumes on that row (no second
+ * `create`), and the walk skips any step it already committed this run.
  */
 
 "use client";
 
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
@@ -136,6 +142,11 @@ export interface AnnouncementPublishInput {
 }
 
 export interface UseAnnouncementPublishOptions {
+  /** In CREATE mode, fired the instant the draft has been POSTed — BEFORE the
+      transition walk starts. The panel uses it to hand the new row up so the
+      screen selects it (`?sel=`): a retry after a mid-walk failure then resumes
+      on the real row instead of minting a second draft. */
+  onDraftReady?: (item: AnnouncementAdminItem) => void;
   /** A phase failed. `phase` names which; `message` is ready to render. Earlier
       committed steps are NOT undone — the message should say where it stopped. */
   onError: (phase: AnnouncementPublishPhase, message: string) => void;
@@ -154,6 +165,15 @@ export function useAnnouncementPublish(options: UseAnnouncementPublishOptions) {
   const create = useCreateAnnouncement();
   const update = useUpdateAnnouncement();
 
+  // How far this hook instance has already driven a given row. A retry after a
+  // mid-walk failure (approve ok, publish 500) resumes from the last committed
+  // step instead of replaying one the server has already applied → 409. Cleared
+  // on full success; a remount (the panel re-keying onto the fresh row) drops
+  // it too, and then `pathToTarget` re-derives from that row's real status.
+  const progress = useRef<{ id: string; done: Set<TransitionStep> } | null>(
+    null,
+  );
+
   const mutation = useMutation<
     { item: AnnouncementAdminItem; target: AnnouncementPublishTarget; reachedPublished: boolean },
     Error,
@@ -161,6 +181,7 @@ export function useAnnouncementPublish(options: UseAnnouncementPublishOptions) {
   >({
     mutationFn: async ({ current, body, patch, target }) => {
       let item = current;
+      let created = false;
 
       // 1. Make sure the draft exists and holds the latest edits.
       if (!item) {
@@ -169,6 +190,7 @@ export function useAnnouncementPublish(options: UseAnnouncementPublishOptions) {
         } catch (err) {
           throw new AnnouncementPublishError("create", err);
         }
+        created = true;
       } else if (hasKeys(patch)) {
         try {
           item = await update.mutateAsync({
@@ -180,19 +202,37 @@ export function useAnnouncementPublish(options: UseAnnouncementPublishOptions) {
         }
       }
 
-      // 2. Walk the approval path. A failed step throws with its own phase; the
-      //    steps that already committed stay committed.
-      const steps = pathToTarget(item.status, target);
-      let reachedPublished = item.status === "published";
+      // Reuse the completed-steps set only while still working the SAME row
+      // (a retry before the panel has remounted onto the fresh row). Any other
+      // case starts clean.
+      if (progress.current?.id !== item.id) {
+        progress.current = { id: item.id, done: new Set<TransitionStep>() };
+      }
+      const done = progress.current.done;
+
+      // 2. Hand the fresh draft up NOW — before walking the transitions — so the
+      //    screen selects it and a retry can never mint a second draft.
+      if (created) options.onDraftReady?.(item);
+
+      // 3. Walk the approval path, skipping any step already committed in an
+      //    earlier attempt. A failed step throws with its own phase; the steps
+      //    that already committed stay committed.
+      const steps = pathToTarget(item.status, target).filter(
+        (step) => !done.has(step),
+      );
+      let reachedPublished =
+        item.status === "published" || done.has("publish");
       for (const step of steps) {
         try {
           await transitionCall(item.id, step);
-          if (step === "publish") reachedPublished = true;
         } catch (err) {
           throw new AnnouncementPublishError(step, err);
         }
+        done.add(step);
+        if (step === "publish") reachedPublished = true;
       }
 
+      progress.current = null;
       return { item, target, reachedPublished };
     },
     onError: (err) => {

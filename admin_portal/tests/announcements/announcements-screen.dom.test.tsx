@@ -237,7 +237,7 @@ describe("AnnouncementsScreen — the three Window forms", () => {
     );
   });
 
-  it("is_visible wins: dates say 'open now' but the server says not visible → not live", async () => {
+  it("is_visible wins: dates say 'open now' but the server says not visible → not live (scheduled, not ended)", async () => {
     backend([
       row({
         id: "skew",
@@ -257,9 +257,11 @@ describe("AnnouncementsScreen — the three Window forms", () => {
       "data-window-tone",
       "live",
     );
+    // expiry still ahead → the guard keeps it "scheduled" (about to go live),
+    // never the ink-faint "ended".
     expect(windowCell("Contested row")).toHaveAttribute(
       "data-window-tone",
-      "ended",
+      "scheduled",
     );
   });
 
@@ -434,6 +436,56 @@ describe("AnnouncementsScreen — row menu actions hit the right endpoint", () =
     await vi.waitFor(() =>
       expect(body).toEqual({ note: "Tighten the closing line." }),
     );
+  });
+
+  it("a failed reject keeps the note panel + the typed note, and retries", async () => {
+    let attempts = 0;
+    const bodies: unknown[] = [];
+    backend([row({ status: "pending_review", title: "Second look" })]);
+    server.use(
+      http.post(
+        "*/api/bff/approvals/announcements/a-1/reject",
+        async ({ request }) => {
+          attempts += 1;
+          bodies.push(await request.json());
+          if (attempts === 1) {
+            await delay(10);
+            return HttpResponse.json(
+              { detail: "Reject service is down", correlation_id: "cid-r" },
+              { status: 503 },
+            );
+          }
+          return HttpResponse.json({ id: "a-1", status: "rejected" });
+        },
+      ),
+    );
+
+    renderScreen("manager");
+    await screen.findByText("Second look");
+    const menu = await openRowMenu("Second look");
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Reject" }));
+
+    const note = await screen.findByLabelText("Rejection note");
+    await userEvent.type(note, "Fix the date in paragraph two.");
+    await userEvent.click(screen.getByRole("button", { name: "Send back" }));
+
+    // First attempt fails → the panel and the note are still there.
+    expect(await screen.findByText(/Reject service is down/)).toBeInTheDocument();
+    const stillThere = screen.getByLabelText("Rejection note") as HTMLTextAreaElement;
+    expect(stillThere).toBeInTheDocument();
+    expect(stillThere.value).toBe("Fix the date in paragraph two.");
+
+    // Retry from the same panel → succeeds → panel unmounts.
+    await userEvent.click(screen.getByRole("button", { name: "Send back" }));
+    await vi.waitFor(() =>
+      expect(screen.queryByLabelText("Rejection note")).not.toBeInTheDocument(),
+    );
+
+    expect(attempts).toBe(2);
+    expect(bodies).toEqual([
+      { note: "Fix the date in paragraph two." },
+      { note: "Fix the date in paragraph two." },
+    ]);
   });
 
   it("surfaces a failed action as an alert, not a toast", async () => {
