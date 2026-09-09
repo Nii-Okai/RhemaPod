@@ -29,6 +29,11 @@ def _err(exc: ContentError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
+def _speaker_public(row: tuple[Speaker, int]) -> SpeakerPublic:
+    speaker, sermon_count = row
+    return SpeakerPublic(**content_service.speaker_to_public(speaker, sermon_count))
+
+
 # Speakers
 @router.post("", response_model=SpeakerPublic, status_code=status.HTTP_201_CREATED)
 async def create_speaker(data: SpeakerCreate, user: EditorPlus, db: DbDep) -> SpeakerPublic:
@@ -36,24 +41,35 @@ async def create_speaker(data: SpeakerCreate, user: EditorPlus, db: DbDep) -> Sp
     db.add(speaker)
     await db.commit()
     await db.refresh(speaker)
-    return SpeakerPublic.model_validate(speaker)
+    return _speaker_public(
+        await content_service.get_speaker_with_count(
+            db, speaker.id, include_unpublished=True
+        )
+    )
 
 
 @router.get("", response_model=list[SpeakerPublic])
-async def list_speakers(db: ReadDbDep) -> list[SpeakerPublic]:
-    from sqlalchemy import select
-
-    rows = (await db.execute(select(Speaker).order_by(Speaker.name))).scalars().all()
-    return [SpeakerPublic.model_validate(s) for s in rows]
+async def list_speakers(db: ReadDbDep, user: OptionalUser) -> list[SpeakerPublic]:
+    # Count scoping (Option B): staff callers get the true all-status count,
+    # anon/viewer get published-only. See `staff_sees_full_counts`.
+    rows = await content_service.list_speakers_with_counts(
+        db, include_unpublished=content_service.staff_sees_full_counts(user)
+    )
+    return [_speaker_public(row) for row in rows]
 
 
 @router.get("/{speaker_id}", response_model=SpeakerPublic)
-async def get_speaker(speaker_id: uuid.UUID, db: ReadDbDep) -> SpeakerPublic:
+async def get_speaker(
+    speaker_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> SpeakerPublic:
     try:
-        speaker = await content_service.get_speaker(db, speaker_id)
+        row = await content_service.get_speaker_with_count(
+            db, speaker_id,
+            include_unpublished=content_service.staff_sees_full_counts(user),
+        )
     except ContentError as exc:
         raise _err(exc)
-    return SpeakerPublic.model_validate(speaker)
+    return _speaker_public(row)
 
 
 @router.patch("/{speaker_id}", response_model=SpeakerPublic)
@@ -65,9 +81,12 @@ async def update_speaker(
         speaker = await content_service.update_speaker(
             db, speaker_id, name=data.name, bio=data.bio, bio_set="bio" in provided
         )
+        row = await content_service.get_speaker_with_count(
+            db, speaker.id, include_unpublished=True
+        )
     except ContentError as exc:
         raise _err(exc)
-    return SpeakerPublic.model_validate(speaker)
+    return _speaker_public(row)
 
 
 @router.delete("/{speaker_id}", status_code=status.HTTP_204_NO_CONTENT)

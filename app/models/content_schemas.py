@@ -7,6 +7,12 @@ from app.models.models import ContentTier, MediaType, SermonStatus
 from app.models.models import MediaType as _MediaType  # noqa: E402
 from app.models.models import UploadStatus as _UploadStatus  # noqa: E402
 
+# Largest page any list endpoint will serve. Lives here (models layer) so both
+# the service `.limit()` clamps and the request schemas that must not accept
+# more ids than a client could ever paginate can share one definition without a
+# service -> schema import cycle.
+MAX_PAGE_SIZE = 100
+
 # ── Categories ────────────────────────────────────────────────────────────────
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -27,6 +33,10 @@ class CategoryPublic(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    # Number of sermons attached to this category. Computed in the list/detail
+    # query (a correlated count subquery), so the portal's category pills no
+    # longer need an N+1 `limit=1` `total` probe per row.
+    sermon_count: int
 
 
 # ── Speakers ──────────────────────────────────────────────────────────────────
@@ -46,6 +56,9 @@ class SpeakerPublic(BaseModel):
     id: uuid.UUID
     name: str
     bio: str | None
+    # Number of sermons attached to this speaker. Computed in the list/detail
+    # query (a correlated count subquery) — replaces the portal's per-row probe.
+    sermon_count: int
 
 
 # ── Series ────────────────────────────────────────────────────────────────────
@@ -61,6 +74,11 @@ class SeriesUpdate(BaseModel):
     description: str | None = None
     category_id: uuid.UUID | None = None
     tier: ContentTier | None = None
+    # Minimal series publish: manager/admin only, and only draft <-> published.
+    # Deliberately lighter than the sermon/announcement review workflow — a
+    # series is not a review artifact (Isaac's call). Reuses the sermon_status
+    # enum, which is what the `series.status` column stores.
+    status: SermonStatus | None = None
 
 
 class SeriesPublic(BaseModel):
@@ -73,6 +91,34 @@ class SeriesPublic(BaseModel):
     tier: ContentTier
     status: SermonStatus
     thumbnail_url: str | None = None
+    # Number of episodes (sermons) in this series, and the resolved category
+    # name (null when uncategorised). Both computed in the list/detail query so
+    # the portal's series grid drops its per-card count + category-join probes.
+    episode_count: int
+    category_name: str | None
+
+
+class EpisodeOrderRequest(BaseModel):
+    """Full ordered list of a series' episode (sermon) ids for a bulk reorder.
+
+    Ceiling: ``MAX_PAGE_SIZE`` ids. The drag client assembles this list from
+    ``GET /sermons?series_id=``, which is itself capped at ``MAX_PAGE_SIZE`` per
+    page, and this endpoint requires the *complete* ordered set — so a series
+    with more episodes than that cannot be reordered through the portal at all.
+    Reordering a >``MAX_PAGE_SIZE``-episode series is out of scope for this
+    batch; the cap makes that limit an explicit 422 rather than a silent
+    partial write.
+    """
+
+    episode_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_PAGE_SIZE)
+
+
+class EpisodeOrderItem(BaseModel):
+    """One row of the reordered episode list — the minimum the client needs to
+    apply the new order locally."""
+
+    id: uuid.UUID
+    episode_number: int
 
 
 # ── Sermons ───────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import CurrentUser, get_optional_user, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
+    EpisodeOrderItem,
+    EpisodeOrderRequest,
     SeriesUpdate,
     SermonListItem,
     SeriesCreate,
@@ -59,6 +61,15 @@ async def _staff(db: AsyncSession, current: CurrentUser) -> User:
     return user
 
 
+def _series_public(row: tuple[Series, int, str | None]) -> SeriesPublic:
+    series, episode_count, category_name = row
+    return SeriesPublic(
+        **content_service.series_to_public(series),
+        episode_count=episode_count,
+        category_name=category_name,
+    )
+
+
 # Series
 @router.post("", response_model=SeriesPublic, status_code=status.HTTP_201_CREATED)
 async def create_series(data: SeriesCreate, user: EditorPlus, db: DbDep) -> SeriesPublic:
@@ -74,21 +85,34 @@ async def create_series(data: SeriesCreate, user: EditorPlus, db: DbDep) -> Seri
     db.add(series)
     await db.commit()
     await db.refresh(series)
-    return SeriesPublic(**content_service.series_to_public(series))
+    return _series_public(
+        await content_service.get_series_public(
+            db, series.id, include_unpublished=True
+        )
+    )
 
 
 @router.get("", response_model=list[SeriesPublic])
-async def list_series(db: ReadDbDep) -> list[SeriesPublic]:
-    rows = await content_service.list_series(db)
-    return [SeriesPublic(**content_service.series_to_public(s)) for s in rows]
+async def list_series(db: ReadDbDep, user: OptionalUser) -> list[SeriesPublic]:
+    # Count scoping (Option B): staff callers get the true all-status
+    # episode_count, anon/viewer get published-only. See `staff_sees_full_counts`.
+    rows = await content_service.list_series(
+        db, include_unpublished=content_service.staff_sees_full_counts(user)
+    )
+    return [_series_public(row) for row in rows]
 
 @router.get("/{series_id}", response_model=SeriesPublic)
-async def get_series(series_id: uuid.UUID, db: ReadDbDep) -> SeriesPublic:
+async def get_series(
+    series_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> SeriesPublic:
     try:
-        series = await content_service.get_series(db, series_id)
+        row = await content_service.get_series_public(
+            db, series_id,
+            include_unpublished=content_service.staff_sees_full_counts(user),
+        )
     except ContentError as exc:
         raise _err(exc)
-    return SeriesPublic(**content_service.series_to_public(series))
+    return _series_public(row)
 
 
 @router.patch("/{series_id}", response_model=SeriesPublic)
@@ -98,10 +122,13 @@ async def update_series(
     actor = await _staff(db, user)
     fields = data.model_dump(exclude_unset=True)
     try:
-        series = await content_service.update_series(db, series_id, fields, actor)
+        await content_service.update_series(db, series_id, fields, actor)
+        row = await content_service.get_series_public(
+            db, series_id, include_unpublished=True
+        )
     except ContentError as exc:
         raise _err(exc)
-    return SeriesPublic(**content_service.series_to_public(series))
+    return _series_public(row)
 
 
 @router.delete("/{series_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -113,11 +140,53 @@ async def delete_series(series_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> R
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.put("/{series_id}/episode-order", response_model=list[EpisodeOrderItem])
+async def reorder_episode_order(
+    series_id: uuid.UUID,
+    data: EpisodeOrderRequest,
+    user: ManagerPlus,
+    db: DbDep,
+) -> list[EpisodeOrderItem]:
+    """Bulk atomic reorder of a series' episodes.
+
+    Body is the full ordered list of the series' episode (sermon) ids. Every id
+    must be an episode of this series and the set must be exactly the current
+    episode set — otherwise 422, naming what is wrong. Episodes are renumbered
+    ``1..N`` by position. An episode in ``pending_review`` / ``under_review`` is
+    a fixed point: if the new order would change its number the whole request is
+    refused with 409, naming the locked episode(s). All rows are written in one
+    transaction or none. Returns the reordered ``{id, episode_number}`` list.
+
+    Ceiling: at most ``MAX_PAGE_SIZE`` (100) ids. The drag client sources the
+    full episode set from ``GET /sermons?series_id=``, which pages at
+    ``MAX_PAGE_SIZE``, and this endpoint needs the complete ordered list — so a
+    series with more episodes than that cannot be reordered through the portal.
+    That is out of scope for this batch; the cap turns it into an explicit 422
+    rather than a silent partial write.
+    """
+    actor = await _staff(db, user)
+    try:
+        ordered = await content_service.reorder_series_episodes(
+            db, series_id, data.episode_ids, actor
+        )
+    except ContentError as exc:
+        raise _err(exc)
+    return [
+        EpisodeOrderItem(id=s.id, episode_number=s.episode_number)
+        for s in ordered
+    ]
+
+
 @router.get("/{series_id}/episodes", response_model=list[SermonListItem])
 async def series_episodes(
     series_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
 ) -> list[SermonListItem]:
-    """Published episodes of a series, ordered by episode number (gaps allowed)."""
+    """Published episodes of a series, ordered by episode number (gaps allowed).
+
+    Published-only by design; staff reads (a manager ordering drafts) go through
+    ``GET /sermons?series_id=`` (Isaac's call — no admin/``include_all`` variant
+    here).
+    """
     series = await db.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="Series not found")

@@ -596,6 +596,10 @@
             "title": "Name",
             "type": "string"
           },
+          "sermon_count": {
+            "title": "Sermon Count",
+            "type": "integer"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -604,7 +608,8 @@
         "required": [
           "id",
           "name",
-          "slug"
+          "slug",
+          "sermon_count"
         ],
         "title": "CategoryPublic",
         "type": "object"
@@ -867,6 +872,46 @@
           "last_played_at"
         ],
         "title": "ContinueWatchingItem",
+        "type": "object"
+      },
+      "EpisodeOrderItem": {
+        "description": "One row of the reordered episode list \u2014 the minimum the client needs to\napply the new order locally.",
+        "properties": {
+          "episode_number": {
+            "title": "Episode Number",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "episode_number"
+        ],
+        "title": "EpisodeOrderItem",
+        "type": "object"
+      },
+      "EpisodeOrderRequest": {
+        "description": "Full ordered list of a series' episode (sermon) ids for a bulk reorder.\n\nCeiling: ``MAX_PAGE_SIZE`` ids. The drag client assembles this list from\n``GET /sermons?series_id=``, which is itself capped at ``MAX_PAGE_SIZE`` per\npage, and this endpoint requires the *complete* ordered set \u2014 so a series\nwith more episodes than that cannot be reordered through the portal at all.\nReordering a >``MAX_PAGE_SIZE``-episode series is out of scope for this\nbatch; the cap makes that limit an explicit 422 rather than a silent\npartial write.",
+        "properties": {
+          "episode_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Episode Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "episode_ids"
+        ],
+        "title": "EpisodeOrderRequest",
         "type": "object"
       },
       "ForgotPasswordRequest": {
@@ -1573,6 +1618,17 @@
             ],
             "title": "Category Id"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "description": {
             "anyOf": [
               {
@@ -1583,6 +1639,10 @@
               }
             ],
             "title": "Description"
+          },
+          "episode_count": {
+            "title": "Episode Count",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
@@ -1617,7 +1677,9 @@
           "description",
           "category_id",
           "tier",
-          "status"
+          "status",
+          "episode_count",
+          "category_name"
         ],
         "title": "SeriesPublic",
         "type": "object"
@@ -1646,6 +1708,16 @@
               }
             ],
             "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SermonStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tier": {
             "anyOf": [
@@ -2655,12 +2727,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "sermon_count": {
+            "title": "Sermon Count",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "name",
-          "bio"
+          "bio",
+          "sermon_count"
         ],
         "title": "SpeakerPublic",
         "type": "object"
@@ -4955,7 +5032,7 @@
     },
     "/api/v1/catalog/categories": {
       "get": {
-        "description": "All categories. Flat \u2014 categories have no parent.",
+        "description": "All categories. Flat \u2014 categories have no parent.\n\nPublic-first: the common (anonymous) caller gets a published-only\n`sermon_count`. A logged-in staffer (editor/manager/admin) hitting this\nroute gets the true all-status count \u2014 see `staff_sees_full_counts`.",
         "operationId": "get_categories_api_v1_catalog_categories_get",
         "responses": {
           "200": {
@@ -4973,6 +5050,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Categories",
         "tags": [
           "catalog"
@@ -5076,6 +5158,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Categories",
         "tags": [
           "categories"
@@ -5202,6 +5289,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Category",
         "tags": [
           "categories"
@@ -5616,6 +5708,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Series",
         "tags": [
           "series"
@@ -5742,6 +5839,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Series",
         "tags": [
           "series"
@@ -5804,9 +5906,72 @@
         ]
       }
     },
+    "/api/v1/series/{series_id}/episode-order": {
+      "put": {
+        "description": "Bulk atomic reorder of a series' episodes.\n\nBody is the full ordered list of the series' episode (sermon) ids. Every id\nmust be an episode of this series and the set must be exactly the current\nepisode set \u2014 otherwise 422, naming what is wrong. Episodes are renumbered\n``1..N`` by position. An episode in ``pending_review`` / ``under_review`` is\na fixed point: if the new order would change its number the whole request is\nrefused with 409, naming the locked episode(s). All rows are written in one\ntransaction or none. Returns the reordered ``{id, episode_number}`` list.\n\nCeiling: at most ``MAX_PAGE_SIZE`` (100) ids. The drag client sources the\nfull episode set from ``GET /sermons?series_id=``, which pages at\n``MAX_PAGE_SIZE``, and this endpoint needs the complete ordered list \u2014 so a\nseries with more episodes than that cannot be reordered through the portal.\nThat is out of scope for this batch; the cap turns it into an explicit 422\nrather than a silent partial write.",
+        "operationId": "reorder_episode_order_api_v1_series__series_id__episode_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Series Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EpisodeOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EpisodeOrderItem"
+                  },
+                  "title": "Response Reorder Episode Order Api V1 Series  Series Id  Episode Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reorder Episode Order",
+        "tags": [
+          "series"
+        ]
+      }
+    },
     "/api/v1/series/{series_id}/episodes": {
       "get": {
-        "description": "Published episodes of a series, ordered by episode number (gaps allowed).",
+        "description": "Published episodes of a series, ordered by episode number (gaps allowed).\n\nPublished-only by design; staff reads (a manager ordering drafts) go through\n``GET /sermons?series_id=`` (Isaac's call \u2014 no admin/``include_all`` variant\nhere).",
         "operationId": "series_episodes_api_v1_series__series_id__episodes_get",
         "parameters": [
           {
@@ -6997,6 +7162,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Speakers",
         "tags": [
           "speakers"
@@ -7123,6 +7293,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Speaker",
         "tags": [
           "speakers"
