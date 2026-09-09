@@ -7,6 +7,11 @@
  * shape as `useSermons`, with `keepPreviousData` so paging never blanks the
  * list.
  *
+ * Batch 6: the queue carries `pending_review`, `under_review` AND `approved`
+ * rows — an approved-but-not-published sermon is still pending work (#12) — plus
+ * `review_claimed_by_id` (raw user id) alongside the display name, so the screen
+ * can tell "claimed by me" from "claimed by someone else" exactly (#9).
+ *
  * `loadReviewQueue` is exported and client-injectable so the wire shape (the
  * `limit`/`offset` params, the envelope) is exercised through MSW rather than a
  * mocked fetch (plan §A.11).

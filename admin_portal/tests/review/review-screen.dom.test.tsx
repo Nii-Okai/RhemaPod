@@ -24,7 +24,10 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    note preserved), approve-and-publish as two ordered calls + the toast, the
    card title linking to /sermons/{id}, "Start review" claiming a pending card
    (+ rollback), per-card pending gating under concurrent actions, "Watch"
-   opening a media player, and the empty state. */
+   opening a media player, the empty state, and (Batch 6) the claim-lock:
+   disabled actions + "Take over review" on a card another manager holds (an
+   admin bypasses), take-over 422/409 handling, and an `approved` card that
+   publishes out of the queue. */
 
 /* --- next/navigation + next/link, mocked ----------------------------- */
 
@@ -73,6 +76,11 @@ afterAll(() => server.close());
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
+/* The session principal `renderScreen` signs in as, by default. The MSW
+   `start-review` / `take-over-review` handlers claim rows for this identity so
+   the post-settle refetch agrees with the optimistic patch. */
+const ME = { id: "u-1", name: "Mia Okafor" };
+
 const baseItem: ReviewQueueItem = {
   id: "a1",
   title: "Grace upon grace",
@@ -89,6 +97,7 @@ const baseItem: ReviewQueueItem = {
   submitted_at: hoursAgo(5),
   renditions_ready: 2,
   review_claimed_by: null,
+  review_claimed_by_id: null,
 };
 
 const item = (over: Partial<ReviewQueueItem>): ReviewQueueItem => ({
@@ -104,6 +113,9 @@ interface BackendOpts {
   /** Delay the `start-review` response so the optimistic claim is observable
       before the server answers. */
   startReviewDelayMs?: number;
+  /** Delay the `take-over-review` response so the optimistic claim is observable
+      before the server answers. */
+  takeOverDelayMs?: number;
   /** Fail the first N `publish` calls with 500 (then succeed). `approve` still
       200s — this is the approve-ok / publish-fail partial-failure path. */
   publishFailTimes?: number;
@@ -123,6 +135,7 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
     calls,
     rejectBodies,
     startReviewDelayMs = 0,
+    takeOverDelayMs = 0,
     publishFailTimes = 0,
     keepApproved = false,
   } = opts;
@@ -139,7 +152,47 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
         if (startReviewDelayMs) await delay(startReviewDelayMs);
         live = live.map((r) =>
           r.id === params.id
-            ? { ...r, status: "under_review", review_claimed_by: "Mia Okafor" }
+            ? {
+                ...r,
+                status: "under_review",
+                review_claimed_by: ME.name,
+                review_claimed_by_id: ME.id,
+              }
+            : r,
+        );
+        return HttpResponse.json({ id: params.id, status: "under_review" });
+      },
+    ),
+    http.post(
+      "*/api/bff/approvals/sermons/:id/take-over-review",
+      async ({ params }) => {
+        calls?.push("take-over-review");
+        if (takeOverDelayMs) await delay(takeOverDelayMs);
+        const current = live.find((r) => r.id === params.id);
+        if (current && current.review_claimed_by_id === ME.id) {
+          // Mirrors `take_over_review`: the caller already holds the claim.
+          return HttpResponse.json(
+            { detail: "already_reviewing", correlation_id: "cid-to-409" },
+            { status: 409 },
+          );
+        }
+        if (current && current.status !== "under_review") {
+          return HttpResponse.json(
+            {
+              detail: `cannot take over a sermon in status '${current.status}'`,
+              correlation_id: "cid-to-422",
+            },
+            { status: 422 },
+          );
+        }
+        live = live.map((r) =>
+          r.id === params.id
+            ? {
+                ...r,
+                status: "under_review",
+                review_claimed_by: ME.name,
+                review_claimed_by_id: ME.id,
+              }
             : r,
         );
         return HttpResponse.json({ id: params.id, status: "under_review" });
@@ -249,19 +302,21 @@ describe("ReviewScreen — >48h alert", () => {
 });
 
 describe("ReviewScreen — claim state", () => {
-  it("'Under review · you' drops 'Approve only'; another reviewer's name is shown", async () => {
+  it("keys 'mine' off review_claimed_by_id, not the display name: my card drops 'Approve only' and 'Take over review'", async () => {
     backend([
       item({
         id: "a1",
         title: "Mine to review",
         status: "under_review",
         review_claimed_by: "Mia Okafor",
+        review_claimed_by_id: ME.id,
       }),
       item({
         id: "a2",
         title: "Theirs to review",
         status: "under_review",
         review_claimed_by: "Dana Rivers",
+        review_claimed_by_id: "u-2",
       }),
     ]);
     renderScreen({ name: "Mia Okafor" });
@@ -274,16 +329,269 @@ describe("ReviewScreen — claim state", () => {
       within(mine).queryByRole("button", { name: "Approve only" }),
     ).not.toBeInTheDocument();
     expect(
+      within(mine).queryByRole("button", { name: "Take over review" }),
+    ).not.toBeInTheDocument();
+    expect(
       within(mine).getByRole("button", { name: "Approve & publish" }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
 
     const theirs = cardFor("Theirs to review");
     expect(
       within(theirs).getByText("Under review · Dana Rivers"),
     ).toBeInTheDocument();
+    // A manager viewing someone else's claim: the act buttons are locked and
+    // "Take over review" is offered.
     expect(
       within(theirs).getByRole("button", { name: "Approve only" }),
+    ).toBeDisabled();
+    expect(
+      within(theirs).getByRole("button", { name: "Take over review" }),
+    ).toBeEnabled();
+  });
+
+  it("a namesake does NOT count as me: same display name, different id → treated as claimed by another", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Namesake claim",
+        status: "under_review",
+        review_claimed_by: "Mia Okafor",
+        review_claimed_by_id: "someone-else",
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("Namesake claim");
+    const card = cardFor("Namesake claim");
+    expect(
+      within(card).getByText("Under review · Mia Okafor"),
     ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Reject with note" }),
+    ).toBeDisabled();
+    expect(
+      within(card).getByRole("button", { name: "Take over review" }),
+    ).toBeEnabled();
+  });
+});
+
+describe("ReviewScreen — claim lock (Batch 6 #9)", () => {
+  const claimedByOther = () =>
+    item({
+      id: "a1",
+      title: "Val is on this",
+      status: "under_review",
+      review_claimed_by: "Val Reyes",
+      review_claimed_by_id: "u-val",
+    });
+
+  it("a manager sees the act buttons disabled with a 'take over' tooltip, then 'Take over review' claims it and re-enables them", async () => {
+    const calls: string[] = [];
+    backend([claimedByOther()], { calls, takeOverDelayMs: 40 });
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Val is on this");
+    const card = cardFor("Val is on this");
+
+    for (const name of ["Approve & publish", "Approve only", "Reject with note"]) {
+      const btn = within(card).getByRole("button", { name });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute(
+        "title",
+        "Val Reyes is reviewing this — take over to act",
+      );
+    }
+    expect(
+      within(card).queryByRole("button", { name: "Start review" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(card).getByRole("button", { name: "Take over review" }),
+    );
+
+    // Optimistic — the claim flips to me before the (delayed) response lands.
+    expect(await screen.findByText("Under review · you")).toBeInTheDocument();
+
+    // Once the mutation settles: buttons live again, take-over gone, claimed by me.
+    await waitFor(() =>
+      expect(
+        within(cardFor("Val is on this")).getByRole("button", {
+          name: "Approve & publish",
+        }),
+      ).toBeEnabled(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Take over review" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Under review · you")).toBeInTheDocument();
+    expect(calls.filter((c) => c === "take-over-review")).toHaveLength(1);
+  });
+
+  it("an admin is NOT locked: the same card keeps its act buttons enabled", async () => {
+    backend([claimedByOther()]);
+    renderScreen({ name: "Ada Admin", role: "admin" });
+
+    await screen.findByText("Val is on this");
+    const card = cardFor("Val is on this");
+
+    expect(
+      within(card).getByText("Under review · Val Reyes"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Approve & publish" }),
+    ).toBeEnabled();
+    expect(
+      within(card).getByRole("button", { name: "Approve only" }),
+    ).toBeEnabled();
+    expect(
+      within(card).getByRole("button", { name: "Reject with note" }),
+    ).toBeEnabled();
+  });
+
+  it("take-over 422 (not under review): rolls back with a card-top alert, no claim change", async () => {
+    backend([claimedByOther()]);
+    server.use(
+      http.post(
+        "*/api/bff/approvals/sermons/a1/take-over-review",
+        async () => {
+          await delay(20);
+          return HttpResponse.json(
+            {
+              detail: "cannot take over a sermon in status 'approved'",
+              correlation_id: "cid-to-422",
+            },
+            { status: 422 },
+          );
+        },
+      ),
+    );
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Val is on this");
+    await user.click(
+      screen.getByRole("button", { name: "Take over review" }),
+    );
+
+    expect(
+      await screen.findByText("That action didn’t go through"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot take over a sermon in status 'approved'/),
+    ).toBeInTheDocument();
+    // Rolled back: still claimed by Val, still locked, take-over still offered.
+    const card = cardFor("Val is on this");
+    expect(
+      within(card).getByText("Under review · Val Reyes"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Approve & publish" }),
+    ).toBeDisabled();
+    expect(
+      within(card).getByRole("button", { name: "Take over review" }),
+    ).toBeEnabled();
+  });
+
+  it("take-over 409 (I already hold the claim): treated as a no-op success — no alert, card settles on '· you'", async () => {
+    // A race: the card renders claimed by Val, but by the time the click lands
+    // the claim is already the caller's, so the server 409s. The refetch then
+    // reflects the real state (mine).
+    let claim = { by: "Val Reyes", id: "u-val" };
+    server.use(
+      http.get("*/api/bff/approvals/sermons/review-queue", () =>
+        HttpResponse.json({
+          items: [
+            item({
+              id: "a1",
+              title: "Val is on this",
+              status: "under_review",
+              review_claimed_by: claim.by,
+              review_claimed_by_id: claim.id,
+            }),
+          ],
+          total: 1,
+          limit: 25,
+          offset: 0,
+        }),
+      ),
+      http.post("*/api/bff/approvals/sermons/a1/take-over-review", async () => {
+        claim = { by: "Mia Okafor", id: ME.id };
+        await delay(20);
+        return HttpResponse.json(
+          { detail: "already_reviewing", correlation_id: "cid-to-409" },
+          { status: 409 },
+        );
+      }),
+    );
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Val is on this");
+    await user.click(
+      screen.getByRole("button", { name: "Take over review" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Under review · you")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("That action didn’t go through"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Take over review" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewScreen — approved rows publish out of the queue (Batch 6 #12)", () => {
+  it("an approved card shows only Publish + Watch; Publish POSTs …/publish and the card leaves the queue", async () => {
+    const calls: string[] = [];
+    backend(
+      [
+        item({
+          id: "a1",
+          title: "Approved, not live",
+          status: "approved",
+          review_claimed_by: "Val Reyes",
+          review_claimed_by_id: "u-val",
+        }),
+      ],
+      { calls },
+    );
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Approved, not live");
+    const card = cardFor("Approved, not live");
+
+    expect(within(card).getByText("Approved · Val Reyes")).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Publish" }),
+    ).toBeEnabled();
+    for (const name of [
+      "Approve only",
+      "Approve & publish",
+      "Reject with note",
+      "Start review",
+      "Take over review",
+    ]) {
+      expect(
+        within(card).queryByRole("button", { name }),
+      ).not.toBeInTheDocument();
+    }
+
+    await user.click(within(card).getByRole("button", { name: "Publish" }));
+
+    expect(
+      await screen.findByText("Published to the app"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Approved, not live"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(calls).toEqual(["publish"]);
   });
 });
 
@@ -426,7 +734,7 @@ describe("ReviewScreen — approve & publish", () => {
     ).toBeInTheDocument();
   });
 
-  it("retrying approve-and-publish on an already-approved sermon issues only publish — no 409 dead-end", async () => {
+  it("finishing a half-shipped (approved, publish-failed) card issues only publish — no 409 dead-end", async () => {
     const calls: string[] = [];
     backend([item({ id: "s7", title: "Half shipped" })], {
       calls,
@@ -444,22 +752,26 @@ describe("ReviewScreen — approve & publish", () => {
     );
     await screen.findByText(/was approved, but publishing failed/);
 
-    // The card is still on screen (stale queue), now showing an approved badge.
+    // The card is still on screen (stale queue), now an `approved` card — so it
+    // shows the bare "Publish" affordance (#12), not approve/reject.
     await waitFor(() =>
       expect(
         within(cardFor("Half shipped")).getByText(/approved/i),
       ).toBeInTheDocument(),
     );
-    calls.length = 0;
-
-    // Retry from the still-visible card.
-    await user.click(
-      within(cardFor("Half shipped")).getByRole("button", {
+    expect(
+      within(cardFor("Half shipped")).queryByRole("button", {
         name: "Approve & publish",
       }),
+    ).not.toBeInTheDocument();
+    calls.length = 0;
+
+    // Finish it from the still-visible card.
+    await user.click(
+      within(cardFor("Half shipped")).getByRole("button", { name: "Publish" }),
     );
 
-    // Only publish — approve is skipped for an already-approved row, so no 409.
+    // Only publish — the approve already committed, so no re-approve, no 409.
     expect(await screen.findByText("Published to the app")).toBeInTheDocument();
     expect(calls).toEqual(["publish"]);
     expect(calls).not.toContain("approve");

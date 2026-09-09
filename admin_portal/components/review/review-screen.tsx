@@ -129,6 +129,7 @@ export function ReviewScreen() {
 
   const actions = useReviewActions({
     meName: session.name,
+    meId: session.id,
     onError: (vars, message) => patchCard(vars.item.id, { error: message }),
     onApprovedNotPublished: (vars, detail) =>
       setPublishGap({ id: vars.item.id, title: vars.item.title, detail }),
@@ -169,22 +170,30 @@ export function ReviewScreen() {
   const overdue = overdueItems(items, now);
   const countLine = reviewCountLine(total, oldestWaitDays(items, now));
 
-  // TODO(batch): compare `review_claimed_by_id` once the backend returns it —
-  // the name match below is best-effort (namesakes collide; a null-name claimer
-  // can't be attributed). Interim rule: anything `under_review` is treated as
-  // claimed regardless of whether the name resolved, and "Start review" is only
-  // ever offered on a `pending_review` card (see `SubmissionCard`), so it can't
-  // 409.
+  // Claim state keys off `review_claimed_by_id` (raw user id) vs the session id —
+  // exact, unlike the old best-effort display-name match. Batch 6 #9:
+  //   - `mine`            — I hold the claim → normal actions, no take-over.
+  //   - `claimedElsewhere` — someone else holds it (id resolved, not me),
+  //                          regardless of role or whether their name resolved →
+  //                          "Take over review" is offered.
+  //   - `claimLocked`     — `claimedElsewhere` AND I'm not an admin → the
+  //                          approve/reject actions are disabled until I take
+  //                          over. Admins bypass the lock (backend does too).
+  const isAdmin = session.role === "admin";
   const claimFor = (item: ReviewQueueItem) => {
     if (item.status !== "under_review") {
-      return { mine: false, claimedByOther: null };
+      return { mine: false, claimedByOther: null, claimedElsewhere: false, claimLocked: false };
     }
-    const claimant = item.review_claimed_by?.trim() || null;
-    const mine =
-      claimant != null &&
-      session.name != null &&
-      claimant.toLowerCase() === session.name.trim().toLowerCase();
-    return { mine, claimedByOther: mine ? null : claimant };
+    const claimantId = item.review_claimed_by_id ?? null;
+    const claimantName = item.review_claimed_by?.trim() || null;
+    const mine = claimantId != null && claimantId === session.id;
+    const claimedElsewhere = claimantId != null && claimantId !== session.id;
+    return {
+      mine,
+      claimedByOther: mine ? null : claimantName,
+      claimedElsewhere,
+      claimLocked: claimedElsewhere && !isAdmin,
+    };
   };
 
   return (
@@ -245,7 +254,8 @@ export function ReviewScreen() {
       ) : (
         <div className="flex flex-col gap-18">
           {items.map((item) => {
-            const { mine, claimedByOther } = claimFor(item);
+            const { mine, claimedByOther, claimedElsewhere, claimLocked } =
+              claimFor(item);
             const state = cardState(item.id);
             return (
               <SubmissionCard
@@ -253,6 +263,8 @@ export function ReviewScreen() {
                 item={item}
                 mine={mine}
                 claimedByOther={claimedByOther}
+                claimedElsewhere={claimedElsewhere}
+                claimLocked={claimLocked}
                 busy={actions.isPending(item.id)}
                 error={state.error}
                 onDismissError={() => patchCard(item.id, { error: null })}
@@ -267,11 +279,13 @@ export function ReviewScreen() {
                   patchCard(item.id, { mode: "idle", note: "" })
                 }
                 onStartReview={() => actions.startReview(item)}
+                onTakeOver={() => actions.takeOver(item)}
                 onPlay={() =>
                   setPlayerFor({ id: item.id, title: item.title })
                 }
                 onApproveOnly={() => actions.approve(item)}
                 onApproveAndPublish={() => actions.approveAndPublish(item)}
+                onPublish={() => actions.publish(item)}
                 onSendRejection={() => actions.reject(item, state.note)}
               />
             );

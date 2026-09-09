@@ -27,21 +27,28 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
 
    "Start review" (on a `pending_review` card only) claims the sermon for review
    (`onStartReview` → `POST …/{id}/start-review`): the card stays in the queue
-   but flips to `under_review` with `review_claimed_by` set. The take-over /
-   claim-lock / disabled-states affordances are a separate, later concern.
+   but flips to `under_review` with `review_claimed_by(_id)` set.
 
    "Watch" opens a media player for the sermon (`onPlay` → a <video>/<audio>
    dialog fed by `GET /sermons/{id}/stream`). It is disabled when the sermon
    has no processed renditions yet.
 
-   Claim state. Structural decisions key off `item.status` directly (interim —
-   TODO(batch): compare `review_claimed_by_id` once the backend returns it):
-     - status `under_review`   → treated as claimed regardless of whether the
-                                 claimer's name resolved. `mine` (name match,
-                                 best effort) → slate "Under review · you" and
-                                 NO "Approve only"; otherwise "Under review ·
-                                 <name>" if a name exists, else just "Under
-                                 review". Actions stay (a manager can override).
+   Claim state (Batch 6 #9). `mine` / `claimedElsewhere` / `claimLocked` are
+   derived by the screen from `review_claimed_by_id` vs the session id:
+     - `mine` — slate "Under review · you", NO "Approve only", no "Start review",
+       no "Take over review". Approve / reject / watch enabled.
+     - `claimedElsewhere` (a manager) → `claimLocked` is set: "Under review ·
+       <name>", the approve/reject actions are DISABLED with a "take over to act"
+       tooltip, and "Take over review" (`onTakeOver` → `POST …/{id}/take-over-review`)
+       is offered. Watch stays enabled.
+     - `claimedElsewhere` (an admin) → NOT locked (admins bypass): the "<name>"
+       label shows but the actions stay enabled; "Take over review" is still
+       offered (optional for an admin).
+
+   Approved (Batch 6 #12). An `approved` sermon stays in the queue until it is
+   published. Its card shows "Publish" (`onPublish` → `POST …/{id}/publish`,
+   never claim-gated) + "Watch" only — no approve/reject/start-review/take-over.
+   Publishing removes it from the queue.
 
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
    revealing the labelled textarea plus [Approve & publish] and [Send rejection]
@@ -55,10 +62,18 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
 
 export interface SubmissionCardProps {
   item: ReviewQueueItem;
-  /** `under_review` and claimed by the signed-in reviewer. */
+  /** `under_review` and claimed by the signed-in reviewer (id match). */
   mine: boolean;
-  /** `under_review` and claimed by someone else — their display name, else null. */
+  /** `under_review` and claimed by someone else — their display name, or null
+      if the name didn't resolve. */
   claimedByOther: string | null;
+  /** `under_review` and the claim is held by another user (id resolved, not
+      me) — regardless of role or whether their name resolved. Drives the
+      "Take over review" affordance. */
+  claimedElsewhere: boolean;
+  /** `claimedElsewhere` AND the signed-in user is not an admin: the approve /
+      reject actions are disabled until the reviewer takes the claim over. */
+  claimLocked: boolean;
   /** A mutation for this card is in flight. */
   busy: boolean;
   /** Card-top error from a failed/rolled-back action. */
@@ -72,10 +87,16 @@ export interface SubmissionCardProps {
   /** Claim this sermon for review (`POST …/{id}/start-review`). Only wired on a
       `pending_review` card. */
   onStartReview: () => void;
+  /** Reassign the in-progress review to me (`POST …/{id}/take-over-review`).
+      Only wired on an `under_review` card claimed by someone else. */
+  onTakeOver: () => void;
   /** Open the media player for this sermon. */
   onPlay: () => void;
   onApproveOnly: () => void;
   onApproveAndPublish: () => void;
+  /** Publish an already-`approved` sermon (`POST …/{id}/publish`). Only wired on
+      an `approved` card. */
+  onPublish: () => void;
   onSendRejection: () => void;
   /** Injectable clock for the provenance line (tests). */
   now?: number;
@@ -96,6 +117,8 @@ export function SubmissionCard({
   item,
   mine,
   claimedByOther,
+  claimedElsewhere,
+  claimLocked,
   busy,
   error,
   onDismissError,
@@ -105,17 +128,30 @@ export function SubmissionCard({
   onStartReject,
   onCancelReject,
   onStartReview,
+  onTakeOver,
   onPlay,
   onApproveOnly,
   onApproveAndPublish,
+  onPublish,
   onSendRejection,
   now,
 }: SubmissionCardProps) {
   const noteId = useId();
   const underReview = item.status === "under_review";
   const pendingReview = item.status === "pending_review";
+  const approved = item.status === "approved";
   // "Watch" plays the processed media; nothing to play until a rendition exists.
   const hasMedia = item.renditions_ready > 0;
+  // The other reviewer's name for the claim-lock tooltip — falls back to a
+  // generic phrasing when the name didn't resolve but the id did.
+  const lockTitle = claimLocked
+    ? claimedByOther
+      ? `${claimedByOther} is reviewing this — take over to act`
+      : "Another reviewer holds this — take over to act"
+    : undefined;
+  // The manager who most recently claimed it (not necessarily the approver);
+  // shown next to the "Approved" badge as informational context.
+  const approvedClaimant = item.review_claimed_by?.trim() || null;
   const duration =
     item.duration_seconds != null
       ? formatDuration(item.duration_seconds)
@@ -197,7 +233,8 @@ export function SubmissionCard({
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={busy}
+                  disabled={busy || claimLocked}
+                  title={lockTitle}
                   onClick={onApproveAndPublish}
                 >
                   Approve &amp; publish
@@ -206,7 +243,8 @@ export function SubmissionCard({
                   size="sm"
                   variant="destructive"
                   className="bg-rose-bg"
-                  disabled={busy || note.trim() === ""}
+                  disabled={busy || claimLocked || note.trim() === ""}
+                  title={lockTitle}
                   onClick={onSendRejection}
                 >
                   Send rejection
@@ -223,42 +261,68 @@ export function SubmissionCard({
             </div>
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-8">
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={busy}
-                onClick={onApproveAndPublish}
-              >
-                Approve &amp; publish
-              </Button>
-              {!mine ? (
+              {approved ? (
                 <Button
                   size="sm"
-                  variant="secondary"
+                  variant="primary"
                   disabled={busy}
-                  onClick={onApproveOnly}
+                  onClick={onPublish}
                 >
-                  Approve only
+                  Publish
                 </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={busy}
-                onClick={onStartReject}
-              >
-                Reject with note
-              </Button>
-              {pendingReview ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={onStartReview}
-                >
-                  Start review
-                </Button>
-              ) : null}
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy || claimLocked}
+                    title={lockTitle}
+                    onClick={onApproveAndPublish}
+                  >
+                    Approve &amp; publish
+                  </Button>
+                  {!mine ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy || claimLocked}
+                      title={lockTitle}
+                      onClick={onApproveOnly}
+                    >
+                      Approve only
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy || claimLocked}
+                    title={lockTitle}
+                    onClick={onStartReject}
+                  >
+                    Reject with note
+                  </Button>
+                  {pendingReview ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={onStartReview}
+                    >
+                      Start review
+                    </Button>
+                  ) : null}
+                  {claimedElsewhere ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={onTakeOver}
+                    >
+                      Take over review
+                    </Button>
+                  ) : null}
+                </>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
@@ -275,6 +339,10 @@ export function SubmissionCard({
                     : claimedByOther
                       ? `Under review · ${claimedByOther}`
                       : "Under review"}
+                </span>
+              ) : approved && approvedClaimant ? (
+                <span className="text-[13px] font-medium text-slate">
+                  {`Approved · ${approvedClaimant}`}
                 </span>
               ) : null}
             </div>

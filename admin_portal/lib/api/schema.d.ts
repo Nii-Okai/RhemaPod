@@ -324,6 +324,9 @@ export interface paths {
          *     `status`, `submitted_at`, `renditions_ready` and (for under-review items)
          *     `review_claimed_by`, so the W10 screen can render "waiting N days", the
          *     >48h alert, and "Under review · <name>".
+         *
+         *     Batch 6 #12: an `approved` (not yet published) sermon stays in this list —
+         *     "approve only" is not the end of the workflow. Publishing removes it.
          */
         get: operations["review_queue_api_v1_approvals_sermons_review_queue_get"];
         put?: never;
@@ -417,6 +420,31 @@ export interface paths {
         put?: never;
         /** Start Review */
         post: operations["start_review_api_v1_approvals_sermons__sermon_id__start_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/sermons/{sermon_id}/take-over-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take Over Review
+         * @description Reassign an in-progress review to the caller (Batch 6 #9).
+         *
+         *     Only valid while the sermon is `under_review`. Status is unchanged; an
+         *     ApprovalLog row records the hand-off and moves the review claim, so the
+         *     caller can then `approve` / `reject` / `publish`. 409 if the caller already
+         *     holds the claim; 422 if the sermon is not under review.
+         */
+        post: operations["take_over_review_api_v1_approvals_sermons__sermon_id__take_over_review_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3248,6 +3276,37 @@ export interface operations {
         };
     };
     start_review_api_v1_approvals_sermons__sermon_id__start_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    take_over_review_api_v1_approvals_sermons__sermon_id__take_over_review_post: {
         parameters: {
             query?: never;
             header?: never;
