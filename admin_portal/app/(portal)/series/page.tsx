@@ -1,17 +1,11 @@
-import { EmptyState, PageHeader } from "@/components/portal";
+import { SeriesScreen } from "@/components/series/series-screen";
 
-/** Placeholder — the Series manager is W11. */
+/**
+ * Series manager (design Screen 6, plan W11) — the card grid + create flow.
+ *
+ * A thin Server Component: the grid, per-card episode counts and every mutation
+ * are client-rendered React Query (plan §A.4), so this just mounts the screen.
+ */
 export default function SeriesPage() {
-  return (
-    <>
-      <PageHeader
-        title="Series"
-        subhead="Group sermons into ordered teaching series."
-      />
-      <EmptyState
-        title="Coming soon"
-        description="The series manager and episode ordering arrive in W11."
-      />
-    </>
-  );
+  return <SeriesScreen />;
 }
