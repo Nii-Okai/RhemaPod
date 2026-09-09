@@ -318,7 +318,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Review Queue */
+        /**
+         * Review Queue
+         * @description Sermons waiting on a reviewer, longest-waiting first. Each row carries
+         *     `status`, `submitted_at`, `renditions_ready` and (for under-review items)
+         *     `review_claimed_by`, so the W10 screen can render "waiting N days", the
+         *     >48h alert, and "Under review · <name>".
+         */
         get: operations["review_queue_api_v1_approvals_sermons_review_queue_get"];
         put?: never;
         post?: never;
@@ -1189,6 +1195,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Upload Job
+         * @description Cancel a superseded or stalled upload job and best-effort delete its raw
+         *     object.
+         *
+         *     Owner-scoped: an editor may only delete a job whose sermon they created
+         *     (another editor's job, or an unknown id, is 404); managers and admins any.
+         *     Refused with 409 while the job is transcoding or already ready.
+         */
+        delete: operations["delete_upload_job_api_v1_uploads__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{job_id}/confirm": {
         parameters: {
             query?: never;
@@ -1341,6 +1372,8 @@ export interface components {
              * Format: uuid
              */
             actor_id: string;
+            /** Actor Name */
+            actor_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1465,6 +1498,8 @@ export interface components {
              * Format: uuid
              */
             actor_id: string;
+            /** Actor Name */
+            actor_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1637,6 +1672,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[ReviewQueueItem] */
+        Page_ReviewQueueItem_: {
+            /** Items */
+            items: components["schemas"]["ReviewQueueItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[SermonAdminListItem] */
         Page_SermonAdminListItem_: {
             /** Items */
@@ -1714,6 +1760,46 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * ReviewQueueItem
+         * @description One sermon awaiting review, carrying the timing and readiness fields the
+         *     W10 queue screen needs: "waiting N days", the >48h alert, and whether any
+         *     renditions exist to review yet. Ordered oldest-submitted-first by the queue
+         *     endpoint (longest wait at the top).
+         */
+        ReviewQueueItem: {
+            /** Category Id */
+            category_id: string | null;
+            /** Category Name */
+            category_name?: string | null;
+            /** Description */
+            description: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Renditions Ready */
+            renditions_ready: number;
+            /** Review Claimed By */
+            review_claimed_by?: string | null;
+            /** Series Id */
+            series_id: string | null;
+            /** Series Title */
+            series_title?: string | null;
+            /** Speaker Id */
+            speaker_id: string | null;
+            /** Speaker Name */
+            speaker_name?: string | null;
+            status: components["schemas"]["SermonStatus"];
+            /** Submitted At */
+            submitted_at: string | null;
+            tier: components["schemas"]["ContentTier"];
+            /** Title */
+            title: string;
+        };
         /** RoleUpdateRequest */
         RoleUpdateRequest: {
             role: components["schemas"]["UserRole"];
@@ -1776,6 +1862,14 @@ export interface components {
          *     screen's "saved N min ago" stamp needs a server-side `updated_at` baseline,
          *     which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
          *     not carry.
+         *
+         *     `tier` keeps the inherited meaning — the *resolved* effective tier (sermon
+         *     tier, else series tier, else free), same as `SermonDetail`. The editor
+         *     screen also needs the raw column to drive the tier radio, so that is a
+         *     separate field: `tier_override` is `Sermon.tier` verbatim — NULL when the
+         *     sermon inherits from its series (or the free default), otherwise the
+         *     explicit choice. Reassigning `tier`'s meaning in a subclass was an LSP trap
+         *     that the Series/Announcements editors would have cloned.
          */
         SermonAdminDetail: {
             /** Category Id */
@@ -1818,6 +1912,7 @@ export interface components {
             /** Thumbnail Url */
             thumbnail_url: string | null;
             tier: components["schemas"]["ContentTier"];
+            tier_override?: components["schemas"]["ContentTier"] | null;
             /** Title */
             title: string;
             /** Updated At */
@@ -2893,7 +2988,10 @@ export interface operations {
     };
     review_queue_api_v1_approvals_sermons_review_queue_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2906,7 +3004,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SermonListItem"][];
+                    "application/json": components["schemas"]["Page_ReviewQueueItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4729,6 +4836,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PortalResponse"];
+                };
+            };
+        };
+    };
+    delete_upload_job_api_v1_uploads__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -18,8 +18,8 @@ import { SermonEditor } from "@/components/sermons/editor/sermon-editor";
 import type { SermonAdminDetail } from "@/lib/query/hooks/use-sermon-admin";
 
 /* W8 — the sermon editor form, rendered (happy-dom). Every backend call is
-   MSW (§A.11). Covers: Access radios ↔ tier (incl. inferred inherit + the
-   standalone lock), the newest-first approval-log timeline + empty state,
+   MSW (§A.11). Covers: Access radios ↔ tier (`tier_override` drives the
+   control; the standalone lock), the newest-first approval-log timeline + empty state,
    optimistic Submit with rollback on a 500, Withdraw-from-under_review's 409
    message, and locked fields under review. */
 
@@ -65,6 +65,7 @@ function detail(over: Partial<SermonAdminDetail> = {}): SermonAdminDetail {
     series_title: null,
     episode_number: null,
     tier: "free",
+    tier_override: null,
     locked: false,
     status: "draft",
     tags: [],
@@ -146,8 +147,10 @@ function renderEditor() {
 /* --- Access card ↔ tier ------------------------------------------------- */
 
 describe("SermonEditor — Access radios ↔ tier", () => {
-  it("standalone + effectively free → Inherit selected AND disabled", async () => {
-    backend({ sermon: detail({ series_id: null, tier: "free" }) });
+  it("standalone + no override → Inherit selected AND disabled", async () => {
+    backend({
+      sermon: detail({ series_id: null, tier: "free", tier_override: null }),
+    });
     renderEditor();
 
     const inherit = await screen.findByRole("radio", {
@@ -160,9 +163,9 @@ describe("SermonEditor — Access radios ↔ tier", () => {
     ).toBeInTheDocument();
   });
 
-  it("in a series + effective tier === series tier → inferred Inherit (enabled)", async () => {
+  it("in a series + tier_override null → Inherit selected (enabled)", async () => {
     backend({
-      sermon: detail({ series_id: "ser-1", tier: "free" }),
+      sermon: detail({ series_id: "ser-1", tier: "free", tier_override: null }),
       series: [{ id: "ser-1", title: "Luke", tier: "free" }],
     });
     renderEditor();
@@ -174,9 +177,13 @@ describe("SermonEditor — Access radios ↔ tier", () => {
     expect(inherit).toBeEnabled();
   });
 
-  it("explicit override (effective free, series paid) → Free selected", async () => {
+  it("in a series + tier_override 'free' (series paid) → Free selected", async () => {
     backend({
-      sermon: detail({ series_id: "ser-1", tier: "free" }),
+      sermon: detail({
+        series_id: "ser-1",
+        tier: "free",
+        tier_override: "free",
+      }),
       series: [{ id: "ser-1", title: "Luke", tier: "paid" }],
     });
     renderEditor();

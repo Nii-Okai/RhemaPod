@@ -24,7 +24,6 @@ import {
   useAutosaveSermon,
   type SermonFormValues,
   type SermonPatch,
-  type SermonTier,
 } from "@/lib/query/hooks/use-autosave-sermon";
 import { useCategories } from "@/lib/query/hooks/use-categories";
 import { useEditorWorkflow } from "@/lib/query/hooks/use-editor-workflow";
@@ -34,7 +33,7 @@ import {
   type SermonAdminDetail,
 } from "@/lib/query/hooks/use-sermon-admin";
 import { UploadProvider } from "@/lib/upload";
-import { useSeriesList, type SeriesListItem } from "@/lib/query/hooks/use-series";
+import { useSeriesList } from "@/lib/query/hooks/use-series";
 import { useSpeakers } from "@/lib/query/hooks/use-speakers";
 
 /* =============================================================================
@@ -62,33 +61,7 @@ const EMPTY_FORM: SermonFormValues = {
   tags: [],
 };
 
-/**
- * The GET returns the *effective* tier (sermon tier, else series tier, else
- * free) and not the stored value, so `tier = null` (inherit) is not directly
- * observable — a known contract gap (see W8 report; candidate for the next
- * backend batch: expose the stored `tier` on `SermonAdminDetail`). Infer it:
- * in a series and the effective tier equals the series tier → treat as inherit;
- * standalone and effectively free → inherit (behaviourally identical to a
- * stored null). Any explicit radio choice the user makes is sent verbatim, so
- * from that point the value is exact.
- */
-function inferStoredTier(
-  detail: SermonAdminDetail,
-  series: SeriesListItem[] | undefined,
-): SermonTier {
-  const effective = detail.tier;
-  if (!detail.series_id) {
-    return effective === "free" ? null : effective;
-  }
-  const seriesTier = series?.find((s) => s.id === detail.series_id)?.tier;
-  if (seriesTier && effective === seriesTier) return null;
-  return effective;
-}
-
-function fromDetail(
-  detail: SermonAdminDetail,
-  series: SeriesListItem[] | undefined,
-): SermonFormValues {
+function fromDetail(detail: SermonAdminDetail): SermonFormValues {
   return {
     title: detail.title,
     description: detail.description ?? "",
@@ -96,7 +69,10 @@ function fromDetail(
     category_id: detail.category_id,
     series_id: detail.series_id,
     episode_number: detail.episode_number,
-    tier: inferStoredTier(detail, series),
+    // `tier_override` is the raw `Sermon.tier` column, authoritative since
+    // GATE 3 Batch 3: null = "Inherit from series", else the explicit choice.
+    // (`detail.tier` is the resolved effective tier — for display only.)
+    tier: detail.tier_override ?? null,
     tags: detail.tags,
   };
 }
@@ -108,10 +84,8 @@ export interface SermonEditorProps {
 
 export function SermonEditor({ sermonId: initialId }: SermonEditorProps) {
   const detail = useSermonAdmin(initialId);
-  // Seeded here too (shared cache, no extra request): `fromDetail` infers the
-  // stored tier from the series' own tier, so the form must not seed until the
-  // series list is in hand or an inherited-tier sermon shows as an explicit
-  // "Free" until the list lands.
+  // Prefetched here (shared cache, no extra request) so the Access card's
+  // "Inherit resolves to <series tier>" sub-line is right on first paint.
   const series = useSeriesList();
 
   if (initialId && (detail.isLoading || series.isLoading)) {
@@ -182,7 +156,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   const [seededId, setSeededId] = useState<string | null>(initial?.id ?? null);
 
   const [form, setForm] = useState<SermonFormValues>(() =>
-    initial ? fromDetail(initial, series.data) : EMPTY_FORM,
+    initial ? fromDetail(initial) : EMPTY_FORM,
   );
   const [titleTouched, setTitleTouched] = useState(false);
   const [statusOverride, setStatusOverride] = useState<SermonStatus | null>(
@@ -240,7 +214,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   // with the `key` on <EditorForm>, but keeps the guard honest).
   if (mode === "edit" && live.data && seededId !== live.data.id) {
     setSeededId(live.data.id);
-    setForm(fromDetail(live.data, series.data));
+    setForm(fromDetail(live.data));
   }
 
   // Clear the optimistic badge once the server truth agrees.

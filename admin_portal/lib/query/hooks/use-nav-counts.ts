@@ -65,8 +65,10 @@ export async function loadNavCounts(
     count(async () => {
       const { data } = await client.GET(
         "/api/v1/approvals/sermons/review-queue",
+        { params: { query: { limit: 1 } } },
       );
-      return data?.length ?? 0;
+      // GATE 3 Batch 3: the queue is now a Page[ReviewQueueItem] envelope.
+      return data?.total ?? 0;
     }),
   ]);
 
