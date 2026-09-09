@@ -50,7 +50,13 @@ export const queryKeys = {
   },
   review: {
     all: () => ["review"] as const,
-    queue: () => [...queryKeys.review.all(), "queue"] as const,
+    /** `queue()` is the coarse handle every workflow mutation invalidates
+        (§A.4); `queue({page})` is one rendered page of it. A prefix-match on
+        `["review","queue"]` still covers the paged keys. */
+    queue: (params?: { page: number }) =>
+      params === undefined
+        ? ([...queryKeys.review.all(), "queue"] as const)
+        : ([...queryKeys.review.all(), "queue", params] as const),
   },
   /** Filter-bar option sources on the Sermons list (W7). Small, rarely-changing
       reference lists — cached long, invalidated by the (Phase 2) screens that

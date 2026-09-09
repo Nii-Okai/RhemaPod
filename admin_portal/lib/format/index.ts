@@ -66,6 +66,66 @@ export function formatRelativeTime(
 }
 
 /**
+ * Whole days elapsed between `from` and `now` (floored). A null/invalid `from`
+ * or a future `from` (clock skew) returns 0 — never a negative count.
+ *
+ * Drives the Review queue's "waiting N days" provenance line and the header
+ * "oldest waiting N days" (W10). `now` is injectable so the screen and its
+ * tests stay deterministic.
+ */
+export function daysSince(
+  from: string | number | Date | null | undefined,
+  now: number = Date.now(),
+): number {
+  const then = toEpoch(from);
+  if (then == null) return 0;
+  const elapsed = now - then;
+  if (elapsed <= 0) return 0;
+  return Math.floor(elapsed / 86_400_000);
+}
+
+/**
+ * Fractional hours elapsed between `from` and `now`. Same null/skew handling as
+ * {@link daysSince} (0, never negative). Used for the Review queue's >48h
+ * "waiting more than 2 days" alert threshold (W10).
+ */
+export function hoursSince(
+  from: string | number | Date | null | undefined,
+  now: number = Date.now(),
+): number {
+  const then = toEpoch(from);
+  if (then == null) return 0;
+  const elapsed = now - then;
+  if (elapsed <= 0) return 0;
+  return elapsed / 3_600_000;
+}
+
+function toEpoch(
+  value: string | number | Date | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const ms =
+    value instanceof Date
+      ? value.getTime()
+      : typeof value === "number"
+        ? value
+        : Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * A URL `?page=` value → a safe 1-based page number: a non-finite, sub-1, or
+ * fractional input floors/clamps to `1`. One home for the clamp the Review
+ * queue screen, its `useReviewQueue` hook and its `loadReviewQueue` loader all
+ * need — they must agree on the page they render, fetch and key on (W10 review
+ * pass).
+ */
+export function clampPage(value: number | string | null | undefined): number {
+  const n = typeof value === "number" ? value : Number(value ?? Number.NaN);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+}
+
+/**
  * Bytes → a one-decimal binary size (`1.4 GB`, `812 KB`, `0 B`). Used only for
  * the read-only upload-job rows in the editor's Media card (W8); the live
  * "1.4 / 2.2 GB" progress line is the XHR uploader's job in W9.
