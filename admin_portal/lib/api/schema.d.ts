@@ -1743,6 +1743,21 @@ export interface components {
              */
             watched_delta: number;
         };
+        /**
+         * PublishResponse
+         * @description `publish` adds the number the success toast shows ("Published to the app
+         *     · N subscribers").
+         */
+        PublishResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notified Subscriber Count */
+            notified_subscriber_count: number;
+            status: components["schemas"]["SermonStatus"];
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
@@ -1751,7 +1766,7 @@ export interface components {
         /** RejectRequest */
         RejectRequest: {
             /** Note */
-            note?: string | null;
+            note: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -1776,6 +1791,8 @@ export interface components {
             description: string | null;
             /** Duration Seconds */
             duration_seconds: number | null;
+            /** Episode Number */
+            episode_number?: number | null;
             /**
              * Id
              * Format: uuid
@@ -1785,6 +1802,8 @@ export interface components {
             renditions_ready: number;
             /** Review Claimed By */
             review_claimed_by?: string | null;
+            /** Review Claimed By Id */
+            review_claimed_by_id?: string | null;
             /** Series Id */
             series_id: string | null;
             /** Series Title */
@@ -3097,7 +3116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StatusResponse"];
+                    "application/json": components["schemas"]["PublishResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4052,6 +4071,7 @@ export interface operations {
                 q?: string | null;
                 speaker_id?: string | null;
                 series_id?: string | null;
+                category_id?: string | null;
                 /** @description Filter on effective tier (sermon tier, else series tier, else free) */
                 tier?: components["schemas"]["ContentTier"] | null;
                 limit?: number;
