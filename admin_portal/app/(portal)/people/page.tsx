@@ -1,17 +1,12 @@
-import { EmptyState, PageHeader } from "@/components/portal";
+import { PeopleScreen } from "@/components/people/people-screen";
 
-/** Placeholder — Speakers & categories is W12. */
+/**
+ * Speakers & categories (design Screen 7, plan W12).
+ *
+ * A thin Server Component: the speaker rows, the category pills, every
+ * per-entity sermon-count probe and every mutation are client-rendered React
+ * Query (plan §A.4), so this just mounts the screen.
+ */
 export default function PeoplePage() {
-  return (
-    <>
-      <PageHeader
-        title="Speakers & categories"
-        subhead="Deleting either detaches it from sermons — it never deletes content."
-      />
-      <EmptyState
-        title="Coming soon"
-        description="Speaker and category management arrives in W12."
-      />
-    </>
-  );
+  return <PeopleScreen />;
 }
