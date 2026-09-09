@@ -27,9 +27,11 @@ export interface TopBarProps {
   onMenuClick: () => void;
   /** id of the drawer the hamburger controls, for aria-controls. */
   navId: string;
+  /** Whether the drawer is currently open — drives `aria-expanded`. */
+  navOpen?: boolean;
 }
 
-export function TopBar({ onMenuClick, navId }: TopBarProps) {
+export function TopBar({ onMenuClick, navId, navOpen = false }: TopBarProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
 
@@ -46,6 +48,7 @@ export function TopBar({ onMenuClick, navId }: TopBarProps) {
         onClick={onMenuClick}
         aria-label="Open navigation"
         aria-controls={navId}
+        aria-expanded={navOpen}
         className="rounded-9 px-8 text-[18px] leading-none text-ink-muted hover:bg-surface-sunken hover:text-ink focus-visible:focus-ring-button min-[1100px]:hidden"
       >
         ☰

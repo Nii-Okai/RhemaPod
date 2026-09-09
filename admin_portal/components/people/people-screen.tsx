@@ -33,7 +33,10 @@ export function PeopleScreen() {
         subhead="Deleting either detaches it from sermons — it never deletes content."
       />
 
-      <div className="grid grid-cols-1 gap-16 md:grid-cols-[1.4fr_1fr]">
+      {/* Split at the app-shell breakpoint (min-[1100px]), consistent with the
+          editor / series-detail / announcements screens — below it the right
+          column would be a ~290px pane (W14 responsive pass). */}
+      <div className="grid grid-cols-1 gap-16 min-[1100px]:grid-cols-[1.4fr_1fr]">
         <SpeakersPanel onAddSpeaker={focusAddSpeaker} />
         <div className="flex flex-col gap-16">
           <CategoriesCard />

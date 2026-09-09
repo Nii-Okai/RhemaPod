@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 import type { SessionUser } from "@/lib/auth/session-types";
@@ -51,6 +51,32 @@ export function AppShell({ user, groups, children }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
+  // Focus management for the <1100px nav drawer (W14 a11y). On open, remember
+  // the trigger and move focus to the drawer's Close control so a keyboard user
+  // lands inside the panel; on close, hand focus back to whatever opened it (the
+  // top-bar hamburger). A full Tab-cycle trap is deliberately out of scope here
+  // — flagged in the W14 report as a follow-up.
+  const drawerOpenerRef = useRef<HTMLElement | null>(null);
+  const drawerWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (drawerOpen && !drawerWasOpenRef.current) {
+      drawerOpenerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      // The panel's own "×" control — scoped to the drawer so it is not the
+      // full-screen backdrop button (same aria-label, earlier in the DOM).
+      document
+        .getElementById(NAV_DRAWER_ID)
+        ?.querySelector<HTMLElement>('[aria-label="Close navigation"]')
+        ?.focus();
+    } else if (!drawerOpen && drawerWasOpenRef.current) {
+      drawerOpenerRef.current?.focus();
+      drawerOpenerRef.current = null;
+    }
+    drawerWasOpenRef.current = drawerOpen;
+  }, [drawerOpen]);
+
   return (
     <div className="min-h-screen bg-surface-sunken min-[1100px]:grid min-[1100px]:grid-cols-[248px_1fr]">
       {/* Desktop rail — grid column 1, sticky, self-scrolling. */}
@@ -89,6 +115,7 @@ export function AppShell({ user, groups, children }: AppShellProps) {
       <div className="flex min-w-0 flex-col">
         <TopBar
           navId={NAV_DRAWER_ID}
+          navOpen={drawerOpen}
           onMenuClick={() => dispatch({ type: "open" })}
         />
         <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-24 p-28">
