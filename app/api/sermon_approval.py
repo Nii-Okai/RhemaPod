@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_role
+from app.core.logging import get_logger
 from app.db.database import get_db
 from app.models.content_schemas import (
     ApprovalLogItem,
@@ -19,6 +20,7 @@ from app.services import auth_service, content_service, subscription_service
 from app.services.content_service import ContentError
 
 router = APIRouter(prefix="/approvals/sermons", tags=["sermon approvals"])
+log = get_logger("sermon_approval")
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -97,7 +99,14 @@ async def publish(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> Publish
         s = await content_service.transition(db, sermon_id, "publish", actor)
     except ContentError as exc:
         raise _err(exc)
-    count = await subscription_service.count_active_paid_subscriptions(db)
+    # The sermon is already published and committed — a failure counting
+    # subscribers for the toast must not turn that into a 500 (whose retry
+    # would then 409 on the published sermon). Degrade the count to 0.
+    try:
+        count = await subscription_service.count_active_paid_subscribers(db)
+    except Exception:
+        log.warning("publish_subscriber_count_failed", sermon_id=str(s.id))
+        count = 0
     return PublishResponse(
         id=s.id, status=s.status, notified_subscriber_count=count
     )

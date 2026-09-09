@@ -208,16 +208,21 @@ async def test_publish_response_counts_active_paid_subscriptions(client, engine)
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
 
-    a = await make_user(client, engine, "a@example.com", "editor")  # any real user
-    b = await make_user(client, engine, "b@example.com", "editor")
-    c = await make_user(client, engine, "c@example.com", "editor")
+    for name in ("a", "b", "c", "d", "e"):
+        await make_user(client, engine, f"{name}@example.com", "editor")
+    # Counted: active + cancelled paid tiers (matches analytics.overview()).
     await _seed_subscription(engine, await _user_id(engine, "a@example.com"),
                              "monthly", "active")
     await _seed_subscription(engine, await _user_id(engine, "b@example.com"),
-                             "annual", "past_due")   # still entitled
-    # Not counted: free tier, and an expired paid tier.
+                             "annual", "cancelled")   # still entitled, still counted
+    # Not counted: past_due (entitled but excluded from the figure), an expired
+    # paid tier, and a free tier.
     await _seed_subscription(engine, await _user_id(engine, "c@example.com"),
+                             "annual", "past_due")
+    await _seed_subscription(engine, await _user_id(engine, "d@example.com"),
                              "monthly", "expired")
+    await _seed_subscription(engine, await _user_id(engine, "e@example.com"),
+                             "free", "active")
 
     sid = await _approved_sermon(client, engine, mgr, ed)
     r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)

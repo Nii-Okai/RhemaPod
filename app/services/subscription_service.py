@@ -81,21 +81,26 @@ def entitlement_from_row(sub: Subscription | None) -> bool:
     return True
 
 
-async def count_active_paid_subscriptions(db: AsyncSession) -> int:
-    """How many subscribers a publish would notify.
+# Paid subscribers as counted for admin-facing figures (the analytics overview
+# and the publish toast). Deliberately ACTIVE + CANCELLED only — PAST_DUE is
+# entitled (see ENTITLED_STATUSES) but excluded here so the "paid members"
+# number is stable and matches analytics.overview(); a publish push isn't an
+# entitlement decision.
+_PAID_SUBSCRIBER_STATUSES = (SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED)
 
-    One `SELECT count(*)` over `subscriptions`: a paid tier (`PAID_TIERS`) in an
-    entitled status (`ENTITLED_STATUSES`) — the same predicate
-    `entitlement_from_row` gates on, minus the per-row `valid_until` expiry
-    check, which needs the `expire_lapsed` sweep to be exact anyway. Good enough
-    for a toast count; not an entitlement decision.
+
+async def count_active_paid_subscribers(db: AsyncSession) -> int:
+    """Paid subscribers for an admin figure (publish toast / analytics overview).
+
+    One `SELECT count(*)`: a paid tier (`PAID_TIERS`) in `_PAID_SUBSCRIBER_STATUSES`.
+    Not an entitlement decision — `is_entitled()` is the source of truth for access.
     """
     return (await db.execute(
         select(func.count())
         .select_from(Subscription)
         .where(
             Subscription.tier.in_(PAID_TIERS),
-            Subscription.status.in_(ENTITLED_STATUSES),
+            Subscription.status.in_(_PAID_SUBSCRIBER_STATUSES),
         )
     )).scalar_one()
 
