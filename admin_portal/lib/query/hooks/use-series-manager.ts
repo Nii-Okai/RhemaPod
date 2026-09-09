@@ -14,13 +14,13 @@
  * optimistic: create needs the server id to navigate to, and a delete confirm
  * dialog already gates it.
  *
- * Backend gaps this surfaces → [GATE 3 Batch 5]:
- *   - `SeriesUpdate` has no `status` field and there is no series
- *     publish/unpublish workflow, so a series' status is fixed at `draft` on
- *     create and the design's status badge can only ever read "Draft" here.
- *   - `SeriesPublic` carries no episode count and no `category_name`, so the
- *     grid derives both client-side (see `use-series-episodes.ts` /
- *     `useCategories`).
+ * Batch 5 closed the gaps this used to work around:
+ *   - `SeriesUpdate.status` accepts `draft` ⇄ `published` (manager/admin only),
+ *     so `useUpdateSeries` drives the publish / unpublish control on the detail
+ *     screen — optimistic badge swap, rollback on error.
+ *   - `SeriesPublic` now carries `episode_count` and `category_name`, so the
+ *     grid card reads both straight off the DTO (no per-card probe, no
+ *     categories-list join).
  */
 
 "use client";
@@ -70,9 +70,9 @@ interface UpdateContext {
 }
 
 /** Apply a `SeriesUpdate` onto a `SeriesPublic` for the optimistic cache write.
-    Only keys the patch actually sets are touched; `title` / `tier` never go
-    `null` (the form never sends that), so a stray `null` falls back to the
-    current value rather than widening the row's type. */
+    Only keys the patch actually sets are touched; `title` / `tier` / `status`
+    never go `null` (nothing here sends that), so a stray `null` falls back to
+    the current value rather than widening the row's type. */
 function mergeSeries(base: Series, patch: SeriesUpdate): Series {
   return {
     ...base,
@@ -82,6 +82,7 @@ function mergeSeries(base: Series, patch: SeriesUpdate): Series {
       ? { category_id: patch.category_id ?? null }
       : {}),
     ...("tier" in patch ? { tier: patch.tier ?? base.tier } : {}),
+    ...("status" in patch ? { status: patch.status ?? base.status } : {}),
   };
 }
 

@@ -18,11 +18,12 @@ import { SpeakersPanel } from "@/components/people/speakers-panel";
 import { AddSpeakerCard } from "@/components/people/add-speaker-card";
 import type { Speaker } from "@/lib/query/hooks/use-speakers";
 
-/* W12 — the Speakers panel + Add-speaker card (happy-dom). Every backend call is
-   MSW, never a mocked fetch (§A.11). Covers: row render (avatar, "No bio yet",
-   the mono count probe), the Add-speaker POST + prepend, the blank-name block,
-   optimistic delete with the confirm copy naming the sermon count, and a 500 on
-   delete rolling the row back with a card-top alert. */
+/* W12 / Batch 5 — the Speakers panel + Add-speaker card (happy-dom). Every
+   backend call is MSW, never a mocked fetch (§A.11). Covers: row render (avatar,
+   "No bio yet", the mono `sermon_count` read straight off the list DTO — no
+   probe), the Add-speaker POST + prepend, the blank-name block, optimistic
+   delete with the confirm copy naming the sermon count, and a 500 on delete
+   rolling the row back with a card-top alert. */
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -42,8 +43,8 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 const SEED: Speaker[] = [
-  { id: "spk-1", name: "Ada Grace", bio: "Lead pastor since 2016." },
-  { id: "spk-2", name: "Bem Okoro", bio: null },
+  { id: "spk-1", name: "Ada Grace", bio: "Lead pastor since 2016.", sermon_count: 3 },
+  { id: "spk-2", name: "Bem Okoro", bio: null, sermon_count: 0 },
 ];
 
 interface BackendOptions {
@@ -51,17 +52,12 @@ interface BackendOptions {
   deleteStatus?: number;
 }
 
-/** One mutable speakers store + the `limit=1` count probe. spk-1 → 3 sermons,
-    spk-2 → 0. */
+/** One mutable speakers store. Each row carries its own `sermon_count` (Batch
+    5) — spk-1 → 3, spk-2 → 0 — so there is no separate count probe. */
 function backend({ onPost, deleteStatus = 204 }: BackendOptions = {}) {
   let speakers: Speaker[] = SEED.map((s) => ({ ...s }));
   server.use(
     http.get("*/api/bff/speakers", () => HttpResponse.json(speakers)),
-    http.get("*/api/bff/sermons", ({ request }) => {
-      const q = new URL(request.url).searchParams;
-      const total = q.get("speaker_id") === "spk-1" ? 3 : 0;
-      return HttpResponse.json({ items: [], total, limit: 1, offset: 0 });
-    }),
     http.post("*/api/bff/speakers", async ({ request }) => {
       const body = (await request.json()) as { name: string; bio: string | null };
       onPost?.(body);
@@ -69,6 +65,7 @@ function backend({ onPost, deleteStatus = 204 }: BackendOptions = {}) {
         id: `spk-${speakers.length + 1}`,
         name: body.name,
         bio: body.bio ?? null,
+        sermon_count: 0,
       };
       speakers = [...speakers, created];
       return HttpResponse.json(created, { status: 201 });
@@ -133,8 +130,9 @@ describe("SpeakersPanel — rows", () => {
     expect(screen.getByText("Lead pastor since 2016.")).toBeInTheDocument();
     expect(screen.getByText("No bio yet")).toBeInTheDocument();
 
-    // The count probe resolves: spk-1 → 3.
+    // spk-1's `sermon_count` renders straight from the list row.
     expect(await screen.findByText("3")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
   });
 });
 
@@ -176,7 +174,7 @@ describe("SpeakersPanel — delete", () => {
     try {
       renderPanel();
       await screen.findByText("Ada Grace");
-      await screen.findByText("3"); // count probe resolved → copy can name it
+      await screen.findByText("3"); // spk-1.sermon_count → the confirm copy names it
 
       await userEvent.click(
         screen.getByRole("button", { name: "Actions for Ada Grace" }),

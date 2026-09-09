@@ -30,29 +30,28 @@ import type { SermonListItem } from "@/lib/query/hooks/use-sermons";
         operable path, and the one the tests drive;
      2. native HTML5 drag-and-drop (`draggable` + dragstart/over/drop) as a
         pointer enhancement.
-   Either way the move calls `reorderEpisodes`, which keeps the set of
-   `episode_number`s already in use (gaps and all) and only reassigns which
-   sermon holds which. Each changed episode is one `PATCH /api/v1/sermons/{id}`
-   — there is no bulk endpoint (→ [GATE 3 Batch 5]). The UI reorders
-   optimistically; any PATCH failure rolls the order back and shows a panel
-   `<Alert>` (design §"Errors" — an alert on the panel, never a toast).
+   Either way the move calls `reorderEpisodes` for the new visual order, then
+   `useEpisodeReorder` sends the full ordered id list to
+   `PUT /api/v1/series/{id}/episode-order` (Batch 5) — one atomic request that
+   renumbers the series 1..N. The UI reorders optimistically; a failure rolls
+   the order back and shows a panel `<Alert>` (design §"Errors" — an alert on
+   the panel, never a toast): a 409 names the in-review episode that would move,
+   a 422 means the client's episode set is stale (reload).
 
    ── Locked rows ────────────────────────────────────────────────────────────
-   `PATCH /api/v1/sermons/{id}` does NOT reject an `episode_number` change on a
-   `pending_review` / `under_review` sermon (verified — `update_sermon` has no
-   status guard). W8 established a client-side lock for those statuses, so this
-   panel both disables the move control / drag on a locked row AND — because a
-   move of an *unlocked* row past a locked one would otherwise sweep the locked
-   row's number into the reassigned span — refuses any move whose span would
-   cross a locked row, surfacing a brief inline note instead. `reorderEpisodes`
-   enforces the fixed-point rule; the note is the panel's job. Noted in
-   `status.md` that the rule belongs server-side, and in a bulk endpoint.
+   An episode in `pending_review` / `under_review` is a fixed point the backend
+   refuses to renumber (409). This panel disables the move control / drag on a
+   locked row and, because a move of an unlocked row past a locked one would
+   sweep it, refuses any move whose span would cross a locked row up front —
+   `reorderEpisodes` returns `refused` and the panel shows a brief inline note.
+   A locked row outside the span whose number still shifts (a gapped series
+   normalising to 1..N) is caught by the backend's 409.
 
    ── >100 episodes ──────────────────────────────────────────────────────────
    The admin sermon list is `updated_at desc`, not `episode_number`, so a series
    with more than `EPISODE_ORDER_LIMIT` episodes loads an arbitrary recency
-   slice — reordering it is meaningless. Past the limit the panel is read-only
-   with a notice (→ [GATE 3 Batch 5]).
+   slice, and the atomic endpoint needs the complete ordered set (capped at
+   100). Past the limit the panel is read-only with a notice.
    ========================================================================== */
 
 const LOCKED_STATUSES: readonly string[] = ["pending_review", "under_review"];
@@ -128,8 +127,9 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
 
       {overLimit ? (
         <Alert variant="warning" title="Reordering is disabled">
-          This series has more than {EPISODE_ORDER_LIMIT} episodes — reordering
-          is disabled here.
+          This series has more than {EPISODE_ORDER_LIMIT} episodes. The reorder
+          endpoint needs the complete ordered list and caps it at{" "}
+          {EPISODE_ORDER_LIMIT}, so ordering can’t be done here.
         </Alert>
       ) : note ? (
         <p role="status" className="text-[12.5px] text-ink-muted">

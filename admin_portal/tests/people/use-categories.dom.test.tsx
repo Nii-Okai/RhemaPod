@@ -24,8 +24,8 @@ afterAll(() => server.close());
 const listKey = queryKeys.categories.list();
 
 const SEED: Category[] = [
-  { id: "cat-a", name: "Teaching", slug: "teaching" },
-  { id: "cat-b", name: "Worship", slug: "worship" },
+  { id: "cat-a", name: "Teaching", slug: "teaching", sermon_count: 3 },
+  { id: "cat-b", name: "Worship", slug: "worship", sermon_count: 0 },
 ];
 
 function makeClient() {

@@ -20,8 +20,8 @@
  * A delete `SET NULL`s `sermon.category_id` (the "detaches, never deletes"
  * copy), so it also invalidates `sermons.lists()`.
  *
- * Backend gap → [GATE 3 Batch 5]: `CategoryPublic` carries no `sermon_count`;
- * the pill figure is an N+1 `limit=1` probe (`useEntityCount`).
+ * Each `CategoryPublic` carries its `sermon_count` (Batch 5) — the pill figure
+ * and the delete-confirm copy read it straight off the DTO.
  */
 
 "use client";
@@ -133,7 +133,7 @@ export function useDeleteCategory() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.categories.all() });
-      // `SET NULL` on `sermon.category_id` — list rows + count probes shift.
+      // `SET NULL` on `sermon.category_id` — the sermon list rows shift.
       void qc.invalidateQueries({ queryKey: queryKeys.sermons.lists() });
     },
   });

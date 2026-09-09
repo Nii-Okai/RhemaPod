@@ -5,10 +5,6 @@ import * as React from "react";
 import { Alert } from "@/components/ui/alert";
 import { Tag } from "@/components/ui/tag";
 import { EmptyState } from "@/components/portal";
-import {
-  entityCountLabel,
-  useEntityCount,
-} from "@/lib/query/hooks/use-entity-count";
 import { useCategories, type Category } from "@/lib/query/hooks/use-categories";
 import { CategoryForm } from "./category-form";
 
@@ -34,7 +30,6 @@ function CategoryPill({
   category: Category;
   onEdit: () => void;
 }) {
-  const count = useEntityCount("category", category.id);
   return (
     <button
       type="button"
@@ -43,7 +38,7 @@ function CategoryPill({
     >
       <span className="truncate">{category.name}</span>
       <span className="font-mono text-[11px] tracking-[0.04em] text-ink-faint tabular-nums">
-        {entityCountLabel(count.data)}
+        {category.sermon_count}
       </span>
     </button>
   );

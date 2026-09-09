@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/people/error-text";
 import { useUpdateSpeaker, type Speaker } from "@/lib/query/hooks/use-speakers";
-import { useEntityCount, entityCountLabel } from "@/lib/query/hooks/use-entity-count";
 
 /* =============================================================================
    SpeakerRow — one row of the Speakers panel (design Screen 7).
@@ -27,7 +26,9 @@ import { useEntityCount, entityCountLabel } from "@/lib/query/hooks/use-entity-c
    Edit swaps the row in place for name + bio fields (design §"inline"). Delete
    goes through `window.confirm` — the stopgap the W7/W11 rows use — with copy
    that names how many sermons detach and states the sermons themselves stay.
-   Both the count and that number come from the one `useEntityCount` probe.
+   The count and that number are `speaker.sermon_count`, straight off the
+   `SpeakerPublic` the list returns (Batch 5; the backend counts every status
+   for a staff caller, which the portal always is).
    ========================================================================== */
 
 export interface SpeakerRowProps {
@@ -45,10 +46,7 @@ export interface SpeakerRowProps {
   onSuccess?: () => void;
 }
 
-function deleteCopy(name: string, count: number | undefined): string {
-  if (typeof count !== "number") {
-    return `Delete “${name}”? It’s removed as a speaker and detached from any sermons — the sermons themselves are not deleted.`;
-  }
+function deleteCopy(name: string, count: number): string {
   const sermons = count === 1 ? "1 sermon" : `${count} sermons`;
   return `Delete “${name}”? It detaches from ${sermons} — those sermons stay, they just lose their speaker.`;
 }
@@ -60,7 +58,6 @@ export function SpeakerRow({
   deleting = false,
   onSuccess,
 }: SpeakerRowProps) {
-  const count = useEntityCount("speaker", speaker.id);
   const update = useUpdateSpeaker();
 
   const [editing, setEditing] = React.useState(false);
@@ -100,7 +97,7 @@ export function SpeakerRow({
   };
 
   const confirmDelete = () => {
-    if (!window.confirm(deleteCopy(speaker.name, count.data))) return;
+    if (!window.confirm(deleteCopy(speaker.name, speaker.sermon_count))) return;
     onDelete();
   };
 
@@ -172,7 +169,7 @@ export function SpeakerRow({
         className="shrink-0 font-mono text-[12px] tracking-[0.04em] text-ink-faint tabular-nums"
         title="Sermons by this speaker"
       >
-        {entityCountLabel(count.data)}
+        {speaker.sermon_count}
       </span>
 
       <DropdownMenu>

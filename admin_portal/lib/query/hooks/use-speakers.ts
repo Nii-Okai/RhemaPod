@@ -11,14 +11,13 @@
  * categories screen (W12) is the only place that edits it.
  *
  * `GET /api/v1/speakers` returns the full `SpeakerPublic[]` (no pagination on
- * the contract). Create / update / delete are optimistic on that one cached
- * list with rollback (design §"Interactions" — optimistic where cheap, errors
- * as a card-top `<Alert>`, never a toast). A delete `SET NULL`s
- * `sermon.speaker_id`, so it also invalidates `sermons.lists()` — that is what
- * the "detaches it from N sermons" copy refers to; the sermons themselves stay.
- *
- * Backend gap → [GATE 3 Batch 5]: `SpeakerPublic` carries no `sermon_count`, so
- * the row figure is an N+1 `limit=1` probe (`useEntityCount`).
+ * the contract), each row carrying its `sermon_count` (Batch 5) — the figure
+ * the panel row and the delete-confirm copy read straight off the DTO. Create /
+ * update / delete are optimistic on that one cached list with rollback (design
+ * §"Interactions" — optimistic where cheap, errors as a card-top `<Alert>`,
+ * never a toast). A delete `SET NULL`s `sermon.speaker_id`, so it also
+ * invalidates `sermons.lists()` — that is what the "detaches it from N sermons"
+ * copy refers to; the sermons themselves stay.
  */
 
 "use client";
@@ -34,8 +33,8 @@ export type SpeakerCreate = components["schemas"]["SpeakerCreate"];
 export type SpeakerUpdate = components["schemas"]["SpeakerUpdate"];
 
 /** Prefix on the id of an optimistic-create row that has no server identity
-    yet. Not a valid UUID, so any keyed-by-id side effect (notably the
-    `useEntityCount` sermon probe) must skip it — see `isPersistedId`. */
+    yet. Namespaced so a stray render of the temp row can't collide with a real
+    UUID; the row is replaced wholesale by the `onSettled` refetch. */
 export const OPTIMISTIC_ID_PREFIX = "optimistic:";
 
 const listKey = queryKeys.speakers.list();
@@ -68,11 +67,11 @@ export function useCreateSpeaker() {
       const previous = qc.getQueryData<Speaker[]>(listKey);
       if (previous) {
         const optimistic: Speaker = {
-          // Namespaced so a stray render of the temp row can't collide with a
-          // real UUID; replaced wholesale by the `onSettled` refetch.
           id: `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`,
           name: body.name,
           bio: body.bio ?? null,
+          // No server row yet — the count arrives with the `onSettled` refetch.
+          sermon_count: 0,
         };
         qc.setQueryData<Speaker[]>(
           listKey,
@@ -175,8 +174,8 @@ export function useDeleteSpeaker() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.speakers.all() });
-      // The delete `SET NULL`s `sermon.speaker_id` — list rows and every
-      // `useEntityCount` probe change. (The sermons are not deleted.)
+      // The delete `SET NULL`s `sermon.speaker_id` — the sermon list rows
+      // change (the sermons are not deleted).
       void qc.invalidateQueries({ queryKey: queryKeys.sermons.lists() });
     },
   });
