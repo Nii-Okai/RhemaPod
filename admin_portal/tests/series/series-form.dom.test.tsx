@@ -19,12 +19,15 @@ import { SeriesForm } from "@/components/series/series-form";
 /* W11 — create a series: POST /series then navigate to the new id. Backend via
    MSW (§A.11); `next/navigation` router is mocked. */
 
-const nav = vi.hoisted(() => ({ push: vi.fn<(href: string) => void>() }));
+const nav = vi.hoisted(() => ({
+  push: vi.fn<(href: string) => void>(),
+  replace: vi.fn<(href: string) => void>(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: nav.push,
-    replace: vi.fn(),
+    replace: nav.replace,
     prefetch: vi.fn(),
     refresh: vi.fn(),
     back: vi.fn(),
@@ -38,6 +41,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   server.resetHandlers();
   nav.push.mockClear();
+  nav.replace.mockClear();
 });
 afterAll(() => server.close());
 
@@ -56,7 +60,7 @@ function renderCreate() {
 }
 
 describe("SeriesForm — create", () => {
-  it("POSTs the form and navigates to /series/{newId}", async () => {
+  it("POSTs the form and replaces history with /series/{newId}", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     server.use(
       http.get("*/api/bff/categories", () => HttpResponse.json([])),
@@ -90,7 +94,10 @@ describe("SeriesForm — create", () => {
       screen.getByRole("button", { name: "Create series" }),
     );
 
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/series/ser-new-123"));
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenCalledWith("/series/ser-new-123"),
+    );
+    expect(nav.push).not.toHaveBeenCalled();
     expect(bodies).toEqual([
       { title: "Advent 2026", description: null, category_id: null, tier: "paid" },
     ]);
@@ -112,5 +119,6 @@ describe("SeriesForm — create", () => {
 
     expect(await screen.findByText("A title is required.")).toBeInTheDocument();
     expect(nav.push).not.toHaveBeenCalled();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });

@@ -7,14 +7,24 @@
  * `GET /api/v1/sermons?series_id={id}` (the GATE 3 Batch 1 admin filter — every
  * status, paged). Flagged in `status.md` → [GATE 3 Batch 5].
  *
+ * ── Ordering ────────────────────────────────────────────────────────────────
+ * The admin sermon list is ordered `updated_at desc` (`list_my_sermons`), NOT
+ * `episode_number`. The client `sortEpisodes` is the only thing that puts the
+ * rows in episode order. This also means a series with more than
+ * `EPISODE_ORDER_LIMIT` episodes loads an arbitrary recency slice, not episodes
+ * 1..N — so reordering is disabled entirely past that limit (the panel shows a
+ * notice; a proper `episode_number`-ordered read or a bulk-reorder endpoint is
+ * the real fix, → [GATE 3 Batch 5] items 1 & 4).
+ *
  * ── Reorder ─────────────────────────────────────────────────────────────────
  * No bulk-reorder endpoint exists, so a move is one `PATCH
- * /api/v1/sermons/{id}` per changed episode (`reorderEpisodes` decides which).
- * The UI reorders optimistically; a `Promise.allSettled` fan-out then reconciles
- * per row like `useSermonWorkflow`:
+ * /api/v1/sermons/{id}` per changed episode (`reorderEpisodes` decides which,
+ * once, in `move()`). The UI reorders optimistically; a `Promise.allSettled`
+ * fan-out then reconciles like `useSermonWorkflow`:
  *   - every PATCH failed  → reject → `onError` restores the pre-move order
- *   - some PATCHes failed → `onSuccess` restores, re-applies only the rows that
- *     landed, and surfaces the failure as a panel alert
+ *   - some PATCHes failed → the landed rows are PATCHed back to their pre-move
+ *     `episode_number` (best-effort revert so the server stays self-consistent),
+ *     the cache is rolled back whole, and the failure surfaces as a panel alert
  * `onSettled` refetches the list so the server order wins regardless.
  */
 
@@ -40,8 +50,9 @@ import {
   type EpisodePatch,
 } from "@/lib/series/episodes";
 
-/** Backend caps `limit` at 100. A series with more episodes than this is out of
-    scope for the panel (noted in `status.md`). */
+/** Backend caps `limit` at 100. A series with more episodes than this cannot be
+    ordered here — the list arrives `updated_at desc`, so >100 is an arbitrary
+    recency slice, not episodes 1..N (noted in `status.md` → [GATE 3 Batch 5]). */
 export const EPISODE_ORDER_LIMIT = 100;
 
 /** The exact `useSermons` params — and therefore the exact query key — the
@@ -50,9 +61,17 @@ export function episodeListParams(seriesId: string) {
   return { series_id: seriesId, limit: EPISODE_ORDER_LIMIT } as const;
 }
 
-/** All episodes of a series, every status, sorted `episode_number` asc (nulls
-    last). Returns the plain sorted array — the panel needs the rows, not the
-    page envelope. */
+export interface SeriesEpisodes {
+  /** Rows sorted `episode_number` asc (nulls last), then title. */
+  episodes: SermonListItem[];
+  /** Server total for the series — `> EPISODE_ORDER_LIMIT` means the loaded
+      rows are an arbitrary recency slice and reordering must be disabled. */
+  total: number;
+}
+
+/** All episodes of a series, every status. Returns the sorted rows plus the
+    server total — the panel needs both (the rows to render, the total to decide
+    whether reordering is even meaningful). */
 export function useSeriesEpisodes(seriesId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.sermons.list(
@@ -66,7 +85,10 @@ export function useSeriesEpisodes(seriesId: string | undefined) {
           signal,
         }),
       ),
-    select: (page: SermonListPage) => sortEpisodes(page.items),
+    select: (page: SermonListPage): SeriesEpisodes => ({
+      episodes: sortEpisodes(page.items),
+      total: page.total,
+    }),
   });
 }
 
@@ -74,31 +96,41 @@ export function useSeriesEpisodes(seriesId: string | undefined) {
  * Episode count for a series card's `"N episodes · category"` footer.
  * `SeriesPublic` carries no count, so this is a `limit=1` `total` probe per card
  * (→ [GATE 3 Batch 5]: add a count to `SeriesPublic`).
+ *
+ * Keyed under the **sermons** domain (`sermons.list({ series_id, limit: 1 })`),
+ * not `series.detail` — the count is a sermons-domain fact (how many sermons
+ * carry this `series_id`), so a `sermons.lists()` invalidation from the editor's
+ * series-assignment mutation must reach it or the footer goes stale.
  */
 export function useSeriesEpisodeCount(seriesId: string) {
   return useQuery({
-    queryKey: [...queryKeys.series.detail(seriesId), "episode-count"] as const,
+    queryKey: queryKeys.sermons.list({ series_id: seriesId, limit: 1 }),
     queryFn: ({ signal }) =>
       unwrap(
         api.GET("/api/v1/sermons", {
           params: { query: { series_id: seriesId, limit: 1 } },
           signal,
         }),
-      ).then((page) => page.total),
+      ),
+    select: (page: SermonListPage) => page.total,
     staleTime: 60_000,
   });
 }
 
 interface ReorderVars {
-  from: number;
-  to: number;
+  /** Computed once in `move()` (against the on-screen rows) and threaded
+      through so `onMutate` and `mutationFn` never recompute or disagree. */
+  patches: EpisodePatch[];
 }
 interface ReorderContext {
   snapshot?: SermonListPage;
 }
+type PartialOutcome = "reverted" | "inconsistent";
 interface ReorderOutcome {
-  succeeded: EpisodePatch[];
   failed: Array<{ patch: EpisodePatch; error: unknown }>;
+  /** Present only on a partial failure: whether the best-effort revert of the
+      landed rows succeeded (`reverted`) or itself failed (`inconsistent`). */
+  partial?: PartialOutcome;
 }
 
 class ReorderError extends Error {
@@ -132,6 +164,13 @@ function failureMessage(
   return backend ? `${line} ${backend}` : line;
 }
 
+function patchEpisodeNumber(id: string, episode_number: number) {
+  return api.PATCH("/api/v1/sermons/{sermon_id}", {
+    params: { path: { sermon_id: id } },
+    body: { episode_number },
+  });
+}
+
 /** Write a set of episode_number values into the cached page (optimistic /
     partial re-apply). Missing ids are left untouched. */
 function applyNumbers(
@@ -153,18 +192,26 @@ function applyNumbers(
 
 export interface UseEpisodeReorderOptions {
   seriesId: string;
-  /** The rows currently on screen, in display order. The mutation computes the
-      move against these so the caller and the hook never disagree on indices. */
+  /** The rows currently on screen, in display order. The move is computed
+      against these so the caller and the hook never disagree on indices. */
   ordered: SermonListItem[];
+  /** Ids of episodes whose review lock makes them immovable fixed points. A
+      move whose span would cross one is refused (→ `onBlocked`). */
+  lockedIds: ReadonlySet<string>;
   /** Surface a failure — the panel renders it as a card `<Alert>`, never a
       toast (design §"Errors"). */
   onError: (message: string) => void;
+  /** A move was refused because its span would cross a locked (in-review)
+      episode. Not an error — the panel shows a brief inline note. */
+  onBlocked: () => void;
 }
 
 export function useEpisodeReorder({
   seriesId,
   ordered,
+  lockedIds,
   onError,
+  onBlocked,
 }: UseEpisodeReorderOptions) {
   const qc = useQueryClient();
   const key = queryKeys.sermons.list(episodeListParams(seriesId));
@@ -175,15 +222,11 @@ export function useEpisodeReorder({
     ReorderVars,
     ReorderContext
   >({
-    mutationFn: async ({ from, to }) => {
-      const { patches } = reorderEpisodes(ordered, from, to);
+    mutationFn: async ({ patches }) => {
+      const preMove = new Map(ordered.map((e) => [e.id, e.episode_number]));
+
       const settled = await Promise.allSettled(
-        patches.map((p) =>
-          api.PATCH("/api/v1/sermons/{sermon_id}", {
-            params: { path: { sermon_id: p.id } },
-            body: { episode_number: p.episode_number },
-          }),
-        ),
+        patches.map((p) => patchEpisodeNumber(p.id, p.episode_number)),
       );
       const succeeded: EpisodePatch[] = [];
       const failed: Array<{ patch: EpisodePatch; error: unknown }> = [];
@@ -192,16 +235,37 @@ export function useEpisodeReorder({
         if (r.status === "rejected") failed.push({ patch, error: r.reason });
         else succeeded.push(patch);
       });
-      if (succeeded.length === 0 && failed.length > 0) {
-        throw new ReorderError(failed);
-      }
-      return { succeeded, failed };
+
+      if (failed.length === 0) return { failed };
+      if (succeeded.length === 0) throw new ReorderError(failed);
+
+      // Partial failure: the landed PATCHes have durably committed numbers that
+      // now collide with the rows that didn't move. Best-effort revert every
+      // landed row to its pre-move number so the server is at least
+      // self-consistent. A pre-move `null` can't be cleanly reverted (PATCH
+      // null semantics are undefined here) → treat as an incomplete revert.
+      const revertable = succeeded.filter(
+        (p) => typeof preMove.get(p.id) === "number",
+      );
+      const revertSettled = await Promise.allSettled(
+        revertable.map((p) =>
+          patchEpisodeNumber(p.id, preMove.get(p.id) as number),
+        ),
+      );
+      const revertClean =
+        revertable.length === succeeded.length &&
+        revertSettled.every((r) => r.status === "fulfilled");
+
+      return { failed, partial: revertClean ? "reverted" : "inconsistent" };
     },
-    onMutate: async ({ from, to }) => {
+    onMutate: async ({ patches }) => {
       await qc.cancelQueries({ queryKey: key });
       const snapshot = qc.getQueryData<SermonListPage>(key);
-      const { patches } = reorderEpisodes(ordered, from, to);
-      applyNumbers(qc, key, new Map(patches.map((p) => [p.id, p.episode_number])));
+      applyNumbers(
+        qc,
+        key,
+        new Map(patches.map((p) => [p.id, p.episode_number])),
+      );
       return { snapshot };
     },
     onError: (err, _vars, context) => {
@@ -212,19 +276,22 @@ export function useEpisodeReorder({
           : messageFor(err, "Couldn’t reorder the episodes."),
       );
     },
-    onSuccess: ({ succeeded, failed }, _vars, context) => {
+    onSuccess: ({ failed, partial }, _vars, context) => {
       if (failed.length === 0) return;
-      // Partial failure: roll the whole page back to the pre-move order, then
-      // re-apply only the numbers that actually landed — the failed rows keep
-      // their real (pre-move) number, no rollback flash on the ones that went
-      // through. `onSettled` then refetches the truth.
+      // Partial failure. The landed rows have been reverted on the server (or
+      // the revert itself failed); either way roll the cache back to the
+      // pre-move order wholesale — nothing is meant to have changed.
+      // `onSettled` then refetches the truth.
       if (context?.snapshot) qc.setQueryData(key, context.snapshot);
-      applyNumbers(
-        qc,
-        key,
-        new Map(succeeded.map((p) => [p.id, p.episode_number])),
+      onError(
+        partial === "inconsistent"
+          ? `${failureMessage(
+              failed,
+            )} The episode numbering may be inconsistent — reload the page to check.`
+          : `The reorder didn’t complete, so nothing was changed. ${failureMessage(
+              failed,
+            )}`,
       );
-      onError(failureMessage(failed));
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: key });
@@ -237,7 +304,18 @@ export function useEpisodeReorder({
     isPending: mutation.isPending,
     move: (from: number, to: number) => {
       if (from === to) return;
-      mutation.mutate({ from, to });
+      const { patches, refused } = reorderEpisodes(
+        ordered,
+        from,
+        to,
+        lockedIds,
+      );
+      if (refused) {
+        onBlocked();
+        return;
+      }
+      if (patches.length === 0) return;
+      mutation.mutate({ patches });
     },
   };
 }

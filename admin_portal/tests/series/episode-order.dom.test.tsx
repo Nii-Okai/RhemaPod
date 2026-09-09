@@ -69,17 +69,27 @@ function page(items: Ep[]) {
 interface BackendOptions {
   /** ids whose PATCH should 500. */
   failPatch?: string[];
-  /** collector for PATCH bodies, keyed by sermon id. */
+  /** collector for the last PATCH body per sermon id. */
   patched?: Record<string, number>;
+  /** ordered log of every PATCH the client issued. */
+  calls?: Array<{ id: string; episode_number: number }>;
+  /** override the seed episode set. */
+  episodes?: Ep[];
 }
 
-function backend({ failPatch = [], patched = {} }: BackendOptions = {}) {
-  const state = makeEpisodes();
+function backend({
+  failPatch = [],
+  patched = {},
+  calls = [],
+  episodes,
+}: BackendOptions = {}) {
+  const state = episodes ?? makeEpisodes();
   server.use(
     http.get("*/api/bff/sermons", () => HttpResponse.json(page(state))),
     http.patch("*/api/bff/sermons/:id", async ({ params, request }) => {
       const id = params.id as string;
       const body = (await request.json()) as { episode_number: number };
+      calls.push({ id, episode_number: body.episode_number });
       if (failPatch.includes(id)) {
         await delay(10);
         return HttpResponse.json(
@@ -93,7 +103,7 @@ function backend({ failPatch = [], patched = {} }: BackendOptions = {}) {
       return HttpResponse.json({ id, episode_number: body.episode_number });
     }),
   );
-  return { state, patched };
+  return { state, patched, calls };
 }
 
 function renderPanel() {
@@ -195,5 +205,81 @@ describe("EpisodeOrder", () => {
     expect(
       screen.getByRole("button", { name: "Move “Faith Over Fear” up" }),
     ).toBeEnabled();
+  });
+
+  it("refuses a move whose span crosses a locked episode: zero PATCHes + a note", async () => {
+    const patched: Record<string, number> = {};
+    const calls: Array<{ id: string; episode_number: number }> = [];
+    backend({
+      patched,
+      calls,
+      episodes: [
+        { id: "e1", title: "Grace Abounding", episode_number: 1, status: "published" },
+        { id: "e2", title: "Faith Over Fear", episode_number: 3, status: "under_review" },
+        { id: "e3", title: "The Lord's Prayer", episode_number: 5, status: "draft" },
+      ],
+    });
+    renderPanel();
+    await screen.findByText("The Lord's Prayer");
+
+    // e3 is the only unlocked, movable row; moving it up sweeps the locked e2.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Move “The Lord's Prayer” up" }),
+    );
+
+    expect(
+      await screen.findByText("Can’t move past an episode that’s in review."),
+    ).toBeInTheDocument();
+
+    // No PATCH was issued and the visible order is unchanged.
+    expect(calls).toEqual([]);
+    expect(patched).toEqual({});
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Grace Abounding");
+    expect(items[1]).toHaveTextContent("Faith Over Fear");
+    expect(items[2]).toHaveTextContent("The Lord's Prayer");
+  });
+
+  it("on one-lands-one-fails, reverts the landed row and ends at the pre-move order", async () => {
+    const patched: Record<string, number> = {};
+    const calls: Array<{ id: string; episode_number: number }> = [];
+    // Move-down on ep 01 => e1 takes 3, e2 takes 1. e2's PATCH fails.
+    backend({ failPatch: ["e2"], patched, calls });
+    renderPanel();
+    await screen.findByText("Grace Abounding");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: 'Move “Grace Abounding” down' }),
+    );
+
+    // The alert says nothing changed…
+    expect(
+      await screen.findByText(/The reorder didn’t complete/),
+    ).toBeInTheDocument();
+
+    // …because the landed row (e1 → 3) was PATCHed back to its pre-move 1.
+    await waitFor(() => {
+      expect(calls).toHaveLength(3);
+    });
+    // Forward pass (order-independent): e1→3 and e2→1.
+    expect(calls.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        { id: "e1", episode_number: 3 },
+        { id: "e2", episode_number: 1 },
+      ]),
+    );
+    // Then the best-effort revert of the one row that landed.
+    expect(calls[2]).toEqual({ id: "e1", episode_number: 1 });
+    expect(patched).toEqual({ e1: 1 });
+
+    // Final panel order matches the pre-move order (01 Grace, 03 Faith, 05 Lord's).
+    await waitFor(() => {
+      const items = screen.getAllByRole("listitem");
+      expect(items[0]).toHaveTextContent("Grace Abounding");
+      expect(items[0]).toHaveTextContent("01");
+      expect(items[1]).toHaveTextContent("Faith Over Fear");
+      expect(items[1]).toHaveTextContent("03");
+      expect(items[2]).toHaveTextContent("The Lord's Prayer");
+    });
   });
 });

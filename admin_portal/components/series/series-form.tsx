@@ -123,7 +123,9 @@ export function SeriesForm({ mode, series }: SeriesFormProps) {
           tier: form.tier,
         },
         {
-          onSuccess: (data) => router.push(`/series/${data.id}`),
+          // `replace`, not `push` — the create route (`/series/new`) must not
+          // stay in history, or Back lands the user on a blank create form.
+          onSuccess: (data) => router.replace(`/series/${data.id}`),
           onError: (err) =>
             setAlert(errorMessage(err, "Couldn’t create the series.")),
         },

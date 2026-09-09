@@ -10,6 +10,7 @@ import { toBadgeStatus } from "@/components/sermons/sermon-status";
 import { formatDuration } from "@/lib/format";
 import { episodeNumberLabel } from "@/lib/series/episodes";
 import {
+  EPISODE_ORDER_LIMIT,
   useEpisodeReorder,
   useSeriesEpisodes,
 } from "@/lib/query/hooks/use-series-episodes";
@@ -39,10 +40,19 @@ import type { SermonListItem } from "@/lib/query/hooks/use-sermons";
    ── Locked rows ────────────────────────────────────────────────────────────
    `PATCH /api/v1/sermons/{id}` does NOT reject an `episode_number` change on a
    `pending_review` / `under_review` sermon (verified — `update_sermon` has no
-   status guard). But W8 established a client-side lock for those statuses, so
-   for consistency this panel disables the move control and drag on a locked
-   row. Noted in `status.md` that the rule belongs server-side, and in a bulk
-   endpoint.
+   status guard). W8 established a client-side lock for those statuses, so this
+   panel both disables the move control / drag on a locked row AND — because a
+   move of an *unlocked* row past a locked one would otherwise sweep the locked
+   row's number into the reassigned span — refuses any move whose span would
+   cross a locked row, surfacing a brief inline note instead. `reorderEpisodes`
+   enforces the fixed-point rule; the note is the panel's job. Noted in
+   `status.md` that the rule belongs server-side, and in a bulk endpoint.
+
+   ── >100 episodes ──────────────────────────────────────────────────────────
+   The admin sermon list is `updated_at desc`, not `episode_number`, so a series
+   with more than `EPISODE_ORDER_LIMIT` episodes loads an arbitrary recency
+   slice — reordering it is meaningless. Past the limit the panel is read-only
+   with a notice (→ [GATE 3 Batch 5]).
    ========================================================================== */
 
 const LOCKED_STATUSES: readonly string[] = ["pending_review", "under_review"];
@@ -55,22 +65,38 @@ export interface EpisodeOrderProps {
 export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
   const query = useSeriesEpisodes(seriesId);
   const episodes = React.useMemo<SermonListItem[]>(
-    () => query.data ?? [],
+    () => query.data?.episodes ?? [],
     [query.data],
   );
+  const overLimit = (query.data?.total ?? 0) > EPISODE_ORDER_LIMIT;
   const [alert, setAlert] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState<string | null>(null);
+
+  const lockedIds = React.useMemo(
+    () =>
+      new Set(
+        episodes
+          .filter((ep) => LOCKED_STATUSES.includes(ep.status))
+          .map((ep) => ep.id),
+      ),
+    [episodes],
+  );
 
   const reorder = useEpisodeReorder({
     seriesId,
     ordered: episodes,
+    lockedIds,
     onError: setAlert,
+    onBlocked: () =>
+      setNote("Can’t move past an episode that’s in review."),
   });
 
   const dragFrom = React.useRef<number | null>(null);
 
   const move = (from: number, to: number) => {
-    if (from === to || to < 0 || to >= episodes.length) return;
+    if (from === to || to < 0 || to >= episodes.length || overLimit) return;
     setAlert(null);
+    setNote(null);
     reorder.move(from, to);
   };
 
@@ -98,6 +124,17 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
             </button>
           </span>
         </Alert>
+      ) : null}
+
+      {overLimit ? (
+        <Alert variant="warning" title="Reordering is disabled">
+          This series has more than {EPISODE_ORDER_LIMIT} episodes — reordering
+          is disabled here.
+        </Alert>
+      ) : note ? (
+        <p role="status" className="text-[12.5px] text-ink-muted">
+          {note}
+        </p>
       ) : null}
 
       {query.isPending ? (
@@ -129,7 +166,7 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
         <ul className="flex flex-col" data-slot="episode-order-list">
           {episodes.map((ep, index) => {
             const locked = LOCKED_STATUSES.includes(ep.status);
-            const draggable = !locked && !reorder.isPending;
+            const draggable = !locked && !reorder.isPending && !overLimit;
             return (
               <li
                 key={ep.id}
@@ -146,6 +183,9 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
                   const from = dragFrom.current;
                   dragFrom.current = null;
                   if (from !== null) move(from, index);
+                }}
+                onDragEnd={() => {
+                  dragFrom.current = null;
                 }}
                 className="flex h-[56px] items-center gap-12 border-b border-border-subtle last:border-b-0"
               >
@@ -197,7 +237,9 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
                   <MoveButton
                     label={`Move “${ep.title}” up`}
                     glyph="↑"
-                    disabled={locked || reorder.isPending || index === 0}
+                    disabled={
+                      locked || overLimit || reorder.isPending || index === 0
+                    }
                     onClick={() => move(index, index - 1)}
                   />
                   <MoveButton
@@ -205,6 +247,7 @@ export function EpisodeOrder({ seriesId, seriesTitle }: EpisodeOrderProps) {
                     glyph="↓"
                     disabled={
                       locked ||
+                      overLimit ||
                       reorder.isPending ||
                       index === episodes.length - 1
                     }

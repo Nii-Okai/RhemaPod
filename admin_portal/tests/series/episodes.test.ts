@@ -84,6 +84,40 @@ describe("reorderEpisodes", () => {
     expect(reorderEpisodes(gapped, 0, 9).patches).toEqual([]);
     expect(reorderEpisodes(gapped, -1, 0).patches).toEqual([]);
   });
+
+  describe("locked (in-review) episodes are immovable fixed points", () => {
+    const rows = [ep("a", 1), ep("b", 3), ep("c", 5), ep("d", 7)];
+
+    it("refuses a move whose span contains a locked row (no patches)", () => {
+      // Move d (idx 3) up to idx 1 — the span [1,3] contains locked c.
+      const out = reorderEpisodes(rows, 3, 1, new Set(["c"]));
+      expect(out.refused).toBe(true);
+      expect(out.patches).toEqual([]);
+      expect(out.order.map((e) => e.id)).toEqual(["a", "b", "c", "d"]);
+    });
+
+    it("refuses a move of a locked row itself", () => {
+      const out = reorderEpisodes(rows, 2, 0, new Set(["c"]));
+      expect(out.refused).toBe(true);
+      expect(out.patches).toEqual([]);
+    });
+
+    it("allows a move whose span clears every locked row", () => {
+      // Swap a and b; locked c/d are outside the span.
+      const out = reorderEpisodes(rows, 0, 1, new Set(["c", "d"]));
+      expect(out.refused).toBe(false);
+      expect(out.patches).toEqual([
+        { id: "b", title: "B", episode_number: 1 },
+        { id: "a", title: "A", episode_number: 3 },
+      ]);
+    });
+
+    it("is a plain reorder when the locked set is empty", () => {
+      const out = reorderEpisodes(rows, 0, 1, new Set());
+      expect(out.refused).toBe(false);
+      expect(out.patches.map((p) => p.id).sort()).toEqual(["a", "b"]);
+    });
+  });
 });
 
 describe("seriesFooterLine", () => {

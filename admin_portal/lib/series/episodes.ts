@@ -32,8 +32,12 @@ export interface ReorderResult<T extends OrderableEpisode> {
       updated on every row the move touched — for the optimistic cache write. */
   order: T[];
   /** One entry per episode whose `episode_number` actually changed. Empty when
-      the move is a no-op. */
+      the move is a no-op *or* the move was refused (see `refused`). */
   patches: EpisodePatch[];
+  /** `true` when the move was refused because its span would cross or contain a
+      locked (in-review) episode. `order` is the input untouched, `patches` is
+      empty — the caller should surface a note, not issue any PATCH. */
+  refused: boolean;
 }
 
 /**
@@ -63,11 +67,20 @@ export function sortEpisodes<T extends OrderableEpisode>(episodes: readonly T[])
  * endpoints is preserved exactly. A `null` episode_number in the span is
  * replaced with a fresh number one past the highest in the whole series (the
  * backend auto-assigns on series attachment, so this is a defensive path).
+ *
+ * Locked (in-review) episodes are **immovable fixed points**. `lockedIds` is the
+ * set of sermon ids whose review lock forbids an `episode_number` change. If the
+ * span `[min(from,to), max(from,to)]` contains any locked row — including the
+ * moved row itself — the whole move is refused: `{ order: input, patches: [],
+ * refused: true }`. Shuffling numbers around fixed points is deliberately not
+ * attempted (the backend has no status guard, so a stray PATCH behind a
+ * disabled control would silently succeed); the caller shows a note instead.
  */
 export function reorderEpisodes<T extends OrderableEpisode>(
   episodes: readonly T[],
   from: number,
   to: number,
+  lockedIds?: ReadonlySet<string>,
 ): ReorderResult<T> {
   if (
     from === to ||
@@ -76,15 +89,23 @@ export function reorderEpisodes<T extends OrderableEpisode>(
     from >= episodes.length ||
     to >= episodes.length
   ) {
-    return { order: [...episodes], patches: [] };
+    return { order: [...episodes], patches: [], refused: false };
+  }
+
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+
+  if (lockedIds && lockedIds.size > 0) {
+    for (let i = lo; i <= hi; i += 1) {
+      if (lockedIds.has(episodes[i].id)) {
+        return { order: [...episodes], patches: [], refused: true };
+      }
+    }
   }
 
   const next = [...episodes];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
-
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
 
   const globalMax = episodes.reduce(
     (max, ep) => (ep.episode_number != null && ep.episode_number > max ? ep.episode_number : max),
@@ -113,7 +134,7 @@ export function reorderEpisodes<T extends OrderableEpisode>(
     return { ...ep, episode_number: assigned };
   });
 
-  return { order, patches };
+  return { order, patches, refused: false };
 }
 
 /** The design's footer line on a series card: `"3 episodes · Teaching"`. */
