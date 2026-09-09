@@ -136,6 +136,35 @@ services:
       retries: 5
       start_period: 15s
 
+  # Scheduled maintenance jobs (stale-upload sweep + subscription expiry).
+  # Profile-gated, so `docker compose up` does NOT start it — opt in with:
+  #     docker compose --profile sweeps up -d sweeps
+  # This is the DEV / self-host answer only. A deployed environment MUST run
+  # these on a real scheduler (ECS scheduled task, k8s CronJob, cron) with
+  # failure alerting and a concurrency lock — see DEPLOYMENT.md §5. Do not
+  # grow this into a job runner.
+  sweeps:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["sweeps"]
+    environment:
+      <<: *app-env
+    command:
+      - /bin/sh
+      - -c
+      - >
+        while true; do
+          python -m app.scripts.sweep_uploads || true;
+          python -m app.scripts.expire_subscriptions || true;
+          sleep 3600;
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   # One-shot migration runner. Started ONLY via its profile, never by `up`:
   #     docker compose run --rm migrate
   migrate:

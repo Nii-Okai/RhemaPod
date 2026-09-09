@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -77,20 +77,31 @@ async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
 
 
 class ContentError(Exception):
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        headers: dict[str, str] | None = None,
+    ):
         self.message = message
         self.status_code = status_code
+        # Optional response headers the router boundary should attach — e.g.
+        # `Retry-After` on a 429. Kept on the typed error so the service, which
+        # knows the limiter window, is the one that sets it.
+        self.headers = headers
         super().__init__(message)
 
 
-def display_name(full_name: str | None, email: str | None) -> str | None:
-    """Best human label for a user: full_name, else the email local-part, else
-    None. One definition for every DTO that denormalises an actor's name."""
+def display_name(full_name: str | None) -> str | None:
+    """Best human label for a user: `full_name` when set and non-blank, else
+    None. One definition for every DTO that denormalises an actor's name.
+
+    Deliberately no email fallback: an editor reads their own sermon's
+    approval log, so falling back to a reviewer's email local-part leaked an
+    inferred corporate address. `None` lets the client render "a reviewer"."""
     if full_name and full_name.strip():
         return full_name.strip()
-    if email and "@" in email:
-        return email.split("@", 1)[0]
-    return email or None
+    return None
 
 
 # ── Tier & locked resolution ──────────────────────────────────────────────────
@@ -376,12 +387,14 @@ async def get_sermon_for_staff(
         raise ContentError("Sermon not found", status_code=404)
 
     detail = await _assemble_sermon_detail(db, sermon, requester)
-    data = detail.model_dump()
-    # Staff DTO carries the RAW tier column (NULL = inherit from series), not
-    # the resolved effective tier the public `SermonDetail` exposes. See the
-    # SermonAdminDetail docstring.
-    data["tier"] = sermon.tier
-    return SermonAdminDetail(**data, updated_at=sermon.updated_at)
+    # `tier` stays the resolved effective tier (from `_assemble_sermon_detail`);
+    # `tier_override` carries the raw `Sermon.tier` column (NULL = inherit) so
+    # the editor's tier radio can tell "inherit" from an explicit "free".
+    return SermonAdminDetail(
+        **detail.model_dump(),
+        updated_at=sermon.updated_at,
+        tier_override=sermon.tier,
+    )
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -594,6 +607,9 @@ async def review_queue_page(
         .correlate(Sermon)
         .scalar_subquery()
     )
+    # Render the subquery once (SELECT) and order by its label, not the
+    # expression again — one execution per row instead of two.
+    submitted_at_col = submitted_at_sq.label("submitted_at")
     claimed_actor_sq = (
         select(ApprovalLog.actor_id)
         .where(
@@ -613,11 +629,14 @@ async def review_queue_page(
     rows = (await db.execute(
         select(
             Sermon,
-            submitted_at_sq.label("submitted_at"),
+            submitted_at_col,
             claimed_actor_sq.label("claimed_actor_id"),
         )
         .where(base_where)
-        .order_by(submitted_at_sq.asc().nullslast(), Sermon.created_at.asc())
+        .order_by(
+            nullslast(literal_column("submitted_at").asc()),
+            Sermon.created_at.asc(),
+        )
         .limit(max(1, min(limit, MAX_PAGE_SIZE)))
         .offset(max(0, offset))
     )).all()
@@ -639,10 +658,10 @@ async def review_queue_page(
     actor_ids = {row[2] for row in rows if row[2] is not None}
     actor_names: dict[uuid.UUID, str | None] = {}
     if actor_ids:
-        for uid, full_name, email in (await db.execute(
-            select(User.id, User.full_name, User.email).where(User.id.in_(actor_ids))
+        for uid, full_name in (await db.execute(
+            select(User.id, User.full_name).where(User.id.in_(actor_ids))
         )).all():
-            actor_names[uid] = display_name(full_name, email)
+            actor_names[uid] = display_name(full_name)
 
     items = [
         ReviewQueueItem(
@@ -656,7 +675,6 @@ async def review_queue_page(
             category_name=names.categories.get(sermon.category_id),
             series_id=sermon.series_id,
             series_title=names.series.get(sermon.series_id),
-            is_standalone=sermon.series_id is None,
             tier=effective_tier(sermon, series_map.get(sermon.series_id)),
             status=sermon.status,
             submitted_at=submitted_at,
@@ -672,15 +690,6 @@ async def review_queue_page(
     return items, total
 
 
-async def approval_history(db: AsyncSession, sermon_id: uuid.UUID) -> list[ApprovalLog]:
-    stmt = (
-        select(ApprovalLog)
-        .where(ApprovalLog.sermon_id == sermon_id)
-        .order_by(ApprovalLog.created_at.asc())
-    )
-    return list((await db.execute(stmt)).scalars().all())
-
-
 async def _approval_log_items(
     db: AsyncSession, sermon_id: uuid.UUID
 ) -> list[ApprovalLogItem]:
@@ -688,7 +697,7 @@ async def _approval_log_items(
     display name (left join on `users`; NULL-safe if the row's actor was
     since deleted — RESTRICT makes that rare, not impossible)."""
     rows = (await db.execute(
-        select(ApprovalLog, User.full_name, User.email)
+        select(ApprovalLog, User.full_name)
         .outerjoin(User, User.id == ApprovalLog.actor_id)
         .where(ApprovalLog.sermon_id == sermon_id)
         .order_by(ApprovalLog.created_at.asc())
@@ -698,11 +707,11 @@ async def _approval_log_items(
             from_status=entry.from_status,
             to_status=entry.to_status,
             actor_id=entry.actor_id,
-            actor_name=display_name(full_name, email),
+            actor_name=display_name(full_name),
             note=entry.note,
             created_at=entry.created_at,
         )
-        for entry, full_name, email in rows
+        for entry, full_name in rows
     ]
 
 

@@ -1324,10 +1324,6 @@
             "title": "Id",
             "type": "string"
           },
-          "is_standalone": {
-            "title": "Is Standalone",
-            "type": "boolean"
-          },
           "renditions_ready": {
             "title": "Renditions Ready",
             "type": "integer"
@@ -1420,7 +1416,6 @@
           "speaker_id",
           "category_id",
           "series_id",
-          "is_standalone",
           "tier",
           "status",
           "submitted_at",
@@ -1635,7 +1630,7 @@
         "type": "object"
       },
       "SermonAdminDetail": {
-        "description": "Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor\nscreen's \"saved N min ago\" stamp needs a server-side `updated_at` baseline,\nwhich the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must\nnot carry.\n\n`tier` is deliberately re-typed here: on the STAFF read it is the raw\n`Sermon.tier` column, which is NULL when the sermon inherits its tier from\nits series (or the free default). The public `SermonDetail.tier` stays the\n*resolved* effective tier \u2014 the editor screen has to tell \"inherit\" apart\nfrom an explicit \"free\", which the resolved value hides.",
+        "description": "Staff-facing detail. Mirrors the `SermonAdminListItem` split: the editor\nscreen's \"saved N min ago\" stamp needs a server-side `updated_at` baseline,\nwhich the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must\nnot carry.\n\n`tier` keeps the inherited meaning \u2014 the *resolved* effective tier (sermon\ntier, else series tier, else free), same as `SermonDetail`. The editor\nscreen also needs the raw column to drive the tier radio, so that is a\nseparate field: `tier_override` is `Sermon.tier` verbatim \u2014 NULL when the\nsermon inherits from its series (or the free default), otherwise the\nexplicit choice. Reassigning `tier`'s meaning in a subclass was an LSP trap\nthat the Series/Announcements editors would have cloned.",
         "properties": {
           "category_id": {
             "anyOf": [
@@ -1794,6 +1789,9 @@
             "title": "Thumbnail Url"
           },
           "tier": {
+            "$ref": "#/components/schemas/ContentTier"
+          },
+          "tier_override": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ContentTier"
@@ -1830,6 +1828,7 @@
           "category_id",
           "series_id",
           "episode_number",
+          "tier",
           "locked",
           "status",
           "tags",

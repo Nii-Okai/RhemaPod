@@ -161,14 +161,17 @@ class SermonAdminDetail(SermonDetail):
     which the public `SermonDetail` (anonymous `/catalog/sermons/{id}`) must
     not carry.
 
-    `tier` is deliberately re-typed here: on the STAFF read it is the raw
-    `Sermon.tier` column, which is NULL when the sermon inherits its tier from
-    its series (or the free default). The public `SermonDetail.tier` stays the
-    *resolved* effective tier — the editor screen has to tell "inherit" apart
-    from an explicit "free", which the resolved value hides.
+    `tier` keeps the inherited meaning — the *resolved* effective tier (sermon
+    tier, else series tier, else free), same as `SermonDetail`. The editor
+    screen also needs the raw column to drive the tier radio, so that is a
+    separate field: `tier_override` is `Sermon.tier` verbatim — NULL when the
+    sermon inherits from its series (or the free default), otherwise the
+    explicit choice. Reassigning `tier`'s meaning in a subclass was an LSP trap
+    that the Series/Announcements editors would have cloned.
     """
 
-    tier: ContentTier | None = None
+    # Raw `Sermon.tier` column: None = inherit from series / free default.
+    tier_override: ContentTier | None = None
     updated_at: datetime | None
 
 
@@ -183,9 +186,10 @@ class ApprovalLogItem(BaseModel):
     from_status: str | None
     to_status: str
     actor_id: uuid.UUID
-    # Display name of the actor: users.full_name, else the email local-part,
-    # else None. Lets the editor's approval-log card read "Rejected by Ada
-    # Nwosu" rather than a bare "Rejected".
+    # Display name of the actor: users.full_name when set, else None (the
+    # client renders "a reviewer" / "—"). Deliberately NOT the email
+    # local-part — that leaked an inferred corporate address to an editor
+    # reading their own sermon's log.
     actor_name: str | None = None
     note: str | None
     created_at: datetime
@@ -212,8 +216,9 @@ class ReviewQueueItem(BaseModel):
     category_name: str | None = None
     series_id: uuid.UUID | None
     series_title: str | None = None
-    # True when the sermon belongs to no series (series_id is None).
-    is_standalone: bool
+    # `series_id is None` already tells the client whether this is a standalone
+    # sermon — the sibling list DTOs (SermonListItem / SermonAdminListItem)
+    # carry no such bool, so neither does this one.
     # Resolved effective tier: sermon tier, else series tier, else free.
     tier: ContentTier
     # pending_review or under_review (the only two statuses in the queue).
@@ -420,9 +425,10 @@ class AnnouncementApprovalLogItem(BaseModel):
     from_status: str | None
     to_status: str
     actor_id: uuid.UUID
-    # Same shape as ApprovalLogItem.actor_name (full_name / email local-part /
-    # None). The announcement editor isn't built yet, but the field is cheap
-    # to fill and keeps the two approval-log DTOs symmetric.
+    # Same shape as ApprovalLogItem.actor_name (users.full_name when set, else
+    # None — never the email local-part). The announcement editor isn't built
+    # yet, but the field is cheap to fill and keeps the two approval-log DTOs
+    # symmetric.
     actor_name: str | None = None
     note: str | None
     created_at: datetime

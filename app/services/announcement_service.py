@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.models.content_schemas import AnnouncementApprovalLogItem
 from app.models.models import (
     Announcement,
     AnnouncementApprovalLog,
@@ -28,7 +29,6 @@ from app.services.approval import (
     TransitionError,
     resolve_announcement_transition,
 )
-from app.models.content_schemas import AnnouncementApprovalLogItem
 from app.services.content_service import ContentError, display_name
 
 settings = get_settings()
@@ -319,7 +319,7 @@ async def approval_history(
     display name (left join on `users`; NULL-safe). Mirrors the sermon
     `_approval_log_items` shape."""
     rows = (await db.execute(
-        select(AnnouncementApprovalLog, User.full_name, User.email)
+        select(AnnouncementApprovalLog, User.full_name)
         .outerjoin(User, User.id == AnnouncementApprovalLog.actor_id)
         .where(AnnouncementApprovalLog.announcement_id == announcement_id)
         .order_by(AnnouncementApprovalLog.created_at.asc())
@@ -329,11 +329,11 @@ async def approval_history(
             from_status=entry.from_status,
             to_status=entry.to_status,
             actor_id=entry.actor_id,
-            actor_name=display_name(full_name, email),
+            actor_name=display_name(full_name),
             note=entry.note,
             created_at=entry.created_at,
         )
-        for entry, full_name, email in rows
+        for entry, full_name in rows
     ]
 
 

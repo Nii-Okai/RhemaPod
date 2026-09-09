@@ -115,13 +115,36 @@ does not terminate TLS itself.
 
 ## 5. Scheduled jobs
 
+Two jobs **must** run on a schedule in **every** deployed environment:
+
 ```bash
-# Hourly — safety net for webhooks that never arrived
+# Hourly — safety net for webhooks that never arrived. Without it a missed
+# customer.subscription.deleted grants access indefinitely.
 uv run python -m app.scripts.expire_subscriptions
+
+# Hourly — fails upload jobs abandoned mid-PUT (tab closed, network dropped).
+# Without it those jobs sit in `awaiting_upload` forever and count toward the
+# per-sermon open-job cap, which can lock a sermon out of new uploads for up
+# to STALE_UPLOAD_HOURS (default 24h).
+uv run python -m app.scripts.sweep_uploads
 ```
 
-Without this, a missed `customer.subscription.deleted` grants access
-indefinitely.
+**Local / self-host:** the compose `sweeps` profile runs both on a 1-hour
+`sleep` loop:
+
+```bash
+docker compose --profile sweeps up -d sweeps
+```
+
+It is not started by `docker compose up` — it is opt-in.
+
+**Deployed environments:** run each job on a real scheduler — an ECS scheduled
+task, a Kubernetes `CronJob`, or plain `cron` on the box. The compose loop is a
+dev convenience, not a production job runner: it has no failure alerting, no
+retry/backoff, and no concurrency lock (two overlapping runs against the same
+DB are currently harmless but not guaranteed to stay so). A proper job runner
+with alerting and a lock is tracked on the production-readiness track and is
+out of scope here.
 
 ## 6. Stripe setup
 

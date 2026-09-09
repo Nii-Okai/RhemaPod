@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -100,6 +100,11 @@ async def create_upload_ticket(
     # Cap concurrent open jobs for this sermon. Retry-spam otherwise mints
     # unbounded awaiting_upload rows and orphan raw-bucket objects — the BFF
     # hides the client IP, so the global per-IP limiter never sees it (CWE-770).
+    #
+    # This is a count-then-insert: a spam bound, not an invariant. Two
+    # concurrent tickets can both pass the check at 4 and land the sermon at 6.
+    # Acceptable — the point is to stop unbounded retry loops, not to enforce
+    # an exact ceiling, and DELETE / the stale-job sweep drain the overshoot.
     open_states = (
         UploadStatus.AWAITING_UPLOAD,
         UploadStatus.UPLOADED,
@@ -115,6 +120,9 @@ async def create_upload_ticket(
             "Too many uploads in progress for this sermon — finish or cancel "
             "one first.",
             status_code=429,
+            # No window to quote for a state-based cap; a slot frees when an
+            # upload completes or is cancelled. 60s is a sane "come back soon".
+            headers={"Retry-After": "60"},
         )
 
     # Light retry rate-limit on top of the hard cap. Redis fixed-window, fails
@@ -129,6 +137,9 @@ async def create_upload_ticket(
             "Too many upload attempts for this sermon — wait a moment and try "
             "again.",
             status_code=429,
+            headers={
+                "Retry-After": str(settings.upload_ticket_rate_window_seconds)
+            },
         )
 
     if size_bytes is not None and size_bytes > settings.max_upload_bytes:
@@ -364,7 +375,19 @@ async def delete_upload_job(
     a job mid-transcode (`processing`) or already `ready` cannot be deleted
     this way. Storage cleanup is best-effort — the row is gone regardless, and
     a leftover object is a sweep's problem, not a 500.
+
+    Concurrency: the status guard lives IN the DELETE statement
+    (``WHERE status IN (...)``), not in a preceding Python check. A transcode
+    worker flipping the job awaiting_upload/uploaded → processing/ready between
+    a read and the delete would otherwise strand MediaRef rows and unlink a
+    raw object a live passthrough MediaRef still points at (CWE-367). With the
+    guard in the statement the loser of that race — and the loser of a
+    concurrent double-DELETE — simply matches 0 rows and gets a clean 404/409,
+    never a StaleDataError 500.
     """
+    # Ownership / scope is immutable (a job's sermon.created_by never changes),
+    # so this check is not part of the race and is done up front: an unknown
+    # id or another editor's job is 404, existence undisclosed.
     job = await db.get(UploadJob, job_id)
     if job is None:
         raise ContentError("Upload job not found", status_code=404)
@@ -373,16 +396,35 @@ async def delete_upload_job(
     if sermon is None or staff_scope_hides(sermon, actor):
         raise ContentError("Upload job not found", status_code=404)
 
-    if job.status not in _DELETABLE_JOB_STATES:
-        detail = f"Cannot delete an upload job that is '{job.status.value}'"
-        if job.status == UploadStatus.PROCESSING:
+    deleted = (await db.execute(
+        delete(UploadJob)
+        .where(
+            UploadJob.id == job_id,
+            UploadJob.status.in_(_DELETABLE_JOB_STATES),
+        )
+        .returning(UploadJob.raw_key)
+        .execution_options(synchronize_session=False)
+    )).first()
+
+    if deleted is None:
+        # 0 rows: between the read above and here, either a concurrent DELETE
+        # removed the row or the transcode worker moved it out of a deletable
+        # state. A fresh column-only read (no ORM identity map) answers 404 vs
+        # 409. Scope was already checked above and cannot change mid-request,
+        # so it is not re-checked here.
+        current = (await db.execute(
+            select(UploadJob.status).where(UploadJob.id == job_id)
+        )).scalar_one_or_none()
+        if current is None:
+            raise ContentError("Upload job not found", status_code=404)
+        detail = f"Cannot delete an upload job that is '{current.value}'"
+        if current == UploadStatus.PROCESSING:
             detail += " — it is still transcoding"
-        elif job.status == UploadStatus.READY:
+        elif current == UploadStatus.READY:
             detail += " — remove its renditions via the media endpoints instead"
         raise ContentError(detail, status_code=409)
 
-    raw_key = job.raw_key
-    await db.delete(job)
+    raw_key = deleted[0]
     await db.commit()
 
     try:

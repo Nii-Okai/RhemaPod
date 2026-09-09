@@ -30,6 +30,45 @@ _PLACEHOLDER_SECRET_MARKERS = (
 )
 
 
+# Hosts that mark an S3_PUBLIC_ENDPOINT as a dev-only compose shim rather than
+# a real object-storage origin.
+_LOCAL_ENDPOINT_MARKERS = (
+    "localhost", "127.0.0.1", "0.0.0.0", "::1",
+    "minio:", "host.docker.internal", ".invalid",
+)
+
+
+def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
+    """The one home for "a cleartext / compose-shim object-storage endpoint is
+    forbidden". Returns a list of problem strings (empty = clean).
+
+    Called by both preflights: `internet_reachable_preflight` (so it also fires
+    for staging, which `production_preflight` early-returns past) and
+    `production_preflight` (so a prod boot fails on it directly, not only via
+    the second validator).
+    """
+    problems: list[str] = []
+
+    if settings.s3_endpoint_url and not settings.s3_endpoint_url.lower().startswith(
+        "https://"
+    ):
+        problems.append(
+            "S3_ENDPOINT_URL must use https outside development — an http "
+            "endpoint sends credentials and objects in cleartext to the "
+            "object store. Unset it for real AWS S3."
+        )
+    if settings.s3_public_endpoint:
+        low = settings.s3_public_endpoint.lower()
+        if low.startswith("http://") or any(m in low for m in _LOCAL_ENDPOINT_MARKERS):
+            problems.append(
+                "S3_PUBLIC_ENDPOINT must be a real https host, not a "
+                "localhost/compose value — it is a dev-only shim for signing "
+                "presigned URLs for a browser that cannot resolve the "
+                "internal storage host. Unset it outside development."
+            )
+    return problems
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Local/dev only. .env is gitignored; .env.example is committed docs of
@@ -345,9 +384,11 @@ class Settings(BaseSettings):
             problems.append("ALLOWED_ORIGINS must use https in production")
         if self.frontend_base_url.startswith("http://"):
             problems.append("FRONTEND_BASE_URL must use https in production")
-        # The cleartext object-storage endpoint checks (S3_ENDPOINT_URL /
-        # S3_PUBLIC_ENDPOINT) now live in internet_reachable_preflight so they
-        # also fire for staging. That validator runs for production too.
+        # Cleartext / compose-shim object-storage endpoints: the rule and its
+        # message text live in `_forbid_cleartext_object_storage`.
+        # `internet_reachable_preflight` runs the same helper so the check also
+        # fires for staging (which this validator early-returns past).
+        problems.extend(_forbid_cleartext_object_storage(self))
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by
@@ -374,29 +415,7 @@ class Settings(BaseSettings):
         if not self.is_internet_reachable:
             return self
 
-        problems: list[str] = []
-
-        if self.s3_endpoint_url and not self.s3_endpoint_url.lower().startswith(
-            "https://"
-        ):
-            problems.append(
-                "S3_ENDPOINT_URL must use https outside development — an http "
-                "endpoint sends credentials and objects in cleartext to the "
-                "object store. Unset it for real AWS S3."
-            )
-        if self.s3_public_endpoint:
-            low = self.s3_public_endpoint.lower()
-            local_markers = (
-                "localhost", "127.0.0.1", "0.0.0.0", "::1",
-                "minio:", "host.docker.internal", ".invalid",
-            )
-            if low.startswith("http://") or any(m in low for m in local_markers):
-                problems.append(
-                    "S3_PUBLIC_ENDPOINT must be a real https host, not a "
-                    "localhost/compose value — it is a dev-only shim for signing "
-                    "presigned URLs for a browser that cannot resolve the "
-                    "internal storage host. Unset it outside development."
-                )
+        problems = _forbid_cleartext_object_storage(self)
 
         if problems:
             raise ValueError(

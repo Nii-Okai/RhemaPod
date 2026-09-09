@@ -44,7 +44,11 @@ def _err(exc: ContentError) -> HTTPException:
             status_code=403,
             detail={"upgrade_required": True, "reason": "subscription_needed"},
         )
-    return HTTPException(status_code=exc.status_code, detail=exc.message)
+    return HTTPException(
+        status_code=exc.status_code,
+        detail=exc.message,
+        headers=exc.headers or None,
+    )
 
 
 @router.post(

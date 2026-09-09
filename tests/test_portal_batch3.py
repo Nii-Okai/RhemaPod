@@ -106,7 +106,10 @@ async def test_review_queue_is_a_page_envelope_with_workflow_fields(client, engi
     assert item["submitted_at"] is not None
     assert item["renditions_ready"] == 0
     assert item["review_claimed_by"] is None
-    assert item["is_standalone"] is True
+    # No `is_standalone` bool — clients derive it from `series_id`, matching the
+    # sibling list DTOs (SermonListItem / SermonAdminListItem).
+    assert "is_standalone" not in item
+    assert item["series_id"] is None
     assert item["description"] == "A sermon on grace"
     assert item["tier"] == "free"
 
@@ -128,6 +131,34 @@ async def test_review_queue_orders_oldest_submission_first(client, engine):
 
     assert [i["id"] for i in items] == [old, fresh]
     assert items[0]["submitted_at"] < items[1]["submitted_at"]
+
+
+async def test_review_queue_submitted_at_is_the_latest_resubmission(client, engine):
+    """submit -> reject -> resubmit: `submitted_at` is the SECOND submit's
+    timestamp (max over the pending_review approval-log rows), not the first.
+    A future `max` -> `min` or `-> updated_at` refactor breaks this."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+
+    sid = await _new_sermon(client, ed, "Bounced then resubmitted")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    # Age the first submission well into the past.
+    await _backdate_submission(engine, sid, days=10)
+    await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "tighten the intro"}, headers=mgr,
+    )
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)  # resubmit, ~now
+
+    item = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"][0]
+
+    submitted = datetime.fromisoformat(item["submitted_at"])
+    if submitted.tzinfo is None:
+        submitted = submitted.replace(tzinfo=timezone.utc)
+    # The resubmit is seconds old; the backdated first submit is 10 days old.
+    assert datetime.now(timezone.utc) - submitted < timedelta(hours=1)
 
 
 async def test_review_queue_reports_rendition_count(client, engine):
@@ -154,7 +185,9 @@ async def test_review_queue_reports_rendition_count(client, engine):
 
 async def test_review_queue_shows_who_claimed_an_under_review_item(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
-    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    mgr = await make_user(
+        client, engine, "ivy@example.com", "manager", full_name="Ivy Okafor"
+    )
     sid = await _new_sermon(client, ed, "Picked up")
     await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
     await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr)
@@ -164,8 +197,22 @@ async def test_review_queue_shows_who_claimed_an_under_review_item(client, engin
     )).json()["items"][0]
 
     assert item["status"] == "under_review"
-    # mgr@example.com has no full_name -> email local-part.
-    assert item["review_claimed_by"] == "mgr"
+    assert item["review_claimed_by"] == "Ivy Okafor"
+
+
+async def test_review_queue_claimed_by_is_none_without_full_name(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")  # no name
+    sid = await _new_sermon(client, ed, "Picked up")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr)
+
+    item = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"][0]
+
+    # No email local-part fallback — the client renders "a reviewer".
+    assert item["review_claimed_by"] is None
 
 
 async def test_review_queue_paginates(client, engine):
@@ -218,7 +265,7 @@ async def test_approval_log_carries_actor_full_name(client, engine):
     assert rejection["actor_id"]  # still present
 
 
-async def test_approval_log_actor_name_falls_back_to_email_local_part(client, engine):
+async def test_approval_log_actor_name_is_none_without_full_name(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")  # no full_name
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     sid = await _new_sermon(client, ed, "S")
@@ -228,32 +275,79 @@ async def test_approval_log_actor_name_falls_back_to_email_local_part(client, en
         f"/api/v1/approvals/sermons/{sid}/approval-log", headers=mgr
     )).json()
     submit_row = next(e for e in log if e["to_status"] == "pending_review")
-    assert submit_row["actor_name"] == "ed"
+    # No email local-part fallback: an editor reading their own log must not
+    # see an inferred corporate address for a nameless reviewer.
+    assert submit_row["actor_name"] is None
+    assert submit_row["actor_id"]  # id is still present
+
+
+async def test_approval_log_row_survives_actor_deletion(client, engine):
+    """The `_approval_log_items` outerjoin keeps the row even when the actor
+    user is gone — `actor_name` is None, `actor_id` still points at the
+    (now-dangling) id."""
+    from sqlalchemy import text as _text
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "gone@example.com", "manager")
+    sid = await _new_sermon(client, ed, "Reviewed then reviewer left")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "needs work"}, headers=mgr,
+    )
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        mgr_id = (await s.execute(
+            _text("SELECT id FROM users WHERE email = :e"),
+            {"e": "gone@example.com"},
+        )).scalar_one()
+
+    # Drop the reviewer's user row out from under the log. FK is RESTRICT, so
+    # disable enforcement for this one statement (SQLite pragma is per-conn).
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        await conn.exec_driver_sql(
+            "DELETE FROM users WHERE email = 'gone@example.com'"
+        )
+        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    log = (await client.get(
+        f"/api/v1/approvals/sermons/{sid}/approval-log", headers=ed
+    )).json()
+    rejection = next(e for e in log if e["to_status"] == "rejected")
+    assert rejection["actor_name"] is None
+    assert uuid.UUID(str(mgr_id)) == uuid.UUID(rejection["actor_id"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. Stored tier on SermonAdminDetail
 # ═══════════════════════════════════════════════════════════════════════════════
-async def test_admin_detail_tier_is_null_when_sermon_inherits(client, engine):
+async def test_admin_detail_tier_override_is_null_when_sermon_inherits(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
     sid = await _new_sermon(client, ed, "Inheriting")  # no tier, no series
 
     body = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
-    assert body["tier"] is None
+    # `tier` stays the resolved effective value (same as the public DTO);
+    # `tier_override` is the raw column — NULL when the sermon inherits.
+    assert body["tier"] == "free"
+    assert body["tier_override"] is None
 
 
-async def test_admin_detail_tier_carries_explicit_value(client, engine):
+async def test_admin_detail_tier_override_carries_explicit_value(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
     sid = await _new_sermon(client, ed, "Explicit free", tier="free")
 
     body = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
     assert body["tier"] == "free"
+    assert body["tier_override"] == "free"
 
 
 async def test_public_detail_keeps_resolved_effective_tier(client, engine):
-    """The public SermonDetail must NOT gain the raw-nullable semantics: an
-    episode that inherits `paid` from its series reads `paid` there, while the
-    staff detail reads NULL."""
+    """The staff SermonAdminDetail keeps the inherited `tier` (resolved
+    effective value) and exposes the raw column separately as `tier_override`.
+    An episode that inherits `paid` from its series reads `paid` for `tier` on
+    both the staff and public reads, and `tier_override is None` on staff."""
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     series = (await client.post(
@@ -267,8 +361,10 @@ async def test_public_detail_keeps_resolved_effective_tier(client, engine):
     staff = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
     public = (await client.get(f"/api/v1/catalog/sermons/{sid}")).json()
 
-    assert staff["tier"] is None            # raw column
+    assert staff["tier"] == "paid"          # resolved effective tier (inherited)
+    assert staff["tier_override"] is None   # raw column: inherits from series
     assert public["tier"] == "paid"         # resolved effective tier
+    assert "tier_override" not in public    # staff-only field
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -368,6 +464,47 @@ async def test_delete_failed_job_is_allowed(client, engine):
     assert r.status_code == 204
 
 
+async def test_delete_loses_race_with_transcode_worker_cleanly(client, engine):
+    """The status guard is IN the DELETE statement, not a preceding Python
+    check. If the worker flips awaiting_upload/uploaded -> processing between a
+    caller's read and the delete, the guarded DELETE matches 0 rows: the
+    endpoint 409s and the job row is left intact (no stranded MediaRefs, no
+    unlinked raw object). We simulate the flip with `_force_job_status`."""
+    from app.models.models import UploadJob, UploadStatus
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = await _new_sermon(client, ed, "S")
+    ticket = await _ticket(client, ed, sid)
+
+    # Worker has moved on since the client last looked.
+    await _force_job_status(engine, ticket["job_id"], UploadStatus.PROCESSING)
+
+    r = await client.delete(f"/api/v1/uploads/{ticket['job_id']}", headers=ed)
+    assert r.status_code == 409
+
+    # The guarded DELETE matched nothing — the row is still there, untouched.
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        job = await s.get(UploadJob, uuid.UUID(str(ticket["job_id"])))
+        assert job is not None
+        assert job.status == UploadStatus.PROCESSING
+
+
+async def test_double_delete_is_204_then_404(client, engine):
+    """The loser of two DELETEs against the same job gets a clean 404, not a
+    StaleDataError 500. Sequential here; the guarded single-statement DELETE is
+    what makes the truly concurrent case safe too."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = await _new_sermon(client, ed, "S")
+    ticket = await _ticket(client, ed, sid)
+
+    first = await client.delete(f"/api/v1/uploads/{ticket['job_id']}", headers=ed)
+    assert first.status_code == 204
+
+    second = await client.delete(f"/api/v1/uploads/{ticket['job_id']}", headers=ed)
+    assert second.status_code == 404
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. Open-job cap + retry rate-limit
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -387,6 +524,28 @@ async def test_open_upload_job_cap_returns_429(client, engine):
     )
     assert r.status_code == 429
     assert "in progress" in r.json()["detail"].lower()
+    # Actionable 429: a fixed "come back soon" for the state-based cap.
+    assert r.headers["retry-after"] == "60"
+
+
+async def test_retry_rate_limit_429_carries_retry_after_window(client, engine, monkeypatch):
+    from app.services import media_service
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    sid = await _new_sermon(client, ed, "S")
+    monkeypatch.setattr(media_service.settings, "max_open_upload_jobs_per_sermon", 100)
+    monkeypatch.setattr(media_service.settings, "upload_ticket_rate_limit", 1)
+
+    assert (await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=VIDEO, headers=ed
+    )).status_code == 201
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=VIDEO, headers=ed
+    )
+    assert r.status_code == 429
+    assert r.headers["retry-after"] == str(
+        media_service.settings.upload_ticket_rate_window_seconds
+    )
 
 
 async def test_cancelling_a_job_frees_a_slot(client, engine):
