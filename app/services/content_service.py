@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import func, literal_column, nullslast, select
+from sqlalchemy import case, func, literal_column, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -559,6 +559,62 @@ _EDITOR_SCOPE_DENIED: dict[str, tuple[int, str]] = {
 }
 
 
+# Actions whose right to act is gated by the review claim (Batch 6 #9). The
+# claim is derived from the audit trail — the actor of the latest ApprovalLog
+# row that moved the sermon to `under_review` — not a column on `sermons`.
+_CLAIM_GATED_ACTIONS: frozenset[str] = frozenset({"approve", "reject", "publish"})
+# Only enforce the claim while the sermon is inside the active review cycle.
+# `publish` of an UNPUBLISHED sermon (a later re-publish) is deliberately open
+# to any manager — a stale claim from the original cycle must not lock it.
+_CLAIM_GATED_STATUSES: frozenset[SermonStatus] = frozenset(
+    {SermonStatus.UNDER_REVIEW, SermonStatus.APPROVED}
+)
+
+
+# Recency ordering for "rows that landed a sermon in under_review". `created_at`
+# is the primary key, but the server clock resolves to whole seconds under test,
+# so a take-over that supersedes a start-review in the same second would tie. A
+# row that came *from* under_review (a take-over) is by definition a later
+# lifecycle step than one that came from pending_review (the initial claim), so
+# it breaks the tie deterministically.
+_CLAIM_RECENCY = (
+    ApprovalLog.created_at.desc(),
+    case(
+        (ApprovalLog.from_status == SermonStatus.UNDER_REVIEW.value, 1), else_=0
+    ).desc(),
+)
+
+
+async def _review_claimer_id(
+    db: AsyncSession, sermon_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The manager who currently holds the review claim on a sermon: the actor of
+    the most recent ApprovalLog row that set status to `under_review`.
+
+    There is no `review_claimed_by` column — the claim lives in the append-only
+    log, so a take-over (which writes a fresh under_review → under_review row with
+    the new reviewer as actor) moves it. Mirrors `review_queue_page`'s
+    `claimed_actor_sq`. Returns None for a sermon that was never claimed.
+    """
+    return (await db.execute(
+        select(ApprovalLog.actor_id)
+        .where(
+            ApprovalLog.sermon_id == sermon_id,
+            ApprovalLog.to_status == SermonStatus.UNDER_REVIEW.value,
+        )
+        .order_by(*_CLAIM_RECENCY)
+        .limit(1)
+    )).scalar_one_or_none()
+
+
+async def _display_name_for(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    return display_name(
+        (await db.execute(
+            select(User.full_name).where(User.id == user_id)
+        )).scalar_one_or_none()
+    )
+
+
 async def transition(
     db: AsyncSession,
     sermon_id: uuid.UUID,
@@ -599,6 +655,24 @@ async def transition(
             status_code=409,
         )
 
+    # Review-claim lock (Batch 6 #9): once a manager has claimed a sermon via
+    # start-review, only that manager — or an admin — may approve / reject /
+    # publish it while it sits in the review cycle. An unclaimed pending_review
+    # sermon (no under_review row yet) stays open to any manager.
+    if action in _CLAIM_GATED_ACTIONS and sermon.status in _CLAIM_GATED_STATUSES:
+        claimer_id = await _review_claimer_id(db, sermon.id)
+        if (
+            claimer_id is not None
+            and claimer_id != actor.id
+            and actor.role != UserRole.ADMIN
+        ):
+            claimer_name = await _display_name_for(db, claimer_id)
+            raise ContentError(
+                "review_claimed_by_another"
+                + (f": {claimer_name}" if claimer_name else ""),
+                status_code=403,
+            )
+
     try:
         new_status = resolve_transition(action, sermon.status, actor.role)
     except TransitionError as exc:
@@ -634,26 +708,85 @@ async def transition(
     return sermon
 
 
+async def take_over_review(
+    db: AsyncSession, sermon_id: uuid.UUID, actor: User
+) -> Sermon:
+    """Reassign an in-progress review to `actor` (Batch 6 #9).
+
+    Valid only while the sermon is `under_review`. Status is unchanged; the
+    hand-off is recorded as an ApprovalLog row (under_review → under_review) whose
+    actor is the new reviewer, which is what moves the derived claim
+    (`_review_claimer_id`). If `actor` already holds the claim this is a 409
+    no-op rather than a duplicate log row.
+    """
+    sermon = (await db.execute(
+        select(Sermon).where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if sermon is None:
+        raise ContentError("Sermon not found", status_code=404)
+    if sermon.status != SermonStatus.UNDER_REVIEW:
+        raise ContentError("not under review yet", status_code=422)
+
+    claimer_id = await _review_claimer_id(db, sermon.id)
+    if claimer_id == actor.id:
+        raise ContentError("already_reviewing", status_code=409)
+
+    prev_name = (
+        await _display_name_for(db, claimer_id)
+        if claimer_id is not None
+        else None
+    )
+    note = f"Review taken over from {prev_name}" if prev_name else "Review taken over"
+    db.add(ApprovalLog(
+        sermon_id=sermon.id,
+        from_status=SermonStatus.UNDER_REVIEW.value,
+        to_status=SermonStatus.UNDER_REVIEW.value,
+        actor_id=actor.id,
+        note=note,
+    ))
+    await db.commit()
+    await db.refresh(sermon)
+
+    log.info(
+        "sermon_review_taken_over",
+        sermon_id=str(sermon.id),
+        by=str(actor.id),
+        from_claimer=str(claimer_id) if claimer_id is not None else None,
+    )
+    return sermon
+
+
 async def review_queue_page(
     db: AsyncSession, limit: int = 25, offset: int = 0
 ) -> tuple[list[ReviewQueueItem], int]:
-    """Sermons in pending_review / under_review, longest-waiting first.
+    """Sermons in pending_review / under_review / approved, longest-waiting first.
 
     Pagination shape mirrors `list_sermons_for_staff`: returns (page, total)
     where `total` is the count before limit/offset so the W10 screen can size
     its pager.
+
+    `approved` sermons stay in the queue (Batch 6 #12): "approve only" is not the
+    end of the workflow — the sermon is still waiting to be published. Publishing
+    it (→ `published`) drops it out. A `rejected` sermon is not in the queue.
 
     Two per-row values come from correlated subqueries against `approval_log`
     rather than new columns:
 
     * `submitted_at` — `max(created_at)` over the rows that moved this sermon
       to `pending_review` (the editor's last submit). It is also the sort key:
-      ascending, so the longest wait sits at the top.
+      ascending, so the longest wait sits at the top. An `approved` row keeps
+      that original submit time, so it sorts by the same waiting-time key as
+      everything else rather than jumping the queue.
     * `review_claimed_by` — the actor of the most recent `to_status =
-      under_review` row, resolved to a display name; only populated for
-      `under_review` items.
+      under_review` row, resolved to a display name; populated for `under_review`
+      and `approved` items (for `approved`, that's the reviewer who approved it).
     """
-    statuses = (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)
+    statuses = (
+        SermonStatus.PENDING_REVIEW,
+        SermonStatus.UNDER_REVIEW,
+        SermonStatus.APPROVED,
+    )
+    claimed_statuses = (SermonStatus.UNDER_REVIEW, SermonStatus.APPROVED)
     base_where = Sermon.status.in_(statuses)
 
     submitted_at_sq = (
@@ -674,7 +807,7 @@ async def review_queue_page(
             ApprovalLog.sermon_id == Sermon.id,
             ApprovalLog.to_status == SermonStatus.UNDER_REVIEW.value,
         )
-        .order_by(ApprovalLog.created_at.desc())
+        .order_by(*_CLAIM_RECENCY)
         .limit(1)
         .correlate(Sermon)
         .scalar_subquery()
@@ -740,12 +873,12 @@ async def review_queue_page(
             renditions_ready=media_counts.get(sermon.id, 0),
             review_claimed_by=(
                 actor_names.get(claimed_actor_id)
-                if sermon.status == SermonStatus.UNDER_REVIEW
+                if sermon.status in claimed_statuses
                 else None
             ),
             review_claimed_by_id=(
                 claimed_actor_id
-                if sermon.status == SermonStatus.UNDER_REVIEW
+                if sermon.status in claimed_statuses
                 else None
             ),
         )

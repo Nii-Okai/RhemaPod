@@ -295,7 +295,8 @@ class ReviewQueueItem(BaseModel):
     episode_number: int | None = None
     # Resolved effective tier: sermon tier, else series tier, else free.
     tier: ContentTier
-    # pending_review or under_review (the only two statuses in the queue).
+    # pending_review, under_review, or approved (an approved sermon stays in the
+    # queue until it is published — Batch 6 #12).
     status: SermonStatus
     # created_at of the most recent ApprovalLog row that moved this sermon to
     # pending_review — i.e. when the editor last submitted it. Drives the
@@ -303,10 +304,11 @@ class ReviewQueueItem(BaseModel):
     submitted_at: datetime | None
     # Number of MediaRef rows attached to the sermon (0 = nothing uploaded).
     renditions_ready: int
-    # For under_review items: the display name of whoever ran start-review
-    # (users.full_name / email local-part / None). None for pending_review.
+    # For under_review / approved items: the display name of whoever currently
+    # holds the review claim (ran start-review or took it over; for approved,
+    # the reviewer who approved it). None for pending_review.
     review_claimed_by: str | None = None
-    # For under_review items: the raw user id of whoever ran start-review, so the
+    # For under_review / approved items: the raw user id of that reviewer, so the
     # client can match it against the session user id instead of string-matching
     # `review_claimed_by` (namesakes, null names). None for pending_review.
     review_claimed_by_id: uuid.UUID | None = None
