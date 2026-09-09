@@ -22,8 +22,9 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    never a mocked fetch (§A.11). Covers: the >48h alert, "Under review · you"
    dropping "Approve only", the inline reject flow (guard + rollback with the
    note preserved), approve-and-publish as two ordered calls + the toast, the
-   card title linking to /sermons/{id}, "Watch" opening a media player, and the
-   empty state. */
+   card title linking to /sermons/{id}, "Start review" claiming a pending card
+   (+ rollback), per-card pending gating under concurrent actions, "Watch"
+   opening a media player, and the empty state. */
 
 /* --- next/navigation + next/link, mocked ----------------------------- */
 
@@ -469,6 +470,156 @@ describe("ReviewScreen — approve & publish", () => {
     expect(
       screen.queryByText(/was approved, but publishing failed/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewScreen — Start review claims the sermon", () => {
+  it("POSTs start-review, keeps the card in the queue as 'Under review · you', and drops 'Start review' + 'Approve only'", async () => {
+    const calls: string[] = [];
+    backend([item({ id: "a1", title: "Claim me" })], {
+      calls,
+      startReviewDelayMs: 40,
+    });
+
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+    await screen.findByText("Claim me");
+
+    await user.click(screen.getByRole("button", { name: "Start review" }));
+
+    // Optimistic — visible before the (delayed) response resolves.
+    expect(await screen.findByText("Under review · you")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Start review" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Approve only" }),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => expect(calls).toContain("start-review"));
+    // Still claimed after the settle refetch.
+    expect(screen.getByText("Under review · you")).toBeInTheDocument();
+    expect(calls.filter((c) => c === "start-review")).toHaveLength(1);
+  });
+
+  it("rolls back to 'pending_review' with a card-top alert when start-review 500s", async () => {
+    backend([item({ id: "a1", title: "Claim me" })]);
+    server.use(
+      http.post("*/api/bff/approvals/sermons/a1/start-review", async () => {
+        await delay(20);
+        return HttpResponse.json(
+          { detail: "Reviewer lock expired", correlation_id: "cid-sr1" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+    await screen.findByText("Claim me");
+
+    await user.click(screen.getByRole("button", { name: "Start review" }));
+
+    expect(
+      await screen.findByText("That action didn’t go through"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Reviewer lock expired/)).toBeInTheDocument();
+    // Rolled back: still a pending card, the affordance is offered again.
+    expect(
+      screen.getByRole("button", { name: "Start review" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText("Under review · you"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewScreen — concurrent actions", () => {
+  it("gates each card's pending state independently: a rolled-back card stays usable, an untouched card is never disabled, and neither action double-submits", async () => {
+    const calls: string[] = [];
+    backend(
+      [
+        item({ id: "a1", title: "First up" }),
+        item({ id: "a2", title: "Second up" }),
+        item({ id: "a3", title: "Bystander" }),
+      ],
+      { calls },
+    );
+    // a1's approve: slow success. a2's reject: quick failure → rollback.
+    server.use(
+      http.post(
+        "*/api/bff/approvals/sermons/a1/approve",
+        async ({ params }) => {
+          calls.push("approve");
+          await delay(120);
+          return HttpResponse.json({ id: params.id, status: "approved" });
+        },
+      ),
+      http.post("*/api/bff/approvals/sermons/a2/reject", async () => {
+        calls.push("reject");
+        await delay(20);
+        return HttpResponse.json(
+          { detail: "Reviewer lock expired", correlation_id: "cid-cc" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+    await screen.findByText("First up");
+
+    // Pre-stage a2's rejection so "Send rejection" is a single click.
+    await user.click(
+      within(cardFor("Second up")).getByRole("button", {
+        name: "Reject with note",
+      }),
+    );
+    await user.type(
+      within(cardFor("Second up")).getByLabelText(
+        "Rejection note (sent to the editor and kept in the log)",
+      ),
+      "Levels run hot in the last third.",
+    );
+
+    // Quick succession: approve a1, then send a2's rejection.
+    await user.click(
+      within(cardFor("First up")).getByRole("button", { name: "Approve only" }),
+    );
+    await user.click(
+      within(cardFor("Second up")).getByRole("button", {
+        name: "Send rejection",
+      }),
+    );
+
+    // a2's reject fails fast → its card rolls back into view with its own
+    // alert while a1's approve is still outstanding.
+    expect(
+      await screen.findByText("That action didn’t go through"),
+    ).toBeInTheDocument();
+
+    const secondCard = cardFor("Second up");
+    // a2's mutation has settled — its actions are live again, NOT held disabled
+    // by a1's still-in-flight approve (per-id gating, not one global flag).
+    expect(
+      within(secondCard).getByRole("button", { name: "Send rejection" }),
+    ).toBeEnabled();
+    expect(
+      within(secondCard).getByRole("button", { name: "Approve & publish" }),
+    ).toBeEnabled();
+
+    // The bystander card was never acted on and is never disabled — proof the
+    // busy flag is scoped per id, not a single screen-wide "a mutation is
+    // running" boolean (which this concurrent pair would otherwise trip).
+    expect(
+      within(cardFor("Bystander")).getByRole("button", { name: "Approve only" }),
+    ).toBeEnabled();
+
+    // Let a1's approve settle; each action fired exactly once (no double-submit).
+    await waitFor(() =>
+      expect(calls.filter((c) => c === "approve")).toHaveLength(1),
+    );
+    expect(calls.filter((c) => c === "reject")).toHaveLength(1);
   });
 });
 

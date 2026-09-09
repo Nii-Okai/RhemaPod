@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Dialog as RD } from "radix-ui";
+import { X } from "lucide-react";
 import { cn } from "cn";
 
 /* =============================================================================
@@ -11,7 +12,9 @@ import { cn } from "cn";
    trap + return, `Esc` to close, `role="dialog"` / `aria-modal`, scroll lock,
    the labelled title/description wiring. This file is only the skin: a dimmed
    `ink/40` backdrop and a white, radius-16, `shadow-toast` panel centred in the
-   viewport, entering with the same 120ms `rp-menu-in` motion as the menu.
+   viewport, entering with the same 120ms `rp-menu-in` motion as the menu, plus
+   a visible top-right `×` close control (Esc / outside-click alone aren't a
+   discoverable affordance).
 
    Every dialog MUST render a `<DialogTitle>` (visually hidden is fine) so the
    accessible name is set — Radix warns otherwise.
@@ -44,6 +47,15 @@ function DialogContent({
         {...props}
       >
         {children}
+        <RD.Close
+          aria-label="Close"
+          className={cn(
+            "absolute right-16 top-16 inline-flex size-7 items-center justify-center rounded-8 text-ink-faint outline-none transition-colors",
+            "hover:bg-surface-sunken hover:text-ink focus-visible:focus-ring-button",
+          )}
+        >
+          <X aria-hidden className="size-4" />
+        </RD.Close>
       </RD.Content>
     </RD.Portal>
   );
@@ -77,12 +89,14 @@ function DialogDescription({
 }
 
 /** A visually-hidden node — use to satisfy the required title/description
-    without showing it. */
+    without showing it. A `<div>` (not a `<span>`): Radix's `Description`
+    renders a `<p>`, and `<p>` inside `<span>` is invalid nesting the browser
+    would hoist. */
 function DialogSrOnly({ children }: { children: React.ReactNode }) {
   return (
-    <span className="absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0 [clip:rect(0_0_0_0)]">
+    <div className="absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0 [clip:rect(0_0_0_0)]">
       {children}
-    </span>
+    </div>
   );
 }
 

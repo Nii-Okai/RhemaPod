@@ -25,11 +25,14 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    The title links to `/sermons/{id}` (the staff detail/editor route); the
    action buttons sit beside it, not inside the link, so they never navigate.
 
+   "Start review" (on a `pending_review` card only) claims the sermon for review
+   (`onStartReview` → `POST …/{id}/start-review`): the card stays in the queue
+   but flips to `under_review` with `review_claimed_by` set. The take-over /
+   claim-lock / disabled-states affordances are a separate, later concern.
+
    "Watch" opens a media player for the sermon (`onPlay` → a <video>/<audio>
    dialog fed by `GET /sermons/{id}/stream`). It is disabled when the sermon
-   has no processed renditions yet. (The review take-over / claim action is a
-   separate, later concern — `review_claimed_by` still drives the read-only
-   "Under review · <name>" label below.)
+   has no processed renditions yet.
 
    Claim state. Structural decisions key off `item.status` directly (interim —
    TODO(batch): compare `review_claimed_by_id` once the backend returns it):
@@ -66,6 +69,9 @@ export interface SubmissionCardProps {
   onNoteChange: (value: string) => void;
   onStartReject: () => void;
   onCancelReject: () => void;
+  /** Claim this sermon for review (`POST …/{id}/start-review`). Only wired on a
+      `pending_review` card. */
+  onStartReview: () => void;
   /** Open the media player for this sermon. */
   onPlay: () => void;
   onApproveOnly: () => void;
@@ -98,6 +104,7 @@ export function SubmissionCard({
   onNoteChange,
   onStartReject,
   onCancelReject,
+  onStartReview,
   onPlay,
   onApproveOnly,
   onApproveAndPublish,
@@ -106,6 +113,7 @@ export function SubmissionCard({
 }: SubmissionCardProps) {
   const noteId = useId();
   const underReview = item.status === "under_review";
+  const pendingReview = item.status === "pending_review";
   // "Watch" plays the processed media; nothing to play until a rendition exists.
   const hasMedia = item.renditions_ready > 0;
   const duration =
@@ -241,6 +249,16 @@ export function SubmissionCard({
               >
                 Reject with note
               </Button>
+              {pendingReview ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={onStartReview}
+                >
+                  Start review
+                </Button>
+              ) : null}
               <Button
                 size="sm"
                 variant="ghost"

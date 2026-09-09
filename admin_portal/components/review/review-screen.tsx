@@ -133,8 +133,9 @@ export function ReviewScreen() {
     onApprovedNotPublished: (vars, detail) =>
       setPublishGap({ id: vars.item.id, title: vars.item.title, detail }),
     onSuccess: (vars) => {
-      // reject / approve leave the queue; watch stays but its local state is
-      // spent. Either way, drop this card's transient UI.
+      // reject / approve leave the queue; startReview keeps the card (now
+      // under_review) but its local state is spent. Either way, drop this
+      // card's transient UI.
       resetCard(vars.item.id);
       // A later successful action on the same sermon (e.g. the publish retry
       // going through) clears the standing "approved but not published" notice.
@@ -171,8 +172,9 @@ export function ReviewScreen() {
   // TODO(batch): compare `review_claimed_by_id` once the backend returns it —
   // the name match below is best-effort (namesakes collide; a null-name claimer
   // can't be attributed). Interim rule: anything `under_review` is treated as
-  // claimed regardless of whether the name resolved, and "Watch" is only ever
-  // offered on a `pending_review` card (see `SubmissionCard`), so it can't 409.
+  // claimed regardless of whether the name resolved, and "Start review" is only
+  // ever offered on a `pending_review` card (see `SubmissionCard`), so it can't
+  // 409.
   const claimFor = (item: ReviewQueueItem) => {
     if (item.status !== "under_review") {
       return { mine: false, claimedByOther: null };
@@ -264,6 +266,7 @@ export function ReviewScreen() {
                 onCancelReject={() =>
                   patchCard(item.id, { mode: "idle", note: "" })
                 }
+                onStartReview={() => actions.startReview(item)}
                 onPlay={() =>
                   setPlayerFor({ id: item.id, title: item.title })
                 }

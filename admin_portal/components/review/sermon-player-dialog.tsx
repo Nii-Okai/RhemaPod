@@ -49,7 +49,7 @@ export function SermonPlayerDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent aria-label={`Playing ${title}`}>
+      <DialogContent>
         <DialogTitle>{title}</DialogTitle>
         <DialogSrOnly>
           <DialogDescription>

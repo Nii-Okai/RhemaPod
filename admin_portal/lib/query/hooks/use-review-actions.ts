@@ -9,7 +9,7 @@
  *
  *   kind            wire                                          optimistic
  *   ────            ────                                          ──────────
- *   watch           POST …/{id}/start-review                      status → under_review,
+ *   startReview     POST …/{id}/start-review                      status → under_review,
  *                                                                 review_claimed_by → me
  *                                                                 (card stays in the queue)
  *   approve         POST …/{id}/approve                           card leaves the queue
@@ -72,7 +72,7 @@ import type {
 } from "@/lib/query/hooks/use-review-queue";
 
 export type ReviewActionKind =
-  | "watch"
+  | "startReview"
   | "approve"
   | "approvePublish"
   | "reject";
@@ -85,7 +85,7 @@ export interface ReviewActionVars {
 }
 
 const VERB: Record<ReviewActionKind, string> = {
-  watch: "start review on",
+  startReview: "start review on",
   approve: "approve",
   approvePublish: "approve and publish",
   reject: "reject",
@@ -172,7 +172,7 @@ function markApprovedInQueues(qc: QueryClient, id: string): void {
   }
 }
 
-/** Mark `id` as claimed by `claimedBy` (the "Watch" optimistic patch). */
+/** Mark `id` as claimed by `claimedBy` (the "Start review" optimistic patch). */
 function claimInQueues(
   qc: QueryClient,
   id: string,
@@ -221,7 +221,7 @@ const rejectCall = (id: string, note: string) =>
 async function runAction(vars: ReviewActionVars): Promise<void> {
   const id = vars.item.id;
   switch (vars.kind) {
-    case "watch":
+    case "startReview":
       await startReview(id);
       return;
     case "approve":
@@ -271,7 +271,7 @@ async function runAction(vars: ReviewActionVars): Promise<void> {
 
 export interface UseReviewActionsOptions {
   /** The signed-in reviewer's display name — the optimistic `review_claimed_by`
-      for "Watch", and what the screen compares for "· you". */
+      for "Start review", and what the screen compares for "· you". */
   meName: string | null;
   /** A card's action failed with nothing committed (a plain failure, or the
       `approve` leg of `approve_and_publish`). `vars` identifies the card;
@@ -316,7 +316,7 @@ export function useReviewActions(options: UseReviewActionsOptions) {
       });
       await qc.cancelQueries({ queryKey: queryKeys.review.queue() });
       const snapshot = currentQueues(qc);
-      if (vars.kind === "watch") {
+      if (vars.kind === "startReview") {
         claimInQueues(qc, vars.item.id, options.meName);
       } else {
         removeFromQueues(qc, vars.item.id);
@@ -368,7 +368,8 @@ export function useReviewActions(options: UseReviewActionsOptions) {
         instead of freezing the whole list, and holds for every id acted on
         concurrently (not just the most recent). */
     isPending: (id: string) => pendingIds.has(id),
-    watch: (item: ReviewQueueItem) => mutation.mutate({ kind: "watch", item }),
+    startReview: (item: ReviewQueueItem) =>
+      mutation.mutate({ kind: "startReview", item }),
     approve: (item: ReviewQueueItem) =>
       mutation.mutate({ kind: "approve", item }),
     approveAndPublish: (item: ReviewQueueItem) =>
