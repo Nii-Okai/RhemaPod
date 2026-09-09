@@ -76,6 +76,29 @@ async def next_episode_number(db: AsyncSession, series_id: uuid.UUID) -> int:
     return (highest or 0) + 1
 
 
+# ── Review lock on episode position ──────────────────────────────────────────
+_REVIEW_LOCK_STATUSES = (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW)
+
+
+def episode_number_move_locked(
+    sermon: Sermon, target_episode_number: int | None
+) -> bool:
+    """True when `sermon` is in review and `target_episode_number` would move it.
+
+    An episode in ``pending_review`` / ``under_review`` is an immovable fixed
+    point: its ``episode_number`` cannot change until the review finishes. Both
+    entry points that can renumber an episode — the single-row
+    ``PATCH /sermons/{id}`` and the bulk ``PUT /series/{id}/episode-order`` —
+    route their check through here. A target equal to the current number (or
+    ``None`` = "not being set") is not a move.
+    """
+    return (
+        sermon.status in _REVIEW_LOCK_STATUSES
+        and target_episode_number is not None
+        and target_episode_number != sermon.episode_number
+    )
+
+
 class ContentError(Exception):
     def __init__(
         self,
@@ -445,6 +468,18 @@ async def update_sermon(
     ):
         fields["episode_number"] = await next_episode_number(db, new_series)
 
+    # An in-review episode's position is locked. Scope: `episode_number` only —
+    # other field edits on a pending_review / under_review sermon keep whatever
+    # behaviour they have now. Same rule as the bulk episode-order endpoint.
+    if "episode_number" in fields and episode_number_move_locked(
+        sermon, fields["episode_number"]
+    ):
+        raise ContentError(
+            "This sermon is in review — its episode number is locked until the "
+            "review finishes.",
+            status_code=409,
+        )
+
     changed = False
     for key, value in fields.items():
         if getattr(sermon, key) != value:
@@ -758,6 +793,47 @@ async def list_categories(db: AsyncSession) -> list[Category]:
 list_categories_flat = list_categories
 
 
+def _category_public_stmt():
+    """Category rows + a correlated count of the sermons attached to each."""
+    sermon_count = (
+        select(func.count(Sermon.id))
+        .where(Sermon.category_id == Category.id)
+        .correlate(Category)
+        .scalar_subquery()
+        .label("sermon_count")
+    )
+    return select(Category, sermon_count)
+
+
+async def list_categories_with_counts(
+    db: AsyncSession,
+) -> list[tuple[Category, int]]:
+    stmt = _category_public_stmt().order_by(Category.name)
+    return [tuple(row) for row in (await db.execute(stmt)).all()]
+
+
+async def get_category_with_count(
+    db: AsyncSession, category_id: uuid.UUID
+) -> tuple[Category, int]:
+    row = (await db.execute(
+        _category_public_stmt().where(Category.id == category_id)
+    )).one_or_none()
+    if row is None:
+        raise ContentError("Category not found", status_code=404)
+    return tuple(row)
+
+
+def category_to_public(cat: Category, sermon_count: int) -> dict:
+    """Category fields + its sermon count, for the API layer (mirrors
+    `series_to_public`)."""
+    return {
+        "id": cat.id,
+        "name": cat.name,
+        "slug": cat.slug,
+        "sermon_count": sermon_count,
+    }
+
+
 async def get_category(db: AsyncSession, category_id: uuid.UUID) -> Category:
     cat = await db.get(Category, category_id)
     if cat is None:
@@ -802,6 +878,47 @@ async def get_speaker(db: AsyncSession, speaker_id: uuid.UUID) -> Speaker:
     return speaker
 
 
+def _speaker_public_stmt():
+    """Speaker rows + a correlated count of the sermons attached to each."""
+    sermon_count = (
+        select(func.count(Sermon.id))
+        .where(Sermon.speaker_id == Speaker.id)
+        .correlate(Speaker)
+        .scalar_subquery()
+        .label("sermon_count")
+    )
+    return select(Speaker, sermon_count)
+
+
+async def list_speakers_with_counts(
+    db: AsyncSession,
+) -> list[tuple[Speaker, int]]:
+    stmt = _speaker_public_stmt().order_by(Speaker.name)
+    return [tuple(row) for row in (await db.execute(stmt)).all()]
+
+
+async def get_speaker_with_count(
+    db: AsyncSession, speaker_id: uuid.UUID
+) -> tuple[Speaker, int]:
+    row = (await db.execute(
+        _speaker_public_stmt().where(Speaker.id == speaker_id)
+    )).one_or_none()
+    if row is None:
+        raise ContentError("Speaker not found", status_code=404)
+    return tuple(row)
+
+
+def speaker_to_public(speaker: Speaker, sermon_count: int) -> dict:
+    """Speaker fields + its sermon count, for the API layer (mirrors
+    `series_to_public`)."""
+    return {
+        "id": speaker.id,
+        "name": speaker.name,
+        "bio": speaker.bio,
+        "sermon_count": sermon_count,
+    }
+
+
 async def update_speaker(
     db: AsyncSession, speaker_id: uuid.UUID, name: str | None, bio: str | None, bio_set: bool
 ) -> Speaker:
@@ -831,9 +948,67 @@ async def get_series(db: AsyncSession, series_id: uuid.UUID) -> Series:
     return series
 
 
-async def list_series(db: AsyncSession) -> list[Series]:
-    rows = (await db.execute(select(Series).order_by(Series.title))).scalars().all()
-    return list(rows)
+# Per-series episode count + resolved category name, computed in the read query
+# via a correlated count subquery + an outer join (same style as
+# `review_queue_page`'s per-row subqueries). One query, no round-trip per row.
+def _series_public_stmt():
+    episode_count = (
+        select(func.count(Sermon.id))
+        .where(Sermon.series_id == Series.id)
+        .correlate(Series)
+        .scalar_subquery()
+        .label("episode_count")
+    )
+    return select(
+        Series, episode_count, Category.name.label("category_name")
+    ).outerjoin(Category, Category.id == Series.category_id)
+
+
+async def list_series(db: AsyncSession) -> list[tuple[Series, int, str | None]]:
+    stmt = _series_public_stmt().order_by(Series.title)
+    return [tuple(row) for row in (await db.execute(stmt)).all()]
+
+
+async def get_series_public(
+    db: AsyncSession, series_id: uuid.UUID
+) -> tuple[Series, int, str | None]:
+    row = (await db.execute(
+        _series_public_stmt().where(Series.id == series_id)
+    )).one_or_none()
+    if row is None:
+        raise ContentError("Series not found", status_code=404)
+    return tuple(row)
+
+
+# Series publish is manager/admin-only and only draft <-> published (unpublish).
+_SERIES_STATUS_TRANSITIONS = {
+    (SermonStatus.DRAFT, SermonStatus.PUBLISHED),
+    (SermonStatus.PUBLISHED, SermonStatus.DRAFT),
+}
+
+
+def _check_series_status_change(
+    series: Series, new_status: SermonStatus, editor: User
+) -> None:
+    """Guard the privileged `status` field on `SeriesUpdate`.
+
+    Only manager/admin may set it (editor -> 403, mirroring the other
+    privileged-field guards in this module). Allowed transitions are
+    ``draft -> published`` and ``published -> draft`` only; any other target is
+    422. A no-op (target == current) is allowed.
+    """
+    if editor.role == UserRole.EDITOR:
+        raise ContentError(
+            "Only a manager can publish or unpublish a series", status_code=403
+        )
+    if new_status == series.status:
+        return
+    if (series.status, new_status) not in _SERIES_STATUS_TRANSITIONS:
+        raise ContentError(
+            "A series can only move between draft and published, not "
+            f"{series.status.value} -> {new_status.value}",
+            status_code=422,
+        )
 
 
 async def update_series(
@@ -842,6 +1017,9 @@ async def update_series(
     series = await get_series(db, series_id)
     if editor.role == UserRole.EDITOR and series.created_by != editor.id:
         raise ContentError("You can only edit your own series", status_code=403)
+
+    if "status" in fields:
+        _check_series_status_change(series, fields["status"], editor)
 
     if "category_id" in fields and fields["category_id"] is not None:
         if await db.get(Category, fields["category_id"]) is None:
@@ -867,6 +1045,96 @@ async def delete_series(db: AsyncSession, series_id: uuid.UUID) -> None:
     await db.delete(series)
     await db.commit()
     await invalidate_catalog_cache()
+
+
+def _id_list(ids) -> str:
+    """Deterministic comma-joined id list for a validation message."""
+    return ", ".join(sorted(str(i) for i in ids))
+
+
+async def reorder_series_episodes(
+    db: AsyncSession,
+    series_id: uuid.UUID,
+    episode_ids: list[uuid.UUID],
+    actor: User,
+) -> list[Sermon]:
+    """Bulk, atomic reorder of a series' episodes.
+
+    ``episode_ids`` is the full ordered list of the series' episode (sermon)
+    ids. It must be *exactly* the series' current episode set — every id a
+    sermon with ``series_id == series_id``, with nothing missing, nothing
+    extra, and no duplicates — otherwise 422 (the message lists what is wrong).
+
+    Episodes are renumbered ``1..N`` by position, matching
+    ``next_episode_number`` (1-based). An episode in ``pending_review`` /
+    ``under_review`` is an immovable fixed point: if the new order would change
+    its number the whole operation is refused with 409, naming the locked
+    episode(s). All rows are written in one transaction or none.
+    """
+    series = await get_series(db, series_id)  # 404 if missing
+
+    rows = list((await db.execute(
+        select(Sermon).where(Sermon.series_id == series.id)
+    )).scalars().all())
+    by_id = {s.id: s for s in rows}
+    current_ids = set(by_id)
+
+    seen: set[uuid.UUID] = set()
+    dupes: set[uuid.UUID] = set()
+    for eid in episode_ids:
+        if eid in seen:
+            dupes.add(eid)
+        seen.add(eid)
+    missing = current_ids - seen
+    extra = seen - current_ids
+
+    if dupes or missing or extra:
+        problems: list[str] = []
+        if missing:
+            problems.append(f"missing episode(s): {_id_list(missing)}")
+        if extra:
+            problems.append(f"not an episode of this series: {_id_list(extra)}")
+        if dupes:
+            problems.append(f"listed more than once: {_id_list(dupes)}")
+        raise ContentError(
+            "episode_ids must be exactly this series' episodes — "
+            + "; ".join(problems),
+            status_code=422,
+        )
+
+    locked = [
+        by_id[eid]
+        for position, eid in enumerate(episode_ids, start=1)
+        if episode_number_move_locked(by_id[eid], position)
+    ]
+    if locked:
+        named = ", ".join(
+            f"{s.title!r} (episode {s.episode_number})" for s in locked
+        )
+        raise ContentError(
+            "Can't reorder — these episodes are in review and their position is "
+            f"locked: {named}",
+            status_code=409,
+        )
+
+    for position, eid in enumerate(episode_ids, start=1):
+        by_id[eid].episode_number = position
+    await db.commit()
+
+    ordered = [by_id[eid] for eid in episode_ids]
+
+    # episode_number rides on the cached public catalog card for a published
+    # episode — bust the cache if any moved (mirrors update_sermon).
+    if any(s.status == SermonStatus.PUBLISHED for s in ordered):
+        await invalidate_catalog_cache()
+
+    log.info(
+        "series_episodes_reordered",
+        series_id=str(series.id),
+        count=len(ordered),
+        by=str(actor.id),
+    )
+    return ordered
 
 
 # ── Sermons: list & delete ────────────────────────────────────────────────────

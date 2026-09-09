@@ -40,5 +40,8 @@ async def get_sermon(
 @router.get("/categories", response_model=list[CategoryPublic])
 async def get_categories(db: ReadDbDep) -> list[CategoryPublic]:
     """All categories. Flat — categories have no parent."""
-    rows = await content_service.list_categories(db)
-    return [CategoryPublic.model_validate(c) for c in rows]
+    rows = await content_service.list_categories_with_counts(db)
+    return [
+        CategoryPublic(**content_service.category_to_public(cat, sermon_count))
+        for cat, sermon_count in rows
+    ]

@@ -29,29 +29,35 @@ def _err(exc: ContentError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
+def _category_public(row: tuple[object, int]) -> CategoryPublic:
+    cat, sermon_count = row
+    return CategoryPublic(**content_service.category_to_public(cat, sermon_count))
+
+
 # Categories
 @router.post("", response_model=CategoryPublic, status_code=status.HTTP_201_CREATED)
 async def create_category(data: CategoryCreate, user: ManagerPlus, db: DbDep) -> CategoryPublic:
     try:
         cat = await content_service.create_category(db, data.name, data.slug)
+        row = await content_service.get_category_with_count(db, cat.id)
     except ContentError as exc:
         raise _err(exc)
-    return CategoryPublic.model_validate(cat)
+    return _category_public(row)
 
 
 @router.get("", response_model=list[CategoryPublic])
 async def list_categories(db: ReadDbDep) -> list[CategoryPublic]:
-    rows = await content_service.list_categories(db)
-    return [CategoryPublic.model_validate(c) for c in rows]
+    rows = await content_service.list_categories_with_counts(db)
+    return [_category_public(row) for row in rows]
 
 
 @router.get("/{category_id}", response_model=CategoryPublic)
 async def get_category(category_id: uuid.UUID, db: ReadDbDep) -> CategoryPublic:
     try:
-        cat = await content_service.get_category(db, category_id)
+        row = await content_service.get_category_with_count(db, category_id)
     except ContentError as exc:
         raise _err(exc)
-    return CategoryPublic.model_validate(cat)
+    return _category_public(row)
 
 
 @router.patch("/{category_id}", response_model=CategoryPublic)
@@ -62,9 +68,10 @@ async def update_category(
         cat = await content_service.update_category(
             db, category_id, name=data.name, slug=data.slug
         )
+        row = await content_service.get_category_with_count(db, cat.id)
     except ContentError as exc:
         raise _err(exc)
-    return CategoryPublic.model_validate(cat)
+    return _category_public(row)
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
