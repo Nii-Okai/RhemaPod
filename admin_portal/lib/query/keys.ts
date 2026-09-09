@@ -28,6 +28,11 @@ export type SermonListParams = NonNullable<
   operations["list_my_sermons_api_v1_sermons_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/announcements/admin/all` (W13). */
+export type AnnouncementListParams = NonNullable<
+  operations["list_all_announcements_api_v1_announcements_admin_all_get"]["parameters"]["query"]
+>;
+
 export const queryKeys = {
   sermons: {
     all: () => ["sermons"] as const,
@@ -78,6 +83,19 @@ export const queryKeys = {
   categories: {
     all: () => ["categories"] as const,
     list: () => [...queryKeys.categories.all(), "list"] as const,
+  },
+  /** Announcements admin list + editor (W13). Same shape as `speakers` /
+      `categories` — a domain root plus a `list()` sub-tree — but `list()` takes
+      the `{status, limit, offset}` params object (React Query hashes it stably),
+      so `lists()` is the coarse handle every announcement mutation invalidates.
+      There is no per-id `detail()`: the list carries `body`, and the by-id
+      admin read is manager-only, so the editor panel is fed straight from the
+      list cache. */
+  announcements: {
+    all: () => ["announcements"] as const,
+    lists: () => [...queryKeys.announcements.all(), "list"] as const,
+    list: (params: AnnouncementListParams = {}) =>
+      [...queryKeys.announcements.lists(), params] as const,
   },
   nav: {
     all: () => ["nav"] as const,
