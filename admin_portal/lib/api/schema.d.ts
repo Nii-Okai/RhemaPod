@@ -589,6 +589,10 @@ export interface paths {
         /**
          * Get Categories
          * @description All categories. Flat — categories have no parent.
+         *
+         *     Public-first: the common (anonymous) caller gets a published-only
+         *     `sermon_count`. A logged-in staffer (editor/manager/admin) hitting this
+         *     route gets the true all-status count — see `staff_sees_full_counts`.
          */
         get: operations["get_categories_api_v1_catalog_categories_get"];
         put?: never;
@@ -785,6 +789,41 @@ export interface paths {
         patch: operations["update_series_api_v1_series__series_id__patch"];
         trace?: never;
     };
+    "/api/v1/series/{series_id}/episode-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Episode Order
+         * @description Bulk atomic reorder of a series' episodes.
+         *
+         *     Body is the full ordered list of the series' episode (sermon) ids. Every id
+         *     must be an episode of this series and the set must be exactly the current
+         *     episode set — otherwise 422, naming what is wrong. Episodes are renumbered
+         *     ``1..N`` by position. An episode in ``pending_review`` / ``under_review`` is
+         *     a fixed point: if the new order would change its number the whole request is
+         *     refused with 409, naming the locked episode(s). All rows are written in one
+         *     transaction or none. Returns the reordered ``{id, episode_number}`` list.
+         *
+         *     Ceiling: at most ``MAX_PAGE_SIZE`` (100) ids. The drag client sources the
+         *     full episode set from ``GET /sermons?series_id=``, which pages at
+         *     ``MAX_PAGE_SIZE``, and this endpoint needs the complete ordered list — so a
+         *     series with more episodes than that cannot be reordered through the portal.
+         *     That is out of scope for this batch; the cap turns it into an explicit 422
+         *     rather than a silent partial write.
+         */
+        put: operations["reorder_episode_order_api_v1_series__series_id__episode_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/series/{series_id}/episodes": {
         parameters: {
             query?: never;
@@ -795,6 +834,10 @@ export interface paths {
         /**
          * Series Episodes
          * @description Published episodes of a series, ordered by episode number (gaps allowed).
+         *
+         *     Published-only by design; staff reads (a manager ordering drafts) go through
+         *     ``GET /sermons?series_id=`` (Isaac's call — no admin/``include_all`` variant
+         *     here).
          */
         get: operations["series_episodes_api_v1_series__series_id__episodes_get"];
         put?: never;
@@ -1528,6 +1571,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Sermon Count */
+            sermon_count: number;
             /** Slug */
             slug: string;
         };
@@ -1603,6 +1648,36 @@ export interface components {
             tier: components["schemas"]["ContentTier"];
             /** Title */
             title: string;
+        };
+        /**
+         * EpisodeOrderItem
+         * @description One row of the reordered episode list — the minimum the client needs to
+         *     apply the new order locally.
+         */
+        EpisodeOrderItem: {
+            /** Episode Number */
+            episode_number: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * EpisodeOrderRequest
+         * @description Full ordered list of a series' episode (sermon) ids for a bulk reorder.
+         *
+         *     Ceiling: ``MAX_PAGE_SIZE`` ids. The drag client assembles this list from
+         *     ``GET /sermons?series_id=``, which is itself capped at ``MAX_PAGE_SIZE`` per
+         *     page, and this endpoint requires the *complete* ordered set — so a series
+         *     with more episodes than that cannot be reordered through the portal at all.
+         *     Reordering a >``MAX_PAGE_SIZE``-episode series is out of scope for this
+         *     batch; the cap makes that limit an explicit 422 rather than a silent
+         *     partial write.
+         */
+        EpisodeOrderRequest: {
+            /** Episode Ids */
+            episode_ids: string[];
         };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
@@ -1851,8 +1926,12 @@ export interface components {
         SeriesPublic: {
             /** Category Id */
             category_id: string | null;
+            /** Category Name */
+            category_name: string | null;
             /** Description */
             description: string | null;
+            /** Episode Count */
+            episode_count: number;
             /**
              * Id
              * Format: uuid
@@ -1871,6 +1950,7 @@ export interface components {
             category_id?: string | null;
             /** Description */
             description?: string | null;
+            status?: components["schemas"]["SermonStatus"] | null;
             tier?: components["schemas"]["ContentTier"] | null;
             /** Title */
             title?: string | null;
@@ -2133,6 +2213,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Sermon Count */
+            sermon_count: number;
         };
         /** SpeakerUpdate */
         SpeakerUpdate: {
@@ -3951,6 +4033,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SeriesPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_episode_order_api_v1_series__series_id__episode_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EpisodeOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeOrderItem"][];
                 };
             };
             /** @description Validation Error */

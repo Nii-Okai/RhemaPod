@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/portal/empty-state";
-import { useCategories } from "@/lib/query/hooks/use-categories";
 import { useSeriesList } from "@/lib/query/hooks/use-series";
 import { SeriesCard } from "./series-card";
 import { NewSeriesTile } from "./new-series-tile";
@@ -40,12 +39,6 @@ function CardSkeleton() {
 
 export function SeriesGrid() {
   const series = useSeriesList();
-  const categories = useCategories();
-
-  const categoryName = (id: string | null): string | null => {
-    if (!id) return null;
-    return categories.data?.find((c) => c.id === id)?.name ?? null;
-  };
 
   if (series.isPending) {
     return (
@@ -84,7 +77,7 @@ export function SeriesGrid() {
   return (
     <div className={GRID_CLASS} data-slot="series-grid">
       {series.data.map((s) => (
-        <SeriesCard key={s.id} series={s} categoryName={categoryName(s.category_id)} />
+        <SeriesCard key={s.id} series={s} />
       ))}
       <NewSeriesTile />
     </div>

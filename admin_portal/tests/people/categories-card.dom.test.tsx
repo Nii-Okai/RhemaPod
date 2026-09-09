@@ -17,19 +17,20 @@ import { server } from "../msw/server";
 import { CategoriesCard } from "@/components/people/categories-card";
 import type { Category } from "@/lib/query/hooks/use-categories";
 
-/* W12 — the Categories card (happy-dom). Every backend call is MSW (§A.11).
-   Covers: count-bearing pills, the "+ new" reveal, the live client-side slug
-   preview (and the manual-override latch), a 409 duplicate-slug rendering
-   inline on the preview field (never a card alert), an empty slug blocking
-   submit, and an optimistic delete carrying the SET-NULL copy. */
+/* W12 / Batch 5 — the Categories card (happy-dom). Every backend call is MSW
+   (§A.11). Covers: pills reading `sermon_count` straight off the list DTO (no
+   probe), the "+ new" reveal, the live client-side slug preview (and the
+   manual-override latch), a 409 duplicate-slug rendering inline on the preview
+   field (never a card alert), an empty slug blocking submit, and an optimistic
+   delete carrying the SET-NULL copy. */
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 const SEED: Category[] = [
-  { id: "cat-1", name: "Teaching", slug: "teaching" },
-  { id: "cat-2", name: "Testimony", slug: "testimony" },
+  { id: "cat-1", name: "Teaching", slug: "teaching", sermon_count: 5 },
+  { id: "cat-2", name: "Testimony", slug: "testimony", sermon_count: 2 },
 ];
 
 interface BackendOptions {
@@ -41,11 +42,6 @@ function backend({ onPost, postStatus = 201 }: BackendOptions = {}) {
   let categories: Category[] = SEED.map((c) => ({ ...c }));
   server.use(
     http.get("*/api/bff/categories", () => HttpResponse.json(categories)),
-    http.get("*/api/bff/sermons", ({ request }) => {
-      const id = new URL(request.url).searchParams.get("category_id");
-      const total = id === "cat-1" ? 5 : id === "cat-2" ? 2 : 0;
-      return HttpResponse.json({ items: [], total, limit: 1, offset: 0 });
-    }),
     http.post("*/api/bff/categories", async ({ request }) => {
       const body = (await request.json()) as { name: string; slug: string };
       onPost?.(body);
@@ -55,7 +51,12 @@ function backend({ onPost, postStatus = 201 }: BackendOptions = {}) {
           { status: postStatus },
         );
       }
-      const created: Category = { id: "cat-new", name: body.name, slug: body.slug };
+      const created: Category = {
+        id: "cat-new",
+        name: body.name,
+        slug: body.slug,
+        sermon_count: 0,
+      };
       categories = [...categories, created];
       return HttpResponse.json(created, { status: 201 });
     }),

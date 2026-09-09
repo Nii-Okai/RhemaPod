@@ -15,10 +15,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../msw/server";
 import { EpisodeOrder } from "@/components/series/episode-order";
 
-/* W11 — the episode-order panel. Backend via MSW (§A.11). Covers: gap-preserving
-   render, a move issuing the right PATCH {episode_number} calls with an
-   optimistic reorder, a PATCH failure rolling the order back + a panel alert,
-   and a locked (under_review) episode's move control being disabled. */
+/* W11 / Batch 5 — the episode-order panel. Backend via MSW (§A.11). Covers:
+   sorted (gap-preserving) render, a move issuing exactly ONE atomic
+   `PUT .../episode-order` with the full ordered id list + an optimistic
+   renumber, a 409 naming the locked episode rolling the order back with a panel
+   alert, a 422 surfacing a "reload" alert + rollback, the locked-span
+   pre-check blocking client-side with no request, and a locked (under_review)
+   episode's move control being disabled. */
 
 const SERIES_ID = "ser-1";
 
@@ -29,12 +32,12 @@ interface Ep {
   status: string;
 }
 
+/** Three non-locked episodes with the seed's intentional gaps (1, 3, 5). */
 function makeEpisodes(): Ep[] {
-  // Numbers 1, 3, 5 — the seed's intentional gaps.
   return [
     { id: "e1", title: "Grace Abounding", episode_number: 1, status: "published" },
     { id: "e2", title: "Faith Over Fear", episode_number: 3, status: "draft" },
-    { id: "e3", title: "The Lord's Prayer", episode_number: 5, status: "under_review" },
+    { id: "e3", title: "The Lord's Prayer", episode_number: 5, status: "published" },
   ];
 }
 
@@ -67,43 +70,47 @@ function page(items: Ep[]) {
 }
 
 interface BackendOptions {
-  /** ids whose PATCH should 500. */
-  failPatch?: string[];
-  /** collector for the last PATCH body per sermon id. */
-  patched?: Record<string, number>;
-  /** ordered log of every PATCH the client issued. */
-  calls?: Array<{ id: string; episode_number: number }>;
-  /** override the seed episode set. */
+  /** Status for the reorder PUT (default 200). */
+  putStatus?: number;
+  /** `detail` returned on a non-200 PUT. */
+  putDetail?: string;
+  /** Override the seed episode set. */
   episodes?: Ep[];
 }
 
 function backend({
-  failPatch = [],
-  patched = {},
-  calls = [],
+  putStatus = 200,
+  putDetail = "boom",
   episodes,
 }: BackendOptions = {}) {
   const state = episodes ?? makeEpisodes();
+  const puts: Array<{ episode_ids: string[] }> = [];
   server.use(
     http.get("*/api/bff/sermons", () => HttpResponse.json(page(state))),
-    http.patch("*/api/bff/sermons/:id", async ({ params, request }) => {
-      const id = params.id as string;
-      const body = (await request.json()) as { episode_number: number };
-      calls.push({ id, episode_number: body.episode_number });
-      if (failPatch.includes(id)) {
-        await delay(10);
+    http.put(
+      "*/api/bff/series/:id/episode-order",
+      async ({ request }) => {
+        const body = (await request.json()) as { episode_ids: string[] };
+        puts.push(body);
+        if (putStatus !== 200) {
+          await delay(10);
+          return HttpResponse.json(
+            { detail: putDetail, correlation_id: "cid-x" },
+            { status: putStatus },
+          );
+        }
+        // Atomic renumber 1..N by the requested order.
+        body.episode_ids.forEach((id, i) => {
+          const row = state.find((e) => e.id === id);
+          if (row) row.episode_number = i + 1;
+        });
         return HttpResponse.json(
-          { detail: "boom", correlation_id: "cid-x" },
-          { status: 500 },
+          body.episode_ids.map((id, i) => ({ id, episode_number: i + 1 })),
         );
-      }
-      patched[id] = body.episode_number;
-      const row = state.find((e) => e.id === id);
-      if (row) row.episode_number = body.episode_number;
-      return HttpResponse.json({ id, episode_number: body.episode_number });
-    }),
+      },
+    ),
   );
-  return { state, patched, calls };
+  return { state, puts };
 }
 
 function renderPanel() {
@@ -137,9 +144,8 @@ describe("EpisodeOrder", () => {
     expect(items[2]).toHaveTextContent("05");
   });
 
-  it("move-down on ep 01 PATCHes both swapped episodes and reorders optimistically", async () => {
-    const patched: Record<string, number> = {};
-    backend({ patched });
+  it("move-down on ep 01 issues exactly ONE PUT with the full ordered id list and renumbers optimistically", async () => {
+    const { puts } = backend();
     renderPanel();
     await screen.findByText("Grace Abounding");
 
@@ -147,23 +153,27 @@ describe("EpisodeOrder", () => {
       screen.getByRole("button", { name: 'Move “Grace Abounding” down' }),
     );
 
-    // Two PATCHes: e1 takes 3, e2 takes 1.
-    await waitFor(() => {
-      expect(patched).toEqual({ e1: 3, e2: 1 });
-    });
+    // One atomic request, carrying every episode id in the new order.
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ episode_ids: ["e2", "e1", "e3"] });
 
-    // Optimistic + reconciled order: Faith Over Fear (now 01) is first.
+    // Optimistic + reconciled order: Faith Over Fear is first, series is now 1..N.
     await waitFor(() => {
       const items = screen.getAllByRole("listitem");
       expect(items[0]).toHaveTextContent("Faith Over Fear");
       expect(items[0]).toHaveTextContent("01");
       expect(items[1]).toHaveTextContent("Grace Abounding");
-      expect(items[1]).toHaveTextContent("03");
+      expect(items[1]).toHaveTextContent("02");
+      expect(items[2]).toHaveTextContent("The Lord's Prayer");
+      expect(items[2]).toHaveTextContent("03");
     });
   });
 
-  it("rolls the order back and shows a panel alert when the PATCHes fail", async () => {
-    backend({ failPatch: ["e1", "e2"] });
+  it("on a 409, rolls the order back and shows a panel alert naming the locked episode", async () => {
+    backend({
+      putStatus: 409,
+      putDetail: "“The Lord's Prayer” is in review and can’t be renumbered.",
+    });
     renderPanel();
     await screen.findByText("Grace Abounding");
 
@@ -178,10 +188,36 @@ describe("EpisodeOrder", () => {
       );
     });
 
-    // …then the failure rolls it back and alerts on the panel.
+    // …then the 409 rolls it back and surfaces the backend's message.
     expect(
-      await screen.findByText("Couldn’t reorder the episodes"),
+      await screen.findByText(/is in review and can’t be renumbered/),
     ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("reference: cid-x");
+    await waitFor(() => {
+      const items = screen.getAllByRole("listitem");
+      expect(items[0]).toHaveTextContent("Grace Abounding");
+      expect(items[0]).toHaveTextContent("01");
+      expect(items[1]).toHaveTextContent("03");
+      expect(items[2]).toHaveTextContent("05");
+    });
+  });
+
+  it("on a 422, rolls back and shows a 'reload' alert (stale client)", async () => {
+    backend({ putStatus: 422, putDetail: "Episode set does not match." });
+    renderPanel();
+    await screen.findByText("Grace Abounding");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: 'Move “Grace Abounding” down' }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(
+        "Faith Over Fear",
+      );
+    });
+
+    expect(await screen.findByText(/reload and try again/i)).toBeInTheDocument();
     await waitFor(() => {
       const items = screen.getAllByRole("listitem");
       expect(items[0]).toHaveTextContent("Grace Abounding");
@@ -190,7 +226,18 @@ describe("EpisodeOrder", () => {
   });
 
   it("disables the move control on a locked (under_review) episode", async () => {
-    backend();
+    backend({
+      episodes: [
+        { id: "e1", title: "Grace Abounding", episode_number: 1, status: "published" },
+        { id: "e2", title: "Faith Over Fear", episode_number: 3, status: "draft" },
+        {
+          id: "e3",
+          title: "The Lord's Prayer",
+          episode_number: 5,
+          status: "under_review",
+        },
+      ],
+    });
     renderPanel();
     await screen.findByText("The Lord's Prayer");
 
@@ -207,15 +254,16 @@ describe("EpisodeOrder", () => {
     ).toBeEnabled();
   });
 
-  it("refuses a move whose span crosses a locked episode: zero PATCHes + a note", async () => {
-    const patched: Record<string, number> = {};
-    const calls: Array<{ id: string; episode_number: number }> = [];
-    backend({
-      patched,
-      calls,
+  it("refuses a move whose span crosses a locked episode: no PUT, an inline note", async () => {
+    const { puts } = backend({
       episodes: [
         { id: "e1", title: "Grace Abounding", episode_number: 1, status: "published" },
-        { id: "e2", title: "Faith Over Fear", episode_number: 3, status: "under_review" },
+        {
+          id: "e2",
+          title: "Faith Over Fear",
+          episode_number: 3,
+          status: "under_review",
+        },
         { id: "e3", title: "The Lord's Prayer", episode_number: 5, status: "draft" },
       ],
     });
@@ -231,55 +279,11 @@ describe("EpisodeOrder", () => {
       await screen.findByText("Can’t move past an episode that’s in review."),
     ).toBeInTheDocument();
 
-    // No PATCH was issued and the visible order is unchanged.
-    expect(calls).toEqual([]);
-    expect(patched).toEqual({});
+    // No request was issued and the visible order is unchanged.
+    expect(puts).toEqual([]);
     const items = screen.getAllByRole("listitem");
     expect(items[0]).toHaveTextContent("Grace Abounding");
     expect(items[1]).toHaveTextContent("Faith Over Fear");
     expect(items[2]).toHaveTextContent("The Lord's Prayer");
-  });
-
-  it("on one-lands-one-fails, reverts the landed row and ends at the pre-move order", async () => {
-    const patched: Record<string, number> = {};
-    const calls: Array<{ id: string; episode_number: number }> = [];
-    // Move-down on ep 01 => e1 takes 3, e2 takes 1. e2's PATCH fails.
-    backend({ failPatch: ["e2"], patched, calls });
-    renderPanel();
-    await screen.findByText("Grace Abounding");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: 'Move “Grace Abounding” down' }),
-    );
-
-    // The alert says nothing changed…
-    expect(
-      await screen.findByText(/The reorder didn’t complete/),
-    ).toBeInTheDocument();
-
-    // …because the landed row (e1 → 3) was PATCHed back to its pre-move 1.
-    await waitFor(() => {
-      expect(calls).toHaveLength(3);
-    });
-    // Forward pass (order-independent): e1→3 and e2→1.
-    expect(calls.slice(0, 2)).toEqual(
-      expect.arrayContaining([
-        { id: "e1", episode_number: 3 },
-        { id: "e2", episode_number: 1 },
-      ]),
-    );
-    // Then the best-effort revert of the one row that landed.
-    expect(calls[2]).toEqual({ id: "e1", episode_number: 1 });
-    expect(patched).toEqual({ e1: 1 });
-
-    // Final panel order matches the pre-move order (01 Grace, 03 Faith, 05 Lord's).
-    await waitFor(() => {
-      const items = screen.getAllByRole("listitem");
-      expect(items[0]).toHaveTextContent("Grace Abounding");
-      expect(items[0]).toHaveTextContent("01");
-      expect(items[1]).toHaveTextContent("Faith Over Fear");
-      expect(items[1]).toHaveTextContent("03");
-      expect(items[2]).toHaveTextContent("The Lord's Prayer");
-    });
   });
 });

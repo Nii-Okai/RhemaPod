@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EditorField } from "@/components/sermons/editor/field";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { toBadgeStatus } from "@/components/sermons/sermon-status";
+import { SeriesPublishControl } from "./series-publish-control";
 import { useCategories } from "@/lib/query/hooks/use-categories";
 import {
   useCreateSeries,
@@ -32,9 +33,9 @@ import { isApiError } from "@/lib/api/errors";
    back to /series. Request failures render as a panel-top `<Alert>`, never a
    toast (design §"Errors").
 
-   Status is read-only: `SeriesUpdate` has no `status` field and there is no
-   series publish workflow (→ [GATE 3 Batch 5]), so a series stays `draft` until
-   the backend grows one.
+   The status badge in the card header carries a manager-only publish /
+   unpublish control next to it (`SeriesPublishControl`, Batch 5 —
+   `SeriesUpdate.status` accepts `draft` ⇄ `published`).
    ========================================================================== */
 
 type Tier = "free" | "paid";
@@ -173,7 +174,14 @@ export function SeriesForm({ mode, series }: SeriesFormProps) {
       <CardHeader>
         <CardTitle>{mode === "create" ? "New series" : "Series details"}</CardTitle>
         {mode === "edit" && series ? (
-          <StatusBadge status={toBadgeStatus(series.status)} />
+          <div className="flex items-center gap-10">
+            <StatusBadge status={toBadgeStatus(series.status)} />
+            <SeriesPublishControl
+              series={series}
+              onError={setAlert}
+              onSuccess={() => setAlert(null)}
+            />
+          </div>
         ) : null}
       </CardHeader>
 

@@ -15,9 +15,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../msw/server";
 import { SeriesGrid } from "@/components/series/series-grid";
 
-/* W11 — the Series manager card grid, rendered (happy-dom). Every backend call
-   is MSW (§A.11). Covers: cards from the list, the "N episodes · category"
-   footer derivation, the dashed New-series tile, and the empty state. */
+/* W11 / Batch 5 — the Series manager card grid, rendered (happy-dom). Every
+   backend call is MSW (§A.11). Covers: cards from the list, the
+   "N episodes · category" footer read straight off `episode_count` /
+   `category_name` on the DTO (no per-card probe, no categories-list join), the
+   dashed New-series tile, and the empty state. */
 
 vi.mock("next/link", () => ({
   default: ({
@@ -40,46 +42,32 @@ const SERIES = [
     title: "Walking in Faith",
     description: "A journey through Hebrews 11.",
     category_id: "cat-teaching",
+    category_name: "Teaching",
     tier: "paid",
     status: "published",
     thumbnail_url: null,
+    episode_count: 3,
   },
   {
     id: "ser-basics",
     title: "Sunday Basics",
     description: null,
     category_id: null,
+    category_name: null,
     tier: "free",
     status: "draft",
     thumbnail_url: null,
+    episode_count: 1,
   },
-];
-
-const CATEGORIES = [
-  { id: "cat-teaching", name: "Teaching", slug: "teaching", sermon_count: 0 },
-  { id: "cat-youth", name: "Youth", slug: "youth", sermon_count: 0 },
 ];
 
 interface BackendOptions {
   series?: unknown[];
-  /** series_id → episode `total` for the count probe. */
-  counts?: Record<string, number>;
 }
 
-function backend({ series = SERIES, counts = {} }: BackendOptions = {}) {
+function backend({ series = SERIES }: BackendOptions = {}) {
   server.use(
     http.get("*/api/bff/series", () => HttpResponse.json(series)),
-    http.get("*/api/bff/categories", () => HttpResponse.json(CATEGORIES)),
-    http.get("*/api/bff/sermons", ({ request }) => {
-      const q = new URL(request.url).searchParams;
-      const sid = q.get("series_id") ?? "";
-      return HttpResponse.json({
-        items: [],
-        total: counts[sid] ?? 0,
-        limit: 1,
-        offset: 0,
-      });
-    }),
   );
 }
 
@@ -99,19 +87,17 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("SeriesGrid", () => {
-  it("renders a card per series with the derived 'N episodes · category' footer", async () => {
-    backend({ counts: { "ser-faith": 3, "ser-basics": 1 } });
+  it("renders a card per series with the 'N episodes · category' footer from the DTO", async () => {
+    backend();
     renderGrid();
 
     expect(await screen.findByText("Walking in Faith")).toBeInTheDocument();
     expect(screen.getByText("Sunday Basics")).toBeInTheDocument();
 
-    // faith: 3 episodes, category cat-teaching → "Teaching"
-    expect(await screen.findByText("3 episodes · Teaching")).toBeInTheDocument();
-    // basics: 1 episode (singular), no category → "Uncategorized"
-    expect(
-      await screen.findByText("1 episode · Uncategorized"),
-    ).toBeInTheDocument();
+    // faith: episode_count 3, category_name "Teaching"
+    expect(screen.getByText("3 episodes · Teaching")).toBeInTheDocument();
+    // basics: episode_count 1 (singular), category_name null → "Uncategorized"
+    expect(screen.getByText("1 episode · Uncategorized")).toBeInTheDocument();
 
     // Manage links point at the detail route.
     const manage = screen.getAllByRole("link", { name: "Manage" });

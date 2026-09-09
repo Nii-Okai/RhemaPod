@@ -27,8 +27,8 @@ afterAll(() => server.close());
 const listKey = queryKeys.speakers.list();
 
 const SEED: Speaker[] = [
-  { id: "spk-a", name: "Ada Grace", bio: "Lead pastor." },
-  { id: "spk-b", name: "Bem Okoro", bio: null },
+  { id: "spk-a", name: "Ada Grace", bio: "Lead pastor.", sermon_count: 4 },
+  { id: "spk-b", name: "Bem Okoro", bio: null, sermon_count: 0 },
 ];
 
 function makeClient() {
@@ -150,9 +150,9 @@ describe("useUpdateSpeaker — optimistic edit", () => {
 describe("useDeleteSpeaker — concurrent deletes", () => {
   it("rolls back only the failed id, leaving a concurrent delete's removal intact", async () => {
     const seed: Speaker[] = [
-      { id: "spk-a", name: "Ada Grace", bio: null },
-      { id: "spk-b", name: "Bem Okoro", bio: null },
-      { id: "spk-c", name: "Cara New", bio: null },
+      { id: "spk-a", name: "Ada Grace", bio: null, sermon_count: 0 },
+      { id: "spk-b", name: "Bem Okoro", bio: null, sermon_count: 0 },
+      { id: "spk-c", name: "Cara New", bio: null, sermon_count: 0 },
     ];
     server.use(
       http.delete("*/api/bff/speakers/:id", async ({ params }) => {

@@ -15,10 +15,6 @@ import {
   type Category,
   type CategoryUpdate,
 } from "@/lib/query/hooks/use-categories";
-import {
-  entityCountLabel,
-  useEntityCount,
-} from "@/lib/query/hooks/use-entity-count";
 
 /* =============================================================================
    CategoryForm — the name + live slug-preview form the "+ new" pill reveals,
@@ -44,10 +40,7 @@ export interface CategoryFormProps {
   onError: (message: string) => void;
 }
 
-function deleteCopy(name: string, count: number | undefined): string {
-  if (typeof count !== "number") {
-    return `Delete “${name}”? Sermons in it are detached — their content is not deleted.`;
-  }
+function deleteCopy(name: string, count: number): string {
   const sermons = count === 1 ? "1 sermon" : `${count} sermons`;
   return `Delete “${name}”? ${sermons} ${
     count === 1 ? "is" : "are"
@@ -74,7 +67,7 @@ export function CategoryForm({
   const create = useCreateCategory();
   const update = useUpdateCategory();
   const remove = useDeleteCategory();
-  const count = useEntityCount("category", category?.id ?? "");
+  const sermonCount = category?.sermon_count ?? 0;
   const busy = create.isPending || update.isPending || remove.isPending;
 
   const nameError =
@@ -142,7 +135,7 @@ export function CategoryForm({
 
   const handleDelete = () => {
     if (!isEdit) return;
-    if (!window.confirm(deleteCopy(category.name, count.data))) return;
+    if (!window.confirm(deleteCopy(category.name, sermonCount))) return;
     remove.mutate(category.id, {
       onSuccess: onSaved,
       onError: (err) => onError(errorText(err, "Couldn’t delete the category.")),
@@ -216,9 +209,7 @@ export function CategoryForm({
             disabled={busy}
             onClick={handleDelete}
           >
-            {remove.isPending
-              ? "Deleting…"
-              : `Delete (${entityCountLabel(count.data)})`}
+            {remove.isPending ? "Deleting…" : `Delete (${sermonCount})`}
           </Button>
         ) : null}
       </div>

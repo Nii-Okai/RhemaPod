@@ -6,7 +6,6 @@ import { MediaPlaceholder } from "@/components/portal/media-placeholder";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { TierChip } from "@/components/portal/chips";
 import { toBadgeStatus } from "@/components/sermons/sermon-status";
-import { useSeriesEpisodeCount } from "@/lib/query/hooks/use-series-episodes";
 import type { Series } from "@/lib/query/hooks/use-series-manager";
 import { seriesFooterLine } from "@/lib/series/episodes";
 
@@ -18,20 +17,16 @@ import { seriesFooterLine } from "@/lib/series/episodes";
    `border-subtle` top rule, then a footer row of mono "N episodes · <category>"
    and a clay "Manage" link.
 
-   `SeriesPublic` carries neither an episode count nor a category name
-   (→ [GATE 3 Batch 5]), so both are resolved here: the count from a `limit=1`
-   `total` probe, the name from the category map the grid passes down.
+   `episode_count` and `category_name` come straight off the `SeriesPublic` the
+   grid list returns (Batch 5) — no per-card probe, no categories-list join.
    ========================================================================== */
 
 export interface SeriesCardProps {
   series: Series;
-  /** category_id → display name, from `useCategories()` in the grid. */
-  categoryName: string | null;
 }
 
-export function SeriesCard({ series, categoryName }: SeriesCardProps) {
-  const count = useSeriesEpisodeCount(series.id);
-  const footer = seriesFooterLine(count.data ?? 0, categoryName);
+export function SeriesCard({ series }: SeriesCardProps) {
+  const footer = seriesFooterLine(series.episode_count, series.category_name);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-14 border border-border bg-surface">
