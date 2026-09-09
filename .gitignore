@@ -44,3 +44,10 @@ docs/*
 !docs/reviews/
 !docs/reviews/**
 status.md
+
+# Local Docker Compose override (auto-loaded by `docker compose`). Used on
+# machines where a host-native Postgres already holds 127.0.0.1:5432 — the
+# override republishes the container's Postgres on 5433. Never committed:
+# CI and other machines must use the plain compose file.
+docker-compose.override.yml
+docker-compose.override.yaml
