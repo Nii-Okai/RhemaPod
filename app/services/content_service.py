@@ -562,21 +562,29 @@ _EDITOR_SCOPE_DENIED: dict[str, tuple[int, str]] = {
 # Actions whose right to act is gated by the review claim (Batch 6 #9). The
 # claim is derived from the audit trail — the actor of the latest ApprovalLog
 # row that moved the sermon to `under_review` — not a column on `sermons`.
-_CLAIM_GATED_ACTIONS: frozenset[str] = frozenset({"approve", "reject", "publish"})
-# Only enforce the claim while the sermon is inside the active review cycle.
-# `publish` of an UNPUBLISHED sermon (a later re-publish) is deliberately open
-# to any manager — a stale claim from the original cycle must not lock it.
+# `publish` is deliberately absent (Isaac's ruling): publish is not a review
+# action, so any manager may publish an approved sermon and a claim left by an
+# absent reviewer never blocks publication.
+_CLAIM_GATED_ACTIONS: frozenset[str] = frozenset({"approve", "reject", "withdraw"})
+# Enforce the claim only while the sermon is actually in an active review
+# (`under_review`). An unclaimed `pending_review` sermon stays open to any
+# manager; nothing is gated once the sermon reaches `approved` (publish is open
+# to any manager, and there is no other approved-state action a claim holds).
 _CLAIM_GATED_STATUSES: frozenset[SermonStatus] = frozenset(
-    {SermonStatus.UNDER_REVIEW, SermonStatus.APPROVED}
+    {SermonStatus.UNDER_REVIEW}
 )
 
 
-# Recency ordering for "rows that landed a sermon in under_review". `created_at`
-# is the primary key, but the server clock resolves to whole seconds under test,
-# so a take-over that supersedes a start-review in the same second would tie. A
-# row that came *from* under_review (a take-over) is by definition a later
-# lifecycle step than one that came from pending_review (the initial claim), so
-# it breaks the tie deterministically.
+# Recency ordering for "rows that landed a sermon in under_review", newest
+# first. `created_at` is the discriminator and is stamped app-side at
+# microsecond resolution (see the ApprovalLog inserts), so sequential claims —
+# a start-review after a reject/resubmit, or a chain of take-overs — order
+# strictly by time. The secondary `from_status` key only breaks a genuine
+# same-instant tie between a start-review (`from pending_review`) and a
+# take-over (`from under_review`), preferring the take-over as the later
+# lifecycle step. It does NOT order two take-overs against each other
+# (`ApprovalLog.id` is a random uuid4); a truly concurrent pair is prevented
+# from forming by the `FOR UPDATE` lock on the claim path, not by this sort.
 _CLAIM_RECENCY = (
     ApprovalLog.created_at.desc(),
     case(
@@ -624,9 +632,14 @@ async def transition(
 ) -> Sermon:
     from app.services.approval import TransitionError
 
-    sermon = (await db.execute(
-        select(Sermon).where(Sermon.id == sermon_id)
-    )).scalar_one_or_none()
+    stmt = select(Sermon).where(Sermon.id == sermon_id)
+    # Lock just this row for the claim-relevant actions, so a concurrent
+    # take-over (or another claim-gated action) can't interleave between the
+    # claim read below and the write. Scope stays tight: only these actions,
+    # only the sermon row.
+    if action in _CLAIM_GATED_ACTIONS:
+        stmt = stmt.with_for_update()
+    sermon = (await db.execute(stmt)).scalar_one_or_none()
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
 
@@ -655,10 +668,19 @@ async def transition(
             status_code=409,
         )
 
-    # Review-claim lock (Batch 6 #9): once a manager has claimed a sermon via
-    # start-review, only that manager — or an admin — may approve / reject /
-    # publish it while it sits in the review cycle. An unclaimed pending_review
-    # sermon (no under_review row yet) stays open to any manager.
+    # Transition legality first: an illegal action is 409 for everyone,
+    # whoever holds the claim. Only then the claim 403 — so it fires solely for
+    # an action that would otherwise be allowed, not for an illegal one that a
+    # non-claimer happens to attempt.
+    try:
+        new_status = resolve_transition(action, sermon.status, actor.role)
+    except TransitionError as exc:
+        raise ContentError(exc.message, status_code=409)
+
+    # Review-claim lock (Batch 6 #9): while a sermon is `under_review`, only the
+    # manager who claimed it (via start-review or take-over) — or an admin —
+    # may approve / reject / withdraw it. An unclaimed `pending_review` sermon
+    # is open to any manager; `approved` is not gated (publish stays open).
     if action in _CLAIM_GATED_ACTIONS and sermon.status in _CLAIM_GATED_STATUSES:
         claimer_id = await _review_claimer_id(db, sermon.id)
         if (
@@ -673,11 +695,6 @@ async def transition(
                 status_code=403,
             )
 
-    try:
-        new_status = resolve_transition(action, sermon.status, actor.role)
-    except TransitionError as exc:
-        raise ContentError(exc.message, status_code=409)
-
     from_status = sermon.status
     sermon.status = new_status
     if new_status == SermonStatus.PUBLISHED:
@@ -689,6 +706,13 @@ async def transition(
         to_status=new_status.value,
         actor_id=actor.id,
         note=note,
+        # Stamp the transition instant app-side rather than leaning on the
+        # column's `server_default=func.now()`. `now()` resolves to the
+        # transaction start and, on some backends, to whole seconds — two
+        # sequential claims (start-review after a reject/resubmit, or a second
+        # take-over) would then tie, and `_review_claimer_id` could not tell
+        # which is current. A microsecond Python timestamp orders them.
+        created_at=datetime.now(timezone.utc),
     ))
     await db.commit()
     await db.refresh(sermon)
@@ -718,14 +742,21 @@ async def take_over_review(
     actor is the new reviewer, which is what moves the derived claim
     (`_review_claimer_id`). If `actor` already holds the claim this is a 409
     no-op rather than a duplicate log row.
+
+    The sermon row is locked `FOR UPDATE` for the duration: two concurrent
+    take-overs (or a take-over racing an approve) serialise on it — one wins,
+    the other re-reads the committed claim / status and is gated or 422'd.
     """
     sermon = (await db.execute(
-        select(Sermon).where(Sermon.id == sermon_id)
+        select(Sermon).where(Sermon.id == sermon_id).with_for_update()
     )).scalar_one_or_none()
     if sermon is None:
         raise ContentError("Sermon not found", status_code=404)
     if sermon.status != SermonStatus.UNDER_REVIEW:
-        raise ContentError("not under review yet", status_code=422)
+        raise ContentError(
+            f"cannot take over a sermon in status '{sermon.status.value}'",
+            status_code=422,
+        )
 
     claimer_id = await _review_claimer_id(db, sermon.id)
     if claimer_id == actor.id:
@@ -743,6 +774,9 @@ async def take_over_review(
         to_status=SermonStatus.UNDER_REVIEW.value,
         actor_id=actor.id,
         note=note,
+        # App-side timestamp so a chain of take-overs orders strictly by time —
+        # see the note on the `transition` insert.
+        created_at=datetime.now(timezone.utc),
     ))
     await db.commit()
     await db.refresh(sermon)
@@ -773,13 +807,15 @@ async def review_queue_page(
     rather than new columns:
 
     * `submitted_at` — `max(created_at)` over the rows that moved this sermon
-      to `pending_review` (the editor's last submit). It is also the sort key:
-      ascending, so the longest wait sits at the top. An `approved` row keeps
-      that original submit time, so it sorts by the same waiting-time key as
-      everything else rather than jumping the queue.
+      to `pending_review` (the editor's last submit / resubmit). It is also the
+      sort key: ascending, so the longest wait sits at the top. An `approved`
+      row carries the same `max(created_at)` of its `pending_review` rows, so it
+      ages in place on the waiting-time key rather than jumping the queue.
     * `review_claimed_by` — the actor of the most recent `to_status =
       under_review` row, resolved to a display name; populated for `under_review`
-      and `approved` items (for `approved`, that's the reviewer who approved it).
+      and `approved` items. It is the manager who most recently claimed the
+      sermon (start-review or take-over) — not necessarily whoever ran
+      `approve`, which an admin or a peer manager may have done.
     """
     statuses = (
         SermonStatus.PENDING_REVIEW,

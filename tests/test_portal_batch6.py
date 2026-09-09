@@ -108,13 +108,21 @@ async def test_claiming_manager_locks_out_other_managers(client, engine):
     r = await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
     assert r.status_code == 200, r.text
 
-    for action, body in (("approve", None), ("reject", {"note": "no"}), ("publish", None)):
+    # approve / reject are claim-gated while under_review; publish is NOT a
+    # review action (Isaac's ruling) and is covered separately.
+    for action, body in (("approve", None), ("reject", {"note": "no"})):
         r = await client.post(
             f"/api/v1/approvals/sermons/{sid}/{action}", headers=mgr_b, json=body
         )
         assert r.status_code == 403, (action, r.text)
         assert "review_claimed_by_another" in r.json()["detail"]
         assert "Alice Ng" in r.json()["detail"]
+
+    # withdraw is claim-gated too — same 403 shape.
+    r = await client.post(f"/api/v1/sermons/{sid}/withdraw", headers=mgr_b)
+    assert r.status_code == 403, r.text
+    assert "review_claimed_by_another" in r.json()["detail"]
+    assert "Alice Ng" in r.json()["detail"]
 
 
 async def test_take_over_review_transfers_claim_and_audits(client, engine):
@@ -204,7 +212,7 @@ async def test_take_over_on_a_not_yet_reviewed_sermon_is_422(client, engine):
         f"/api/v1/approvals/sermons/{sid}/take-over-review", headers=mgr
     )
     assert r.status_code == 422, r.text
-    assert "not under review yet" in r.json()["detail"]
+    assert r.json()["detail"] == "cannot take over a sermon in status 'pending_review'"
 
 
 async def test_take_over_requires_manager(client, engine):
@@ -276,3 +284,191 @@ async def test_rejected_sermon_is_not_in_review_queue(client, engine):
     assert r.status_code == 200, r.text
 
     assert sid not in await _queue_ids(client, mgr)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GATE 3 Batch 6 review pass — publish ungated, withdraw claim-gated,
+# no stale-claim lockout, take-over chain resolution, category name validator
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_reject_then_resubmit_lets_a_different_manager_review(client, engine):
+    """The reject->resubmit path must not leave a stale claim from the first
+    cycle: the resubmitted sermon is pending_review (unclaimed), so a *different*
+    manager can start-review and act."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr_a = await make_user(client, engine, "a@example.com", "manager", full_name="Alice Ng")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager", full_name="Bob Roy")
+    b_id = await _me_id(client, mgr_b)
+
+    sid = await _new_sermon(client, ed, "Grace")
+    await _submit(client, ed, sid)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        headers=mgr_a, json={"note": "redo the intro"},
+    )
+    assert r.status_code == 200, r.text
+
+    # Editor fixes and resubmits.
+    await _submit(client, ed, sid)
+
+    # A different manager picks it up and acts — no lockout by A's old claim.
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_b)
+    assert r.status_code == 200, r.text
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr_b)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "approved"
+
+    item = (await _queue_ids(client, mgr_b))[sid]
+    assert item["review_claimed_by_id"] == b_id
+
+
+async def test_take_over_chain_resolves_to_the_last_taker(client, engine):
+    """A claims, B takes over, C takes over. C is the resolved claimer; A and B
+    are locked out; every hand-off wrote an under_review->under_review row."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr_a = await make_user(client, engine, "a@example.com", "manager", full_name="Alice Ng")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager", full_name="Bob Roy")
+    mgr_c = await make_user(client, engine, "c@example.com", "manager", full_name="Cara Lee")
+    c_id = await _me_id(client, mgr_c)
+
+    sid = await _new_sermon(client, ed, "Grace")
+    await _submit(client, ed, sid)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
+    assert (await client.post(
+        f"/api/v1/approvals/sermons/{sid}/take-over-review", headers=mgr_b
+    )).status_code == 200
+    assert (await client.post(
+        f"/api/v1/approvals/sermons/{sid}/take-over-review", headers=mgr_c
+    )).status_code == 200
+
+    item = (await _queue_ids(client, mgr_c))[sid]
+    assert item["review_claimed_by_id"] == c_id
+    assert item["review_claimed_by"] == "Cara Lee"
+
+    for hdr in (mgr_a, mgr_b):
+        r = await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=hdr)
+        assert r.status_code == 403, r.text
+        assert "Cara Lee" in r.json()["detail"]
+
+    log = (await client.get(
+        f"/api/v1/approvals/sermons/{sid}/approval-log", headers=mgr_c
+    )).json()
+    handoffs = [
+        row for row in log
+        if row["from_status"] == "under_review" and row["to_status"] == "under_review"
+    ]
+    assert len(handoffs) == 2
+
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr_c)
+    assert r.status_code == 200, r.text
+
+
+async def test_non_claimer_cannot_grab_claim_via_withdraw(client, engine):
+    """withdraw is claim-gated: a non-claiming, non-admin manager cannot bounce
+    an under_review sermon to draft to clear A's claim (then start-review as
+    themselves)."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr_a = await make_user(client, engine, "a@example.com", "manager", full_name="Alice Ng")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager", full_name="Bob Roy")
+
+    sid = await _new_sermon(client, ed, "Grace")
+    await _submit(client, ed, sid)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
+
+    r = await client.post(f"/api/v1/sermons/{sid}/withdraw", headers=mgr_b)
+    assert r.status_code == 403, r.text
+    assert "review_claimed_by_another" in r.json()["detail"]
+    assert "Alice Ng" in r.json()["detail"]
+
+    # It did not move — A still holds the review.
+    assert (await client.get(
+        f"/api/v1/sermons/{sid}", headers=mgr_b
+    )).json()["status"] == "under_review"
+
+
+async def test_withdraw_by_claiming_manager_and_by_admin(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr_a = await make_user(client, engine, "a@example.com", "manager", full_name="Alice Ng")
+    admin = await make_user(client, engine, "adm@example.com", "admin", full_name="Root")
+
+    # The claiming manager can withdraw their own claimed review.
+    sid = await _new_sermon(client, ed, "Grace")
+    await _submit(client, ed, sid)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
+    r = await client.post(f"/api/v1/sermons/{sid}/withdraw", headers=mgr_a)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "draft"
+
+    # An admin can withdraw a review claimed by someone else.
+    sid2 = await _new_sermon(client, ed, "Mercy")
+    await _submit(client, ed, sid2)
+    await client.post(f"/api/v1/approvals/sermons/{sid2}/start-review", headers=mgr_a)
+    r = await client.post(f"/api/v1/sermons/{sid2}/withdraw", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "draft"
+
+
+async def test_any_manager_can_publish_an_approved_sermon(client, engine):
+    """publish is not claim-gated: a manager who is neither the approver nor an
+    admin can publish an approved sermon, and it leaves the review queue."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr_a = await make_user(client, engine, "a@example.com", "manager", full_name="Alice Ng")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager", full_name="Bob Roy")
+
+    sid = await _new_sermon(client, ed, "Grace")
+    await _submit(client, ed, sid)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_a)
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr_a)
+    assert r.status_code == 200 and r.json()["status"] == "approved"
+
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr_b)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "published"
+    assert sid not in await _queue_ids(client, mgr_b)
+
+
+async def test_category_writes_reject_viewer_and_anon(client, engine):
+    viewer = await make_user(client, engine, "v@example.com", "viewer")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    cid = (await client.post(
+        "/api/v1/categories", json={"name": "Doctrine", "slug": "doctrine"}, headers=mgr
+    )).json()["id"]
+
+    for headers in (viewer, {}):
+        r = await client.post(
+            "/api/v1/categories", json={"name": "X", "slug": "x"}, headers=headers
+        )
+        assert r.status_code in (401, 403), r.text
+        r = await client.patch(
+            f"/api/v1/categories/{cid}", json={"name": "Y"}, headers=headers
+        )
+        assert r.status_code in (401, 403), r.text
+
+
+async def test_category_name_rejects_markup_and_control_chars(client, engine):
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+
+    r = await client.post(
+        "/api/v1/categories",
+        json={"name": "<script>alert(1)</script>", "slug": "xss"},
+        headers=mgr,
+    )
+    assert r.status_code == 422, r.text
+
+    r = await client.post(
+        "/api/v1/categories",
+        json={"name": "Bad\x07Name", "slug": "bad"},
+        headers=mgr,
+    )
+    assert r.status_code == 422, r.text
+
+
+async def test_category_name_whitespace_is_collapsed(client, engine):
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    r = await client.post(
+        "/api/v1/categories",
+        json={"name": "  Deep   Doctrine \t of  Grace  ", "slug": "deep-doctrine"},
+        headers=mgr,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["name"] == "Deep Doctrine of Grace"
