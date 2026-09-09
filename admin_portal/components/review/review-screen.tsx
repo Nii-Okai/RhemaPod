@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -117,30 +116,27 @@ export function ReviewScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // approve-ok / publish-fail: the sermon IS approved but not live, and its card
-  // has left the queue (approved is filtered out) — so the message can't live on
-  // the card. It's screen-level and persistent (no auto-dismiss); the manager
-  // finishes the publish from the sermon page.
-  const [publishGap, setPublishGap] = useState<{
-    id: string;
-    title: string;
-    detail: string;
-  } | null>(null);
-
   const actions = useReviewActions({
     meName: session.name,
     meId: session.id,
     onError: (vars, message) => patchCard(vars.item.id, { error: message }),
     onApprovedNotPublished: (vars, detail) =>
-      setPublishGap({ id: vars.item.id, title: vars.item.title, detail }),
+      // approve-ok / publish-fail: the approve committed, only publishing threw.
+      // The row refetches as `approved` and stays in the queue (#12), where its
+      // card now offers a "Publish" retry — so clear any half-open reject `mode`
+      // (else the card lands on the reject textarea, not the Publish button) and
+      // surface the failure as a transient, dismissible card-top alert. No
+      // standing screen banner: the fix is right there on the card.
+      patchCard(vars.item.id, {
+        mode: "idle",
+        note: "",
+        error: `Approved, but publishing failed. ${detail}`,
+      }),
     onSuccess: (vars) => {
-      // reject / approve leave the queue; startReview keeps the card (now
-      // under_review) but its local state is spent. Either way, drop this
-      // card's transient UI.
+      // reject / approve / publish leave the queue; startReview and takeOver
+      // keep the card (now under_review, claimed by me) but its local state is
+      // spent. Either way, drop this card's transient UI.
       resetCard(vars.item.id);
-      // A later successful action on the same sermon (e.g. the publish retry
-      // going through) clears the standing "approved but not published" notice.
-      setPublishGap((prev) => (prev?.id === vars.item.id ? null : prev));
     },
     onPublished: () => setToast("Published to the app"),
   });
@@ -209,34 +205,6 @@ export function ReviewScreen() {
       {overdue.length > 0 ? (
         <Alert variant="warning" title="Some submissions are overdue">
           {overdueAlertText(overdue.length)}
-        </Alert>
-      ) : null}
-
-      {publishGap ? (
-        <Alert variant="error" title="Approved, but not published">
-          <span className="flex flex-col gap-4">
-            <span>
-              “{publishGap.title}” was approved, but publishing failed. Publish
-              it from its{" "}
-              <Link
-                href={`/sermons/${publishGap.id}`}
-                className="font-semibold underline underline-offset-2"
-              >
-                sermon page
-              </Link>
-              .
-            </span>
-            <span className="flex flex-wrap items-center gap-10 text-ink-faint">
-              <span>{publishGap.detail}</span>
-              <button
-                type="button"
-                onClick={() => setPublishGap(null)}
-                className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
-              >
-                Dismiss
-              </button>
-            </span>
-          </span>
         </Alert>
       ) : null}
 

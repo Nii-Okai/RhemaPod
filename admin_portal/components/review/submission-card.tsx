@@ -44,6 +44,10 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
      - `claimedElsewhere` (an admin) → NOT locked (admins bypass): the "<name>"
        label shows but the actions stay enabled; "Take over review" is still
        offered (optional for an admin).
+   The `disabled` on a claim-locked action is UX only — a hint, not a gate. The
+   backend re-checks the claim on every transition and answers 403
+   (`review_claimed_by_another`) if it doesn't hold, so a stale/racing client
+   can't approve past another reviewer's claim.
 
    Approved (Batch 6 #12). An `approved` sermon stays in the queue until it is
    published. Its card shows "Publish" (`onPublish` → `POST …/{id}/publish`,

@@ -8,7 +8,14 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,7 +23,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../msw/server";
 import { SessionProvider } from "@/lib/auth/session-context";
 import { ReviewScreen } from "@/components/review/review-screen";
-import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
+import { queryKeys } from "@/lib/query/keys";
+import { useReviewActions } from "@/lib/query/hooks/use-review-actions";
+import type {
+  ReviewQueueItem,
+  ReviewQueuePage,
+} from "@/lib/query/hooks/use-review-queue";
 
 /* W10 — the Review queue, rendered (happy-dom). Every backend call is MSW,
    never a mocked fetch (§A.11). Covers: the >48h alert, "Under review · you"
@@ -593,6 +605,52 @@ describe("ReviewScreen — approved rows publish out of the queue (Batch 6 #12)"
     );
     expect(calls).toEqual(["publish"]);
   });
+
+  it("a bare `publish` 500 rolls the approved card back into the queue with a card-top alert", async () => {
+    const calls: string[] = [];
+    backend(
+      [
+        item({
+          id: "a1",
+          title: "Approved, not live",
+          status: "approved",
+          review_claimed_by: "Val Reyes",
+          review_claimed_by_id: "u-val",
+        }),
+      ],
+      { calls, publishFailTimes: 1 },
+    );
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Approved, not live");
+    await user.click(
+      within(cardFor("Approved, not live")).getByRole("button", {
+        name: "Publish",
+      }),
+    );
+
+    // Rollback: the card comes back, still `approved`, with a card-top alert.
+    await waitFor(() =>
+      expect(
+        within(cardFor("Approved, not live")).getByText(
+          /That action didn’t go through/,
+        ),
+      ).toBeInTheDocument(),
+    );
+    const card = cardFor("Approved, not live");
+    expect(within(card).getByText(/Encoder queue unreachable/)).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Publish" }),
+    ).toBeInTheDocument();
+    expect(within(card).getByText("Approved · Val Reyes")).toBeInTheDocument();
+    // No success toast, no honest-half-shipped screen message.
+    expect(screen.queryByText("Published to the app")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/was approved, but publishing failed/),
+    ).not.toBeInTheDocument();
+    expect(calls).toEqual(["publish"]);
+  });
 });
 
 describe("ReviewScreen — inline reject flow", () => {
@@ -691,7 +749,7 @@ describe("ReviewScreen — approve & publish", () => {
     expect(calls).toEqual(["approve", "publish"]);
   });
 
-  it("approve-ok / publish-fail: shows a persistent honest message pointing at the sermon page, not a badge revert + generic error", async () => {
+  it("approve-ok / publish-fail from inside reject mode: clears the reject textarea, leaves an approved card with a card-top error and a Publish retry — no standing screen banner", async () => {
     const calls: string[] = [];
     backend([item({ id: "s7", title: "Half shipped" })], {
       calls,
@@ -703,60 +761,87 @@ describe("ReviewScreen — approve & publish", () => {
     const user = userEvent.setup();
     await screen.findByText("Half shipped");
 
+    // Open reject mode first, then approve & publish from inside it — this is the
+    // path that used to leave the card dangling in `mode: "rejecting"`.
+    await user.click(screen.getByRole("button", { name: "Reject with note" }));
+    await user.type(
+      screen.getByLabelText(
+        "Rejection note (sent to the editor and kept in the log)",
+      ),
+      "changed my mind, shipping it",
+    );
     await user.click(
       screen.getByRole("button", { name: "Approve & publish" }),
     );
 
-    // approve committed, publish failed → screen-level, persistent message that
-    // names the sermon and links to its page.
-    const alert = await screen.findByText(/was approved, but publishing failed/);
-    expect(alert).toHaveTextContent(/Half shipped.* was approved/);
-    const link = screen.getByRole("link", { name: "sermon page" });
-    expect(link).toHaveAttribute("href", "/sermons/s7");
-
-    // NOT the generic approve-and-publish failure, and NO card-top alert.
-    expect(
-      screen.queryByText(/Couldn.t approve and publish/),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/That action didn.t go through/),
-    ).not.toBeInTheDocument();
-
-    // approve was called once; publish was attempted.
-    expect(calls).toEqual(["approve", "publish"]);
-
-    // The message persists (no auto-dismiss) through the settle refetch.
-    await waitFor(() =>
-      expect(screen.getByText(/Encoder queue unreachable/)).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText(/was approved, but publishing failed/),
-    ).toBeInTheDocument();
-  });
-
-  it("finishing a half-shipped (approved, publish-failed) card issues only publish — no 409 dead-end", async () => {
-    const calls: string[] = [];
-    backend([item({ id: "s7", title: "Half shipped" })], {
-      calls,
-      publishFailTimes: 1,
-      keepApproved: true,
-    });
-
-    renderScreen();
-    const user = userEvent.setup();
-    await screen.findByText("Half shipped");
-
-    // First attempt: approve 200, publish 500.
-    await user.click(
-      screen.getByRole("button", { name: "Approve & publish" }),
-    );
-    await screen.findByText(/was approved, but publishing failed/);
-
-    // The card is still on screen (stale queue), now an `approved` card — so it
-    // shows the bare "Publish" affordance (#12), not approve/reject.
+    // approve committed, publish 500. The row refetches as `approved` and stays
+    // in the queue (#12); its card carries a card-top alert (not a screen-level
+    // banner) and the "Publish" retry.
     await waitFor(() =>
       expect(
-        within(cardFor("Half shipped")).getByText(/approved/i),
+        within(cardFor("Half shipped")).getByText(
+          /That action didn’t go through/,
+        ),
+      ).toBeInTheDocument(),
+    );
+    const card = cardFor("Half shipped");
+    expect(
+      within(card).getByText(/Approved, but publishing failed/),
+    ).toBeInTheDocument();
+    expect(within(card).getByText(/Encoder queue unreachable/)).toBeInTheDocument();
+
+    // The reject mode is cleared — no textarea, no "Send rejection".
+    expect(
+      within(card).queryByLabelText(
+        "Rejection note (sent to the editor and kept in the log)",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).queryByRole("button", { name: "Send rejection" }),
+    ).not.toBeInTheDocument();
+
+    // It shows the "Publish" retry and no approve/reject affordance.
+    expect(
+      within(card).getByRole("button", { name: "Publish" }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("button", { name: "Approve & publish" }),
+    ).not.toBeInTheDocument();
+
+    // No screen-level "publish it elsewhere" banner, no `sermon page` link.
+    expect(
+      screen.queryByText(/was approved, but publishing failed/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "sermon page" }),
+    ).not.toBeInTheDocument();
+
+    expect(calls).toEqual(["approve", "publish"]);
+  });
+
+  it("a card never in reject mode is unaffected by the mode reset: approve-ok / publish-fail still lands on a Publish retry", async () => {
+    const calls: string[] = [];
+    backend([item({ id: "s7", title: "Half shipped" })], {
+      calls,
+      publishFailTimes: 1,
+      keepApproved: true,
+    });
+
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByText("Half shipped");
+
+    // First attempt straight from the default action row (no reject mode):
+    // approve 200, publish 500.
+    await user.click(
+      screen.getByRole("button", { name: "Approve & publish" }),
+    );
+
+    // The row refetches as `approved` and stays in the queue (#12): "Publish"
+    // retry appears, the approve/reject affordance is gone.
+    await waitFor(() =>
+      expect(
+        within(cardFor("Half shipped")).getByRole("button", { name: "Publish" }),
       ).toBeInTheDocument(),
     );
     expect(
@@ -766,22 +851,118 @@ describe("ReviewScreen — approve & publish", () => {
     ).not.toBeInTheDocument();
     calls.length = 0;
 
-    // Finish it from the still-visible card.
+    // Finish it from the still-visible card via the plain `publish` kind.
     await user.click(
       within(cardFor("Half shipped")).getByRole("button", { name: "Publish" }),
     );
 
-    // Only publish — the approve already committed, so no re-approve, no 409.
     expect(await screen.findByText("Published to the app")).toBeInTheDocument();
     expect(calls).toEqual(["publish"]);
     expect(calls).not.toContain("approve");
     await waitFor(() =>
       expect(screen.queryByText("Half shipped")).not.toBeInTheDocument(),
     );
-    // The standing "approved but not published" notice is cleared on success.
-    expect(
-      screen.queryByText(/was approved, but publishing failed/),
-    ).not.toBeInTheDocument();
+  });
+});
+
+/* `approvePublish` on an item that is ALREADY `approved` — the short-circuit at
+   use-review-actions.ts (`vars.item.status === "approved"`) and the
+   `isAlreadyApprovedConflict` 409-catch. After the reject-mode reset above, the
+   UI can no longer route an `approved` card to "Approve & publish" (an approved
+   card only renders "Publish"), so this branch is exercised directly on the
+   hook. */
+describe("useReviewActions — approvePublish on an already-approved item", () => {
+  function hookHarness(seed: ReviewQueueItem) {
+    const client = new QueryClient({
+      defaultOptions: {
+        // gcTime: Infinity — the seeded queue has no observer (no `useReviewQueue`
+        // here), so it must survive until the mutation's `onMutate` reads it.
+        queries: { retry: false, gcTime: Infinity },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData<ReviewQueuePage>(queryKeys.review.queue({ page: 1 }), {
+      items: [seed],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    });
+    const onPublished = vi.fn();
+    const onError = vi.fn();
+    const onApprovedNotPublished = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useReviewActions({
+          meName: ME.name,
+          meId: ME.id,
+          onError,
+          onApprovedNotPublished,
+          onPublished,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    );
+    const pageItems = () =>
+      client.getQueryData<ReviewQueuePage>(
+        queryKeys.review.queue({ page: 1 }),
+      )?.items ?? [];
+    return { result, client, onPublished, onError, onApprovedNotPublished, pageItems };
+  }
+
+  it("skips the approve leg entirely (status already `approved`), publishes, and drops the card", async () => {
+    const calls: string[] = [];
+    backend([], { calls });
+    const seed = item({
+      id: "s9",
+      title: "Already approved",
+      status: "approved",
+      review_claimed_by: "Val Reyes",
+      review_claimed_by_id: "u-val",
+    });
+    const h = hookHarness(seed);
+
+    act(() => {
+      h.result.current.approveAndPublish(seed);
+    });
+
+    await waitFor(() => expect(h.onPublished).toHaveBeenCalledTimes(1));
+    // No approve call — the short-circuit took the item's own status.
+    expect(calls).toEqual(["publish"]);
+    expect(h.onError).not.toHaveBeenCalled();
+    expect(h.onApprovedNotPublished).not.toHaveBeenCalled();
+    // The optimistic `removeFromQueues` dropped it and the publish success stuck.
+    expect(h.pageItems().some((i) => i.id === "s9")).toBe(false);
+  });
+
+  it("recovers when the approve leg 409s 'already approved' (stale status): catches it, publishes, drops the card", async () => {
+    const calls: string[] = [];
+    // The row is `approved` server-side but the caller still holds an
+    // `under_review` snapshot, so `approvePublish` attempts approve → 409.
+    backend([item({ id: "s9", title: "Stale under review", status: "approved" })], {
+      calls,
+    });
+    const staleSnapshot = item({
+      id: "s9",
+      title: "Stale under review",
+      status: "under_review",
+      review_claimed_by: ME.name,
+      review_claimed_by_id: ME.id,
+    });
+    const h = hookHarness(staleSnapshot);
+
+    act(() => {
+      h.result.current.approveAndPublish(staleSnapshot);
+    });
+
+    await waitFor(() => expect(h.onPublished).toHaveBeenCalledTimes(1));
+    // approve was attempted, 409'd, and was swallowed by isAlreadyApprovedConflict.
+    expect(calls).toEqual(["approve", "publish"]);
+    expect(h.onError).not.toHaveBeenCalled();
+    expect(h.onApprovedNotPublished).not.toHaveBeenCalled();
+    expect(h.pageItems().some((i) => i.id === "s9")).toBe(false);
   });
 });
 

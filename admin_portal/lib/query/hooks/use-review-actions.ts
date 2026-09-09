@@ -36,10 +36,12 @@
  *   - `phase === "approve"`  → nothing committed. Full rollback, generic
  *                              "Couldn’t approve …" — handled by `onError`.
  *   - `phase === "publish"`  → the approve DID commit. The card must **not**
- *                              revert to a pending badge (a lie); instead the
- *                              screen gets a persistent, card-independent
- *                              message ("approved but not published — publish
- *                              it from its sermon page") via
+ *                              revert to a pending badge (a lie). The row
+ *                              refetches as `approved` and stays in the queue
+ *                              (#12); the screen clears any half-open reject
+ *                              `mode` on that card and shows a transient
+ *                              card-top error, so the card lands on its
+ *                              "Publish" retry — signalled via
  *                              `onApprovedNotPublished`.
  * A retried `approve_and_publish` on a sermon that is already `approved` (a
  * stale tab, or a race) skips `approve` — either because `vars.item.status`
@@ -139,10 +141,16 @@ function isAlreadyApprovedConflict(err: unknown): boolean {
 }
 
 /** `take-over-review`'s only documented 409: the caller already holds the review
-    claim. That is the desired end-state, so it's a no-op success — not an error
-    the manager needs to see. */
+    claim — `content_service.take_over_review` raises
+    `ContentError("already_reviewing", 409)`. That is the desired end-state, so
+    it's a no-op success. Any other 409 (a race that resolved to a different
+    transition error) is a real failure and must surface to `onError`. */
 function isAlreadyReviewingConflict(err: unknown): boolean {
-  return isApiError(err) && err.status === 409;
+  return (
+    isApiError(err) &&
+    err.status === 409 &&
+    /^already_reviewing$/i.test(err.detail.trim())
+  );
 }
 
 type QueueSnapshot = Array<[readonly unknown[], ReviewQueuePage | undefined]>;
@@ -329,10 +337,11 @@ export interface UseReviewActionsOptions {
       textarea intact. */
   onError: (vars: ReviewActionVars, message: string) => void;
   /** `approve_and_publish` where the **approve committed** but `publish` then
-      failed. The card must NOT go back to a pending badge — the screen shows a
-      persistent, screen-level message that survives the card leaving the queue
-      ("'<title>' was approved, but publishing failed — publish it from its
-      sermon page"). `detail` is the underlying publish error, for support. */
+      failed. The card must NOT go back to a pending badge. The row refetches as
+      `approved` and stays in the queue (#12); the screen clears any half-open
+      reject `mode` on that card (so it shows the "Publish" retry, not the
+      reject textarea) and surfaces `detail` as a transient card-top alert.
+      `detail` is the underlying publish error. */
   onApprovedNotPublished: (vars: ReviewActionVars, detail: string) => void;
   /** A card's action went through. The screen clears that card's local state. */
   onSuccess?: (vars: ReviewActionVars) => void;
@@ -380,8 +389,9 @@ export function useReviewActions(options: UseReviewActionsOptions) {
       if (err instanceof ReviewActionError && err.phase === "publish") {
         // The approve committed. Do NOT restore the pending badge — leave the
         // card removed (it's no longer pending), and for any page still showing
-        // it (stale tab / race) make it read `approved`. The screen surfaces a
-        // persistent, card-independent message pointing at the sermon page.
+        // it (stale tab / race) make it read `approved`. The settle refetch
+        // brings it back as an `approved` card (#12); the screen clears any
+        // half-open reject mode and shows a transient card-top error there.
         markApprovedInQueues(qc, vars.item.id);
         options.onApprovedNotPublished(
           vars,
