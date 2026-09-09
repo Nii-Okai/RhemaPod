@@ -104,6 +104,31 @@ describe("SeriesGrid", () => {
     expect(manage[0]).toHaveAttribute("href", "/series/ser-faith");
   });
 
+  it("never renders 'undefined episodes' when a stale DTO omits episode_count", async () => {
+    backend({
+      series: [
+        {
+          id: "ser-stale",
+          title: "Partial Payload",
+          description: null,
+          category_id: "cat-teaching",
+          category_name: "Teaching",
+          tier: "free",
+          status: "draft",
+          thumbnail_url: null,
+          // episode_count intentionally absent — stale / partial API response.
+        },
+      ],
+    });
+    renderGrid();
+
+    expect(await screen.findByText("Partial Payload")).toBeInTheDocument();
+    // Count segment dropped entirely; category still shown.
+    expect(screen.getByText("Teaching")).toBeInTheDocument();
+    expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/undefined episodes/)).not.toBeInTheDocument();
+  });
+
   it("always renders the dashed New-series tile after the cards", async () => {
     backend();
     renderGrid();

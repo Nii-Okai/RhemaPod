@@ -100,13 +100,26 @@ export function reorderEpisodes<T extends OrderableEpisode>(
   };
 }
 
-/** The design's footer line on a series card: `"3 episodes · Teaching"`. */
+/**
+ * The design's footer line on a series card: `"3 episodes · Teaching"`.
+ *
+ * `episode_count` is a required field on `SeriesPublic`, but a stale or partial
+ * API response has been seen to omit it — which rendered the literal string
+ * `"undefined episodes"`. Guard defensively: when the count is not a number,
+ * drop the count segment entirely and show just the category. The category
+ * itself is `string | null` on the DTO, so `null` falls back to
+ * `"Uncategorized"`.
+ */
 export function seriesFooterLine(
-  episodeCount: number,
+  episodeCount: number | null | undefined,
   categoryName: string | null | undefined,
 ): string {
+  const category = categoryName ?? "Uncategorized";
+  if (typeof episodeCount !== "number") {
+    return category;
+  }
   const noun = episodeCount === 1 ? "episode" : "episodes";
-  return `${episodeCount} ${noun} · ${categoryName ?? "Uncategorized"}`;
+  return `${episodeCount} ${noun} · ${category}`;
 }
 
 /** Two-digit mono episode number for the panel rows (`1` → `"01"`), em dash for

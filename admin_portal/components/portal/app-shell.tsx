@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 import type { SessionUser } from "@/lib/auth/session-types";
@@ -51,19 +51,23 @@ export function AppShell({ user, groups, children }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
-  // Focus management for the <1100px nav drawer (W14 a11y). On open, remember
-  // the trigger and move focus to the drawer's Close control so a keyboard user
-  // lands inside the panel; on close, hand focus back to whatever opened it (the
-  // top-bar hamburger). A full Tab-cycle trap is deliberately out of scope here
-  // — flagged in the W14 report as a follow-up.
+  // Focus management for the <1100px nav drawer (W14 a11y). On open, move focus
+  // to the drawer's Close control so a keyboard user lands inside the panel; on
+  // close, hand focus back to whatever opened it (the top-bar hamburger).
+  //
+  // The Tab-cycle trap is the `inert` on the rest of the shell below (React 19
+  // `inert` prop) — the drawer is a DOM sibling of both inert-ed subtrees, so
+  // while it is open Tab can only cycle within the panel and the page behind it
+  // is unreachable by keyboard, pointer or AT.
+  //
+  // The opener is captured in `openDrawer` (below), NOT here: making the main
+  // column `inert` synchronously blurs whatever was focused inside it to
+  // <body>, so by the time this effect runs `document.activeElement` is no
+  // longer the hamburger. Capturing at dispatch time is the only reliable read.
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
   const drawerWasOpenRef = useRef(false);
   useEffect(() => {
     if (drawerOpen && !drawerWasOpenRef.current) {
-      drawerOpenerRef.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
       // The panel's own "×" control — scoped to the drawer so it is not the
       // full-screen backdrop button (same aria-label, earlier in the DOM).
       document
@@ -77,10 +81,26 @@ export function AppShell({ user, groups, children }: AppShellProps) {
     drawerWasOpenRef.current = drawerOpen;
   }, [drawerOpen]);
 
+  // Open the drawer, recording the element to restore focus to on close. Read
+  // synchronously here — before the re-render that makes the shell `inert` and
+  // blurs the trigger.
+  const openDrawer = useCallback(() => {
+    drawerOpenerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    dispatch({ type: "open" });
+  }, []);
+
   return (
     <div className="min-h-screen bg-surface-sunken min-[1100px]:grid min-[1100px]:grid-cols-[248px_1fr]">
-      {/* Desktop rail — grid column 1, sticky, self-scrolling. */}
-      <div className="sticky top-0 hidden h-screen min-[1100px]:block">
+      {/* Desktop rail — grid column 1, sticky, self-scrolling. `display:none`
+          below 1100px, but also `inert` while the mobile drawer is open so the
+          two states never disagree. */}
+      <div
+        className="sticky top-0 hidden h-screen min-[1100px]:block"
+        inert={drawerOpen}
+      >
         <Sidebar groups={groups} user={user} counts={counts} />
       </div>
 
@@ -111,12 +131,15 @@ export function AppShell({ user, groups, children }: AppShellProps) {
         </div>
       ) : null}
 
-      {/* Main column. */}
-      <div className="flex min-w-0 flex-col">
+      {/* Main column. While the <1100px drawer is open the whole column —
+          top bar and page content — is `inert`: unfocusable and hidden from
+          assistive tech, so Tab stays inside the drawer (the focus trap) and
+          the page behind the scrim cannot be operated. */}
+      <div className="flex min-w-0 flex-col" inert={drawerOpen}>
         <TopBar
           navId={NAV_DRAWER_ID}
           navOpen={drawerOpen}
-          onMenuClick={() => dispatch({ type: "open" })}
+          onMenuClick={openDrawer}
         />
         <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-24 p-28">
           {children}

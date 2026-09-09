@@ -132,6 +132,14 @@ describe("seriesFooterLine", () => {
     expect(seriesFooterLine(0, null)).toBe("0 episodes · Uncategorized");
     expect(seriesFooterLine(2, undefined)).toBe("2 episodes · Uncategorized");
   });
+  it("drops the count segment (never 'undefined episodes') when the count is missing", () => {
+    expect(seriesFooterLine(undefined, "Teaching")).toBe("Teaching");
+    expect(seriesFooterLine(null, "Youth")).toBe("Youth");
+    expect(seriesFooterLine(undefined, null)).toBe("Uncategorized");
+    // A non-finite number is still a number and passes through untouched — the
+    // guard is only against the missing-field case.
+    expect(seriesFooterLine(1, "Youth")).toBe("1 episode · Youth");
+  });
 });
 
 describe("episodeNumberLabel", () => {
