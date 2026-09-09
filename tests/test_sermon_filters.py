@@ -67,6 +67,34 @@ async def test_filter_by_speaker_id(client, engine):
     assert total == 1
 
 
+async def _category(client, headers, name, slug):
+    r = await client.post(
+        "/api/v1/categories", json={"name": name, "slug": slug}, headers=headers
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+async def test_filter_by_category_id(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    cat_teach = await _category(client, mgr, "Teaching", "teaching")
+    cat_worship = await _category(client, mgr, "Worship", "worship")
+
+    await _create(client, ed, title="T one", category_id=cat_teach)
+    await _create(client, ed, title="T two", category_id=cat_teach)
+    await _create(client, ed, title="W one", category_id=cat_worship)
+    await _create(client, ed, title="No cat")
+
+    titles, total = await _titles(client, mgr, f"?category_id={cat_teach}")
+    assert titles == {"T one", "T two"}
+    assert total == 2
+
+    titles, total = await _titles(client, mgr, f"?category_id={cat_worship}&status=draft")
+    assert titles == {"W one"}
+    assert total == 1
+
+
 async def test_filter_by_series_id(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     mgr = await make_user(client, engine, "m@example.com", "manager")
