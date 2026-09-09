@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +79,25 @@ def entitlement_from_row(sub: Subscription | None) -> bool:
         if valid_until <= now:
             return False
     return True
+
+
+async def count_active_paid_subscriptions(db: AsyncSession) -> int:
+    """How many subscribers a publish would notify.
+
+    One `SELECT count(*)` over `subscriptions`: a paid tier (`PAID_TIERS`) in an
+    entitled status (`ENTITLED_STATUSES`) — the same predicate
+    `entitlement_from_row` gates on, minus the per-row `valid_until` expiry
+    check, which needs the `expire_lapsed` sweep to be exact anyway. Good enough
+    for a toast count; not an entitlement decision.
+    """
+    return (await db.execute(
+        select(func.count())
+        .select_from(Subscription)
+        .where(
+            Subscription.tier.in_(PAID_TIERS),
+            Subscription.status.in_(ENTITLED_STATUSES),
+        )
+    )).scalar_one()
 
 
 async def invalidate_entitlement(user_id: uuid.UUID | str) -> None:

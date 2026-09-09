@@ -675,12 +675,18 @@ async def review_queue_page(
             category_name=names.categories.get(sermon.category_id),
             series_id=sermon.series_id,
             series_title=names.series.get(sermon.series_id),
+            episode_number=sermon.episode_number,
             tier=effective_tier(sermon, series_map.get(sermon.series_id)),
             status=sermon.status,
             submitted_at=submitted_at,
             renditions_ready=media_counts.get(sermon.id, 0),
             review_claimed_by=(
                 actor_names.get(claimed_actor_id)
+                if sermon.status == SermonStatus.UNDER_REVIEW
+                else None
+            ),
+            review_claimed_by_id=(
+                claimed_actor_id
                 if sermon.status == SermonStatus.UNDER_REVIEW
                 else None
             ),

@@ -1221,6 +1221,30 @@
         "title": "ProgressUpdate",
         "type": "object"
       },
+      "PublishResponse": {
+        "description": "`publish` adds the number the success toast shows (\"Published to the app\n\u00b7 N subscribers\").",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notified_subscriber_count": {
+            "title": "Notified Subscriber Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SermonStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "notified_subscriber_count"
+        ],
+        "title": "PublishResponse",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -1237,17 +1261,15 @@
       "RejectRequest": {
         "properties": {
           "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
           }
         },
+        "required": [
+          "note"
+        ],
         "title": "RejectRequest",
         "type": "object"
       },
@@ -1319,6 +1341,17 @@
             ],
             "title": "Duration Seconds"
           },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1338,6 +1371,18 @@
               }
             ],
             "title": "Review Claimed By"
+          },
+          "review_claimed_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Claimed By Id"
           },
           "series_id": {
             "anyOf": [
@@ -4422,7 +4467,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
+                  "$ref": "#/components/schemas/PublishResponse"
                 }
               }
             },

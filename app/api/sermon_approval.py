@@ -9,12 +9,13 @@ from app.db.database import get_db
 from app.models.content_schemas import (
     ApprovalLogItem,
     Page,
+    PublishResponse,
     RejectRequest,
     ReviewQueueItem,
     StatusResponse,
 )
 from app.models.models import User, UserRole
-from app.services import auth_service, content_service
+from app.services import auth_service, content_service, subscription_service
 from app.services.content_service import ContentError
 
 router = APIRouter(prefix="/approvals/sermons", tags=["sermon approvals"])
@@ -89,14 +90,17 @@ async def reject(
     return StatusResponse(id=s.id, status=s.status)
 
 
-@router.post("/{sermon_id}/publish", response_model=StatusResponse)
-async def publish(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> StatusResponse:
+@router.post("/{sermon_id}/publish", response_model=PublishResponse)
+async def publish(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> PublishResponse:
     actor = await _actor(db, user)
     try:
         s = await content_service.transition(db, sermon_id, "publish", actor)
     except ContentError as exc:
         raise _err(exc)
-    return StatusResponse(id=s.id, status=s.status)
+    count = await subscription_service.count_active_paid_subscriptions(db)
+    return PublishResponse(
+        id=s.id, status=s.status, notified_subscriber_count=count
+    )
 
 
 @router.post("/{sermon_id}/unpublish", response_model=StatusResponse)
