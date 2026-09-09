@@ -177,7 +177,20 @@ class SermonAdminDetail(SermonDetail):
 
 # ── Approval workflow ─────────────────────────────────────────────────────────
 class RejectRequest(BaseModel):
-    note: str | None = None
+    # A rejection MUST carry a reason — it's the only place the editor learns
+    # what to fix. Required, and non-empty after stripping surrounding
+    # whitespace; the stored note is the trimmed value. `ApprovalLog.note` is an
+    # unbounded Text column, so the 2000-char cap is a sanity bound, not a
+    # schema constraint.
+    note: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("note")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("A rejection note is required")
+        return stripped
 
 
 class ApprovalLogItem(BaseModel):
@@ -200,6 +213,17 @@ class StatusResponse(BaseModel):
     status: SermonStatus
 
 
+class PublishResponse(StatusResponse):
+    """`publish` adds the number the success toast shows ("Published to the app
+    · N subscribers")."""
+
+    # Count of active paid subscriptions at publish time: `Subscription` rows
+    # with a paid tier (monthly/annual) in an entitled status (active,
+    # cancelled, past_due). A row whose paid period has lapsed but which the
+    # `expire_lapsed` sweep has not yet demoted is still counted.
+    notified_subscriber_count: int
+
+
 class ReviewQueueItem(BaseModel):
     """One sermon awaiting review, carrying the timing and readiness fields the
     W10 queue screen needs: "waiting N days", the >48h alert, and whether any
@@ -219,6 +243,10 @@ class ReviewQueueItem(BaseModel):
     # `series_id is None` already tells the client whether this is a standalone
     # sermon — the sibling list DTOs (SermonListItem / SermonAdminListItem)
     # carry no such bool, so neither does this one.
+    # Sermon.episode_number verbatim (mirrors SermonListItem.episode_number).
+    # None for a standalone or an unnumbered series sermon; drives the queue
+    # card's "· ep N" chip.
+    episode_number: int | None = None
     # Resolved effective tier: sermon tier, else series tier, else free.
     tier: ContentTier
     # pending_review or under_review (the only two statuses in the queue).
@@ -232,6 +260,10 @@ class ReviewQueueItem(BaseModel):
     # For under_review items: the display name of whoever ran start-review
     # (users.full_name / email local-part / None). None for pending_review.
     review_claimed_by: str | None = None
+    # For under_review items: the raw user id of whoever ran start-review, so the
+    # client can match it against the session user id instead of string-matching
+    # `review_claimed_by` (namesakes, null names). None for pending_review.
+    review_claimed_by_id: uuid.UUID | None = None
 
 
 

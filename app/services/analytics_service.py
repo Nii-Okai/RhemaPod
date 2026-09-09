@@ -209,6 +209,9 @@ async def overview(db: AsyncSession) -> dict:
         select(func.count()).select_from(User)
     )).scalar_one()
 
+    # Same cohort as subscription_service._PAID_SUBSCRIBER_STATUSES (ACTIVE +
+    # CANCELLED, PAST_DUE excluded) — keep these two in step or the overview
+    # figure and the publish toast disagree.
     active_subs = (await db.execute(
         select(func.count()).select_from(Subscription).where(
             Subscription.tier.in_(PAID_TIERS),

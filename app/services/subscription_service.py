@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +79,30 @@ def entitlement_from_row(sub: Subscription | None) -> bool:
         if valid_until <= now:
             return False
     return True
+
+
+# Paid subscribers as counted for admin-facing figures (the analytics overview
+# and the publish toast). Deliberately ACTIVE + CANCELLED only — PAST_DUE is
+# entitled (see ENTITLED_STATUSES) but excluded here so the "paid members"
+# number is stable and matches analytics.overview(); a publish push isn't an
+# entitlement decision.
+_PAID_SUBSCRIBER_STATUSES = (SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED)
+
+
+async def count_active_paid_subscribers(db: AsyncSession) -> int:
+    """Paid subscribers for an admin figure (publish toast / analytics overview).
+
+    One `SELECT count(*)`: a paid tier (`PAID_TIERS`) in `_PAID_SUBSCRIBER_STATUSES`.
+    Not an entitlement decision — `is_entitled()` is the source of truth for access.
+    """
+    return (await db.execute(
+        select(func.count())
+        .select_from(Subscription)
+        .where(
+            Subscription.tier.in_(PAID_TIERS),
+            Subscription.status.in_(_PAID_SUBSCRIBER_STATUSES),
+        )
+    )).scalar_one()
 
 
 async def invalidate_entitlement(user_id: uuid.UUID | str) -> None:
