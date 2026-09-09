@@ -176,7 +176,9 @@ export function useEpisodeReorder({
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: key });
       void qc.invalidateQueries({ queryKey: queryKeys.series.detail(seriesId) });
-      void qc.invalidateQueries({ queryKey: queryKeys.nav.counts() });
+      // No nav-count invalidation: an `episode_number` shuffle changes no count.
+      // The series nav count is a status-agnostic array length; the sermon and
+      // review-queue counts are untouched by a reorder.
     },
   });
 

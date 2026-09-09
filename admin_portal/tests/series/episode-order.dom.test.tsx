@@ -7,21 +7,25 @@ import {
   expect,
   it,
 } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { server } from "../msw/server";
 import { EpisodeOrder } from "@/components/series/episode-order";
+import { EPISODE_ORDER_LIMIT } from "@/lib/query/hooks/use-series-episodes";
 
 /* W11 / Batch 5 — the episode-order panel. Backend via MSW (§A.11). Covers:
    sorted (gap-preserving) render, a move issuing exactly ONE atomic
    `PUT .../episode-order` with the full ordered id list + an optimistic
    renumber, a 409 naming the locked episode rolling the order back with a panel
    alert, a 422 surfacing a "reload" alert + rollback, the locked-span
-   pre-check blocking client-side with no request, and a locked (under_review)
-   episode's move control being disabled. */
+   pre-check blocking client-side with no request, a locked (under_review)
+   episode's move control being disabled, and a series whose server total
+   exceeds `EPISODE_ORDER_LIMIT` going fully read-only (Batch 5 changed the
+   disable reason: the atomic endpoint needs the complete ordered set, which
+   past the limit the client has only a recency slice of). */
 
 const SERIES_ID = "ser-1";
 
@@ -41,7 +45,7 @@ function makeEpisodes(): Ep[] {
   ];
 }
 
-function page(items: Ep[]) {
+function page(items: Ep[], total = items.length) {
   return {
     items: items.map((e) => ({
       id: e.id,
@@ -63,7 +67,7 @@ function page(items: Ep[]) {
       created_at: "2026-09-01T00:00:00Z",
       updated_at: "2026-09-01T00:00:00Z",
     })),
-    total: items.length,
+    total,
     limit: 100,
     offset: 0,
   };
@@ -76,17 +80,22 @@ interface BackendOptions {
   putDetail?: string;
   /** Override the seed episode set. */
   episodes?: Ep[];
+  /** Server total for the series — defaults to the number of loaded rows.
+      Set `> EPISODE_ORDER_LIMIT` to model a series the panel can only see a
+      recency slice of. */
+  total?: number;
 }
 
 function backend({
   putStatus = 200,
   putDetail = "boom",
   episodes,
+  total,
 }: BackendOptions = {}) {
   const state = episodes ?? makeEpisodes();
   const puts: Array<{ episode_ids: string[] }> = [];
   server.use(
-    http.get("*/api/bff/sermons", () => HttpResponse.json(page(state))),
+    http.get("*/api/bff/sermons", () => HttpResponse.json(page(state, total))),
     http.put(
       "*/api/bff/series/:id/episode-order",
       async ({ request }) => {
@@ -285,5 +294,55 @@ describe("EpisodeOrder", () => {
     expect(items[0]).toHaveTextContent("Grace Abounding");
     expect(items[1]).toHaveTextContent("Faith Over Fear");
     expect(items[2]).toHaveTextContent("The Lord's Prayer");
+  });
+
+  it("goes read-only when the series total exceeds EPISODE_ORDER_LIMIT: notice shown, rows not draggable, zero PUTs", async () => {
+    const { puts } = backend({ total: EPISODE_ORDER_LIMIT + 1 });
+    renderPanel();
+    await screen.findByText("Grace Abounding");
+
+    // The "reordering disabled" notice renders (the loaded rows are an
+    // arbitrary recency slice, not episodes 1..N, and the atomic endpoint
+    // needs the complete ordered set).
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Reordering is disabled");
+    expect(notice).toHaveTextContent(
+      `more than ${EPISODE_ORDER_LIMIT} episodes`,
+    );
+
+    // Every row is inert: not draggable, both move controls disabled.
+    const rows = screen.getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row).toHaveAttribute("draggable", "false");
+    }
+    for (const title of ["Grace Abounding", "Faith Over Fear", "The Lord's Prayer"]) {
+      expect(
+        screen.getByRole("button", { name: `Move “${title}” up` }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: `Move “${title}” down` }),
+      ).toBeDisabled();
+    }
+
+    // Neither a (disabled) button click nor a full HTML5 drag interaction
+    // issues a request — `move()` bails on `overLimit` before `mutate`.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move “Grace Abounding” down" }),
+    );
+    fireEvent.dragStart(rows[0]);
+    fireEvent.dragOver(rows[2]);
+    fireEvent.drop(rows[2]);
+    fireEvent.dragEnd(rows[0]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(puts).toEqual([]);
+
+    // Order is exactly as loaded — the sorted seed, gaps preserved.
+    const after = screen.getAllByRole("listitem");
+    expect(after[0]).toHaveTextContent("01");
+    expect(after[0]).toHaveTextContent("Grace Abounding");
+    expect(after[1]).toHaveTextContent("03");
+    expect(after[2]).toHaveTextContent("05");
   });
 });

@@ -21,7 +21,10 @@ import { SeriesDetailScreen } from "@/components/series/series-detail-screen";
    screen (`SeriesUpdate.status` accepts draft ⇄ published). Backend via MSW
    (§A.11); `next/navigation` + `next/link` mocked. Covers: a manager publishing
    a draft (PATCH { status: "published" } on the wire, badge flips), the
-   unpublish path, and the control being absent for an editor session. */
+   unpublish path, the control being absent for an editor session, and the
+   optimistic-rollback path — a PATCH that 403s / 500s reverts the badge to its
+   prior value and fires the card-top alert with the backend detail
+   (`useUpdateSeries.onError` restores `context.detail` + `context.list`). */
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -79,7 +82,20 @@ interface BackendResult {
   patches: Array<Record<string, unknown>>;
 }
 
-function backend(seed: SeriesRow): BackendResult {
+interface BackendOptions {
+  /** Status for the PATCH (default 200). Non-200 leaves `current` untouched and
+      returns the backend error envelope. */
+  patchStatus?: number;
+  /** `detail` on a non-200 PATCH. */
+  patchDetail?: string;
+  /** `correlation_id` on a non-200 PATCH. */
+  patchCorrelationId?: string;
+}
+
+function backend(
+  seed: SeriesRow,
+  { patchStatus = 200, patchDetail = "boom", patchCorrelationId }: BackendOptions = {},
+): BackendResult {
   const current = { ...seed };
   const patches: Array<Record<string, unknown>> = [];
   server.use(
@@ -91,6 +107,12 @@ function backend(seed: SeriesRow): BackendResult {
     http.patch("*/api/bff/series/:id", async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       patches.push(body);
+      if (patchStatus !== 200) {
+        return HttpResponse.json(
+          { detail: patchDetail, correlation_id: patchCorrelationId ?? null },
+          { status: patchStatus },
+        );
+      }
       Object.assign(current, body);
       return HttpResponse.json(current);
     }),
@@ -167,4 +189,46 @@ describe("SeriesPublishControl", () => {
       screen.queryByRole("button", { name: "Unpublish" }),
     ).not.toBeInTheDocument();
   });
+
+  it.each([
+    { status: 403, detail: "You can’t publish this series." },
+    { status: 500, detail: "Series publish is temporarily unavailable." },
+  ])(
+    "a $status on the publish PATCH rolls the badge back to Draft and fires the card alert",
+    async ({ status, detail }) => {
+      const { patches } = backend(DRAFT, {
+        patchStatus: status,
+        patchDetail: detail,
+        patchCorrelationId: "cid-pub",
+      });
+      renderScreen("manager");
+
+      const publish = await screen.findByRole("button", {
+        name: "Publish series",
+      });
+      expect(screen.getByText("Draft")).toBeInTheDocument();
+
+      await userEvent.click(publish);
+
+      // The optimistic write sent { status: "published" } on the wire…
+      await waitFor(() => expect(patches).toEqual([{ status: "published" }]));
+
+      // …the backend rejected it, so the card-top alert carries the detail
+      // (with the correlation handle appended) and the badge is back on Draft.
+      expect(
+        await screen.findByText(
+          `${detail} (reference: cid-pub)`,
+        ),
+      ).toBeInTheDocument();
+      expect(await screen.findByText("Draft")).toBeInTheDocument();
+      expect(screen.queryByText("Published")).not.toBeInTheDocument();
+      // And the control has reverted to its pre-click "Publish series" state.
+      expect(
+        screen.getByRole("button", { name: "Publish series" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Unpublish" }),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
