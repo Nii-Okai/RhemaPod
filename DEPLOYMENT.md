@@ -207,7 +207,34 @@ Two dev-only wrinkles, both handled in `docker-compose.yml`:
   used rather than a per-bucket `mc cors` rule — `mc cors` support varies by
   release; the server env var is stable.)
 
-## 8. Operational behaviour when Redis is down
+## 8. Edge caching and the `Authorization` header
+
+Seven public GET routes return a **different body depending on whether the
+caller is authenticated staff**:
+
+```
+/api/v1/catalog/categories
+/api/v1/categories            /api/v1/categories/{id}
+/api/v1/speakers              /api/v1/speakers/{id}
+/api/v1/series                /api/v1/series/{id}
+```
+
+They carry `sermon_count` / `episode_count` fields. An anonymous or `viewer`
+caller gets a **published-only** count; an `editor`/`manager`/`admin` token
+gets the true all-status count (so the admin portal's delete-confirmation
+copy and people-screen totals are accurate). See `staff_sees_full_counts` in
+`app/services/content_service.py`.
+
+Consequence for any shared HTTP cache or CDN (CloudFront, a reverse-proxy
+cache) in front of the API: it **must** vary on `Authorization` for these
+routes — `Vary: Authorization`, or a cache-key policy that includes the
+header — or it can serve a staff full-count body (which leaks unpublished
+content volume) to an anonymous client. The `openapi.json` marks these
+routes with optional `HTTPBearer` security, which is the signal to key on.
+The API itself sets no cache headers on them; the count queries bypass the
+`cache_aside` layer, so this is purely an edge-layer concern.
+
+## 9. Operational behaviour when Redis is down
 
 Redis backs refresh-token rotation, the one-shot reset/invite ledger, and login
 rate limiting. The failure posture is split on purpose:
@@ -223,7 +250,7 @@ All 503s carry the correlation ID and a generic message. `/health/ready`
 already returns 503 while Redis is unreachable, so a load balancer drains the
 instance; the per-request behaviour above covers the window before it does.
 
-## 9. What is still deferred
+## 10. What is still deferred
 
 - **Transcoding** is passthrough: the uploaded MP4 is served directly. Fine for
   launch; revisit when bandwidth cost or mobile buffering justifies an HLS
