@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { BOOTSTRAP_ADMIN } from "./constants";
+
 /**
  * W24 — the Users lifecycle path, end to end against the seeded + W24-augmented
  * Docker stack (plan §W24 deliverable 2).
@@ -34,8 +36,15 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * Fixture: the seeded stack (`global-setup.ts`) plus the W24 lifecycle-state
  * seed rows — `editor.dana@seed.rhemapod.dev` (deactivated) and
- * `admin.two@seed.rhemapod.dev` (a second active admin). The invited account
- * uses the `@seed.rhemapod.dev` domain so `seed_dev.py --fresh` sweeps it.
+ * `admin.two@seed.rhemapod.dev` (a second active admin) — and the bootstrap
+ * admin `admin@rhemapod.com`, which `global-setup.ts` now creates + verifies
+ * idempotently (it is not a `seed_dev.py` row).
+ *
+ * Litter: step 1 creates `e2e.invite.<RUN_ID>@seed.rhemapod.dev` and there is
+ * no user-delete endpoint to remove it. `global-setup.ts` runs
+ * `seed_dev.py --fresh` before every suite run, which drops every
+ * `@seed.rhemapod.dev` row (this invitee included) and rebuilds the fixture —
+ * so the per-run invitees never accumulate. `--fresh` is the cleanup.
  */
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -43,9 +52,10 @@ const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
 const SEED_PASSWORD = "SeedDev-Passphrase-2026";
 const MANAGER = "manager.mo@seed.rhemapod.dev";
 
-// The bootstrap admin (created by `create-admin`, not `seed_dev.py`).
-const ADMIN_EMAIL = "admin@rhemapod.com";
-const ADMIN_PASSWORD = "AdminPass1@@";
+// The bootstrap admin (created + verified by `global-setup.ts`, not
+// `seed_dev.py`). Credentials live in `./constants` so setup and spec can't drift.
+const ADMIN_EMAIL = BOOTSTRAP_ADMIN.email;
+const ADMIN_PASSWORD = BOOTSTRAP_ADMIN.password;
 const SECOND_ADMIN = "admin.two@seed.rhemapod.dev";
 
 // A fresh invitee per run, under the seed domain so `--fresh` collects it.
@@ -65,7 +75,43 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  await waitForLoginSettled(page, email);
+}
+
+/**
+ * Success is a navigation away from `/login`. A bad, inactive, or rate-limited
+ * credential otherwise just sits on `waitForURL` until the suite timeout with no
+ * signal — so race the navigation against the login form's error `Alert` (401 →
+ * "…don't match", 429 → "Too many sign-in attempts", 5xx → "Could not sign you
+ * in") and throw with its text the moment it appears. The success path is
+ * unchanged: a normal login navigates and returns before the error branch ever
+ * resolves.
+ */
+async function waitForLoginSettled(page: Page, email: string): Promise<void> {
+  const errorAlert = page
+    .getByRole("alert")
+    .filter({ hasText: /don't match|Too many sign-in|Could not sign you in/ });
+
+  const navigated = page
+    .waitForURL((url) => !url.pathname.startsWith("/login"))
+    .then(() => ({ failed: false as const }));
+  const failed = errorAlert
+    .first()
+    .waitFor({ state: "visible" })
+    .then(async () => ({
+      failed: true as const,
+      text: (await errorAlert.first().innerText()).replace(/\s+/g, " ").trim(),
+    }));
+
+  // Whichever settles first wins; the loser's later rejection (its own timeout)
+  // is swallowed so it can't surface as an unhandled rejection.
+  const outcome = await Promise.race([navigated, failed]);
+  navigated.catch(() => {});
+  failed.catch(() => {});
+
+  if (outcome.failed) {
+    throw new Error(`login failed for ${email}: ${outcome.text}`);
+  }
 }
 
 /** The staff row in the Users DataTable, keyed by user id (`data-rowkey`). */
@@ -89,10 +135,11 @@ test.describe.serial("W24 — Users lifecycle (invite → activate → promote �
     await dialog.getByLabel("Email").fill(NEW_EMAIL);
     await dialog.getByLabel("Full name (optional)").fill(NEW_NAME);
     // A manager can only assign `editor` — the role Select is present but has
-    // the single option and is disabled.
-    await expect(dialog.getByLabel("Role", { exact: true })).toHaveValue(
-      "editor",
-    );
+    // the single option and is disabled (`roles.length <= 1` in
+    // invite-staff-dialog).
+    const inviteRole = dialog.getByLabel("Role", { exact: true });
+    await expect(inviteRole).toHaveValue("editor");
+    await expect(inviteRole).toBeDisabled();
 
     const invitePost = page.waitForResponse(
       (res) =>
@@ -163,7 +210,16 @@ test.describe.serial("W24 — Users lifecycle (invite → activate → promote �
     // editor's role (RoleCell → assignableRoles).
     const roleSelect = row.getByLabel(`Role for ${NEW_NAME}`);
     await expect(roleSelect).toHaveValue("editor");
+
+    // Assert the write actually landed server-side, not just the optimistic
+    // client value — the BFF PATCH must return 2xx.
+    const rolePatch = page.waitForResponse(
+      (res) =>
+        /\/api\/bff\/users\/[0-9a-f-]{36}\/role$/.test(res.url()) &&
+        res.request().method() === "PATCH",
+    );
     await roleSelect.selectOption("manager");
+    expect((await rolePatch).ok()).toBe(true);
 
     // Optimistic write, then onSettled refetch — the cell settles on the new
     // role either way.
@@ -272,12 +328,21 @@ test.describe.serial("W24 — Users lifecycle (invite → activate → promote �
       }).items.find((u) => u.email === ADMIN_EMAIL);
       expect(stillActive?.is_active).toBe(true);
     } finally {
-      // Restore the second admin regardless of the assertions above.
-      const reac = await request.patch(
-        `${API_BASE_URL}/api/v1/users/${second!.id}/active`,
-        { headers: auth, data: { is_active: true } },
-      );
-      expect(reac.status()).toBe(200);
+      // Best-effort cleanup — errors swallowed. Reactivate the BOOTSTRAP admin
+      // FIRST: if the invariant regressed, `deacSelf` returned 200 and the
+      // assertion above threw before we reached here, leaving
+      // `admin@rhemapod.com` deactivated — which would break every later run's
+      // steps 4–6 as a login-timeout. It must come back even if the second
+      // reactivate then fails. In the normal path `self` was never deactivated
+      // and its PATCH is a harmless no-op.
+      for (const id of [self!.id, second!.id]) {
+        await request
+          .patch(`${API_BASE_URL}/api/v1/users/${id}/active`, {
+            headers: auth,
+            data: { is_active: true },
+          })
+          .catch(() => {});
+      }
     }
   });
 });

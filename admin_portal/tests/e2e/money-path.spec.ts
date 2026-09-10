@@ -35,7 +35,30 @@ async function login(page: Page, email: string): Promise<void> {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+
+  // Success is a nav away from `/login`. A bad/inactive/rate-limited credential
+  // otherwise just sits on `waitForURL` until the suite timeout — so race the
+  // nav against the login form's error `Alert` and fail with its text instead.
+  // The success path is unchanged: a good login navigates first.
+  const errorAlert = page
+    .getByRole("alert")
+    .filter({ hasText: /don't match|Too many sign-in|Could not sign you in/ });
+  const navigated = page
+    .waitForURL((url) => !url.pathname.startsWith("/login"))
+    .then(() => ({ failed: false as const }));
+  const failed = errorAlert
+    .first()
+    .waitFor({ state: "visible" })
+    .then(async () => ({
+      failed: true as const,
+      text: (await errorAlert.first().innerText()).replace(/\s+/g, " ").trim(),
+    }));
+  const outcome = await Promise.race([navigated, failed]);
+  navigated.catch(() => {});
+  failed.catch(() => {});
+  if (outcome.failed) {
+    throw new Error(`login failed for ${email}: ${outcome.text}`);
+  }
 }
 
 async function logout(page: Page): Promise<void> {

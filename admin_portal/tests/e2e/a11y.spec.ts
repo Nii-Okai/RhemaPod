@@ -355,9 +355,13 @@ test.describe("axe sweep — Phase 2 screens (W24)", () => {
       await expect(
         page.getByRole("heading", { name: /Good morning/ }),
       ).toBeVisible();
-      // Let any (wrongly) queued analytics fetch have its chance to fire.
-      await page.waitForLoadState("networkidle").catch(() => {});
-      await page.waitForTimeout(400);
+      // Give a wrongly-queued analytics fetch its chance to fire before we
+      // assert it never did. `networkidle` resolves the instant the network is
+      // actually quiet (fast path) and is capped so the HMR socket under
+      // `next dev` can't hang it — a bounded settle, not a fixed hard sleep.
+      await page
+        .waitForLoadState("networkidle", { timeout: 2_000 })
+        .catch(() => {});
 
       // §A.1 / decision 1a: the analytics blocks are absent from the render
       // tree for an editor — not hidden, not placeholdered.

@@ -174,6 +174,11 @@ async def test_seed_fresh_rebuilds_cleanly(engine):
             select(func.count()).select_from(User)
             .where(User.email.like(f"%@{seed_dev.SEED_EMAIL_DOMAIN}"))
         )).scalar_one()
+        lifecycle = (await db.execute(
+            select(User.email, User.is_active).where(
+                User.email.in_([e for e, _n, _r, _a in seed_dev.LIFECYCLE_STAFF])
+            )
+        )).all()
 
     # Rebuilt exactly once — no duplicates from the second run. Seed users are
     # the staff accounts, the W24 lifecycle-state staff, and the listener
@@ -182,6 +187,15 @@ async def test_seed_fresh_rebuilds_cleanly(engine):
         len(seed_dev.STAFF) + len(seed_dev.LIFECYCLE_STAFF) + len(seed_dev.LISTENERS)
     )
     assert sermons == 12
+
+    # `--fresh`'s DELETE matches the lifecycle-state staff too (same seed
+    # domain), so they come back exactly once — no stale pre-fresh duplicate —
+    # and `editor.dana` is still deactivated after the rebuild.
+    assert len(lifecycle) == len(seed_dev.LIFECYCLE_STAFF)
+    assert dict(lifecycle) == {
+        f"editor.dana@{seed_dev.SEED_EMAIL_DOMAIN}": False,
+        f"admin.two@{seed_dev.SEED_EMAIL_DOMAIN}": True,
+    }
 
 
 async def test_seed_refuses_in_production(engine, monkeypatch):
