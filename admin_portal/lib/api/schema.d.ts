@@ -1414,6 +1414,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{user_id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Active
+         * @description Deactivate (`is_active=false`) or reactivate a staff account.
+         *
+         *     Managers may act on editors only; admins on anyone, except where it would
+         *     leave zero active admins (409). Deactivation commits first, then revokes
+         *     refresh tokens best-effort: a Redis outage still returns 200 with
+         *     `revocation_deferred=true` rather than 503, because every request re-checks
+         *     `is_active` regardless (plan §W18, GATE 6).
+         */
+        patch: operations["set_active_api_v1_users__user_id__active_patch"];
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/resend-invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Invite
+         * @description Re-issue the invite for a staff account that has not finished
+         *     set-password. Same authz as `PATCH /users/{id}/active`. A 409 means the
+         *     account has already been activated (nothing to resend); a 503 means the
+         *     single-use invite jti could not be recorded (Redis down) — unlike
+         *     deactivate, this operation cannot degrade gracefully without it.
+         */
+        post: operations["resend_invite_api_v1_users__user_id__resend_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}/role": {
         parameters: {
             query?: never;
@@ -1476,6 +1526,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveUpdateRequest
+         * @description Target active state for `PATCH /users/{id}/active` — `false` deactivates
+         *     the staff account, `true` reactivates it.
+         */
+        ActiveUpdateRequest: {
+            /** Is Active */
+            is_active: boolean;
+        };
         /**
          * AnnouncementAdminItem
          * @description Staff view — adds the fields viewers never see.
@@ -2589,6 +2648,24 @@ export interface components {
             /** Upload Url */
             upload_url: string;
         };
+        /**
+         * UserActiveResponse
+         * @description The updated account, plus a flag set when a Redis outage forced
+         *     refresh-token revocation to be deferred (plan §W18, GATE 6 = commit-first).
+         *     Set on **deactivation** when the lockout committed but the token revoke could
+         *     not be recorded, and on **reactivation** when the best-effort revoke of any
+         *     still-live pre-deactivation refresh token could not be recorded (CWE-613).
+         *     The state change still committed and every request re-checks `is_active`, so
+         *     the flag only tells an operator a Redis-backed revoke did not land.
+         */
+        UserActiveResponse: {
+            /**
+             * Revocation Deferred
+             * @default false
+             */
+            revocation_deferred: boolean;
+            user: components["schemas"]["UserPublic"];
+        };
         /** UserLogin */
         UserLogin: {
             /**
@@ -2601,6 +2678,8 @@ export interface components {
         };
         /** UserPublic */
         UserPublic: {
+            /** Activated At */
+            activated_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5352,6 +5431,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleCounts"];
+                };
+            };
+        };
+    };
+    set_active_api_v1_users__user_id__active_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserActiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_invite_api_v1_users__user_id__resend_invite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
