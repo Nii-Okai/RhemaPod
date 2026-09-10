@@ -1184,6 +1184,37 @@
         "title": "Page[SermonAdminListItem]",
         "type": "object"
       },
+      "Page_SubscriptionAdminItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionAdminItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[SubscriptionAdminItem]",
+        "type": "object"
+      },
       "Page_UserPublic_": {
         "properties": {
           "items": {
@@ -2968,6 +2999,107 @@
         "title": "StreamVariant",
         "type": "object"
       },
+      "SubscriptionAdminItem": {
+        "description": "One row of the staff-facing subscriptions read (plan \u00a7A.3, \u00a7W20).\n\nA staff-readable enumeration of the paying membership: `Subscription`\njoined to `User` for `user_name` / `user_email`. Manager+ only, paginated.\n\nDeliberately carries **no** monetary field \u2014 no `amount`, `price`,\n`currency` or MRR (resolved decision 2). No amount is stored on\n`Subscription` and the webhook never parses one; there is nothing truthful\nto put here and Phase 2 shows no dollar figure anywhere in the portal.\n`current_period_end` is the model's `valid_until` column (null on free /\nfully-lapsed rows). `provider_customer_id` is null until the member's first\npayment lands via webhook \u2014 the frontend hides \"Open in Stripe\" when it is.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider_customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Customer Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubscriptionStatus"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/SubscriptionTier"
+          },
+          "user_email": {
+            "title": "User Email",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "user_name",
+          "user_email",
+          "tier",
+          "status",
+          "current_period_end",
+          "provider_customer_id",
+          "created_at"
+        ],
+        "title": "SubscriptionAdminItem",
+        "type": "object"
+      },
+      "SubscriptionCounts": {
+        "description": "The three aggregate tiles on the Subscriptions screen (plan \u00a7A.3).\n\n`active_paid` is `subscription_service.count_active_paid_subscribers` \u2014\nthe one definition already behind the analytics overview and the publish\ntoast, not a second one written for this screen. `monthly` / `annual` split\nthat same population (paid tier, `status IN (active, cancelled)`) by tier,\nso `active_paid == monthly + annual` holds by construction.",
+        "properties": {
+          "active_paid": {
+            "title": "Active Paid",
+            "type": "integer"
+          },
+          "annual": {
+            "title": "Annual",
+            "type": "integer"
+          },
+          "monthly": {
+            "title": "Monthly",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_paid",
+          "monthly",
+          "annual"
+        ],
+        "title": "SubscriptionCounts",
+        "type": "object"
+      },
       "SubscriptionPublic": {
         "properties": {
           "cancel_at_period_end": {
@@ -3650,6 +3782,131 @@
         "summary": "Top Sermons",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/subscriptions": {
+      "get": {
+        "description": "Paginated enumeration of the paying membership, `Subscription` joined to\n`User` for name and email (plan \u00a7A.3). Newest first. Hard maximum page size\nof 100.",
+        "operationId": "list_subscriptions_api_v1_admin_subscriptions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Filter by subscription status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SubscriptionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by subscription status.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Filter by subscription tier.",
+            "in": "query",
+            "name": "tier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SubscriptionTier"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by subscription tier.",
+              "title": "Tier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SubscriptionAdminItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Subscriptions",
+        "tags": [
+          "admin subscriptions"
+        ]
+      }
+    },
+    "/api/v1/admin/subscriptions/counts": {
+      "get": {
+        "description": "Active paid \u00b7 Monthly \u00b7 Annual (plan \u00a7A.3).\n\n`active_paid` is `subscription_service.count_active_paid_subscribers`\nexactly \u2014 the same definition the analytics overview and the publish toast\nuse. `monthly` + `annual` partition it, so they always sum to `active_paid`.",
+        "operationId": "subscription_counts_api_v1_admin_subscriptions_counts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Subscription Counts",
+        "tags": [
+          "admin subscriptions"
         ]
       }
     },

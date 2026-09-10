@@ -38,6 +38,18 @@ from app.models.models import (
 settings = get_settings()
 log = get_logger("subscription")
 
+# `subscription_counts` below returns one field per paid tier and hardcodes the
+# MONTHLY / ANNUAL pair, so the `active_paid == monthly + annual` invariant only
+# holds while those are the *only* paid tiers. If a third paid tier is ever added
+# to `PAID_TIERS`, `count_active_paid_subscribers` picks it up but the explicit
+# per-tier fields do not — this assert fires at import so the omission is caught
+# here, not in a drifting analytics tile. Grow `subscription_counts` (and its
+# DTO) a field per new paid tier when it does.
+assert set(PAID_TIERS) == {
+    SubscriptionTier.MONTHLY,
+    SubscriptionTier.ANNUAL,
+}, "PAID_TIERS changed — subscription_service.subscription_counts must grow a field"
+
 
 class SubscriptionError(Exception):
     def __init__(self, message: str, status_code: int = 400):
@@ -103,6 +115,106 @@ async def count_active_paid_subscribers(db: AsyncSession) -> int:
             Subscription.status.in_(_PAID_SUBSCRIBER_STATUSES),
         )
     )).scalar_one()
+
+
+# ── Staff-facing read (plan §A.3, §W20) ──────────────────────────────────────
+# Manager+ enumeration of the paying membership. Read-only: nothing below makes
+# an outbound provider call, and no monetary field is selected or returned
+# (resolved decisions 2 and 4).
+async def list_subscriptions_for_staff(
+    db: AsyncSession,
+    *,
+    limit: int = 25,
+    offset: int = 0,
+    status_filter: SubscriptionStatus | None = None,
+    tier_filter: SubscriptionTier | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """`Subscription` joined to `User`, newest first. Returns (rows, total) —
+    total is the filtered count before paging.
+
+    The join selects only the columns the `SubscriptionAdminItem` DTO needs
+    (id, user_id, name, email, tier, status, period end, customer id, created)
+    — the PII surface is kept as tight as the DTO. `limit` is clamped to 100
+    defensively even though the router already bounds it (mirrors
+    `auth_service.list_users`).
+    """
+    conditions = []
+    if status_filter is not None:
+        conditions.append(Subscription.status == status_filter)
+    if tier_filter is not None:
+        conditions.append(Subscription.tier == tier_filter)
+
+    total = (await db.execute(
+        select(func.count())
+        .select_from(Subscription)
+        .where(*conditions)
+    )).scalar_one()
+
+    rows = (await db.execute(
+        select(
+            Subscription.id,
+            Subscription.user_id,
+            User.full_name,
+            User.email,
+            Subscription.tier,
+            Subscription.status,
+            Subscription.valid_until,
+            Subscription.provider_customer_id,
+            Subscription.created_at,
+        )
+        .join(User, User.id == Subscription.user_id)
+        .where(*conditions)
+        # `created_at` is `server_default=func.now()` — transaction-start time on
+        # Postgres, 1s resolution on SQLite — so equal timestamps are common and
+        # `created_at` alone is not a total order. `id` desc is the deterministic
+        # tiebreaker: without it a paged client can repeat or drop a row when two
+        # rows share a timestamp (W21 builds the paginated table on this).
+        .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+        .limit(max(1, min(limit, 100)))
+        .offset(max(0, offset))
+    )).all()
+
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "user_name": r.full_name,
+            "user_email": r.email,
+            "tier": r.tier,
+            "status": r.status,
+            "current_period_end": r.valid_until,
+            "provider_customer_id": r.provider_customer_id,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ], total
+
+
+async def subscription_counts(db: AsyncSession) -> dict[str, int]:
+    """The three Subscriptions tiles (plan §A.3).
+
+    `active_paid` is `count_active_paid_subscribers` verbatim — one definition,
+    not a second. `monthly` / `annual` reuse that function's exact status
+    predicate (`_PAID_SUBSCRIBER_STATUSES`) so they partition the same
+    population and `active_paid == monthly + annual` by construction.
+    """
+    active_paid = await count_active_paid_subscribers(db)
+
+    async def _tier_count(tier: SubscriptionTier) -> int:
+        return (await db.execute(
+            select(func.count())
+            .select_from(Subscription)
+            .where(
+                Subscription.tier == tier,
+                Subscription.status.in_(_PAID_SUBSCRIBER_STATUSES),
+            )
+        )).scalar_one()
+
+    return {
+        "active_paid": int(active_paid),
+        "monthly": int(await _tier_count(SubscriptionTier.MONTHLY)),
+        "annual": int(await _tier_count(SubscriptionTier.ANNUAL)),
+    }
 
 
 async def invalidate_entitlement(user_id: uuid.UUID | str) -> None:
