@@ -1,22 +1,16 @@
 import { requireRole } from "@/lib/auth/require-role";
-import { EmptyState, PageHeader } from "@/components/portal";
+import { UsersScreen } from "@/components/users/users-screen";
 
 /**
- * Placeholder — Users & roles is Phase 2 (§C). Community nav group, so
- * `requireRole` keeps it 404 for Editors.
+ * Users & roles (design Screen 10, plan W17).
+ *
+ * A thin Server Component: `requireRole` keeps the route 404 for Editors (the
+ * Community nav group is hidden for them, and FastAPI gates the data calls
+ * regardless); everything below — the `role-counts` tiles, the staff list, the
+ * role filter, the inline role change and the invite dialog — is client React
+ * Query, so this just mounts the screen.
  */
 export default async function UsersPage() {
   await requireRole("manager");
-  return (
-    <>
-      <PageHeader
-        title="Users & roles"
-        subhead="Staff accounts, invites and role changes."
-      />
-      <EmptyState
-        title="Coming soon"
-        description="Users & roles is a Phase 2 screen — not in this build."
-      />
-    </>
-  );
+  return <UsersScreen />;
 }
