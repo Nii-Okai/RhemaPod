@@ -10,8 +10,9 @@
  * The screen makes **no mutating call of any kind** (plan §A.3 / §W21) — there
  * is no cancel, refund, plan-change, retry or sync. Everything mutating a
  * subscription happens in the Stripe dashboard; this portal only reads. So
- * there are no mutation hooks here and nothing invalidates these queries — they
- * fall stale on their own `staleTime` and refetch on the next mount.
+ * there are no mutation hooks here and nothing invalidates these queries — the
+ * list falls stale 30s after a fetch and the counts 60s (`staleTime` below),
+ * each refetching on the next mount or window refocus past that window.
  *
  * `loadSubscriptions` / `loadSubscriptionCounts` are exported and
  * client-injectable so the wire shape is exercised through MSW rather than a
@@ -130,6 +131,7 @@ export function useSubscriptions({
     }),
     queryFn: () => loadSubscriptions({ status, tier, page: requestedPage }),
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const total = query.data?.total ?? 0;

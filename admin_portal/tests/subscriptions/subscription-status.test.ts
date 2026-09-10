@@ -38,4 +38,21 @@ describe("subscriptionStatusVisual", () => {
       expect(SUBSCRIPTION_STATUS_LABEL[status]).not.toMatch(/[$£€]/);
     }
   });
+
+  /* --- runtime fallback for an out-of-union status (gilfoyle W21 nit) --- */
+
+  it("falls back to a neutral tone and the raw string for a status outside the union", () => {
+    const v = subscriptionStatusVisual("trialing" as SubscriptionStatus);
+    expect(v.tone).toBe("neutral");
+    expect(v.label).toBe("trialing");
+  });
+
+  it("labels an empty/blank status 'Unknown' instead of returning undefined", () => {
+    expect(subscriptionStatusVisual("" as SubscriptionStatus).label).toBe(
+      "Unknown",
+    );
+    expect(
+      subscriptionStatusVisual(undefined as unknown as SubscriptionStatus).tone,
+    ).toBe("neutral");
+  });
 });

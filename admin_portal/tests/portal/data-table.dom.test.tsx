@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  within,
+  fireEvent,
+  createEvent,
+  act,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -356,6 +363,23 @@ describe("DataTable — non-interactive downgrade (gilfoyle W6 nit)", () => {
     render(<DataTable {...base} rows={ROWS} />);
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("does NOT preventDefault ArrowDown on a row (no roving focus to drive) — gilfoyle W21", () => {
+    render(<DataTable {...base} rows={ROWS} />);
+    const row = rowOf("Row One");
+    const ev = createEvent.keyDown(row, { key: "ArrowDown" });
+    fireEvent(row, ev);
+    // A keyboard user on a link inside the row keeps their arrow-key page scroll.
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it("STILL preventDefaults ArrowDown when the table is interactive (regression control)", () => {
+    render(<DataTable {...base} rows={ROWS} selectable />);
+    const row = rowOf("Row One");
+    const ev = createEvent.keyDown(row, { key: "ArrowDown" });
+    fireEvent(row, ev);
+    expect(ev.defaultPrevented).toBe(true);
   });
 });
 

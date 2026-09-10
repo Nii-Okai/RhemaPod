@@ -624,58 +624,78 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                       interactive ? (i === activeIndex ? 0 : -1) : undefined
                     }
                     style={rowStyle}
-                    onFocus={() => {
-                      gridHadFocusRef.current = true;
-                      setActiveKey(key);
-                      lastActiveIndexRef.current = i;
-                    }}
-                    onClick={(e) => {
-                      gridHadFocusRef.current = true;
-                      setActiveKey(key);
-                      lastActiveIndexRef.current = i;
-                      if (selectable && e.shiftKey) {
-                        e.preventDefault();
-                        selection.selectRange(key);
-                        return;
-                      }
-                      onRowClick?.(row);
-                    }}
-                    onKeyDown={(e) => {
-                      gridHadFocusRef.current = true;
-                      switch (e.key) {
-                        case "ArrowDown":
-                          e.preventDefault();
-                          focusRowAt(i + 1);
-                          break;
-                        case "ArrowUp":
-                          e.preventDefault();
-                          focusRowAt(i - 1);
-                          break;
-                        case "Home":
-                          e.preventDefault();
-                          focusRowAt(0);
-                          break;
-                        case "End":
-                          e.preventDefault();
-                          focusRowAt(rows.length - 1);
-                          break;
-                        case " ":
-                          if (selectable) {
-                            e.preventDefault();
-                            if (e.shiftKey) selection.selectRange(key);
-                            else selection.toggle(key);
+                    // Every row handler below drives the roving-focus / selection
+                    // model and only exists when the table is interactive. When
+                    // it is display-only (no `selectable`, no `onRowClick`) the
+                    // rows are not focusable and there is no roving tab stop, so
+                    // attaching them would only let a keydown bubbling up from a
+                    // link inside a cell (e.g. "Open in Stripe") swallow the
+                    // user's Arrow/Home/End page scroll via a `focusRowAt` that
+                    // then no-ops. Leave them off entirely in that mode.
+                    onFocus={
+                      interactive
+                        ? () => {
+                            gridHadFocusRef.current = true;
+                            setActiveKey(key);
+                            lastActiveIndexRef.current = i;
                           }
-                          break;
-                        case "Enter":
-                          if (onRowClick) {
-                            e.preventDefault();
-                            onRowClick(row);
+                        : undefined
+                    }
+                    onClick={
+                      interactive
+                        ? (e) => {
+                            gridHadFocusRef.current = true;
+                            setActiveKey(key);
+                            lastActiveIndexRef.current = i;
+                            if (selectable && e.shiftKey) {
+                              e.preventDefault();
+                              selection.selectRange(key);
+                              return;
+                            }
+                            onRowClick?.(row);
                           }
-                          break;
-                        default:
-                          break;
-                      }
-                    }}
+                        : undefined
+                    }
+                    onKeyDown={
+                      interactive
+                        ? (e) => {
+                            gridHadFocusRef.current = true;
+                            switch (e.key) {
+                              case "ArrowDown":
+                                e.preventDefault();
+                                focusRowAt(i + 1);
+                                break;
+                              case "ArrowUp":
+                                e.preventDefault();
+                                focusRowAt(i - 1);
+                                break;
+                              case "Home":
+                                e.preventDefault();
+                                focusRowAt(0);
+                                break;
+                              case "End":
+                                e.preventDefault();
+                                focusRowAt(rows.length - 1);
+                                break;
+                              case " ":
+                                if (selectable) {
+                                  e.preventDefault();
+                                  if (e.shiftKey) selection.selectRange(key);
+                                  else selection.toggle(key);
+                                }
+                                break;
+                              case "Enter":
+                                if (onRowClick) {
+                                  e.preventDefault();
+                                  onRowClick(row);
+                                }
+                                break;
+                              default:
+                                break;
+                            }
+                          }
+                        : undefined
+                    }
                     className={cn(
                       "grid h-[60px] items-center gap-12 border-b border-border-subtle px-20 outline-none transition-colors duration-[140ms] ease-out last:border-b-0 focus-visible:focus-ring-button",
                       selected ? "bg-clay-50" : "hover:bg-surface-sunken",

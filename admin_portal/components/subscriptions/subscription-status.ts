@@ -12,8 +12,11 @@
  * system does not hold (plan §A.3, decision 4). `current_period_end` is the
  * renewal date and lives in its own column; it is not a dunning timestamp.
  *
- * Pure and total over every `SubscriptionStatus` — a new status is a compile
- * error until it is given an entry.
+ * Total over every `SubscriptionStatus` at compile time — a new status is a
+ * compile error until it is given an entry — with a runtime fallback for a
+ * value the generated union does not yet cover (an out-of-union status from the
+ * API): a neutral tone and the raw string as the label, so the badge renders
+ * and the CSV serialises the real value rather than `"undefined"`.
  */
 
 import type { SubscriptionStatus } from "@/lib/query/hooks/use-subscriptions";
@@ -37,7 +40,12 @@ const REGISTRY: Record<SubscriptionStatus, SubscriptionStatusVisual> = {
 export function subscriptionStatusVisual(
   status: SubscriptionStatus,
 ): SubscriptionStatusVisual {
-  return REGISTRY[status];
+  return (
+    REGISTRY[status] ?? {
+      label: String(status).trim() || "Unknown",
+      tone: "neutral",
+    }
+  );
 }
 
 export const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {

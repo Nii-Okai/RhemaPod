@@ -24,6 +24,11 @@ import { SUBSCRIPTION_STATUS_LABEL } from "./subscription-status";
    button just calls back. It is disabled only when there is genuinely nothing
    to export (zero rows), which is a statement of fact, not a "temporarily
    unavailable" promise.
+
+   The export is the LOADED PAGE ONLY — there is no fetch-all (plan §W21). The
+   button carries the exact row count ("Download CSV (25)"), and when the list
+   spans more than one page a caption spells out that the file is just this
+   page. The filename is page-suffixed to match (`subscriptions-p2.csv`).
    ========================================================================== */
 
 type StatusFilter = SubscriptionStatus | "all";
@@ -51,7 +56,12 @@ export interface SubscriptionsFilterBarProps {
   onStatusChange: (status: SubscriptionStatus | undefined) => void;
   onTierChange: (tier: SubscriptionTier | undefined) => void;
   onDownloadCsv: () => void;
+  /** Rows currently loaded — the exact size of the file the button produces. */
   csvRowCount: number;
+  /** 1-based current page, for the partial-export disclosure. */
+  page: number;
+  /** Total pages; > 1 means "Download CSV" yields this page only. */
+  pageCount: number;
 }
 
 export function SubscriptionsFilterBar({
@@ -61,7 +71,10 @@ export function SubscriptionsFilterBar({
   onTierChange,
   onDownloadCsv,
   csvRowCount,
+  page,
+  pageCount,
 }: SubscriptionsFilterBarProps) {
+  const partial = pageCount > 1;
   return (
     <div className="flex flex-wrap items-center gap-10">
       <SegmentedControl<StatusFilter>
@@ -97,15 +110,22 @@ export function SubscriptionsFilterBar({
 
       <span className="flex-1" />
 
-      <Button
-        type="button"
-        size="md"
-        variant="secondary"
-        onClick={onDownloadCsv}
-        disabled={csvRowCount === 0}
-      >
-        Download CSV
-      </Button>
+      <div className="flex flex-col items-end gap-2">
+        <Button
+          type="button"
+          size="md"
+          variant="secondary"
+          onClick={onDownloadCsv}
+          disabled={csvRowCount === 0}
+        >
+          {`Download CSV (${csvRowCount})`}
+        </Button>
+        {partial ? (
+          <span className="text-[11px] text-ink-faint">
+            {`Exports the ${csvRowCount} rows on this page (page ${page} of ${pageCount}).`}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

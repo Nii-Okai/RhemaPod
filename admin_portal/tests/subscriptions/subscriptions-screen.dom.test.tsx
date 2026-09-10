@@ -81,6 +81,8 @@ interface BackendOpts {
   rows?: SubscriptionAdminItem[];
   counts?: typeof COUNTS;
   onList?: (q: URLSearchParams) => void;
+  /** Override the reported `total` to force pagination (rows stay the loaded page). */
+  total?: number;
 }
 
 const nonGet: string[] = [];
@@ -104,7 +106,7 @@ function backend(opts: BackendOpts = {}) {
       );
       return HttpResponse.json({
         items: filtered,
-        total: filtered.length,
+        total: opts.total ?? filtered.length,
         limit: 25,
         offset: 0,
       });
@@ -293,7 +295,7 @@ describe("SubscriptionsScreen — client CSV", () => {
     renderScreen();
     await screen.findByText("Ada Nwosu");
 
-    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Download CSV/ }));
 
     expect(createdBlobs).toHaveLength(1);
     const text = await createdBlobs[0].text();
@@ -315,12 +317,80 @@ describe("SubscriptionsScreen — client CSV", () => {
     renderScreen();
     await screen.findByText("Bo Diallo");
 
-    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Download CSV/ }));
 
     const text = await createdBlobs[0].text();
     const expected = subscriptionsToCsv([ROWS[1]]);
     expect(text).toBe(expected);
     expect(text.split("\r\n")).toHaveLength(2); // header + 1
+  });
+});
+
+/* --- CSV is the loaded page only, and says so (gilfoyle W21 🟡) ------ */
+
+describe("SubscriptionsScreen — CSV export is the loaded page only", () => {
+  let clickSpy: ReturnType<typeof vi.spyOn>;
+  let lastDownloadName: string;
+  let origCreate: typeof URL.createObjectURL;
+  let origRevoke: typeof URL.revokeObjectURL;
+
+  beforeAll(() => {
+    lastDownloadName = "";
+    origCreate = URL.createObjectURL;
+    origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(
+      () => "blob:mock",
+    ) as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL;
+    clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        lastDownloadName = this.download;
+      });
+  });
+  afterEach(() => {
+    lastDownloadName = "";
+    clickSpy.mockClear();
+  });
+  afterAll(() => {
+    URL.createObjectURL = origCreate;
+    URL.revokeObjectURL = origRevoke;
+    clickSpy.mockRestore();
+  });
+
+  it("puts the loaded row count on the button and discloses the page when the list paginates", async () => {
+    backend({ total: 31 }); // 3 rows loaded, 31 total → page 1 of 2
+    renderScreen();
+    await screen.findByText("Ada Nwosu");
+
+    expect(
+      screen.getByRole("button", { name: "Download CSV (3)" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("carries no page caption and an unsuffixed filename on a single page", async () => {
+    backend(); // total = 3 → one page
+    renderScreen();
+    await screen.findByText("Ada Nwosu");
+
+    expect(screen.queryByText(/page 1 of/i)).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Download CSV/ }),
+    );
+    expect(lastDownloadName).toBe("subscriptions.csv");
+  });
+
+  it("suffixes the download filename with the page number when more than one page exists", async () => {
+    backend({ total: 31 });
+    renderScreen();
+    await screen.findByText("Ada Nwosu");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Download CSV/ }),
+    );
+    expect(lastDownloadName).toBe("subscriptions-p1.csv");
   });
 });
 
@@ -343,7 +413,7 @@ describe("SubscriptionsScreen — read-only, no currency", () => {
       screen.getByLabelText("Filter by tier"),
       "monthly",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Download CSV/ }));
 
     expect(nonGet).toEqual([]);
   });

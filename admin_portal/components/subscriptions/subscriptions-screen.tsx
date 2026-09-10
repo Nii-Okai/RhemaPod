@@ -61,13 +61,22 @@ function memberName(row: SubscriptionAdminItem): string | null {
   return row.user_name?.trim() || null;
 }
 
+/**
+ * The CSV filename. Encodes the active filter, and — because the export is the
+ * loaded page only, never a fetch-all (plan §W21) — the page number whenever
+ * more than one page exists, so a partial file is never mistaken for the whole
+ * membership: `subscriptions-past_due-p2.csv`.
+ */
 function csvFilename(filter: {
   status?: SubscriptionStatus;
   tier?: SubscriptionTier;
+  page: number;
+  pageCount: number;
 }): string {
   const parts = ["subscriptions"];
   if (filter.status) parts.push(filter.status);
   if (filter.tier) parts.push(filter.tier);
+  if (filter.pageCount > 1) parts.push(`p${filter.page}`);
   return `${parts.join("-")}.csv`;
 }
 
@@ -138,12 +147,12 @@ export function SubscriptionsScreen() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = csvFilename({ status, tier });
+    anchor.download = csvFilename({ status, tier, page, pageCount });
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-  }, [items, status, tier]);
+  }, [items, status, tier, page, pageCount]);
 
   const columns: DataTableColumn<SubscriptionAdminItem>[] = [
     {
@@ -243,6 +252,8 @@ export function SubscriptionsScreen() {
           onTierChange={setTier}
           onDownloadCsv={handleDownloadCsv}
           csvRowCount={items.length}
+          page={page}
+          pageCount={pageCount}
         />
 
         <div className="overflow-hidden rounded-16 border border-border bg-surface">

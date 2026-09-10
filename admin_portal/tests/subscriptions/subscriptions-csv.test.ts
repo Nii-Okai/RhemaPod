@@ -94,4 +94,62 @@ describe("subscriptionsToCsv", () => {
     const csv = subscriptionsToCsv([row({}), row({ status: "past_due" })]);
     expect(csv).not.toContain("$");
   });
+
+  /* --- OWASP CSV formula-injection guard (gilfoyle W21 🔴) ------------- */
+
+  const cellsOf = (over: Partial<SubscriptionAdminItem>): string[] =>
+    subscriptionsToCsv([row(over)]).split("\r\n")[1].split(",");
+
+  it.each([
+    ["=cmd", "'=cmd"],
+    ["+1", "'+1"],
+    ["-1", "'-1"],
+    ["@x", "'@x"],
+  ])(
+    "prefixes a formula-leading member name %j with a single quote",
+    (name, expected) => {
+      expect(cellsOf({ user_name: name })[0]).toBe(expected);
+    },
+  );
+
+  it.each([
+    ["=x@evil.com", "'=x@evil.com"],
+    ["+x@evil.com", "'+x@evil.com"],
+    ["-x@evil.com", "'-x@evil.com"],
+    ["@x@evil.com", "'@x@evil.com"],
+    ["\tx@evil.com", "'\tx@evil.com"],
+    ["\rx@evil.com", '"\'\rx@evil.com"'],
+  ])(
+    "prefixes a formula-leading / whitespace-led email %j with a single quote (email is not trimmed)",
+    (email, expected) => {
+      expect(cellsOf({ user_name: "Ada", user_email: email })[1]).toBe(
+        expected,
+      );
+    },
+  );
+
+  it("neutralises a tab/CR-led member NAME by trimming it before the guard even runs", () => {
+    // `user_name` is `.trim()`-ed in subscriptionRowToCsvCells, so a leading
+    // \t / \r is gone before csvField sees it — it can never read as a formula.
+    expect(cellsOf({ user_name: "\tAda" })[0]).toBe("Ada");
+    expect(cellsOf({ user_name: "\r=cmd" })[0]).toBe("'=cmd");
+  });
+
+  it("guards a name that legitimately starts with '-' or '@' (accepted cosmetic cost)", () => {
+    expect(cellsOf({ user_name: "-Danger" })[0]).toBe("'-Danger");
+    expect(cellsOf({ user_name: "@handle" })[0]).toBe("'@handle");
+  });
+
+  it("leaves an ordinary name untouched — only the FIRST char triggers the guard", () => {
+    // "Mary-Jane" starts with 'M'; the interior '-' is irrelevant.
+    expect(cellsOf({ user_name: "Mary-Jane" })[0]).toBe("Mary-Jane");
+  });
+
+  it("applies BOTH the formula prefix and RFC-4180 quoting when a field needs both", () => {
+    const line = subscriptionsToCsv([
+      row({ user_name: "=a,b", user_email: "j@example.com" }),
+    ]).split("\r\n")[1];
+    // `'=a,b` (formula-guarded) then wrapped for the embedded comma.
+    expect(line).toBe('"\'=a,b",j@example.com,monthly,Active,2026-10-01');
+  });
 });
