@@ -448,6 +448,47 @@ class SubscriptionPublic(BaseModel):
     is_entitled: bool
 
 
+class SubscriptionAdminItem(BaseModel):
+    """One row of the staff-facing subscriptions read (plan §A.3, §W20).
+
+    A staff-readable enumeration of the paying membership: `Subscription`
+    joined to `User` for `user_name` / `user_email`. Manager+ only, paginated.
+
+    Deliberately carries **no** monetary field — no `amount`, `price`,
+    `currency` or MRR (resolved decision 2). No amount is stored on
+    `Subscription` and the webhook never parses one; there is nothing truthful
+    to put here and Phase 2 shows no dollar figure anywhere in the portal.
+    `current_period_end` is the model's `valid_until` column (null on free /
+    fully-lapsed rows). `provider_customer_id` is null until the member's first
+    payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str | None
+    user_email: str
+    tier: _SubTier
+    status: _SubStatus
+    current_period_end: datetime | None
+    provider_customer_id: str | None
+    created_at: datetime
+
+
+class SubscriptionCounts(BaseModel):
+    """The three aggregate tiles on the Subscriptions screen (plan §A.3).
+
+    `active_paid` is `subscription_service.count_active_paid_subscribers` —
+    the one definition already behind the analytics overview and the publish
+    toast, not a second one written for this screen. `monthly` / `annual` split
+    that same population (paid tier, `status IN (active, cancelled)`) by tier,
+    so `active_paid == monthly + annual` holds by construction.
+    """
+
+    active_paid: int
+    monthly: int
+    annual: int
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Thumbnails
 # ═══════════════════════════════════════════════════════════════════════════════

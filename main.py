@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.sermon_approval import router as sermon_approval_router
 from app.api.admin_auth import router as admin_router
+from app.api.admin_subscriptions import router as admin_subscriptions_router
 from app.api.announcements import router as announcements_router
 from app.api.announcement_approval import router as announcement_approvals_router
 from app.api.analytics import router as analytics_router
@@ -191,6 +192,7 @@ for _router in (
     search_router,
     analytics_router,
     admin_router,
+    admin_subscriptions_router,
     announcement_approvals_router,
     sermon_approval_router,
 ):
