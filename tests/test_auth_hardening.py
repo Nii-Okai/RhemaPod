@@ -263,6 +263,26 @@ async def test_change_password_returns_503_and_leaves_password_unchanged_when_re
     assert (await _login(client, password=NEW_PW)).status_code == 401
 
 
+async def _db_user(engine, email):
+    """Load a user row straight from the DB by email.
+
+    The staff user list (`GET /api/v1/users`) is hard-scoped to staff roles for
+    every actor (plan §A.6), so a viewer is never in it — role-management tests
+    take the target's id (and read its role back) from the DB fixture, not the
+    list endpoint.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import User
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        return (await s.execute(
+            select(User).where(User.email == email)
+        )).scalar_one()
+
+
 async def test_change_role_returns_503_and_leaves_role_unchanged_when_redis_down(
     client, engine
 ):
@@ -281,8 +301,7 @@ async def test_change_role_returns_503_and_leaves_role_unchanged_when_redis_down
     admin_tokens = (await _login(client, email="admin@example.com")).json()
     admin_h = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
 
-    users = (await client.get("/api/v1/users", headers=admin_h)).json()["items"]
-    tid = next(u["id"] for u in users if u["email"] == "target@example.com")
+    tid = str((await _db_user(engine, "target@example.com")).id)
 
     with _fake.failing():
         r = await client.patch(
@@ -290,9 +309,7 @@ async def test_change_role_returns_503_and_leaves_role_unchanged_when_redis_down
         )
     assert r.status_code == 503
 
-    users = (await client.get("/api/v1/users", headers=admin_h)).json()["items"]
-    role_after = next(u["role"] for u in users if u["email"] == "target@example.com")
-    assert role_after == "viewer"
+    assert (await _db_user(engine, "target@example.com")).role.value == "viewer"
 
 
 async def test_forgot_password_invokes_email_seam_only_for_known_address(

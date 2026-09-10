@@ -1009,6 +1009,26 @@
         "title": "MessageResponse",
         "type": "object"
       },
+      "NewListenersBucket": {
+        "description": "One week in the \"New listeners\" series (plan \u00a7A.2, M1).\n\n`week_start` is the Monday (UTC) that opens the bucket; `count` is the\nnumber of distinct registered accounts whose *earliest* play across all\nsermons fell in that week. Reach, not engagement \u2014 the word \"plays\" does\nnot belong on this series.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "count"
+        ],
+        "title": "NewListenersBucket",
+        "type": "object"
+      },
       "OverviewStats": {
         "properties": {
           "active_subscribers": {
@@ -1512,6 +1532,40 @@
           "renditions_ready"
         ],
         "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "RoleCounts": {
+        "description": "Full-table `GROUP BY role` count, for the Users & roles tiles.\n\nEvery bucket is always present and zero-filled \u2014 `viewer` included. This is\nan aggregate, not an enumeration: it is deliberately full-table and NOT\nstaff-scoped like `GET /users` (plan \u00a7A.6).",
+        "properties": {
+          "admin": {
+            "title": "Admin",
+            "type": "integer"
+          },
+          "editor": {
+            "title": "Editor",
+            "type": "integer"
+          },
+          "manager": {
+            "title": "Manager",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "viewer": {
+            "title": "Viewer",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "viewer",
+          "editor",
+          "manager",
+          "admin",
+          "total"
+        ],
+        "title": "RoleCounts",
         "type": "object"
       },
       "RoleUpdateRequest": {
@@ -3444,6 +3498,37 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/analytics/new-listeners": {
+      "get": {
+        "description": "Weekly count of first-time listeners over the last 8 Monday-anchored ISO\nweeks (UTC), oldest first, zero-filled (plan \u00a7A.2, M1).\n\nSame `require_role(MANAGER, ADMIN)` guard as the rest of\n`/admin/analytics/*` \u2014 not relaxed for the editor Dashboard (\u00a7A.1). The\nwindow is a fixed 8 weeks; there is no query parameter.",
+        "operationId": "new_listeners_api_v1_admin_analytics_new_listeners_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NewListenersBucket"
+                  },
+                  "title": "Response New Listeners Api V1 Admin Analytics New Listeners Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Listeners",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/admin/analytics/overview": {
       "get": {
         "operationId": "analytics_overview_api_v1_admin_analytics_overview_get",
@@ -6188,7 +6273,7 @@
     },
     "/api/v1/sermons": {
       "get": {
-        "description": "Editors see their own sermons across all statuses; managers and admins\nsee everyone's. Carries workflow fields the catalog card omits.",
+        "description": "Editors see their own sermons across all statuses; managers and admins\nsee everyone's. Carries workflow fields the catalog card omits.\n\n`created_by=me` narrows further to the caller's own sermons \u2014 a no-op for\nan editor (already scoped that way), a voluntary filter for a manager/admin.",
         "operationId": "list_my_sermons_api_v1_sermons_get",
         "parameters": [
           {
@@ -6293,6 +6378,25 @@
               ],
               "description": "Filter on effective tier (sermon tier, else series tier, else free)",
               "title": "Tier"
+            }
+          },
+          {
+            "description": "Restrict to sermons authored by the caller. Only the literal `me` is accepted; powers the editor Dashboard WIP cards.",
+            "in": "query",
+            "name": "created_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "me",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to sermons authored by the caller. Only the literal `me` is accepted; powers the editor Dashboard WIP cards.",
+              "title": "Created By"
             }
           },
           {
@@ -7534,6 +7638,61 @@
         ]
       }
     },
+    "/api/v1/uploads/in-flight": {
+      "get": {
+        "description": "Upload jobs still uploading or transcoding, across every sermon the\ncaller may see (an editor: their own; manager/admin: all). Feeds the\nDashboard's global \"processing\" card.",
+        "operationId": "list_in_flight_uploads_api_v1_uploads_in_flight_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UploadJobPublic"
+                  },
+                  "title": "Response List In Flight Uploads Api V1 Uploads In Flight Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List In Flight Uploads",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/v1/uploads/{job_id}": {
       "delete": {
         "description": "Cancel a superseded or stalled upload job and best-effort delete its raw\nobject.\n\nOwner-scoped: an editor may only delete a job whose sermon they created\n(another editor's job, or an unknown id, is 404); managers and admins any.\nRefused with 409 while the job is transcoding or already ready.",
@@ -7644,6 +7803,7 @@
     },
     "/api/v1/users": {
       "get": {
+        "description": "Staff accounts only (editor / manager / admin), for every actor \u2014 a\nviewer is never a row, with or without `role` (plan \u00a7A.6, decision 5).\nUse the aggregate at `GET /users/role-counts` for the viewer headcount.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -7667,6 +7827,24 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Narrow within staff roles (editor / manager / admin). `viewer` is rejected \u2014 the staff directory never lists viewers.",
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UserRole"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Narrow within staff roles (editor / manager / admin). `viewer` is rejected \u2014 the staff directory never lists viewers.",
+              "title": "Role"
             }
           }
         ],
@@ -7743,6 +7921,33 @@
           }
         ],
         "summary": "Create Staff",
+        "tags": [
+          "admin auth"
+        ]
+      }
+    },
+    "/api/v1/users/role-counts": {
+      "get": {
+        "description": "Full-table `GROUP BY role` headcount for the Users & roles tiles.\n\nDeliberately **not** staff-scoped like `GET /users`: the `viewer` bucket is\na real number here because a count identifies no one (plan \u00a7A.6).",
+        "operationId": "role_counts_api_v1_users_role_counts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Role Counts",
         "tags": [
           "admin auth"
         ]

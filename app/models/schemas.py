@@ -118,3 +118,18 @@ class StaffCreateResponse(BaseModel):
     # Present only when the console email backend is active, so you can grab the
     # link in local/dev without a mailbox. Omitted once real email is wired.
     invite_link: str | None = None
+
+
+class RoleCounts(BaseModel):
+    """Full-table `GROUP BY role` count, for the Users & roles tiles.
+
+    Every bucket is always present and zero-filled — `viewer` included. This is
+    an aggregate, not an enumeration: it is deliberately full-table and NOT
+    staff-scoped like `GET /users` (plan §A.6).
+    """
+
+    viewer: int
+    editor: int
+    manager: int
+    admin: int
+    total: int

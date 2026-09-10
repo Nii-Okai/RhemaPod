@@ -9,7 +9,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
-from app.models.models import Sermon, User
+from app.models.models import (
+    PAID_TIERS,
+    PlaybackSession,
+    Sermon,
+    Subscription,
+    SubscriptionStatus,
+    User,
+)
 from app.scripts import seed_dev
 
 pytestmark = pytest.mark.asyncio
@@ -45,6 +52,51 @@ async def test_seed_produces_status_spread_and_staff(engine):
     editors = [r for _e, _n, r in seed_dev.STAFF if r.value == "editor"]
     managers = [r for _e, _n, r in seed_dev.STAFF if r.value == "manager"]
     assert len(editors) >= 2 and len(managers) >= 2
+
+
+async def test_seed_creates_playback_history_over_eight_iso_weeks(engine):
+    """W15.0: the Dashboard's New listeners chart and every downstream read need
+    real playback history. The seed must produce a non-empty playback_sessions
+    table spanning at least eight ISO weeks, across several distinct users."""
+    factory = _session_factory(engine)
+    await seed_dev.seed(session_factory=factory)
+
+    async with factory() as db:
+        rows = (await db.execute(
+            select(PlaybackSession.user_id, PlaybackSession.first_played_at)
+        )).all()
+
+    assert rows, "seed created zero playback_sessions"
+    assert len({uid for uid, _ in rows}) >= 5
+    iso_weeks = {fp.isocalendar()[:2] for _, fp in rows}
+    assert len(iso_weeks) >= 8, f"only {len(iso_weeks)} distinct ISO weeks seeded"
+
+
+async def test_seed_creates_subscriptions_all_statuses_both_paid_tiers(engine):
+    """W15.0: Subscriptions screen needs rows in every status across both paid
+    tiers, with provider_customer_id set on the paid ones (MockProvider won't)."""
+    factory = _session_factory(engine)
+    await seed_dev.seed(session_factory=factory)
+
+    async with factory() as db:
+        subs = (await db.execute(select(Subscription))).scalars().all()
+
+    assert subs
+    statuses = {s.status for s in subs}
+    assert statuses == {
+        SubscriptionStatus.ACTIVE,
+        SubscriptionStatus.PAST_DUE,
+        SubscriptionStatus.CANCELLED,
+        SubscriptionStatus.EXPIRED,
+    }
+    paid = [s for s in subs if s.tier in PAID_TIERS]
+    assert {s.tier for s in paid} == set(PAID_TIERS)
+    # Every status appears on a paid row, and every paid row has a Stripe id.
+    assert {s.status for s in paid} == statuses
+    assert all(s.provider_customer_id and s.provider_customer_id.startswith("cus_")
+               for s in paid)
+    # At least one free-tier row too.
+    assert any(s.tier not in PAID_TIERS for s in subs)
 
 
 async def test_seed_is_idempotent_without_fresh(engine):
@@ -83,8 +135,9 @@ async def test_seed_fresh_rebuilds_cleanly(engine):
             .where(User.email.like(f"%@{seed_dev.SEED_EMAIL_DOMAIN}"))
         )).scalar_one()
 
-    # Rebuilt exactly once — no duplicates from the second run.
-    assert users == len(seed_dev.STAFF)
+    # Rebuilt exactly once — no duplicates from the second run. Seed users are
+    # the staff accounts plus the listener population (W15.0).
+    assert users == len(seed_dev.STAFF) + len(seed_dev.LISTENERS)
     assert sermons == 12
 
 

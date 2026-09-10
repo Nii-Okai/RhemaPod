@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -605,6 +605,19 @@ class OverviewStats(BaseModel):
     completions: int
     completion_rate: float
     plays_last_7_days: int
+
+
+class NewListenersBucket(BaseModel):
+    """One week in the "New listeners" series (plan §A.2, M1).
+
+    `week_start` is the Monday (UTC) that opens the bucket; `count` is the
+    number of distinct registered accounts whose *earliest* play across all
+    sermons fell in that week. Reach, not engagement — the word "plays" does
+    not belong on this series.
+    """
+
+    week_start: date
+    count: int
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

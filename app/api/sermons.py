@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,15 +76,26 @@ async def list_my_sermons(
         default=None,
         description="Filter on effective tier (sermon tier, else series tier, else free)",
     ),
+    created_by: Literal["me"] | None = Query(
+        default=None,
+        description="Restrict to sermons authored by the caller. Only the "
+        "literal `me` is accepted; powers the editor Dashboard WIP cards.",
+    ),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> Page[SermonAdminListItem]:
     """Editors see their own sermons across all statuses; managers and admins
-    see everyone's. Carries workflow fields the catalog card omits."""
+    see everyone's. Carries workflow fields the catalog card omits.
+
+    `created_by=me` narrows further to the caller's own sermons — a no-op for
+    an editor (already scoped that way), a voluntary filter for a manager/admin.
+    """
     actor = await _actor(db, user)
+    author_id = actor.id if created_by == "me" else None
     rows, total = await content_service.list_sermons_for_staff(
         db, actor, status, limit=limit, offset=offset, search=q,
         speaker_id=speaker_id, series_id=series_id, category_id=category_id, tier=tier,
+        author_id=author_id,
     )
     series_map = await content_service.series_for(db, rows)
     names = await content_service.load_ref_names(db, rows)

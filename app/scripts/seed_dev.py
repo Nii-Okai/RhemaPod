@@ -49,11 +49,15 @@ from app.models.models import (
     ApprovalLog,
     Category,
     ContentTier,
+    PlaybackSession,
     Sermon,
     SermonStatus,
     SermonTag,
     Series,
     Speaker,
+    Subscription,
+    SubscriptionStatus,
+    SubscriptionTier,
     User,
     UserRole,
 )
@@ -74,6 +78,25 @@ STAFF: list[tuple[str, str, UserRole]] = [
     (f"manager.mo@{SEED_EMAIL_DOMAIN}", "Mo Manager", UserRole.MANAGER),
     (f"manager.val@{SEED_EMAIL_DOMAIN}", "Val Manager", UserRole.MANAGER),
 ]
+
+# Viewer accounts — the listening population the Dashboard's "New listeners"
+# chart and the Subscriptions screen read. Same seed email domain, so `--fresh`
+# drops them with the rest (and their playback_sessions / subscription rows
+# cascade on the user delete).
+_LISTENER_COUNT = 24
+LISTENERS: list[tuple[str, str]] = [
+    (f"listener.{i:02d}@{SEED_EMAIL_DOMAIN}", f"Listener {i:02d}")
+    for i in range(1, _LISTENER_COUNT + 1)
+]
+
+# Bucket index 0 = 7 Monday-anchored ISO weeks ago, index 7 = the current week.
+# Debuts (each listener's *earliest* play) are cycled over these seven indices —
+# bucket 5 is deliberately absent, so the M1 metric has a genuine zero week
+# while raw playback rows still cover all eight (a handful of later plays land
+# in week 5). "t:N" debuts sit N weeks before the window: the chart's window is
+# a real window, not the whole table (plan §W15.0).
+_DEBUT_BUCKET_CYCLE: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 7)
+_TAIL_DEBUTS: tuple[str, ...] = ("t:10", "t:11", "t:12")
 
 _EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -494,6 +517,25 @@ async def _build(db: AsyncSession) -> SeedSummary:
     ]
     db.add_all(announcements)
 
+    # ── Listeners + playback history + subscriptions ─────────────────────────
+    listeners: list[User] = []
+    for email, name in LISTENERS:
+        u = User(
+            email=email,
+            full_name=name,
+            password_hash=hash_password(TEMP_PASSWORD),
+            role=UserRole.VIEWER,
+            is_active=True,
+        )
+        db.add(u)
+        listeners.append(u)
+    await db.flush()
+
+    published = [s for s in sermons if s.status == SermonStatus.PUBLISHED]
+    playback, subscriptions = _playback_and_subscriptions(listeners, published)
+    db.add_all(playback)
+    db.add_all(subscriptions)
+
     await db.commit()
 
     status_counts: dict[str, int] = {}
@@ -504,15 +546,148 @@ async def _build(db: AsyncSession) -> SeedSummary:
         staff=[(email, role.value) for email, _, role in STAFF],
         sermon_statuses=status_counts,
         counts={
-            "users": len(STAFF),
+            "users": len(STAFF) + len(listeners),
+            "listeners": len(listeners),
             "categories": len(categories),
             "speakers": len(speakers),
             "series": 2,
             "sermons": len(sermons),
             "approval_logs": len(logs),
             "announcements": len(announcements),
+            "playback_sessions": len(playback),
+            "subscriptions": len(subscriptions),
         },
     )
+
+
+def _monday_utc(d: datetime) -> datetime:
+    """Midnight UTC on the Monday that opens the ISO week containing ``d``.
+
+    Pure ``timedelta`` arithmetic off ``date.weekday()`` (0 = Monday) — the same
+    dialect-neutral bucketing the new-listeners service uses, kept in step here
+    so the seed fills exactly the buckets that service reads.
+    """
+    day = d.astimezone(timezone.utc)
+    midnight = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    return midnight - timedelta(days=day.weekday())
+
+
+def _playback_and_subscriptions(
+    listeners: list[User], published: list[Sermon]
+) -> tuple[list[PlaybackSession], list[Subscription]]:
+    """Build the bulk playback history and one subscription per listener.
+
+    Playback: every listener gets a *debut* play whose ``first_played_at`` lands
+    in the bucket named by ``_LISTENER_DEBUT_BUCKET`` (or a pre-window tail).
+    Some listeners get a couple of later plays on other sermons too — their
+    debut still decides which week they count in, which exercises the
+    aggregate-over-aggregate (``MIN(first_played_at)`` then bucket) the M1
+    metric needs. Bucket 5 gets no debut, so the zero-bucket path is live.
+
+    Subscriptions: all four statuses across both paid tiers, plus free, with
+    ``provider_customer_id`` set on every paid row (MockProvider never sets it,
+    so W21's "Open in Stripe" would otherwise be untestable locally).
+    """
+    now = datetime.now(timezone.utc)
+    this_monday = _monday_utc(now)
+
+    def bucket_instant(spec: int | str) -> datetime:
+        if isinstance(spec, str):  # "t:N" — N weeks before the window
+            weeks_ago = int(spec.split(":", 1)[1])
+            start = this_monday - timedelta(weeks=weeks_ago)
+        else:  # index 0..7, where 7 is the current week
+            start = this_monday - timedelta(weeks=7 - spec)
+        # Wednesday 03:17 UTC — unambiguously inside the week, never on an edge.
+        return start + timedelta(days=2, hours=3, minutes=17)
+
+    def session(user_id, sermon_id, when: datetime, *, count: int) -> PlaybackSession:
+        return PlaybackSession(
+            user_id=user_id,
+            sermon_id=sermon_id,
+            position_seconds=600 * count,
+            watched_seconds=600 * count,
+            play_count=count,
+            completed=count > 1,
+            first_played_at=when,
+            last_played_at=when + timedelta(minutes=12),
+        )
+
+    # Each listener's debut spec: the last three are pre-window tails, the rest
+    # cycle over the seven in-window buckets (bucket 5 excluded — see the
+    # constant's comment).
+    specs: list[int | str] = []
+    in_window = len(listeners) - len(_TAIL_DEBUTS)
+    for idx in range(in_window):
+        specs.append(_DEBUT_BUCKET_CYCLE[idx % len(_DEBUT_BUCKET_CYCLE)])
+    specs.extend(_TAIL_DEBUTS)
+
+    playback: list[PlaybackSession] = []
+    for idx, listener in enumerate(listeners):
+        debut_at = bucket_instant(specs[idx])
+        playback.append(session(
+            listener.id, published[idx % len(published)].id, debut_at, count=1
+        ))
+        # Every third listener also has a later play on another sermon, three
+        # weeks on — their *debut* week must still decide the M1 bucket.
+        if idx % 3 == 0 and len(published) > 1:
+            later_at = debut_at + timedelta(weeks=3)
+            if later_at < now:
+                playback.append(session(
+                    listener.id,
+                    published[(idx + 1) % len(published)].id,
+                    later_at,
+                    count=2,
+                ))
+
+    # Raw rows in bucket 5 so all eight in-window weeks carry playback data,
+    # while the M1 metric (earliest-per-user) still reports bucket 5 as zero:
+    # these three listeners debuted in buckets 0–2, well before week 5.
+    week5_at = bucket_instant(5)
+    for idx in range(min(3, len(listeners))):
+        playback.append(session(
+            listeners[idx].id,
+            published[(idx + 2) % len(published)].id,
+            week5_at,
+            count=2,
+        ))
+
+    # (tier, status) per listener index. All four statuses × both paid tiers,
+    # then free.
+    sub_plan: list[tuple[SubscriptionTier, SubscriptionStatus]] = [
+        (SubscriptionTier.MONTHLY, SubscriptionStatus.ACTIVE),
+        (SubscriptionTier.ANNUAL, SubscriptionStatus.ACTIVE),
+        (SubscriptionTier.MONTHLY, SubscriptionStatus.PAST_DUE),
+        (SubscriptionTier.ANNUAL, SubscriptionStatus.PAST_DUE),
+        (SubscriptionTier.MONTHLY, SubscriptionStatus.CANCELLED),
+        (SubscriptionTier.ANNUAL, SubscriptionStatus.CANCELLED),
+        (SubscriptionTier.MONTHLY, SubscriptionStatus.EXPIRED),
+        (SubscriptionTier.ANNUAL, SubscriptionStatus.EXPIRED),
+        (SubscriptionTier.FREE, SubscriptionStatus.ACTIVE),
+        (SubscriptionTier.FREE, SubscriptionStatus.ACTIVE),
+    ]
+    _valid_until = {
+        SubscriptionStatus.ACTIVE: now + timedelta(days=25),
+        SubscriptionStatus.PAST_DUE: now + timedelta(days=3),
+        SubscriptionStatus.CANCELLED: now + timedelta(days=10),
+        SubscriptionStatus.EXPIRED: now - timedelta(days=5),
+    }
+    subscriptions: list[Subscription] = []
+    for idx, listener in enumerate(listeners):
+        tier, sub_status = sub_plan[idx % len(sub_plan)]
+        paid = tier in (SubscriptionTier.MONTHLY, SubscriptionTier.ANNUAL)
+        subscriptions.append(Subscription(
+            user_id=listener.id,
+            tier=tier,
+            status=sub_status,
+            valid_until=None if tier == SubscriptionTier.FREE
+            else _valid_until[sub_status],
+            provider="stripe" if paid else None,
+            # MockProvider never populates this; hard-code a plausible id so the
+            # "Open in Stripe" deep link is exercisable against the local stack.
+            provider_customer_id=f"cus_SEED{idx:04d}A1B2C3" if paid else None,
+            provider_subscription_id=f"sub_SEED{idx:04d}A1B2C3" if paid else None,
+        ))
+    return playback, subscriptions
 
 
 async def seed(

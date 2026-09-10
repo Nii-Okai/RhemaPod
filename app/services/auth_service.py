@@ -285,17 +285,68 @@ async def change_role(
     return target
 
 
+# The staff-management list is an enumeration (names, emails, ids), so it is
+# hard-scoped to staff roles for every actor — a viewer is never a row, with or
+# without a filter (plan §A.6, resolved decision 5). This is deliberately NOT
+# the same scope as `role_counts` below, which is a full-table aggregate: a
+# count identifies nobody, a list of addresses identifies everybody.
+_STAFF_ROLES: tuple[_UserRole, ...] = (
+    _UserRole.EDITOR,
+    _UserRole.MANAGER,
+    _UserRole.ADMIN,
+)
+
+
 async def list_users(
-    db: AsyncSession, limit: int = 25, offset: int = 0
+    db: AsyncSession,
+    limit: int = 25,
+    offset: int = 0,
+    role_filter: _UserRole | None = None,
 ) -> tuple[list[User], int]:
-    """Returns (rows, total) — total is the count before paging."""
+    """Staff accounts only, newest first. Returns (rows, total) — total is the
+    staff-scoped count before paging.
+
+    `role_filter` narrows *within* staff (editor / manager / admin). A
+    `viewer` filter is rejected at the router boundary before it reaches here
+    (never a viewer page), so this function never has to represent it.
+    """
     from sqlalchemy import func
 
-    total = (await db.execute(_select(func.count()).select_from(User))).scalar_one()
+    conditions = [User.role.in_(_STAFF_ROLES)]
+    if role_filter is not None:
+        conditions.append(User.role == role_filter)
+
+    total = (await db.execute(
+        _select(func.count()).select_from(User).where(*conditions)
+    )).scalar_one()
     rows = (await db.execute(
         _select(User)
+        .where(*conditions)
         .order_by(User.created_at.desc())
         .limit(max(1, min(limit, 100)))
         .offset(max(0, offset))
     )).scalars().all()
     return list(rows), total
+
+
+async def role_counts(db: AsyncSession) -> dict[str, int]:
+    """Full-table `SELECT role, COUNT(*) FROM users GROUP BY role`, returned as
+    a `{role_value: count}` map with **every** role bucket present and
+    zero-filled — `viewer` included (plan §A.6).
+
+    This is an aggregate, not an enumeration, so unlike `list_users` it is not
+    staff-scoped: "there are N viewers" identifies nobody. Do not "fix" this to
+    match the list's scoping — a test asserts the `viewer` bucket is real.
+    """
+    from sqlalchemy import func
+
+    rows = (await db.execute(
+        _select(User.role, func.count()).select_from(User).group_by(User.role)
+    )).all()
+    counts = {role.value: 0 for role in _UserRole}
+    for role, n in rows:
+        # `role` comes back as the UserRole enum under the ORM mapping; be
+        # tolerant of a raw string too.
+        key = role.value if isinstance(role, _UserRole) else str(role)
+        counts[key] = int(n or 0)
+    return counts

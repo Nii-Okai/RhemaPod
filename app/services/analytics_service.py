@@ -8,9 +8,9 @@ cost of a full event pipeline.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,43 @@ COMPLETION_THRESHOLD = 0.9
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# Number of weekly buckets the "new listeners" series returns. Hardcoded on
+# purpose (plan §A.2, resolved decision 1): no query parameter, so the cut
+# period selector has nothing to grow back from.
+NEW_LISTENERS_WEEKS = 8
+
+
+def week_start_boundaries(
+    now: datetime, weeks: int = NEW_LISTENERS_WEEKS
+) -> list[datetime]:
+    """The ``weeks + 1`` half-open bucket edges for the new-listeners series.
+
+    Pure, no DB. Every edge is a Monday 00:00:00 UTC, derived with
+    ``date.weekday()`` / ``timedelta`` only — **no** ``date_trunc``, no SQL
+    ISO-week function, no ``strftime`` (plan §A.2: the shipped path must be the
+    tested path, and the suite runs SQLite). ``date.weekday()`` is 0 on Monday,
+    which is the ISO-week anchor, so this is ISO-week bucketing without calling
+    ``isocalendar()``.
+
+    Returns ``weeks + 1`` datetimes, oldest first. Bucket ``i`` is the half-open
+    interval ``[out[i], out[i + 1])`` for ``i`` in ``range(weeks)``; the last
+    edge is next Monday, the exclusive upper bound of the current week.
+    """
+    if weeks < 1:
+        raise ValueError("weeks must be >= 1")
+    today: date = now.astimezone(timezone.utc).date()
+    this_monday_date = today - timedelta(days=today.weekday())
+    this_monday = datetime(
+        this_monday_date.year,
+        this_monday_date.month,
+        this_monday_date.day,
+        tzinfo=timezone.utc,
+    )
+    # w runs from -(weeks - 1) .. +1 inclusive -> weeks + 1 edges. The current
+    # week is the newest bucket ([this_monday, next_monday)).
+    return [this_monday + timedelta(weeks=w) for w in range(-(weeks - 1), 2)]
 
 
 async def record_progress(
@@ -294,3 +331,64 @@ async def top_sermons(db: AsyncSession, limit: int = 10) -> list[dict]:
             "completion_rate": round(completions / viewers, 3) if viewers else 0.0,
         })
     return out
+
+
+async def new_listeners_weekly(
+    db: AsyncSession, weeks: int = NEW_LISTENERS_WEEKS
+) -> list[dict]:
+    """M1 — "New listeners" (plan §A.2).
+
+    For each of the last ``weeks`` Monday-anchored ISO weeks (UTC), the count of
+    distinct ``user_id`` whose **earliest** ``first_played_at`` across all
+    sermons falls in that week. People who listened to anything for the first
+    time, that week.
+
+    Shape mandated by §A.2:
+
+    * boundaries computed in Python (``week_start_boundaries``), never in SQL;
+    * one query — a per-user ``MIN(first_played_at)`` subquery, then a single
+      conditional-aggregate row bucketing those minima over explicit half-open
+      ``>= lo AND < hi`` predicates;
+    * always exactly ``weeks`` entries, oldest first, zero-filled — a week with
+      no first-time listeners comes back as ``count == 0``, not a missing key.
+
+    Returns ``[{"week_start": date, "count": int}, ...]``.
+    """
+    edges = week_start_boundaries(_now(), weeks)
+
+    # Per-user earliest play, across every sermon. MIN over the whole table —
+    # a user's global debut, not their debut on any one sermon.
+    first_ever = (
+        select(
+            PlaybackSession.user_id.label("user_id"),
+            func.min(PlaybackSession.first_played_at).label("first_ever"),
+        )
+        .group_by(PlaybackSession.user_id)
+        .subquery()
+    )
+
+    # One row, one column per bucket: COUNT of users whose debut lands in
+    # [edges[i], edges[i + 1]). Half-open throughout, so no debut is counted
+    # twice and none is lost between adjacent weeks. A debut before the window
+    # (or in the future) simply matches no bucket.
+    bucket_cols = [
+        func.sum(
+            case(
+                (
+                    and_(
+                        first_ever.c.first_ever >= edges[i],
+                        first_ever.c.first_ever < edges[i + 1],
+                    ),
+                    1,
+                ),
+                else_=0,
+            )
+        ).label(f"b{i}")
+        for i in range(weeks)
+    ]
+    row = (await db.execute(select(*bucket_cols).select_from(first_ever))).one()
+
+    return [
+        {"week_start": edges[i].date(), "count": int(row[i] or 0)}
+        for i in range(weeks)
+    ]

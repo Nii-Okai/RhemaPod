@@ -27,6 +27,27 @@ def _token_from_link(link: str) -> str:
     return link.split("token=", 1)[1]
 
 
+async def db_user_id(engine, email):
+    """The user's id, read straight from the DB fixture.
+
+    `GET /api/v1/users` is hard-scoped to staff roles for every actor
+    (plan §A.6) — a viewer is not in it, so role-management tests seed their
+    target through the DB and take the id from the created row rather than
+    discovering it via the list endpoint. Used for staff targets too, so every
+    test in this module is decoupled from the list endpoint's scoping.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import User
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        return str((await s.execute(
+            select(User).where(User.email == email)
+        )).scalar_one().id)
+
+
 # ── staff creation + invite flow ──────────────────────────────────────────────
 async def test_admin_creates_editor_and_invite_activates(client, engine):
     admin = await make_user(client, engine, "admin@example.com", "admin")
@@ -132,11 +153,10 @@ async def test_duplicate_staff_email_rejected(client, engine):
 # ── role changes ──────────────────────────────────────────────────────────────
 async def test_admin_changes_role(client, engine):
     admin = await make_user(client, engine, "admin@example.com", "admin")
-    viewer = await make_user(client, engine, "v@example.com", "viewer")
+    await make_user(client, engine, "v@example.com", "viewer")
 
-    # Find the viewer's id via the user list.
-    users = (await client.get("/api/v1/users", headers=admin)).json()["items"]
-    vid = next(u["id"] for u in users if u["email"] == "v@example.com")
+    # The viewer is not in GET /users (staff-scoped) — take its id from the DB.
+    vid = await db_user_id(engine, "v@example.com")
 
     r = await client.patch(
         f"/api/v1/users/{vid}/role", json={"role": "manager"}, headers=admin
@@ -146,9 +166,8 @@ async def test_admin_changes_role(client, engine):
 
 async def test_manager_can_promote_to_editor_only(client, engine):
     manager = await make_user(client, engine, "mgr@example.com", "manager")
-    viewer = await make_user(client, engine, "v@example.com", "viewer")
-    users = (await client.get("/api/v1/users", headers=manager)).json()["items"]
-    vid = next(u["id"] for u in users if u["email"] == "v@example.com")
+    await make_user(client, engine, "v@example.com", "viewer")
+    vid = await db_user_id(engine, "v@example.com")
 
     # Editor: allowed.
     r = await client.patch(
@@ -163,12 +182,11 @@ async def test_manager_can_promote_to_editor_only(client, engine):
 
 
 async def test_manager_cannot_modify_another_manager(client, engine):
-    admin = await make_user(client, engine, "admin@example.com", "admin")
+    await make_user(client, engine, "admin@example.com", "admin")
     manager = await make_user(client, engine, "mgr@example.com", "manager")
-    other_mgr = await make_user(client, engine, "mgr2@example.com", "manager")
+    await make_user(client, engine, "mgr2@example.com", "manager")
 
-    users = (await client.get("/api/v1/users", headers=admin)).json()["items"]
-    other_id = next(u["id"] for u in users if u["email"] == "mgr2@example.com")
+    other_id = await db_user_id(engine, "mgr2@example.com")
 
     r = await client.patch(
         f"/api/v1/users/{other_id}/role", json={"role": "editor"}, headers=manager
@@ -178,8 +196,7 @@ async def test_manager_cannot_modify_another_manager(client, engine):
 
 async def test_cannot_change_own_role(client, engine):
     admin = await make_user(client, engine, "admin@example.com", "admin")
-    users = (await client.get("/api/v1/users", headers=admin)).json()["items"]
-    aid = next(u["id"] for u in users if u["email"] == "admin@example.com")
+    aid = await db_user_id(engine, "admin@example.com")
     r = await client.patch(
         f"/api/v1/users/{aid}/role", json={"role": "editor"}, headers=admin
     )
@@ -194,8 +211,7 @@ async def test_role_change_revokes_refresh(client, engine):
         "/api/v1/auth/login", json={"email": "v@example.com", "password": PW}
     )).json()
 
-    users = (await client.get("/api/v1/users", headers=admin)).json()["items"]
-    vid = next(u["id"] for u in users if u["email"] == "v@example.com")
+    vid = await db_user_id(engine, "v@example.com")
     await client.patch(f"/api/v1/users/{vid}/role", json={"role": "editor"}, headers=admin)
 
     # Their pre-change refresh token is now revoked.
