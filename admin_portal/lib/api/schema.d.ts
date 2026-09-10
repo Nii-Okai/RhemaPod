@@ -4,6 +4,31 @@
  */
 
 export interface paths {
+    "/api/v1/admin/analytics/new-listeners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * New Listeners
+         * @description Weekly count of first-time listeners over the last 8 Monday-anchored ISO
+         *     weeks (UTC), oldest first, zero-filled (plan §A.2, M1).
+         *
+         *     Same `require_role(MANAGER, ADMIN)` guard as the rest of
+         *     `/admin/analytics/*` — not relaxed for the editor Dashboard (§A.1). The
+         *     window is a fixed 8 weeks; there is no query parameter.
+         */
+        get: operations["new_listeners_api_v1_admin_analytics_new_listeners_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/analytics/overview": {
         parameters: {
             query?: never;
@@ -921,6 +946,9 @@ export interface paths {
          * List My Sermons
          * @description Editors see their own sermons across all statuses; managers and admins
          *     see everyone's. Carries workflow fields the catalog card omits.
+         *
+         *     `created_by=me` narrows further to the caller's own sermons — a no-op for
+         *     an editor (already scoped that way), a voluntary filter for a manager/admin.
          */
         get: operations["list_my_sermons_api_v1_sermons_get"];
         put?: never;
@@ -1266,6 +1294,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads/in-flight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List In Flight Uploads
+         * @description Upload jobs still uploading or transcoding, across every sermon the
+         *     caller may see (an editor: their own; manager/admin: all). Feeds the
+         *     Dashboard's global "processing" card.
+         */
+        get: operations["list_in_flight_uploads_api_v1_uploads_in_flight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{job_id}": {
         parameters: {
             query?: never;
@@ -1321,7 +1371,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Users */
+        /**
+         * List Users
+         * @description Staff accounts only (editor / manager / admin), for every actor — a
+         *     viewer is never a row, with or without `role` (plan §A.6, decision 5).
+         *     Use the aggregate at `GET /users/role-counts` for the viewer headcount.
+         */
         get: operations["list_users_api_v1_users_get"];
         put?: never;
         /**
@@ -1330,6 +1385,29 @@ export interface paths {
          *     server-side; the user receives an email invite to set their own password.
          */
         post: operations["create_staff_api_v1_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/role-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Role Counts
+         * @description Full-table `GROUP BY role` headcount for the Users & roles tiles.
+         *
+         *     Deliberately **not** staff-scoped like `GET /users`: the `viewer` bucket is
+         *     a real number here because a count identifies no one (plan §A.6).
+         */
+        get: operations["role_counts_api_v1_users_role_counts_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1745,6 +1823,24 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * NewListenersBucket
+         * @description One week in the "New listeners" series (plan §A.2, M1).
+         *
+         *     `week_start` is the Monday (UTC) that opens the bucket; `count` is the
+         *     number of distinct registered accounts whose *earliest* play across all
+         *     sermons fell in that week. Reach, not engagement — the word "plays" does
+         *     not belong on this series.
+         */
+        NewListenersBucket: {
+            /** Count */
+            count: number;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
         /** OverviewStats */
         OverviewStats: {
             /** Active Subscribers */
@@ -1921,6 +2017,26 @@ export interface components {
             tier: components["schemas"]["ContentTier"];
             /** Title */
             title: string;
+        };
+        /**
+         * RoleCounts
+         * @description Full-table `GROUP BY role` count, for the Users & roles tiles.
+         *
+         *     Every bucket is always present and zero-filled — `viewer` included. This is
+         *     an aggregate, not an enumeration: it is deliberately full-table and NOT
+         *     staff-scoped like `GET /users` (plan §A.6).
+         */
+        RoleCounts: {
+            /** Admin */
+            admin: number;
+            /** Editor */
+            editor: number;
+            /** Manager */
+            manager: number;
+            /** Total */
+            total: number;
+            /** Viewer */
+            viewer: number;
         };
         /** RoleUpdateRequest */
         RoleUpdateRequest: {
@@ -2543,6 +2659,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    new_listeners_api_v1_admin_analytics_new_listeners_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewListenersBucket"][];
+                };
+            };
+        };
+    };
     analytics_overview_api_v1_admin_analytics_overview_get: {
         parameters: {
             query?: never;
@@ -4250,6 +4386,8 @@ export interface operations {
                 category_id?: string | null;
                 /** @description Filter on effective tier (sermon tier, else series tier, else free) */
                 tier?: components["schemas"]["ContentTier"] | null;
+                /** @description Restrict to sermons authored by the caller. Only the literal `me` is accepted; powers the editor Dashboard WIP cards. */
+                created_by?: "me" | null;
                 limit?: number;
                 offset?: number;
             };
@@ -5036,6 +5174,37 @@ export interface operations {
             };
         };
     };
+    list_in_flight_uploads_api_v1_uploads_in_flight_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadJobPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_upload_job_api_v1_uploads__job_id__delete: {
         parameters: {
             query?: never;
@@ -5105,6 +5274,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                /** @description Narrow within staff roles (editor / manager / admin). `viewer` is rejected — the staff directory never lists viewers. */
+                role?: components["schemas"]["UserRole"] | null;
             };
             header?: never;
             path?: never;
@@ -5161,6 +5332,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    role_counts_api_v1_users_role_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCounts"];
                 };
             };
         };

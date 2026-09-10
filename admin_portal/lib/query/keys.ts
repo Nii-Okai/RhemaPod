@@ -33,6 +33,13 @@ export type AnnouncementListParams = NonNullable<
   operations["list_all_announcements_api_v1_announcements_admin_all_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/users` — staff-scoped list + `role`
+    filter (W17 / Batch 7 #1). `role=viewer` is a 400; the filter never offers
+    it. */
+export type UserListParams = NonNullable<
+  operations["list_users_api_v1_users_get"]["parameters"]["query"]
+>;
+
 export const queryKeys = {
   sermons: {
     all: () => ["sermons"] as const,
@@ -106,6 +113,19 @@ export const queryKeys = {
     all: () => ["nav"] as const,
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */
     counts: () => [...queryKeys.nav.all(), "counts"] as const,
+  },
+  /** Users & roles screen (W17). Same shape as `announcements` — a domain root,
+      a `list()` sub-tree keyed on `{role?, limit, offset}` (React Query hashes
+      it stably), plus a sibling `roleCounts()` aggregate that feeds the tiles.
+      `all()` is the coarse handle every user mutation invalidates: it
+      prefix-matches both `list` and `role-counts`, so an invite or a role
+      change refreshes the list and the tiles in one call. */
+  users: {
+    all: () => ["users"] as const,
+    lists: () => [...queryKeys.users.all(), "list"] as const,
+    list: (params: UserListParams = {}) =>
+      [...queryKeys.users.lists(), params] as const,
+    roleCounts: () => [...queryKeys.users.all(), "role-counts"] as const,
   },
   session: {
     all: () => ["session"] as const,
