@@ -141,8 +141,40 @@ async def _get_user(sessionmaker, user_id):
         return await s.get(User, user_id)
 
 
+@pytest.fixture
+def guard_barrier(monkeypatch):
+    """Wrap `_assert_not_last_active_admin` so the first transaction into the
+    guard holds its `FOR UPDATE` locks for a beat before returning, and the
+    second transaction is not released until then.
+
+    Without this a green run does not *prove* the lock blocked — if T1 ran to
+    completion before T2 issued its guard `SELECT`, the invariant would hold
+    anyway and the block path would never be exercised. The barrier forces T2's
+    guard `SELECT` to land while T1 still holds the locks.
+    """
+    from app.services import auth_service
+
+    real_guard = auth_service._assert_not_last_active_admin
+    first_in_guard = asyncio.Event()
+    state = {"seen": 0}
+
+    async def barriered_guard(db, target):
+        # The real SELECT ... FOR UPDATE (or its 409) happens in here.
+        result = await real_guard(db, target)
+        state["seen"] += 1
+        if state["seen"] == 1:
+            first_in_guard.set()
+            await asyncio.sleep(0.25)  # T2 reaches its blocking guard SELECT here
+        return result
+
+    monkeypatch.setattr(
+        auth_service, "_assert_not_last_active_admin", barriered_guard
+    )
+    return first_in_guard
+
+
 async def test_concurrent_deactivate_deactivate_leaves_exactly_one_admin(
-    pg_sessionmaker,
+    pg_sessionmaker, guard_barrier
 ):
     from app.models.models import User
     from app.services import auth_service
@@ -150,14 +182,16 @@ async def test_concurrent_deactivate_deactivate_leaves_exactly_one_admin(
 
     ids = await _seed_admins(pg_sessionmaker, ["a@x.com", "b@x.com"])
 
-    async def deactivate(target_id, actor_id):
+    async def deactivate(target_id, actor_id, *, gated):
+        if gated:
+            await guard_barrier.wait()
         async with pg_sessionmaker() as s:
             actor = await s.get(User, actor_id)
             return await auth_service.set_active(s, target_id, False, actor)
 
     results = await asyncio.gather(
-        deactivate(ids["a@x.com"], ids["b@x.com"]),
-        deactivate(ids["b@x.com"], ids["a@x.com"]),
+        deactivate(ids["a@x.com"], ids["b@x.com"], gated=False),
+        deactivate(ids["b@x.com"], ids["a@x.com"], gated=True),
         return_exceptions=True,
     )
 
@@ -172,7 +206,7 @@ async def test_concurrent_deactivate_deactivate_leaves_exactly_one_admin(
 
 
 async def test_concurrent_demote_and_deactivate_leaves_exactly_one_admin(
-    pg_sessionmaker,
+    pg_sessionmaker, guard_barrier
 ):
     from app.models.models import User, UserRole
     from app.services import auth_service
@@ -186,6 +220,7 @@ async def test_concurrent_demote_and_deactivate_leaves_exactly_one_admin(
             return await auth_service.change_role(s, target_id, UserRole.EDITOR, actor)
 
     async def deactivate(target_id, actor_id):
+        await guard_barrier.wait()
         async with pg_sessionmaker() as s:
             actor = await s.get(User, actor_id)
             return await auth_service.set_active(s, target_id, False, actor)

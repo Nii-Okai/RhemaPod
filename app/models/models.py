@@ -59,6 +59,13 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # NULL until the account first completes its staff invite (``reset_password``
+    # sets it, in the same transaction as the password write, when currently
+    # NULL). DB-authoritative "is this account still pending?" — ``resend_invite``
+    # gates on it. Replaced the no-TTL ``invite_pending`` Redis key (ADR 0005 §4).
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -449,6 +449,184 @@ async def test_create_staff_redis_down_returns_503_and_creates_nothing(client, e
     assert n == 0
 
 
+# ── activated_at column: replaces the invite_pending Redis key ──────────────
+async def test_user_public_carries_activated_at_through_every_serialization_site(
+    client, engine
+):
+    """`UserPublic.activated_at` is NULL for a freshly invited account and an
+    ISO timestamp once set-password completes — on `list_users`, `change_role`,
+    and the `PATCH /active` lifecycle response alike."""
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    created = await _invite_editor(client, admin)
+    nid = created["user"]["id"]
+    assert "activated_at" in created["user"]
+    assert created["user"]["activated_at"] is None
+
+    lst = await client.get("/api/v1/users?role=editor", headers=admin)
+    row = next(u for u in lst.json()["items"] if u["id"] == nid)
+    assert row["activated_at"] is None
+
+    token = _token_from_link(created["invite_link"])
+    sp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "chosen-strong-passphrase"},
+    )
+    assert sp.status_code == 200
+
+    lst2 = await client.get("/api/v1/users?role=editor", headers=admin)
+    row2 = next(u for u in lst2.json()["items"] if u["id"] == nid)
+    assert row2["activated_at"] is not None
+    activated_stamp = row2["activated_at"]
+
+    cr = await client.patch(
+        f"/api/v1/users/{nid}/role", json={"role": "manager"}, headers=admin
+    )
+    assert cr.status_code == 200
+    assert cr.json()["activated_at"] == activated_stamp
+
+    sa = await client.patch(
+        f"/api/v1/users/{nid}/active", json={"is_active": False}, headers=admin
+    )
+    assert sa.status_code == 200
+    assert sa.json()["user"]["activated_at"] == activated_stamp
+
+
+async def test_forgot_password_reset_does_not_move_activated_at(client, engine):
+    """A forgot-password reset on an already-activated account leaves the
+    original `activated_at` untouched (the column is set only when NULL)."""
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    created = await _invite_editor(client, admin)
+    nid = created["user"]["id"]
+
+    sp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "token": _token_from_link(created["invite_link"]),
+            "new_password": "chosen-strong-passphrase",
+        },
+    )
+    assert sp.status_code == 200
+    first = (await db_user(engine, "newbie@example.com")).activated_at
+    assert first is not None
+
+    # A second reset via the forgot-password flow.
+    from app.core import security
+
+    reset_token, _ = security.create_reset_token(nid)
+    from app.core import token_store
+
+    payload = security.decode_token(reset_token, security.RESET)
+    await token_store.register_single_use(payload["jti"], 3600)
+    sp2 = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": reset_token, "new_password": "another-strong-passphrase"},
+    )
+    assert sp2.status_code == 200
+    assert (await db_user(engine, "newbie@example.com")).activated_at == first
+
+
+# ── reactivation re-revokes a deferred-revoke refresh token (CWE-613) ────────
+async def test_reactivation_revokes_refresh_token_left_by_a_deferred_deactivation(
+    client, engine
+):
+    """If a deactivation deferred its refresh-token revoke (Redis was down),
+    reactivating within the refresh TTL must not resurrect that token —
+    `set_active`'s reactivate branch does a best-effort `revoke_refresh` too."""
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    await _register(client, "ed@example.com")
+    tokens = (await client.post(
+        "/api/v1/auth/login", json={"email": "ed@example.com", "password": PW}
+    )).json()
+    await _set_role(engine, "ed@example.com", "editor")
+    eid = await db_user_id(engine, "ed@example.com")
+
+    with _fake.failing():
+        d = await client.patch(
+            f"/api/v1/users/{eid}/active", json={"is_active": False}, headers=admin
+        )
+    assert d.status_code == 200
+    assert d.json()["revocation_deferred"] is True
+
+    # Redis is back. Reactivate — the best-effort revoke now runs.
+    r = await client.patch(
+        f"/api/v1/users/{eid}/active", json={"is_active": True}, headers=admin
+    )
+    assert r.status_code == 200
+    assert r.json()["revocation_deferred"] is False
+
+    # The account is active again, so a 401 here can only be the jti being gone
+    # from Redis — not the is_active gate.
+    rr = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert rr.status_code == 401
+
+
+async def test_reactivation_under_redis_outage_still_200_with_deferred_flag(
+    client, engine
+):
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    await make_user(client, engine, "ed@example.com", "editor")
+    eid = await db_user_id(engine, "ed@example.com")
+
+    await client.patch(
+        f"/api/v1/users/{eid}/active", json={"is_active": False}, headers=admin
+    )
+    with _fake.failing():
+        r = await client.patch(
+            f"/api/v1/users/{eid}/active", json={"is_active": True}, headers=admin
+        )
+    assert r.status_code == 200
+    assert r.json()["user"]["is_active"] is True
+    assert r.json()["revocation_deferred"] is True
+
+
+# ── resend-invite: per-target rate limit + prior-link retirement (CWE-770) ───
+async def test_resend_invite_rate_limited_after_three_in_the_window(client, engine):
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    created = await _invite_editor(client, admin)
+    nid = created["user"]["id"]
+
+    for _ in range(3):
+        ok = await client.post(f"/api/v1/users/{nid}/resend-invite", headers=admin)
+        assert ok.status_code == 200
+
+    r = await client.post(f"/api/v1/users/{nid}/resend-invite", headers=admin)
+    assert r.status_code == 429
+
+
+async def test_resend_invite_retires_the_previous_link(client, engine):
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    created = await _invite_editor(client, admin)
+    nid = created["user"]["id"]
+    first_link = created["invite_link"]
+
+    resent = await client.post(f"/api/v1/users/{nid}/resend-invite", headers=admin)
+    assert resent.status_code == 200
+    second_link = resent.json()["invite_link"]
+    assert second_link and second_link != first_link
+
+    # The original link no longer completes set-password.
+    old = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "token": _token_from_link(first_link),
+            "new_password": "totally-fresh-secret",
+        },
+    )
+    assert old.status_code == 400
+
+    # The latest link still works.
+    new = await client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "token": _token_from_link(second_link),
+            "new_password": "totally-fresh-secret",
+        },
+    )
+    assert new.status_code == 200
+
+
 # ── break-glass: app/scripts/create_admin still works ───────────────────────
 async def test_create_admin_script_bootstraps_and_promotes(client, engine, monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

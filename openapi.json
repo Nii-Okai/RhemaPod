@@ -3363,7 +3363,7 @@
         "type": "object"
       },
       "UserActiveResponse": {
-        "description": "The updated account, plus a flag set when a Redis outage forced\nrefresh-token revocation to be deferred at deactivation (plan \u00a7W18,\nGATE 6 = commit-first). The deactivation still committed and every request\nre-checks `is_active`, so the account is locked out regardless; the flag\ntells an operator the residual access-token window was not cut early.",
+        "description": "The updated account, plus a flag set when a Redis outage forced\nrefresh-token revocation to be deferred (plan \u00a7W18, GATE 6 = commit-first).\nSet on **deactivation** when the lockout committed but the token revoke could\nnot be recorded, and on **reactivation** when the best-effort revoke of any\nstill-live pre-deactivation refresh token could not be recorded (CWE-613).\nThe state change still committed and every request re-checks `is_active`, so\nthe flag only tells an operator a Redis-backed revoke did not land.",
         "properties": {
           "revocation_deferred": {
             "default": false,
@@ -3401,6 +3401,18 @@
       },
       "UserPublic": {
         "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",

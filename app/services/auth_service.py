@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import security, token_store
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.rate_limit import check_rate_limit
 from app.core.token_store import TokenStoreUnavailable
 from app.models.models import User, UserRole
 from app.models.schemas import UserRegister
@@ -144,11 +146,15 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
         raise AuthError("Invalid or expired reset token")
 
     user.password_hash = security.hash_password(new_password)
+    # First password the account has chosen for itself → its staff invite is now
+    # complete. Stamp `activated_at` in the SAME transaction as the password
+    # write (before commit) so the "is this account still pending?" fact can
+    # never lag the password — fail-closed. Only when currently NULL: a
+    # forgot-password reset on an already-activated account leaves the earlier
+    # timestamp untouched. `resend_invite` reads this column, not Redis.
+    if user.activated_at is None:
+        user.activated_at = datetime.now(timezone.utc)
     await db.commit()
-    # The account now has a password of its own choosing: any outstanding staff
-    # invite is complete, so resend-invite must stop offering to re-issue it.
-    # A no-op for a self-service reset (the key was never set).
-    await token_store.clear_invite_pending(str(user.id))
     # Force re-login everywhere after a password change.
     await token_store.revoke_refresh(str(user.id))
     log.info("password_reset", user_id=str(user.id), token_type=payload.get("type"))
@@ -231,9 +237,12 @@ async def create_staff(
         # below rolls the transaction back, all that is left is an orphaned
         # ledger entry that expires on its own TTL — never a usable account.
         await token_store.register_single_use(invite_jti, invite_ttl_seconds)
-        # Durable "invited, never activated" flag — the only record of invite
-        # state (no invited_at column, resolved decision 8). Backs resend-invite.
-        await token_store.mark_invite_pending(str(user.id))
+        # Pointer to the live invite jti so a later resend can retire this link.
+        # Self-expiring (invite TTL); "is this account pending?" is now the
+        # `users.activated_at` column, not Redis (ADR 0005 §4).
+        await token_store.remember_invite_jti(
+            str(user.id), invite_jti, invite_ttl_seconds
+        )
         await send_invite(user.email, user.full_name, invite_token)
     except TokenStoreUnavailable:
         # Fail closed: don't create an account whose invite we couldn't record.
@@ -241,12 +250,7 @@ async def create_staff(
         raise
     except Exception:
         await db.rollback()
-        # Best-effort: the account is rolled back, so drop its pending flag too.
-        try:
-            await token_store.clear_invite_pending(str(user.id))
-        except TokenStoreUnavailable:
-            pass
-        log.warning("staff_invite_send_failed", email=email)
+        log.warning("staff_invite_send_failed", user_id=str(user.id))
         raise AuthError(
             "Could not send the invite email — the account was not created. "
             "Please try again."
@@ -325,6 +329,18 @@ async def change_role(
     ):
         raise AuthError("Only an admin can modify a manager or admin account")
 
+    # Revoke BEFORE commit (see change_password): a Redis outage raises
+    # TokenStoreUnavailable -> 503 with the role change rolled back, never a
+    # persisted new role whose still-live sessions carry the old one. Done
+    # *ahead of* the last-admin guard so no Redis round-trip ever happens while
+    # that guard holds its FOR UPDATE locks on the active-admin rows (gilfoyle
+    # review of a0c2575). set_active revokes after commit; change_role keeps its
+    # fail-closed 503 semantics (ADR 0005 §3), so it revokes before commit but
+    # before the lock instead of inside it. Cost: a demotion refused by the
+    # near-unreachable 409 path has already revoked the target admin's sessions
+    # (their role is unchanged) — a forced re-login, not a privilege issue.
+    await token_store.revoke_refresh(str(target.id))
+
     # Last-admin invariant, shared with set_active. Only a demotion *out of*
     # admin can violate it; the helper no-ops for every other case.
     if new_role != _UserRole.ADMIN:
@@ -332,10 +348,6 @@ async def change_role(
 
     old_role = target.role
     target.role = new_role
-    # Revoke BEFORE commit (see change_password): a Redis outage raises
-    # TokenStoreUnavailable -> 503 with the role change rolled back, never a
-    # persisted new role whose still-live sessions carry the old one.
-    await token_store.revoke_refresh(str(target.id))
     await db.commit()
     await db.refresh(target)
     log.info(
@@ -412,13 +424,35 @@ async def set_active(
         return target, revocation_deferred
 
     # Reactivation only ever raises the active-admin count, so no invariant
-    # check; and there are no live sessions to manage for an account that has
-    # been rejected on every request.
+    # check. It still revokes refresh tokens best-effort: if the *prior*
+    # deactivation deferred its revoke (Redis was down), `refresh:{uid}` still
+    # holds the pre-deactivation jti, and reactivating within the 30-day refresh
+    # TTL would otherwise re-arm a credential the deactivation was meant to kill
+    # (CWE-613). Same commit-first posture as deactivate: the row change lands
+    # first, then the revoke; a Redis outage still returns 200 with
+    # `revocation_deferred=true` rather than 503.
     target.is_active = True
     await db.commit()
     await db.refresh(target)
-    log.info("user_reactivated", user_id=str(target.id), by=str(actor.id))
-    return target, False
+
+    revocation_deferred = False
+    try:
+        await token_store.revoke_refresh(str(target.id))
+    except TokenStoreUnavailable:
+        revocation_deferred = True
+        log.warning(
+            "reactivate_revoke_deferred",
+            user_id=str(target.id),
+            by=str(actor.id),
+        )
+
+    log.info(
+        "user_reactivated",
+        user_id=str(target.id),
+        by=str(actor.id),
+        revocation_deferred=revocation_deferred,
+    )
+    return target, revocation_deferred
 
 
 async def resend_invite(
@@ -431,9 +465,12 @@ async def resend_invite(
     set-password: a fresh single-use jti and a fresh invite email.
 
     Authz matrix is `set_active`'s. If the account has already set its own
-    password there is nothing to resend → 409. If Redis is unreachable this
-    **does** 503 (via `TokenStoreUnavailable`): the whole operation is the
-    single-use jti, and without it the emailed link would not work (plan §W18).
+    password (`users.activated_at is not None`) there is nothing to resend → 409.
+    Capped at 3/hour per target (fixed window, fails open). The previously issued
+    invite link is retired before the new one is minted, so only the newest link
+    completes set-password. If Redis is unreachable this **does** 503 (via
+    `TokenStoreUnavailable`): the whole operation is the single-use jti, and
+    without it the emailed link would not work (plan §W18).
     """
     target = await get_user_by_id(db, target_id)
     if target is None:
@@ -445,20 +482,43 @@ async def resend_invite(
             status_code=403,
         )
 
-    if not await token_store.is_invite_pending(str(target.id)):
+    if target.activated_at is not None:
         raise ContentError(
             "This account has already been activated — there is no invite to "
             "resend.",
             status_code=409,
         )
 
+    # Per-target fixed-window cap. A resend emails a fresh set-password link, so
+    # an uncapped endpoint is a mail-bombing / link-spraying primitive
+    # (CWE-770). Keyed on the target, 3/hour. Fails OPEN on a Redis outage
+    # (check_rate_limit), same posture as login — the 503 below is the real
+    # backstop when Redis is down.
+    if not await check_rate_limit(
+        f"resend_invite:{target.id}", limit=3, window_seconds=3600
+    ):
+        raise ContentError(
+            "This invite has been resent too many times in the last hour. "
+            "Wait a while before trying again.",
+            status_code=429,
+        )
+
+    # Retire the previously issued invite link BEFORE minting a new one, so only
+    # the newest set-password link ever completes (CWE-770 — no fan-out of live
+    # links). take_invite_jti pops the pointer; consume_single_use kills the jti.
+    # A failed send below then leaves the account with no live link, and the
+    # admin simply resends again — never a link they cannot invalidate.
+    prev_jti = await token_store.take_invite_jti(str(target.id))
+    if prev_jti is not None:
+        await token_store.consume_single_use(prev_jti)
+
     invite_token, invite_jti = security.create_invite_token(str(target.id))
     invite_ttl_seconds = settings.invite_token_expire_hours * 60 * 60
 
-    # New jti, then the (best-effort) send. A failed send leaves only an
-    # orphaned jti that expires on its own TTL — never a broken account. The
-    # pending flag is already set (checked just above); nothing to re-mark.
     await token_store.register_single_use(invite_jti, invite_ttl_seconds)
+    await token_store.remember_invite_jti(
+        str(target.id), invite_jti, invite_ttl_seconds
+    )
     try:
         await send_invite(target.email, target.full_name, invite_token)
     except TokenStoreUnavailable:

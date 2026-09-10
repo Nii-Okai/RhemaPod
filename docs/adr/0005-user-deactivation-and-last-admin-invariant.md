@@ -6,7 +6,7 @@
   new `POST /api/v1/users/{id}/resend-invite`, and a shared last-admin guard now
   enforced on `PATCH /api/v1/users/{id}/role` as well
 - **Deciders:** Isaac; architect, planner; `security-reviewer` (mandatory) +
-  `reviewer-gilfoyle` (implementation review pending on W18)
+  `reviewer-gilfoyle`
 - **Relates to:** `plans/plan-admin-portal-phase2.md` §A.5, §A.6, W18, `[HUMAN_GATE 6]`,
   resolved decisions 8–10; risks P1, P2; `plans/plan-admin-portal.md` `[HUMAN_GATE 3]`
 
@@ -16,6 +16,15 @@
 > cannot express it), the deliberate Redis-down divergence from `change_role`,
 > and the harness limitation that leaves the concurrent case to one PG-gated
 > module.
+>
+> **Revised after the W18 security + code review of `a0c2575`** (Isaac's
+> ruling): §4 no longer uses a no-TTL `invite_pending` Redis key — that had a
+> Redis-blip account-takeover window — but a nullable `users.activated_at`
+> column set pre-commit in the same transaction as the password write. §3 now
+> also revokes refresh tokens on *reactivation* (CWE-613). Resend-invite gains a
+> per-target rate limit and prior-link retirement (CWE-770). This partially
+> reverses resolved decision 8's "no invite-state column": `activated_at` is a
+> lifecycle timestamp, not the `invited_at` audit field decision 8 weighed.
 
 ---
 
@@ -127,23 +136,62 @@ failing closed for; a delayed *token revoke* behind an already-committed
 request. `reset_password` / `change_password` keep their revoke-before-commit
 ordering too — deactivate is the single considered exception.
 
-Reactivation does no token work (there are no live sessions for an account that
-has been rejected on every request) and never touches the invariant.
+Reactivation never touches the invariant (it only raises the active-admin
+count). It does, however, do a **best-effort `revoke_refresh` on the reactivated
+account** (CWE-613): if the *prior* deactivation deferred its revoke because
+Redis was down, `refresh:{uid}` still holds the pre-deactivation jti, and
+reactivating within the 30-day refresh TTL would otherwise re-arm a credential
+the deactivation was meant to kill. Same commit-first posture as deactivation —
+`is_active=true` commits, then the revoke is attempted; a Redis outage still
+returns `200` with `revocation_deferred=true` (and logs
+`reactivate_revoke_deferred`), never `503`.
 
 ### 4 — `POST /users/{id}/resend-invite`
 
 Re-issues a staff invite: a fresh single-use jti + a fresh invite email via the
 same `email` seam `create_staff` uses. Same authz matrix as §1.
 
-- **Already activated → `409`.** With no `invited_at` column (decision 8),
-  "invited, never set a password" is tracked as a **durable, no-TTL** Redis flag
-  `invite_pending:{user_id}` — set in `create_staff` and `resend_invite`,
-  cleared in `reset_password` once the account sets its own password. It has no
-  TTL on purpose: the invite *link* expires on its jti, but a still-pending
-  account must stay re-invitable well past 48h. A full Redis data loss makes
-  `resend-invite` report a still-pending account as already activated — a
-  spurious `409`, which is the safe direction to fail (the unsafe direction
-  would be re-issuing a working password-set link for a live account).
+- **Already activated → `409`, decided by `users.activated_at`.** A nullable,
+  timezone-aware `users.activated_at` column (second additive Phase 2 migration,
+  `a6b7c8d9e0f1`, chained off `f5a6b7c8d9e0`; `nullable=True`, no default) is the
+  authoritative record of "has this account finished its invite?". `NULL` =
+  invited, never set a password. `reset_password` stamps it —
+  `datetime.now(timezone.utc)` — **only when currently `NULL`**, and **before
+  `db.commit()`**, so it is written in the same transaction as the password hash
+  and can never lag it (fail-closed). A forgot-password reset on an
+  already-activated account leaves the earlier timestamp untouched.
+  `resend_invite` refuses with `409` when `target.activated_at is not None`.
+
+  **Why not the earlier no-TTL Redis flag.** W18 originally tracked this as a
+  non-expiring `invite_pending:{user_id}` Redis key set in `create_staff` and
+  cleared in `reset_password`. The security review of `a0c2575` showed the clear
+  ran *after* `db.commit()`: a Redis blip in the window between the password
+  commit and the clear leaves `invite_pending = true` on a now-active account,
+  and `resend-invite` then emails a working set-password link for a live
+  staff/admin account — account takeover (CWE-620/640). The claim that the key
+  "only fails safe" was backwards; it had an unsafe direction. It was also the
+  codebase's first immortal key, with the eviction policy pinned nowhere
+  (`allkeys-lru` would silently drop it and wrongly `409` a genuine pending
+  invite). A DB column set pre-commit in the same transaction has neither
+  failure mode: no Redis dependency for the "is this activated?" question, and
+  the flag physically cannot outrun or lag the password write.
+
+- **Prior invite link retired on resend (CWE-770).** Each `create_staff` /
+  `resend_invite` records the *current* invite jti under a self-expiring
+  `invite_jti:{user_id}` key (TTL = the invite token's own 48h; **this one does
+  expire** — it is a pointer to a live jti, not a durable fact). `resend_invite`
+  pops that pointer and `consume_single_use`s the old jti *before* minting the
+  new one, so only the newest set-password link ever completes. A failed send
+  then leaves the account with no live link and the admin simply resends again —
+  never a link that cannot be invalidated.
+
+- **Per-target rate limit (CWE-770).** `resend_invite` is capped at **3 per
+  hour per target** via the existing `check_rate_limit` fixed window
+  (`resend_invite:{target_id}`), so it cannot be used to mail-bomb an address or
+  keep a fan-out of live links in flight. Over the cap → `429`. It fails **open**
+  on a Redis outage, like `login` — the `503` below is the real backstop when
+  Redis is down.
+
 - **Redis down → `503`.** Unlike deactivate, this operation *is* the single-use
   jti; without it the emailed link does not work, so there is nothing to degrade
   to. `create_staff` gets the same explicit `503` mapping, with a message that
@@ -173,12 +221,21 @@ Nothing was implemented for this.
   `tests/test_user_lifecycle.py::test_create_admin_script_bootstraps_and_promotes`.
 - `openapi.json` (repo root) is regenerated and committed; the W18 diff is
   additive — two new paths (`PATCH /users/{id}/active`,
-  `POST /users/{id}/resend-invite`) and two new schemas (`ActiveUpdateRequest`,
-  `UserActiveResponse`). The W16 diff is empty by design (nothing reads that
-  column).
-- A new Redis key namespace, `invite_pending:{user_id}`, with no TTL — the
-  codebase's first non-expiring key. Justified above; the alternative (an
-  `invited_at` column) was cut by decision 8.
+  `POST /users/{id}/resend-invite`), two new schemas (`ActiveUpdateRequest`,
+  `UserActiveResponse`), and — from the review fix pass — a new
+  `UserPublic.activated_at` field (`string(date-time) | null`) that flows to
+  every `UserPublic` serialization site (`list_users`, `change_role`,
+  `create_staff`, and both lifecycle responses). The W16 diff is empty by
+  design (nothing reads that column).
+- **Second additive Phase 2 migration**, `a6b7c8d9e0f1` (`users.activated_at`,
+  nullable, no default), chained off `f5a6b7c8d9e0`. `alembic upgrade head →
+  downgrade -2 → upgrade head` round-trips the `users` and `processed_webhooks`
+  schemas exactly — guarded by `tests/test_migration_roundtrip.py` (PG-gated,
+  same discovery/skip pattern as the concurrent module).
+- **No non-expiring Redis keys.** The review fix pass removed the no-TTL
+  `invite_pending:{user_id}` flag entirely (see §4). The only invite-related
+  Redis key now is `invite_jti:{user_id}`, which carries the invite token's own
+  48h TTL. "Is this account activated?" is a DB column question.
 
 ## Notes for the implementation review (GATE 6)
 
@@ -188,5 +245,11 @@ Nothing was implemented for this.
   (§A.6 A/B/C → **B**). Both are recorded above as decided facts.
 - Coverage: `tests/test_user_lifecycle.py` (authz matrix, sequential invariant
   on both paths, Redis-outage deactivate → 200 + logged defer, resend-invite
-  happy / 409 / 503, deactivated-token rejection, break-glass) and
-  `tests/test_last_admin_concurrent.py` (the concurrent case).
+  happy / 409 / 503, deactivated-token rejection, break-glass; and from the fix
+  pass — `activated_at` on every `UserPublic` site, forgot-password does not move
+  it, reactivation revokes a deferred-revoke refresh token, resend rate-limit
+  429, resend retires the prior link), `tests/test_last_admin_concurrent.py`
+  (the concurrent case, now with a `guard_barrier` fixture that forces the
+  second transaction's guard `SELECT` to land while the first still holds its
+  `FOR UPDATE` locks), and `tests/test_migration_roundtrip.py` (both Phase 2
+  migrations up/down/up).
