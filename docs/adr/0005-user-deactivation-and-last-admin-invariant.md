@@ -25,6 +25,16 @@
 > per-target rate limit and prior-link retirement (CWE-770). This partially
 > reverses resolved decision 8's "no invite-state column": `activated_at` is a
 > lifecycle timestamp, not the `invited_at` audit field decision 8 weighed.
+>
+> **Revised again after the security re-check of `d3390d7`** (still a `🔴`): that
+> pass stamped `activated_at` only in `reset_password`, so self-registered→
+> promoted users, pre-migration rows, and bootstrap admins all held a real
+> password with `activated_at IS NULL` and `resend_invite` would still mint a
+> working set-password link for them. §4 now stamps `activated_at` on **all**
+> first-password paths (table below) **and** backfills every pre-migration row
+> in `a6b7c8d9e0f1.upgrade`. The "only the newest set-password link ever
+> completes" claim is softened to "at most `limit` live links per rate-limit
+> window".
 
 ---
 
@@ -155,12 +165,43 @@ same `email` seam `create_staff` uses. Same authz matrix as §1.
   timezone-aware `users.activated_at` column (second additive Phase 2 migration,
   `a6b7c8d9e0f1`, chained off `f5a6b7c8d9e0`; `nullable=True`, no default) is the
   authoritative record of "has this account finished its invite?". `NULL` =
-  invited, never set a password. `reset_password` stamps it —
-  `datetime.now(timezone.utc)` — **only when currently `NULL`**, and **before
-  `db.commit()`**, so it is written in the same transaction as the password hash
-  and can never lag it (fail-closed). A forgot-password reset on an
-  already-activated account leaves the earlier timestamp untouched.
-  `resend_invite` refuses with `409` when `target.activated_at is not None`.
+  invited, never set a password. `resend_invite` refuses with `409` when
+  `target.activated_at is not None`.
+
+  It is stamped — `datetime.now(timezone.utc)`, **only when currently `NULL`**,
+  and **in the same transaction as the password write (before `db.commit()`)** so
+  it can never lag the password (fail-closed) — on **every path that sets a
+  self-chosen first password**, not just invite acceptance:
+
+  | Path | When |
+  |---|---|
+  | `auth_service.reset_password` | invite acceptance / forgot-password (only if NULL — a forgot-password reset on an already-active account keeps the earlier stamp) |
+  | `auth_service.register_user` | at row creation — self-registration is activation by definition |
+  | `auth_service.change_password` | defensively — anyone changing a password has a live account |
+  | `auth_service.authenticate` (rehash) | defensively — a successful auth on an active row proves the account is live |
+  | `app/scripts/create_admin.py` | both the fresh bootstrap create and the `existing.is_active = True` promote branch |
+  | `app/scripts/seed_dev.py` | seeded staff + listeners are live dev accounts |
+  | `auth_service.create_staff` | **never** — this is the one path that *creates* the pending invite; `activated_at` stays `NULL` here, correctly |
+
+  **Backfill.** `a6b7c8d9e0f1.upgrade` runs
+  `UPDATE users SET activated_at = created_at WHERE activated_at IS NULL` after
+  adding the column. Every row that predates the migration is an account that has
+  been in use → activated by definition; leaving it `NULL` would let
+  `resend_invite` mint a working set-password link for it (the same
+  CWE-620/640 class as the original finding, triggered by the migration gap
+  instead of a Redis blip). The safe direction: a genuinely-pending pre-migration
+  invite becoming non-resendable is acceptable; a live account staying resendable
+  is the vulnerability — so backfill **all** NULLs. `created_at` (always present,
+  server-defaulted) is used rather than `now()` — it is truthful about the
+  account's real age.
+
+  **Why not `activated_at IS NULL` as a bare proxy.** It is only a safe "invite
+  still pending" signal if *every* path that gives an account a real password
+  stamps it. The review of `d3390d7` (which stamped it only in `reset_password`)
+  showed three populations — self-registered-then-promoted users, pre-migration
+  accounts, bootstrap admins — holding a real password with `activated_at IS
+  NULL`, so `resend_invite`'s guard did not fire. The fix is the table above plus
+  the backfill, not a different column.
 
   **Why not the earlier no-TTL Redis flag.** W18 originally tracked this as a
   non-expiring `invite_pending:{user_id}` Redis key set in `create_staff` and
@@ -181,9 +222,18 @@ same `email` seam `create_staff` uses. Same authz matrix as §1.
   `invite_jti:{user_id}` key (TTL = the invite token's own 48h; **this one does
   expire** — it is a pointer to a live jti, not a durable fact). `resend_invite`
   pops that pointer and `consume_single_use`s the old jti *before* minting the
-  new one, so only the newest set-password link ever completes. A failed send
-  then leaves the account with no live link and the admin simply resends again —
-  never a link that cannot be invalidated.
+  new one. This bounds live set-password links to **at most `limit` (3) per
+  rate-limit window** — *not* strictly one: two concurrent resends both clear the
+  rate limit, only one wins the pointer `GETDEL`, and each still registers a live
+  jti; and a `TokenStoreUnavailable` while consuming the prior jti (pointer
+  already popped) leaves that jti live for its TTL with no pointer left to retire
+  it. The 3/hour cap is what genuinely bounds the fan-out; retirement removes the
+  *common-case* extra link. `register_single_use` + `remember_invite_jti` now
+  share one `try` in `resend_invite`: on `TokenStoreUnavailable` the caller gets
+  a clean `503` and the just-registered jti is best-effort consumed, so a `503`
+  never leaves a live-but-un-pointed link (consistent with `create_staff`). A
+  failed *send* (generic error) keeps the new, *pointed* link so the next resend
+  can retire it — the admin simply resends.
 
 - **Per-target rate limit (CWE-770).** `resend_invite` is capped at **3 per
   hour per target** via the existing `check_rate_limit` fixed window
@@ -228,10 +278,14 @@ Nothing was implemented for this.
   `create_staff`, and both lifecycle responses). The W16 diff is empty by
   design (nothing reads that column).
 - **Second additive Phase 2 migration**, `a6b7c8d9e0f1` (`users.activated_at`,
-  nullable, no default), chained off `f5a6b7c8d9e0`. `alembic upgrade head →
-  downgrade -2 → upgrade head` round-trips the `users` and `processed_webhooks`
-  schemas exactly — guarded by `tests/test_migration_roundtrip.py` (PG-gated,
-  same discovery/skip pattern as the concurrent module).
+  nullable, no default), chained off `f5a6b7c8d9e0`. `upgrade` also backfills —
+  `UPDATE users SET activated_at = created_at WHERE activated_at IS NULL` — so no
+  pre-migration row stays resend-invitable. `downgrade` still just drops the
+  column. `alembic upgrade head → downgrade -2 → upgrade head` round-trips the
+  `users` and `processed_webhooks` *schemas* exactly (the roundtrip asserts
+  column presence/absence, not data); `tests/test_migration_roundtrip.py`
+  (PG-gated) also has a dedicated test that inserts a pre-migration row and
+  asserts the backfill stamped it with its own `created_at`.
 - **No non-expiring Redis keys.** The review fix pass removed the no-TTL
   `invite_pending:{user_id}` flag entirely (see §4). The only invite-related
   Redis key now is `invite_jti:{user_id}`, which carries the invite token's own
@@ -248,7 +302,10 @@ Nothing was implemented for this.
   happy / 409 / 503, deactivated-token rejection, break-glass; and from the fix
   pass — `activated_at` on every `UserPublic` site, forgot-password does not move
   it, reactivation revokes a deferred-revoke refresh token, resend rate-limit
-  429, resend retires the prior link), `tests/test_last_admin_concurrent.py`
+  429, resend retires the prior link; and from the `d3390d7` re-check — self-
+  registration stamps `activated_at`, a self-registered→promoted user's resend
+  is `409`, `change_password` stamps a NULL row then resend is `409`, a
+  bootstrapped admin's resend is `409`), `tests/test_last_admin_concurrent.py`
   (the concurrent case, now with a `guard_barrier` fixture that forces the
   second transaction's guard `SELECT` to land while the first still holds its
   `FOR UPDATE` locks), and `tests/test_migration_roundtrip.py` (both Phase 2

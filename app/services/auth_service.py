@@ -60,6 +60,11 @@ async def register_user(db: AsyncSession, data: UserRegister) -> User:
         email=data.email.lower(),
         password_hash=security.hash_password(data.password),
         role=UserRole.VIEWER,
+        # Self-registration chooses its own password at creation, so the account
+        # is activated by definition. `activated_at` must be non-NULL here or
+        # `resend_invite` (which reads NULL as "invite still pending") would mint
+        # a working set-password link for a live account (CWE-620/640).
+        activated_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.flush()
@@ -91,6 +96,12 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     _, new_hash = security.verify_and_rehash(password, user.password_hash)
     if new_hash is not None:
         user.password_hash = new_hash
+        # Defensive: a successful authentication with an active row is proof the
+        # account is live. Backfill + the first-password paths should already
+        # have stamped it, but stamp here too rather than leave any NULL that
+        # reached this point (same transaction, only when NULL).
+        if user.activated_at is None:
+            user.activated_at = datetime.now(timezone.utc)
         await db.commit()
         log.info("password_hash_upgraded", user_id=str(user.id))
 
@@ -174,6 +185,13 @@ async def change_password(
         raise AuthError("Current password is incorrect")
 
     user.password_hash = security.hash_password(new_password)
+    # Defensive: anyone changing their password demonstrably has a live account,
+    # so it cannot still be a "pending invite". Stamp `activated_at` when NULL,
+    # in the same transaction as the password write (mirrors reset_password), so
+    # `resend_invite` can never mint a working set-password link for this account
+    # (CWE-620/640).
+    if user.activated_at is None:
+        user.activated_at = datetime.now(timezone.utc)
     # Revoke every session BEFORE the write commits (as reset_password sequences
     # consume-before-write). If Redis is unreachable revoke_refresh raises
     # TokenStoreUnavailable -> 503 and the pending hash change rolls back with
@@ -466,10 +484,14 @@ async def resend_invite(
 
     Authz matrix is `set_active`'s. If the account has already set its own
     password (`users.activated_at is not None`) there is nothing to resend → 409.
-    Capped at 3/hour per target (fixed window, fails open). The previously issued
-    invite link is retired before the new one is minted, so only the newest link
-    completes set-password. If Redis is unreachable this **does** 503 (via
-    `TokenStoreUnavailable`): the whole operation is the single-use jti, and
+    Capped at 3/hour per target (fixed window, fails open). Each resend retires
+    the previously *pointed* invite link before minting the new one; combined
+    with the rate limit this bounds live set-password links to **at most `limit`
+    per rate-limit window** — not strictly one. Two concurrent resends can each
+    register a live jti (only one wins the pointer GETDEL), and a
+    `TokenStoreUnavailable` while consuming the prior jti leaves it live for its
+    TTL with the pointer already gone. If Redis is unreachable this **does** 503
+    (via `TokenStoreUnavailable`): the whole operation is the single-use jti, and
     without it the emailed link would not work (plan §W18).
     """
     target = await get_user_by_id(db, target_id)
@@ -503,11 +525,10 @@ async def resend_invite(
             status_code=429,
         )
 
-    # Retire the previously issued invite link BEFORE minting a new one, so only
-    # the newest set-password link ever completes (CWE-770 — no fan-out of live
-    # links). take_invite_jti pops the pointer; consume_single_use kills the jti.
-    # A failed send below then leaves the account with no live link, and the
-    # admin simply resends again — never a link they cannot invalidate.
+    # Retire the previously *pointed* invite link BEFORE minting a new one, so
+    # the fan-out of live links stays bounded (CWE-770). take_invite_jti pops the
+    # pointer; consume_single_use kills the jti. This does NOT guarantee "exactly
+    # one live link" (see the docstring) — it guarantees no *unbounded* fan-out.
     prev_jti = await token_store.take_invite_jti(str(target.id))
     if prev_jti is not None:
         await token_store.consume_single_use(prev_jti)
@@ -515,13 +536,24 @@ async def resend_invite(
     invite_token, invite_jti = security.create_invite_token(str(target.id))
     invite_ttl_seconds = settings.invite_token_expire_hours * 60 * 60
 
-    await token_store.register_single_use(invite_jti, invite_ttl_seconds)
-    await token_store.remember_invite_jti(
-        str(target.id), invite_jti, invite_ttl_seconds
-    )
     try:
+        # register_single_use + remember_invite_jti share one try: if either
+        # raises TokenStoreUnavailable the caller gets a clean 503 and we
+        # best-effort consume the jti we just registered, so a 503 never leaves a
+        # live-but-un-pointed set-password link (consistent with create_staff and
+        # ADR 0005 §4 — "Redis down -> 503, nothing minted"). A failed *send*
+        # (generic Exception) keeps the new link, which is pointed, so the next
+        # resend can still retire it; the admin simply resends.
+        await token_store.register_single_use(invite_jti, invite_ttl_seconds)
+        await token_store.remember_invite_jti(
+            str(target.id), invite_jti, invite_ttl_seconds
+        )
         await send_invite(target.email, target.full_name, invite_token)
     except TokenStoreUnavailable:
+        try:
+            await token_store.consume_single_use(invite_jti)
+        except TokenStoreUnavailable:
+            pass
         raise
     except Exception:
         log.warning("staff_invite_resend_failed", user_id=str(target.id))

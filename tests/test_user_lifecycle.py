@@ -655,3 +655,99 @@ async def test_create_admin_script_bootstraps_and_promotes(client, engine, monke
     await create_admin._create("grace@example.com", "irrelevant-not-used", None)
     promoted = await db_user(engine, "grace@example.com")
     assert promoted.role == UserRole.ADMIN and promoted.is_active is True
+
+
+# ── activated_at is stamped on EVERY first-password path (security block on ──
+#    d3390d7: `activated_at IS NULL` was a lossy proxy for "invite pending",
+#    so `resend_invite` minted working set-password links for live accounts) ──
+async def test_self_registration_stamps_activated_at(client, engine):
+    """`register_user` chooses its own password at creation → activated by
+    definition. NULL here would make the account look like a pending invite."""
+    await _register(client, "selfreg@example.com")
+    row = await db_user(engine, "selfreg@example.com")
+    assert row.activated_at is not None
+
+
+async def test_resend_invite_on_self_registered_then_promoted_user_returns_409(
+    client, engine
+):
+    """The exact d3390d7 hole: a viewer self-registers (own password), an admin
+    promotes them to editor via `change_role`, then `resend_invite` is called.
+    `change_role` never touches `activated_at`; before the fix it was still NULL
+    (only `reset_password` wrote it) so the guard passed and a working
+    set-password link was minted for a live account. Now `register_user` stamps
+    it → 409."""
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    await _register(client, "viewer@example.com")
+    vid = await db_user_id(engine, "viewer@example.com")
+
+    promote = await client.patch(
+        f"/api/v1/users/{vid}/role", json={"role": "editor"}, headers=admin
+    )
+    assert promote.status_code == 200
+    assert promote.json()["role"] == "editor"
+
+    r = await client.post(f"/api/v1/users/{vid}/resend-invite", headers=admin)
+    assert r.status_code == 409
+    assert "activated" in r.json()["detail"].lower()
+
+
+async def test_change_password_stamps_activated_at_when_null(client, engine):
+    """Defensive stamp: anyone changing their password has a live account. Even
+    if a row reached this point with `activated_at` NULL (a pre-fix / pre-backfill
+    account), `change_password` stamps it, closing the `resend_invite` hole."""
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import User
+
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    headers = await make_user(client, engine, "person@example.com", "editor")
+    pid = await db_user_id(engine, "person@example.com")
+
+    # Simulate a pre-migration / pre-fix live account: no activation stamp.
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        await s.execute(
+            update(User).where(User.email == "person@example.com").values(
+                activated_at=None
+            )
+        )
+        await s.commit()
+
+    cp = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PW, "new_password": "brand-new-passphrase-9"},
+        headers=headers,
+    )
+    assert cp.status_code == 200
+    assert (await db_user(engine, "person@example.com")).activated_at is not None
+
+    # And the account is no longer resend-invitable.
+    r = await client.post(f"/api/v1/users/{pid}/resend-invite", headers=admin)
+    assert r.status_code == 409
+
+
+async def test_resend_invite_on_bootstrapped_admin_returns_409(
+    client, engine, monkeypatch
+):
+    """A `create_admin`-bootstrapped admin has a real self-chosen password →
+    activated. Before the fix its `activated_at` was NULL and a second admin
+    could `resend_invite` it into a working set-password link."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    import app.scripts.create_admin as create_admin
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(create_admin, "PrimarySession", Session)
+
+    await create_admin._create("root@example.com", "bootstrap-strong-pass", "Root")
+    root = await db_user(engine, "root@example.com")
+    assert root.activated_at is not None
+
+    # A second admin to be the actor (resend on an admin needs an admin actor).
+    admin2 = await make_user(client, engine, "admin2@example.com", "admin")
+    r = await client.post(
+        f"/api/v1/users/{root.id}/resend-invite", headers=admin2
+    )
+    assert r.status_code == 409

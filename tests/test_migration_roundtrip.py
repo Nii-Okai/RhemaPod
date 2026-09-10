@@ -136,3 +136,33 @@ def test_phase2_migrations_roundtrip_users_and_processed_webhooks(throwaway_db):
     _alembic(alembic_url, "upgrade", "head")
     assert _columns(inspect_dsn, "users") == users_head
     assert _columns(inspect_dsn, "processed_webhooks") == webhooks_head
+
+
+def test_a6b7c8d9e0f1_backfills_pre_migration_rows_with_created_at(throwaway_db):
+    """A row that predates ``a6b7c8d9e0f1`` is an account that has been in use →
+    activated by definition. The ``upgrade`` backfill must stamp it (with its own
+    ``created_at``), so ``resend_invite`` — which reads ``activated_at IS NULL``
+    as "invite still pending" — cannot mint a working set-password link for it
+    (security review of d3390d7, CWE-620/640).
+    """
+    alembic_url, inspect_dsn = throwaway_db
+
+    # Schema as it stood *before* the activated_at migration.
+    _alembic(alembic_url, "upgrade", "f5a6b7c8d9e0")
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        conn.execute(
+            "INSERT INTO users (email, password_hash) VALUES (%s, %s)",
+            ("legacy-active@example.com", "argon2-placeholder"),
+        )
+        assert "activated_at" not in _columns(inspect_dsn, "users")
+
+    # Applying the migration adds the column AND backfills every existing row.
+    _alembic(alembic_url, "upgrade", "head")
+    with psycopg.connect(inspect_dsn, connect_timeout=5) as conn:
+        activated_at, created_at = conn.execute(
+            "SELECT activated_at, created_at FROM users WHERE email = %s",
+            ("legacy-active@example.com",),
+        ).fetchone()
+
+    assert activated_at is not None, "pre-migration row left NULL — resendable"
+    assert activated_at == created_at, "backfill must use the row's own created_at"
