@@ -40,6 +40,12 @@ export type UserListParams = NonNullable<
   operations["list_users_api_v1_users_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/admin/subscriptions` — the staff
+    subscriptions read (W20 / W21): `{limit, offset, status?, tier?}`. */
+export type SubscriptionListParams = NonNullable<
+  operations["list_subscriptions_api_v1_admin_subscriptions_get"]["parameters"]["query"]
+>;
+
 export const queryKeys = {
   sermons: {
     all: () => ["sermons"] as const,
@@ -145,6 +151,18 @@ export const queryKeys = {
     list: (params: UserListParams = {}) =>
       [...queryKeys.users.lists(), params] as const,
     roleCounts: () => [...queryKeys.users.all(), "role-counts"] as const,
+  },
+  /** Subscriptions screen (W21). Same shape as `users` — a domain root, a
+      `list()` sub-tree keyed on `{status?, tier?, limit, offset}` (React Query
+      hashes it stably), plus a sibling `counts()` aggregate that feeds the
+      three tiles. The screen is read-only (plan §A.3): nothing invalidates
+      these, they just go stale on their own timer. */
+  subscriptions: {
+    all: () => ["subscriptions"] as const,
+    lists: () => [...queryKeys.subscriptions.all(), "list"] as const,
+    list: (params: SubscriptionListParams = {}) =>
+      [...queryKeys.subscriptions.lists(), params] as const,
+    counts: () => [...queryKeys.subscriptions.all(), "counts"] as const,
   },
   session: {
     all: () => ["session"] as const,

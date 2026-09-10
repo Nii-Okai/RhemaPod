@@ -63,6 +63,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Subscriptions
+         * @description Paginated enumeration of the paying membership, `Subscription` joined to
+         *     `User` for name and email (plan §A.3). Newest first. Hard maximum page size
+         *     of 100.
+         */
+        get: operations["list_subscriptions_api_v1_admin_subscriptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/subscriptions/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subscription Counts
+         * @description Active paid · Monthly · Annual (plan §A.3).
+         *
+         *     `active_paid` is `subscription_service.count_active_paid_subscribers`
+         *     exactly — the same definition the analytics overview and the publish toast
+         *     use. `monthly` + `annual` partition it, so they always sum to `active_paid`.
+         */
+        get: operations["subscription_counts_api_v1_admin_subscriptions_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/announcements": {
         parameters: {
             query?: never;
@@ -1952,6 +1998,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[SubscriptionAdminItem] */
+        Page_SubscriptionAdminItem_: {
+            /** Items */
+            items: components["schemas"]["SubscriptionAdminItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[UserPublic] */
         Page_UserPublic_: {
             /** Items */
@@ -2477,6 +2534,66 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * SubscriptionAdminItem
+         * @description One row of the staff-facing subscriptions read (plan §A.3, §W20).
+         *
+         *     A staff-readable enumeration of the paying membership: `Subscription`
+         *     joined to `User` for `user_name` / `user_email`. Manager+ only, paginated.
+         *
+         *     Deliberately carries **no** monetary field — no `amount`, `price`,
+         *     `currency` or MRR (resolved decision 2). No amount is stored on
+         *     `Subscription` and the webhook never parses one; there is nothing truthful
+         *     to put here and Phase 2 shows no dollar figure anywhere in the portal.
+         *     `current_period_end` is the model's `valid_until` column (null on free /
+         *     fully-lapsed rows). `provider_customer_id` is null until the member's first
+         *     payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+         */
+        SubscriptionAdminItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Period End */
+            current_period_end: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Provider Customer Id */
+            provider_customer_id: string | null;
+            status: components["schemas"]["SubscriptionStatus"];
+            tier: components["schemas"]["SubscriptionTier"];
+            /** User Email */
+            user_email: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string | null;
+        };
+        /**
+         * SubscriptionCounts
+         * @description The three aggregate tiles on the Subscriptions screen (plan §A.3).
+         *
+         *     `active_paid` is `subscription_service.count_active_paid_subscribers` —
+         *     the one definition already behind the analytics overview and the publish
+         *     toast, not a second one written for this screen. `monthly` / `annual` split
+         *     that same population (paid tier, `status IN (active, cancelled)`) by tier,
+         *     so `active_paid == monthly + annual` holds by construction.
+         */
+        SubscriptionCounts: {
+            /** Active Paid */
+            active_paid: number;
+            /** Annual */
+            annual: number;
+            /** Monthly */
+            monthly: number;
+        };
         /** SubscriptionPublic */
         SubscriptionPublic: {
             /** Cancel At Period End */
@@ -2805,6 +2922,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_v1_admin_subscriptions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description Filter by subscription status. */
+                status?: components["schemas"]["SubscriptionStatus"] | null;
+                /** @description Filter by subscription tier. */
+                tier?: components["schemas"]["SubscriptionTier"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SubscriptionAdminItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subscription_counts_api_v1_admin_subscriptions_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionCounts"];
                 };
             };
         };
