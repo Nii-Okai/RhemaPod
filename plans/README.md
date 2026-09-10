@@ -10,6 +10,8 @@ separately in the append-only `status.md` at the repo root — not in the plan.
 |---|---|---|
 | `plan.md` | API authentication hardening (auth review findings 1–4) | shipped — commit `9e8d366` |
 | `plan-nonauth.md` | Non-auth code-review findings 1–8 | shipped — merge `a67218e` |
-| `plan-admin-portal.md` | Admin portal frontend — architecture + Phase 1 build | final; 8 design decisions resolved — awaiting go/no-go at `[HUMAN_GATE 1]` |
+| `plan-admin-portal.md` | Admin portal frontend — architecture + Phase 1 build | shipped — W1–W14; amendments A1–A4 recorded in-file |
+| `plan-admin-portal-phase2.md` | Admin portal Phase 2 — Users & roles, Subscriptions, Dashboard | final; 12 decisions resolved — awaiting go/no-go at `[HUMAN_GATE 4]` |
+| `plan-admin-portal-phase2-DRAFT.md` | superseded working-out for the above | **not a contract** — see `plan-admin-portal-phase2.md` |
 
 New plans go here.

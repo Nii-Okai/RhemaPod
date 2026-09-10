@@ -1,5 +1,13 @@
-# RhemaPod Admin Portal — Phase 2 — **DRAFT, NOT APPROVED**
+# RhemaPod Admin Portal — Phase 2 — **SUPERSEDED DRAFT**
 
+> **SUPERSEDED (2026-09-10) by `plans/plan-admin-portal-phase2.md`,** which is the contract.
+> Isaac's rulings narrowed the scope substantially (Settings cut, MRR cut, the plays rollup cut,
+> the chart re-sourced from `first_played_at`) and **renumbered every work item**. Nothing below is
+> executable; it is retained only as the analysis the contract was derived from. Where the two
+> disagree, the contract wins.
+>
+> **Original header follows.**
+>
 > **STATUS: DRAFT.** This is analysis for Isaac's review, not a contract. Nothing here is a
 > committed gate, no work item is executable, and no `[HUMAN_GATE]` below has been crossed or
 > pre-approved. It becomes `plans/plan-admin-portal-phase2.md` only after Isaac approves scope and
