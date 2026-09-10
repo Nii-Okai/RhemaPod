@@ -2,19 +2,32 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { cn } from "cn";
 
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/portal/data-table";
 import { EmptyState } from "@/components/portal/empty-state";
 import { PageHeader, SegmentedControl } from "@/components/portal";
 import { Avatar } from "@/components/portal/avatar";
+import { Toast } from "@/components/portal/toast";
 import { useSession } from "@/lib/auth/session-context";
 import { clampPage } from "@/lib/format";
+import { isApiError } from "@/lib/api/errors";
 import { errorText } from "@/lib/users/error-text";
 import {
   USERS_PAGE_SIZE,
   toRoleFilter,
   useChangeUserRole,
+  useResendInvite,
+  useSetUserActive,
   useUsers,
   type StaffRoleFilter,
   type UserPublic,
@@ -23,19 +36,27 @@ import {
 import { InviteStaffDialog } from "./invite-staff-dialog";
 import { RoleCell } from "./role-cell";
 import { UserCountTiles } from "./user-count-tiles";
+import { UserRowMenu } from "./user-row-menu";
+import { UserStateCell } from "./user-state-cell";
+import { userState } from "./user-state";
+import type { UserRowAction } from "./row-menu-items";
 
 /* =============================================================================
-   UsersScreen — Users & roles (design Screen 10, plan W17).
+   UsersScreen — Users & roles (design Screen 10, plan W17 + W19).
 
    A thin read over existing endpoints + Batch 7: the `role-counts` tiles, a
    role filter (All / Editors / Managers / Admins — never Viewers), the W6
    `DataTable` of staff rows, an inline role change on editable rows, and the
    "Invite staff" dialog. URL is the state: `?role=` (the filter) and `?page=`.
 
-   The list is staff-only for every actor (plan §A.6) — a viewer never appears,
-   so there is no viewer row to reconcile against the Viewers tile's real
-   count. Deactivate / reactivate, resend-invite and the `···` row menu are
-   W19 and are deliberately absent here.
+   W19 adds the lifecycle affordances: a "State" column (Active / Deactivated /
+   Invite pending — a text badge, never colour-only) and a `···` row menu with
+   Deactivate (confirmation dialog on the destructive path), Reactivate, and
+   Resend invite. The last-admin refusal (409) renders as an explanatory inline
+   message inside the confirm dialog, not a generic toast; a deactivated row is
+   greyed AND carries its text badge.
+
+   The list is staff-only for every actor (plan §A.6) — a viewer never appears.
    ========================================================================== */
 
 const ROLE_FILTER_OPTIONS: ReadonlyArray<{
@@ -47,6 +68,31 @@ const ROLE_FILTER_OPTIONS: ReadonlyArray<{
   { value: "manager", label: "Managers" },
   { value: "admin", label: "Admins" },
 ];
+
+/** The explanatory copy for the last-admin invariant (backend 409). Named here
+    so it reads the same whatever the backend's `detail` string says, and so it
+    is unmistakably NOT a generic failure toast (plan §W19 acceptance). */
+const LAST_ADMIN_MESSAGE =
+  "This is the last active admin — promote or reactivate another admin first.";
+
+function personLabel(row: UserPublic): string {
+  return row.full_name?.trim() || row.email;
+}
+
+function resendErrorMessage(err: unknown): string {
+  if (isApiError(err)) {
+    if (err.status === 409) {
+      return "This account has already been activated — there is nothing to resend.";
+    }
+    if (err.status === 429) {
+      return "This invite has been resent too many times. Try again later.";
+    }
+    if (err.status === 503) {
+      return "Couldn’t reach the invite service. Try again in a moment.";
+    }
+  }
+  return errorText(err, "Couldn’t resend the invite.");
+}
 
 function buildSearch(
   current: URLSearchParams,
@@ -96,7 +142,25 @@ export function UsersScreen() {
   }, [pageParam, pageCount, pushSearch, searchParams]);
 
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const [deferredNote, setDeferredNote] = React.useState(false);
+  const [confirmTarget, setConfirmTarget] = React.useState<UserPublic | null>(
+    null,
+  );
+  const [confirmMessage, setConfirmMessage] = React.useState<string | null>(
+    null,
+  );
+
   const changeRole = useChangeUserRole();
+  const setActive = useSetUserActive();
+  const resendInvite = useResendInvite();
+
+  // Active admins visible on this page — the last-admin client gate. The
+  // backend 409 is the real invariant; this only hides an affordance that
+  // would obviously fail.
+  const activeAdminCount = items.filter(
+    (u) => u.role === "admin" && u.is_active,
+  ).length;
 
   const setRoleFilter = (next: StaffRoleFilter) =>
     pushSearch(buildSearch(searchParams, { role: next }));
@@ -114,14 +178,76 @@ export function UsersScreen() {
     );
   };
 
+  const runSetActive = (row: UserPublic, isActive: boolean) => {
+    setActionError(null);
+    setActive.mutate(
+      { id: row.id, isActive },
+      {
+        onSuccess: (res) => {
+          if (!isActive) {
+            setConfirmTarget(null);
+            setConfirmMessage(null);
+          }
+          setDeferredNote(res.revocation_deferred);
+          setToast(
+            isActive
+              ? `Reactivated ${personLabel(row)}.`
+              : `Deactivated ${personLabel(row)}.`,
+          );
+        },
+        onError: (err) => {
+          if (!isActive) {
+            // Keep the confirm dialog open and explain, in place, WHY —
+            // the last-admin invariant (409) especially must read as a
+            // reason, not a generic error (plan §W19 acceptance).
+            setConfirmMessage(
+              isApiError(err) && err.status === 409
+                ? LAST_ADMIN_MESSAGE
+                : errorText(err, "Couldn’t deactivate this account."),
+            );
+          } else {
+            setActionError(
+              errorText(err, "Couldn’t reactivate this account."),
+            );
+          }
+        },
+      },
+    );
+  };
+
+  const runResend = (row: UserPublic) => {
+    setActionError(null);
+    resendInvite.mutate(
+      { id: row.id },
+      {
+        onSuccess: () => setToast(`Invite resent to ${row.email}.`),
+        onError: (err) => setActionError(resendErrorMessage(err)),
+      },
+    );
+  };
+
+  const handleRowAction = (row: UserPublic, action: UserRowAction) => {
+    switch (action) {
+      case "deactivate":
+        setConfirmMessage(null);
+        setConfirmTarget(row);
+        break;
+      case "reactivate":
+        runSetActive(row, true);
+        break;
+      case "resend-invite":
+        runResend(row);
+        break;
+    }
+  };
+
   const pendingRoleChangeId = changeRole.isPending
     ? changeRole.variables?.id
     : undefined;
+  const busyRowId =
+    (setActive.isPending ? setActive.variables?.id : undefined) ??
+    (resendInvite.isPending ? resendInvite.variables?.id : undefined);
 
-  // Built inline each render (like the W6 DataTable's own `rowKey` consumers):
-  // the array is three entries and DataTable re-derives only a grid-template
-  // string from it, so there is nothing worth memoising and the cells always
-  // close over the current session + in-flight row.
   const columns: DataTableColumn<UserPublic>[] = [
     {
       key: "person",
@@ -129,11 +255,19 @@ export function UsersScreen() {
       gridWidth: "2fr",
       cell: (row) => {
         const name = row.full_name?.trim() || null;
+        const deactivated = userState(row) === "deactivated";
         return (
           <div className="flex min-w-0 items-center gap-11">
-            <Avatar name={name ?? row.email} size={32} />
+            <div className={deactivated ? "opacity-60" : undefined}>
+              <Avatar name={name ?? row.email} size={32} />
+            </div>
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[14px] font-semibold text-ink">
+              <span
+                className={cn(
+                  "truncate text-[14px] font-semibold",
+                  deactivated ? "text-ink-muted" : "text-ink",
+                )}
+              >
                 {name ?? "—"}
               </span>
               <span className="truncate text-[12px] text-ink-faint">
@@ -147,7 +281,7 @@ export function UsersScreen() {
     {
       key: "role",
       header: "Role",
-      gridWidth: "1.4fr",
+      gridWidth: "1.1fr",
       cell: (row) => (
         <RoleCell
           row={row}
@@ -158,9 +292,15 @@ export function UsersScreen() {
       ),
     },
     {
+      key: "state",
+      header: "State",
+      gridWidth: "1fr",
+      cell: (row) => <UserStateCell row={row} />,
+    },
+    {
       key: "joined",
       header: "Joined",
-      gridWidth: "1fr",
+      gridWidth: "1.1fr",
       cell: (row) => (
         <span className="font-mono text-[12.5px] text-ink-muted tabular-nums">
           {row.created_at.slice(0, 10)}
@@ -181,7 +321,7 @@ export function UsersScreen() {
     <>
       <PageHeader
         title="Users & roles"
-        subhead="Staff accounts, invites and inline role changes. Invites work once and expire in 48 hours."
+        subhead="Staff accounts, invites and inline role changes. Invites work once and expire in 48 hours. The last admin can’t be demoted or deactivated."
         actions={<InviteStaffDialog actorRole={session.role} />}
       />
 
@@ -198,7 +338,7 @@ export function UsersScreen() {
           />
 
           <div className="overflow-hidden rounded-16 border border-border bg-surface">
-            {(isError || actionError) && (
+            {(isError || actionError || deferredNote) && (
               <div className="flex flex-col gap-8 border-b border-border-subtle p-16">
                 {isError && (
                   <Alert variant="error" title="Couldn’t load the staff list">
@@ -219,6 +359,27 @@ export function UsersScreen() {
                     </span>
                   </Alert>
                 )}
+                {deferredNote && (
+                  <Alert
+                    variant="warning"
+                    title="The account is off — sessions may take a moment to end"
+                  >
+                    <span className="flex items-center gap-10">
+                      <span>
+                        The auth store was briefly unavailable, so any active
+                        session is closed on its next request rather than
+                        immediately.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDeferredNote(false)}
+                        className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
+                      >
+                        Dismiss
+                      </button>
+                    </span>
+                  </Alert>
+                )}
               </div>
             )}
 
@@ -228,12 +389,21 @@ export function UsersScreen() {
               columns={columns}
               rows={items}
               rowKey={(row) => row.id}
+              rowActions={(row) => (
+                <UserRowMenu
+                  user={row}
+                  actor={{ id: session.id, role: session.role }}
+                  activeAdminCount={activeAdminCount}
+                  busy={busyRowId === row.id}
+                  onAction={(action) => handleRowAction(row, action)}
+                />
+              )}
               loading={isPending}
               rangeLabel={rangeLabel}
               page={page}
               pageCount={pageCount}
               onPageChange={setPage}
-              minWidth={620}
+              minWidth={760}
               empty={
                 <EmptyState
                   title={
@@ -252,6 +422,56 @@ export function UsersScreen() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={confirmTarget != null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setConfirmTarget(null);
+            setConfirmMessage(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[min(460px,calc(100vw-32px))]">
+          <DialogTitle>Deactivate this account?</DialogTitle>
+          <DialogDescription>
+            {confirmTarget
+              ? `${personLabel(confirmTarget)} (${confirmTarget.email}) will lose access immediately. Their name stays on anything they authored. You can reactivate the account later.`
+              : null}
+          </DialogDescription>
+
+          {confirmMessage ? (
+            <Alert variant="warning" title="Can’t deactivate this account">
+              {confirmMessage}
+            </Alert>
+          ) : null}
+
+          <div className="flex items-center gap-8 pt-2">
+            <Button
+              type="button"
+              size="md"
+              variant="destructive"
+              disabled={setActive.isPending}
+              onClick={() =>
+                confirmTarget && runSetActive(confirmTarget, false)
+              }
+            >
+              {setActive.isPending ? "Deactivating…" : "Deactivate"}
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" size="md" variant="secondary">
+                Cancel
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {toast ? (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <Toast message={toast} onDismiss={() => setToast(null)} />
+        </div>
+      ) : null}
     </>
   );
 }

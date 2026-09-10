@@ -46,6 +46,7 @@ export type UserPage = components["schemas"]["Page_UserPublic_"];
 export type RoleCounts = components["schemas"]["RoleCounts"];
 export type StaffCreateRequest = components["schemas"]["StaffCreateRequest"];
 export type StaffCreateResponse = components["schemas"]["StaffCreateResponse"];
+export type UserActiveResponse = components["schemas"]["UserActiveResponse"];
 export type UserRole = components["schemas"]["UserRole"];
 
 /** Matches the endpoint's `limit` default (`Query(default=25, le=100)`). The
@@ -229,5 +230,90 @@ export function useInviteStaff() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.users.all() });
     },
+  });
+}
+
+/* --- deactivate / reactivate (optimistic state flip, rollback on error) -- */
+
+export interface SetUserActiveVars {
+  id: string;
+  isActive: boolean;
+}
+
+/**
+ * `PATCH /users/{id}/active` — flip a staff account on or off. Optimistic on
+ * the row's `is_active` (the `useChangeUserRole` precedent): every cached list
+ * page has the row patched in place so the State badge flips immediately, and
+ * any error — the 403 authz mirror, or the 409 last-admin invariant the screen
+ * renders as an explanatory inline message — restores the verbatim snapshot.
+ * State is not a list filter, so unlike a role change no page ever drops the
+ * row. `onSettled` invalidates `users.all()` (list + `role-counts` tiles — a
+ * deactivate leaves the by-role counts unchanged, but the coarse handle is one
+ * call and the list must refetch regardless).
+ *
+ * The 200 body carries `revocation_deferred`: `true` when the state change
+ * committed but the Redis-backed refresh-token revoke could not be recorded
+ * (plan §W18, GATE 6 = commit-first). The screen surfaces it as a
+ * non-blocking note.
+ */
+export function useSetUserActive() {
+  const qc = useQueryClient();
+  return useMutation<
+    UserActiveResponse,
+    Error,
+    SetUserActiveVars,
+    { snapshots: ListSnapshot }
+  >({
+    mutationFn: ({ id, isActive }) =>
+      unwrap(
+        api.PATCH("/api/v1/users/{user_id}/active", {
+          params: { path: { user_id: id } },
+          body: { is_active: isActive },
+        }),
+      ),
+    onMutate: async ({ id, isActive }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.users.lists() });
+      const snapshots = qc.getQueriesData<UserPage>({
+        queryKey: queryKeys.users.lists(),
+      }) as ListSnapshot;
+      for (const [key, pageData] of snapshots) {
+        if (!pageData) continue;
+        qc.setQueryData<UserPage>(key, {
+          ...pageData,
+          items: pageData.items.map((u) =>
+            u.id === id ? { ...u, is_active: isActive } : u,
+          ),
+        });
+      }
+      return { snapshots };
+    },
+    onError: (_err, _vars, context) => {
+      for (const [key, pageData] of context?.snapshots ?? []) {
+        qc.setQueryData(key, pageData);
+      }
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.users.all() });
+    },
+  });
+}
+
+/* --- resend invite (not optimistic — nothing on the row changes) -------- */
+
+/**
+ * `POST /users/{id}/resend-invite` — re-issue the set-password link for a staff
+ * account still on `activated_at == null`. Nothing on the row changes, so there
+ * is no optimistic write and no cache invalidation; the screen gives explicit
+ * success feedback (decision 8 — this is the only invite affordance left) and
+ * renders the typed 409 / 429 / 503 rejections as distinct inline messages.
+ */
+export function useResendInvite() {
+  return useMutation<StaffCreateResponse, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      unwrap(
+        api.POST("/api/v1/users/{user_id}/resend-invite", {
+          params: { path: { user_id: id } },
+        }),
+      ),
   });
 }
