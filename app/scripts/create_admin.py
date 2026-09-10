@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import getpass
 import sys
+from datetime import datetime, timezone
 
 from app.core.security import hash_password
 from app.db.database import PrimarySession
@@ -33,6 +34,11 @@ async def _create(email: str, password: str, full_name: str | None) -> None:
                 return
             existing.role = UserRole.ADMIN
             existing.is_active = True
+            # A promoted account with a real password is activated by
+            # definition; stamp it when NULL so `resend_invite` (NULL == "invite
+            # still pending") can't mint a working set-password link for it.
+            if existing.activated_at is None:
+                existing.activated_at = datetime.now(timezone.utc)
             await db.commit()
             print(f"[+] Promoted existing user {email} to admin.")
             return
@@ -42,6 +48,8 @@ async def _create(email: str, password: str, full_name: str | None) -> None:
             full_name=full_name,
             password_hash=hash_password(password),
             role=UserRole.ADMIN,
+            # Bootstrap admin sets its own password at creation → activated.
+            activated_at=datetime.now(timezone.utc),
         )
         db.add(user)
         await db.commit()

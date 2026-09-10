@@ -49,6 +49,10 @@ def _single_use_key(jti: str) -> str:
     return f"single_use:{jti}"
 
 
+def _invite_jti_key(user_id: str) -> str:
+    return f"invite_jti:{user_id}"
+
+
 async def store_refresh_jti(user_id: str, jti: str) -> None:
     r = get_redis()
     ttl = settings.refresh_token_expire_days * 24 * 60 * 60
@@ -89,6 +93,34 @@ async def register_single_use(jti: str, ttl_seconds: int) -> None:
         await r.setex(_single_use_key(jti), max(1, ttl_seconds), "1")
     except RedisError as exc:
         log.warning("token_store_unavailable", op="register_single_use")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def remember_invite_jti(user_id: str, jti: str, ttl_seconds: int) -> None:
+    """Record the single-use jti of the account's *current* invite link.
+
+    Lets ``resend_invite`` retire the previously issued link (consume its
+    single-use jti) so only the newest set-password link works. TTL matches the
+    invite token's own expiry, so a link that is never resent falls out of Redis
+    on its own — this is not a durable flag, just a pointer to the live jti.
+    "Is this account still pending?" is answered by ``users.activated_at`` now,
+    not Redis (ADR 0005 §4).
+    """
+    r = get_redis()
+    try:
+        await r.setex(_invite_jti_key(user_id), max(1, ttl_seconds), jti)
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="remember_invite_jti")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def take_invite_jti(user_id: str) -> str | None:
+    """Pop (GETDEL) the currently recorded invite jti for a user, or None."""
+    r = get_redis()
+    try:
+        return await r.getdel(_invite_jti_key(user_id))
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="take_invite_jti")
         raise TokenStoreUnavailable("redis unavailable") from exc
 
 

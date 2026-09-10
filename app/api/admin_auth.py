@@ -12,14 +12,18 @@ from app.db.database import get_db
 from app.models.models import UserRole
 from app.models.content_schemas import Page
 from app.models.schemas import (
+    ActiveUpdateRequest,
     RoleCounts,
     RoleUpdateRequest,
     StaffCreateRequest,
     StaffCreateResponse,
+    UserActiveResponse,
     UserPublic,
 )
 from app.services import auth_service
 from app.services.auth_service import AuthError
+from app.services.content_service import ContentError
+from app.core.token_store import TokenStoreUnavailable
 
 settings = get_settings()
 
@@ -98,6 +102,17 @@ async def create_staff(
         )
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+    except TokenStoreUnavailable:
+        # The create is transactional and rolls back on this, so nothing was
+        # created. Say so explicitly — the generic 503 handler's "please retry"
+        # otherwise reads as "your account may or may not exist".
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "The invite could not be recorded (auth store unavailable) — "
+                "the account was not created. Please try again."
+            ),
+        )
 
     # Surface the link directly only while the console email backend is active,
     # so it's usable in dev. Drop this once real email is wired in Phase 6.
@@ -117,6 +132,74 @@ async def change_role(
     actor = await _actor(db, user)
     try:
         updated = await auth_service.change_role(db, user_id, data.role, actor)
+    except ContentError as exc:
+        # The last-admin invariant (409) surfaces as a typed ContentError from
+        # the shared guard; everything else here is still AuthError -> 400.
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return UserPublic.model_validate(updated)
+
+
+@router.patch("/{user_id}/active", response_model=UserActiveResponse)
+async def set_active(
+    user_id: uuid.UUID, data: ActiveUpdateRequest, user: ManagerPlus, db: DbDep
+) -> UserActiveResponse:
+    """Deactivate (`is_active=false`) or reactivate a staff account.
+
+    Managers may act on editors only; admins on anyone, except where it would
+    leave zero active admins (409). Deactivation commits first, then revokes
+    refresh tokens best-effort: a Redis outage still returns 200 with
+    `revocation_deferred=true` rather than 503, because every request re-checks
+    `is_active` regardless (plan §W18, GATE 6).
+    """
+    actor = await _actor(db, user)
+    try:
+        updated, revocation_deferred = await auth_service.set_active(
+            db, user_id, data.is_active, actor
+        )
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+    return UserActiveResponse(
+        user=UserPublic.model_validate(updated),
+        revocation_deferred=revocation_deferred,
+    )
+
+
+@router.post("/{user_id}/resend-invite", response_model=StaffCreateResponse)
+async def resend_invite(
+    user_id: uuid.UUID, user: ManagerPlus, db: DbDep
+) -> StaffCreateResponse:
+    """Re-issue the invite for a staff account that has not finished
+    set-password. Same authz as `PATCH /users/{id}/active`. A 409 means the
+    account has already been activated (nothing to resend); a 503 means the
+    single-use invite jti could not be recorded (Redis down) — unlike
+    deactivate, this operation cannot degrade gracefully without it.
+    """
+    actor = await _actor(db, user)
+    try:
+        target, invite_token = await auth_service.resend_invite(
+            db, user_id, actor, send_invite=email_module.send_staff_invite,
+        )
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+    except TokenStoreUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "The invite link could not be issued (auth store unavailable). "
+                "Please try again."
+            ),
+        )
+
+    invite_link = None
+    if not settings.is_production:
+        invite_link = email_module._reset_link(invite_token)
+
+    return StaffCreateResponse(
+        user=UserPublic.model_validate(target), invite_link=invite_link
+    )

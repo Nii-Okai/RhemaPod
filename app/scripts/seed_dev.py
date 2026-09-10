@@ -308,6 +308,9 @@ async def _build(db: AsyncSession) -> SeedSummary:
             password_hash=hash_password(TEMP_PASSWORD),
             role=role,
             is_active=True,
+            # Seed staff are live accounts with a usable password → activated, so
+            # `resend_invite` correctly 409s them (NULL == "invite pending").
+            activated_at=datetime.now(timezone.utc),
         )
         db.add(u)
         users[email] = u
@@ -526,6 +529,8 @@ async def _build(db: AsyncSession) -> SeedSummary:
             password_hash=hash_password(TEMP_PASSWORD),
             role=UserRole.VIEWER,
             is_active=True,
+            # Live seed accounts with a usable password → activated.
+            activated_at=datetime.now(timezone.utc),
         )
         db.add(u)
         listeners.append(u)

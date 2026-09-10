@@ -77,6 +77,10 @@ class UserPublic(BaseModel):
     full_name: str | None = None
     role: UserRole
     is_active: bool
+    # NULL while the staff invite is still outstanding; the timestamp the account
+    # first set its own password otherwise. Lets the portal (resend-invite) tell a
+    # pending account from an active one without a second call.
+    activated_at: datetime | None = None
     created_at: datetime
 
 
@@ -111,6 +115,26 @@ class StaffCreateRequest(BaseModel):
 
 class RoleUpdateRequest(BaseModel):
     role: UserRole
+
+
+class ActiveUpdateRequest(BaseModel):
+    """Target active state for `PATCH /users/{id}/active` — `false` deactivates
+    the staff account, `true` reactivates it."""
+
+    is_active: bool
+
+
+class UserActiveResponse(BaseModel):
+    """The updated account, plus a flag set when a Redis outage forced
+    refresh-token revocation to be deferred (plan §W18, GATE 6 = commit-first).
+    Set on **deactivation** when the lockout committed but the token revoke could
+    not be recorded, and on **reactivation** when the best-effort revoke of any
+    still-live pre-deactivation refresh token could not be recorded (CWE-613).
+    The state change still committed and every request re-checks `is_active`, so
+    the flag only tells an operator a Redis-backed revoke did not land."""
+
+    user: UserPublic
+    revocation_deferred: bool = False
 
 
 class StaffCreateResponse(BaseModel):
