@@ -16,7 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EditorField } from "@/components/sermons/editor/field";
 import { errorText } from "@/lib/users/error-text";
-import { creatableRoles, type StaffRole } from "@/lib/users/role-policy";
+import {
+  ROLE_LABEL,
+  creatableRoles,
+  type StaffRole,
+} from "@/lib/users/role-policy";
 import {
   useInviteStaff,
   type StaffCreateResponse,
@@ -37,12 +41,6 @@ import {
    dialog closes and the hook invalidates the `users` domain so the new row and
    the tiles refetch.
    ========================================================================== */
-
-const ROLE_LABEL: Record<StaffRole, string> = {
-  editor: "Editor",
-  manager: "Manager",
-  admin: "Admin",
-};
 
 // Deliberately loose — the backend is the authority on email validity (and
 // answers a bad address with a 422 the alert will show). This only stops an

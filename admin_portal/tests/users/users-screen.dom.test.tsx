@@ -8,7 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -337,7 +337,7 @@ describe("UsersScreen — inline role change", () => {
     expect(screen.getByText("Editor")).toBeInTheDocument();
   });
 
-  it("the role control is keyboard reachable and operable", async () => {
+  it("the role control is keyboard operable — the row nav handler doesn't swallow its keys", async () => {
     const patches: Array<{ id: string; body: unknown }> = [];
     backend({ onPatch: (id, body) => patches.push({ id, body }) });
     renderScreen(ADMIN_SESSION);
@@ -347,9 +347,30 @@ describe("UsersScreen — inline role change", () => {
     select.focus();
     expect(select).toHaveFocus();
 
+    // The W6 DataTable row `<div>` attaches an unconditional keydown handler
+    // that `preventDefault()`s ArrowUp/ArrowDown/Home/End for row navigation,
+    // and a plain column cell (unlike `__actions`) doesn't stopPropagation. A
+    // native `<select>` needs every one of those keys, plus `Alt+ArrowDown` to
+    // open the listbox. `fireEvent.keyDown` returns `false` when a handler
+    // called `preventDefault()` — so this is the exact regression signal:
+    // `true` means the key reached the control with its default intact.
+    // (`userEvent.keyboard('{ArrowDown}')` can't stand in here: neither
+    // user-event v14 nor happy-dom implements native `<select>` option
+    // navigation, so it never changes `.value` and there is nothing to assert.)
+    for (const key of ["ArrowDown", "ArrowUp", "Home", "End"] as const) {
+      expect(fireEvent.keyDown(select, { key })).toBe(true);
+      expect(select).toHaveFocus();
+    }
+    expect(fireEvent.keyDown(select, { key: "ArrowDown", altKey: true })).toBe(
+      true,
+    );
+    expect(select).toHaveFocus();
+
+    // And the `change` the option list emits still drives the PATCH.
     await userEvent.selectOptions(select, "manager");
     await vi.waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toEqual({ id: "u-ed", body: { role: "manager" } });
+    expect(select.value).toBe("manager");
   });
 });
 

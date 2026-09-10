@@ -14,10 +14,14 @@
  * bucket (a count identifies no one).
  *
  * The inline role change is optimistic with rollback (the people screen's
- * speaker-edit precedent): the row's role flips in every cached list page on
- * `onMutate`, a `_may_assign` 400 rolls it back and the screen shows the typed
- * message as a card-top alert. Invite is not optimistic — it invalidates the
- * `users` domain so the new row and the shifted tiles both refetch.
+ * speaker-edit precedent). On `onMutate` every cached list page is patched:
+ * a page with no `role` filter (or one whose filter still matches the new
+ * role) keeps the row with its role updated in place; a page whose `role`
+ * filter no longer matches drops the row entirely and decrements its `total`,
+ * so a promotion never flashes a mismatched chip inside a filtered list. A
+ * `_may_assign` 400 restores the verbatim snapshot and the screen shows the
+ * typed message as a card-top alert. Invite is not optimistic — it invalidates
+ * the `users` domain so the new row and the shifted tiles both refetch.
  *
  * `loadUsers` / `loadRoleCounts` are exported and client-injectable so the wire
  * shape is exercised through MSW rather than a mocked fetch (plan §A.11).
@@ -35,7 +39,7 @@ import {
 import { api, unwrap, type ApiClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { clampPage } from "@/lib/format";
-import { queryKeys } from "@/lib/query/keys";
+import { queryKeys, type UserListParams } from "@/lib/query/keys";
 
 export type UserPublic = components["schemas"]["UserPublic"];
 export type UserPage = components["schemas"]["Page_UserPublic_"];
@@ -170,6 +174,29 @@ export function useChangeUserRole() {
         }) as ListSnapshot;
         for (const [key, pageData] of snapshots) {
           if (!pageData) continue;
+
+          // The list key is `[...lists(), params]`; the params object carries
+          // the `role` filter (absent for the "all" list).
+          const params = key[key.length - 1] as UserListParams | undefined;
+          const filterRole =
+            params && typeof params === "object" ? params.role : undefined;
+
+          if (filterRole && filterRole !== role) {
+            // This page is filtered to a role the row no longer has — drop it
+            // rather than render a mismatched chip until `onSettled` refetches.
+            if (!pageData.items.some((u) => u.id === id)) continue;
+            const items = pageData.items.filter((u) => u.id !== id);
+            qc.setQueryData<UserPage>(key, {
+              ...pageData,
+              items,
+              ...(typeof pageData.total === "number"
+                ? { total: Math.max(0, pageData.total - 1) }
+                : {}),
+            });
+            continue;
+          }
+
+          // No filter, or the new role still matches — keep the row, updated.
           qc.setQueryData<UserPage>(key, {
             ...pageData,
             items: pageData.items.map((u) =>

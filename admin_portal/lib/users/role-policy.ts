@@ -19,6 +19,15 @@ export type UserRole = components["schemas"]["UserRole"];
 export const STAFF_ROLES = ["editor", "manager", "admin"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
+/** Human label for each staff role. Single source shared by the inline
+    `RoleCell` `<select>` and the invite dialog (W19's row menu is the third
+    consumer) — keep it here so the three never drift. */
+export const ROLE_LABEL: Record<StaffRole, string> = {
+  editor: "Editor",
+  manager: "Manager",
+  admin: "Admin",
+};
+
 /** Mirror of `auth_service._ASSIGNABLE_BY`: which roles an actor may hand out,
     whether by invite (`create_staff`) or by an inline change (`change_role`). */
 const ASSIGNABLE_BY: Record<string, readonly StaffRole[]> = {

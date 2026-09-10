@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "cn";
 
 import { RoleChip, roleVariants } from "@/components/portal/chips";
-import { assignableRoles, type StaffRole } from "@/lib/users/role-policy";
+import { ROLE_LABEL, assignableRoles } from "@/lib/users/role-policy";
 import type { UserPublic, UserRole } from "@/lib/query/hooks/use-users";
 
 /* =============================================================================
@@ -19,13 +19,13 @@ import type { UserPublic, UserRole } from "@/lib/query/hooks/use-users";
 
    The client gate here is for affordance only — FastAPI's `change_role` is the
    real guard, and a control shown in error still fails safely on the 400.
-   ========================================================================== */
 
-const ROLE_LABEL: Record<StaffRole, string> = {
-  editor: "Editor",
-  manager: "Manager",
-  admin: "Admin",
-};
+   The `<select>` stops `keydown` propagation (mirroring the DataTable's own
+   `__actions` cell): the W6 row `<div>` attaches an unconditional handler that
+   `preventDefault()`s Arrow/Home/End for row navigation, which would otherwise
+   swallow every key the native option list needs — arrows to change the value,
+   Home/End to jump, `Alt+ArrowDown` to open the listbox.
+   ========================================================================== */
 
 export interface RoleCellProps {
   row: UserPublic;
@@ -48,6 +48,10 @@ export function RoleCell({ row, actor, pending, onChange }: RoleCellProps) {
       aria-label={`Role for ${row.full_name?.trim() || row.email}`}
       value={row.role}
       disabled={pending}
+      // Keep the DataTable row's Arrow/Home/End navigation handler from
+      // intercepting (and `preventDefault()`-ing) keys meant for the native
+      // option list. Same guard the `__actions` cell uses.
+      onKeyDown={(event) => event.stopPropagation()}
       onChange={(event) => {
         const next = event.target.value as UserRole;
         if (next !== row.role) onChange(next);
