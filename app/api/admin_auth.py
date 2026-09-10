@@ -12,6 +12,7 @@ from app.db.database import get_db
 from app.models.models import UserRole
 from app.models.content_schemas import Page
 from app.models.schemas import (
+    RoleCounts,
     RoleUpdateRequest,
     StaffCreateRequest,
     StaffCreateResponse,
@@ -42,11 +43,44 @@ async def list_users(
     db: DbDep,
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    role: UserRole | None = Query(
+        default=None,
+        description="Narrow within staff roles (editor / manager / admin). "
+        "`viewer` is rejected — the staff directory never lists viewers.",
+    ),
 ) -> Page[UserPublic]:
-    rows, total = await auth_service.list_users(db, limit=limit, offset=offset)
+    """Staff accounts only (editor / manager / admin), for every actor — a
+    viewer is never a row, with or without `role` (plan §A.6, decision 5).
+    Use the aggregate at `GET /users/role-counts` for the viewer headcount.
+    """
+    if role == UserRole.VIEWER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The staff directory does not include viewers.",
+        )
+    rows, total = await auth_service.list_users(
+        db, limit=limit, offset=offset, role_filter=role
+    )
     return Page[UserPublic](
         items=[UserPublic.model_validate(u) for u in rows],
         total=total, limit=limit, offset=offset,
+    )
+
+
+@router.get("/role-counts", response_model=RoleCounts)
+async def role_counts(user: ManagerPlus, db: DbDep) -> RoleCounts:
+    """Full-table `GROUP BY role` headcount for the Users & roles tiles.
+
+    Deliberately **not** staff-scoped like `GET /users`: the `viewer` bucket is
+    a real number here because a count identifies no one (plan §A.6).
+    """
+    counts = await auth_service.role_counts(db)
+    return RoleCounts(
+        viewer=counts[UserRole.VIEWER.value],
+        editor=counts[UserRole.EDITOR.value],
+        manager=counts[UserRole.MANAGER.value],
+        admin=counts[UserRole.ADMIN.value],
+        total=sum(counts.values()),
     )
 
 

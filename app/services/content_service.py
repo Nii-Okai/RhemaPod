@@ -1402,14 +1402,25 @@ async def list_sermons_for_staff(
     series_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
     tier: ContentTier | None = None,
+    author_id: uuid.UUID | None = None,
 ) -> tuple[list[Sermon], int]:
     """Editors see their own sermons across all statuses; managers/admins see
     everyone's. Returns (rows, total) — total is the count before paging, so a
-    CMS can size its pager."""
+    CMS can size its pager.
+
+    `author_id` is an *additional* narrowing on top of the role scope — it
+    powers the editor Dashboard's "your work in progress" cards (`created_by=me`)
+    and lets a manager/admin voluntarily restrict the list to their own
+    sermons. It never widens what a role may see: an editor is already confined
+    to their own rows by `editor_scope_filter`, so passing their own id is a
+    no-op, and passing someone else's still returns nothing.
+    """
     conditions = []
     scope_clause = editor_scope_filter(requester)
     if scope_clause is not None:
         conditions.append(scope_clause)
+    if author_id is not None:
+        conditions.append(Sermon.created_by == author_id)
     if status_filter is not None:
         conditions.append(Sermon.status == status_filter)
     if search:

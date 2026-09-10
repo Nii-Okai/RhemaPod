@@ -9,6 +9,7 @@ from app.core.dependencies import CurrentUser, CurrentUserDep, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     ContinueWatchingItem,
+    NewListenersBucket,
     OverviewStats,
     ProgressPublic,
     ProgressUpdate,
@@ -99,3 +100,20 @@ async def top_sermons(
 ) -> list[TopSermonStat]:
     rows = await analytics_service.top_sermons(db, limit)
     return [TopSermonStat(**r) for r in rows]
+
+
+@router.get(
+    "/admin/analytics/new-listeners", response_model=list[NewListenersBucket]
+)
+async def new_listeners(
+    user: ManagerPlus, db: ReadDbDep
+) -> list[NewListenersBucket]:
+    """Weekly count of first-time listeners over the last 8 Monday-anchored ISO
+    weeks (UTC), oldest first, zero-filled (plan §A.2, M1).
+
+    Same `require_role(MANAGER, ADMIN)` guard as the rest of
+    `/admin/analytics/*` — not relaxed for the editor Dashboard (§A.1). The
+    window is a fixed 8 weeks; there is no query parameter.
+    """
+    rows = await analytics_service.new_listeners_weekly(db)
+    return [NewListenersBucket(**r) for r in rows]

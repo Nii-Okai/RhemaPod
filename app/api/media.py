@@ -114,6 +114,21 @@ async def list_uploads(
     return [UploadJobPublic.model_validate(j) for j in jobs]
 
 
+@router.get("/uploads/in-flight", response_model=list[UploadJobPublic])
+async def list_in_flight_uploads(
+    user: EditorPlus,
+    db: DbDep,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[UploadJobPublic]:
+    """Upload jobs still uploading or transcoding, across every sermon the
+    caller may see (an editor: their own; manager/admin: all). Feeds the
+    Dashboard's global "processing" card.
+    """
+    actor = await _actor(db, user)
+    jobs = await media_service.list_in_flight_jobs(db, actor, limit=limit)
+    return [UploadJobPublic.model_validate(j) for j in jobs]
+
+
 @router.delete("/uploads/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_upload_job(
     job_id: uuid.UUID, user: EditorPlus, db: DbDep

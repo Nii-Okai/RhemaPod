@@ -351,6 +351,39 @@ async def list_jobs(
     return list(rows)
 
 
+# A job is "in flight" while the file is still arriving or being transcoded —
+# the states that would show a spinner on the editor Dashboard. READY and
+# FAILED are terminal and excluded. Same set the upload-quota check counts.
+_IN_FLIGHT_JOB_STATES = (
+    UploadStatus.AWAITING_UPLOAD,
+    UploadStatus.UPLOADED,
+    UploadStatus.PROCESSING,
+)
+
+
+async def list_in_flight_jobs(
+    db: AsyncSession, actor: User, limit: int = 50
+) -> list[UploadJob]:
+    """Every upload job still uploading or processing, across all sermons the
+    caller may see: an editor gets jobs on their own sermons only, a
+    manager/admin gets all. Newest first.
+
+    Powers the Dashboard's global "processing" WIP card, which is why it spans
+    sermons rather than taking a `sermon_id` like `list_jobs`.
+    """
+    stmt = (
+        select(UploadJob)
+        .join(Sermon, Sermon.id == UploadJob.sermon_id)
+        .where(UploadJob.status.in_(_IN_FLIGHT_JOB_STATES))
+    )
+    if actor.role == UserRole.EDITOR:
+        stmt = stmt.where(Sermon.created_by == actor.id)
+    stmt = stmt.order_by(UploadJob.created_at.desc()).limit(
+        max(1, min(limit, 200))
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 # States a job may be deleted from. `processing` (mid-transcode) and `ready`
 # (renditions already produced — manage those via the media endpoints) are not
 # here: deleting the row from either would strand work or MediaRefs.
