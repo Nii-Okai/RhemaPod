@@ -16,6 +16,7 @@ from app.models.models import (
     Subscription,
     SubscriptionStatus,
     User,
+    UserRole,
 )
 from app.scripts import seed_dev
 
@@ -52,6 +53,45 @@ async def test_seed_produces_status_spread_and_staff(engine):
     editors = [r for _e, _n, r in seed_dev.STAFF if r.value == "editor"]
     managers = [r for _e, _n, r in seed_dev.STAFF if r.value == "manager"]
     assert len(editors) >= 2 and len(managers) >= 2
+
+
+async def test_seed_creates_lifecycle_state_fixtures(engine):
+    """W24: the a11y sweep needs a deactivated staff row, and the Users
+    lifecycle Playwright path needs a *second* active admin so the last-admin
+    refusal has something to refuse against without bricking the seed."""
+    factory = _session_factory(engine)
+    await seed_dev.seed(session_factory=factory)
+
+    async with factory() as db:
+        by_email = {
+            u.email: u
+            for u in (await db.execute(
+                select(User).where(
+                    User.email.like(f"%@{seed_dev.SEED_EMAIL_DOMAIN}")
+                )
+            )).scalars().all()
+        }
+
+    dana = by_email[f"editor.dana@{seed_dev.SEED_EMAIL_DOMAIN}"]
+    assert dana.role is UserRole.EDITOR
+    assert dana.is_active is False
+    # A real, once-live account that was switched off — not an unaccepted
+    # invite. `activated_at` stamped keeps the portal's "State" badge reading
+    # "Deactivated" rather than "Invite pending".
+    assert dana.activated_at is not None
+
+    avery = by_email[f"admin.two@{seed_dev.SEED_EMAIL_DOMAIN}"]
+    assert avery.role is UserRole.ADMIN
+    assert avery.is_active is True
+    assert avery.activated_at is not None
+
+    # Exactly one seeded admin is deactivatable before the bootstrap
+    # admin@rhemapod.com becomes the last active admin the 409 protects.
+    seeded_active_admins = [
+        u for u in by_email.values()
+        if u.role is UserRole.ADMIN and u.is_active
+    ]
+    assert len(seeded_active_admins) == 1
 
 
 async def test_seed_creates_playback_history_over_eight_iso_weeks(engine):
@@ -136,8 +176,11 @@ async def test_seed_fresh_rebuilds_cleanly(engine):
         )).scalar_one()
 
     # Rebuilt exactly once — no duplicates from the second run. Seed users are
-    # the staff accounts plus the listener population (W15.0).
-    assert users == len(seed_dev.STAFF) + len(seed_dev.LISTENERS)
+    # the staff accounts, the W24 lifecycle-state staff, and the listener
+    # population (W15.0).
+    assert users == (
+        len(seed_dev.STAFF) + len(seed_dev.LIFECYCLE_STAFF) + len(seed_dev.LISTENERS)
+    )
     assert sermons == 12
 
 

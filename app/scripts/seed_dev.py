@@ -79,6 +79,26 @@ STAFF: list[tuple[str, str, UserRole]] = [
     (f"manager.val@{SEED_EMAIL_DOMAIN}", "Val Manager", UserRole.MANAGER),
 ]
 
+# Lifecycle-state staff — the fixtures W24's a11y sweep and Users-lifecycle
+# Playwright path uniquely need, and no earlier screen requires (plan §W24 #3):
+#
+#   editor.dana   is_active=False — a deactivated row for W19's row-state
+#                 rendering and the a11y pass over a greyed row. `activated_at`
+#                 is stamped: she is a real account that was switched off, not
+#                 an unaccepted invite, so `userState` reads "Deactivated"
+#                 unambiguously (deactivated wins over pending anyway).
+#   admin.two     a SECOND active admin, so the last-admin refusal has an admin
+#                 to remove first without bricking the seeded environment. The
+#                 bootstrap `admin@rhemapod.com` (created by create-admin, not
+#                 this script) is then the last active admin the 409 protects.
+#
+# (email, full name, role, is_active). Same seed email domain, so `--fresh`
+# drops them with the rest.
+LIFECYCLE_STAFF: list[tuple[str, str, UserRole, bool]] = [
+    (f"editor.dana@{SEED_EMAIL_DOMAIN}", "Dana Editor", UserRole.EDITOR, False),
+    (f"admin.two@{SEED_EMAIL_DOMAIN}", "Avery Admin", UserRole.ADMIN, True),
+]
+
 # Viewer accounts — the listening population the Dashboard's "New listeners"
 # chart and the Subscriptions screen read. Same seed email domain, so `--fresh`
 # drops them with the rest (and their playback_sessions / subscription rows
@@ -314,6 +334,22 @@ async def _build(db: AsyncSession) -> SeedSummary:
         )
         db.add(u)
         users[email] = u
+
+    # Lifecycle-state staff (plan §W24 #3) — same ctor, with an explicit
+    # `is_active` per row and `activated_at` always stamped (real accounts, one
+    # of which was later switched off).
+    for email, name, role, is_active in LIFECYCLE_STAFF:
+        u = User(
+            email=email,
+            full_name=name,
+            password_hash=hash_password(TEMP_PASSWORD),
+            role=role,
+            is_active=is_active,
+            activated_at=datetime.now(timezone.utc),
+        )
+        db.add(u)
+        users[email] = u
+
     sam = users[f"editor.sam@{SEED_EMAIL_DOMAIN}"]
     rae = users[f"editor.rae@{SEED_EMAIL_DOMAIN}"]
     mo = users[f"manager.mo@{SEED_EMAIL_DOMAIN}"]
@@ -548,10 +584,16 @@ async def _build(db: AsyncSession) -> SeedSummary:
         status_counts[s.status.value] = status_counts.get(s.status.value, 0) + 1
 
     return SeedSummary(
-        staff=[(email, role.value) for email, _, role in STAFF],
+        staff=(
+            [(email, role.value) for email, _, role in STAFF]
+            + [
+                (email, f"{role.value}{'' if active else ' (deactivated)'}")
+                for email, _, role, active in LIFECYCLE_STAFF
+            ]
+        ),
         sermon_statuses=status_counts,
         counts={
-            "users": len(STAFF) + len(listeners),
+            "users": len(STAFF) + len(LIFECYCLE_STAFF) + len(listeners),
             "listeners": len(listeners),
             "categories": len(categories),
             "speakers": len(speakers),
@@ -721,7 +763,10 @@ async def seed(
                 "to do. Use --fresh to drop and rebuild."
             )
             return SeedSummary(
-                staff=[(email, role.value) for email, _, role in STAFF],
+                staff=(
+                    [(email, role.value) for email, _, role in STAFF]
+                    + [(email, role.value) for email, _, role, _a in LIFECYCLE_STAFF]
+                ),
                 created=False,
             )
         summary = await _build(db)
