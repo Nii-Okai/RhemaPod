@@ -17,28 +17,38 @@ import {
 } from "@/lib/query/hooks/use-dashboard";
 
 /* =============================================================================
-   WIP cards — "Your work in progress" (design Screen 2, plan §A.1 / W23).
+   WIP cards — "Work in progress" (design Screen 2, plan §A.1 / W23).
 
    Rendered for EVERY Dashboard role (editor, manager, admin). One panel, an
    auto-fit grid of three tiles — Drafts, Processing, Rejected — each with a
    real count off a backend field, a short list, an empty state, and a link
    into the matching /sermons view.
 
-   Author-scoped: the Drafts and Rejected reads carry `created_by=me`;
-   `/uploads/in-flight` is caller-scoped server-side. A manager/admin sees
-   *their own* unfinished work here, not the whole platform's.
+   Scope is NOT uniform across the three tiles, which is why the panel heading
+   is neutral: Drafts and Rejected carry `created_by=me` for every role, so
+   those two are the caller's own work. `/uploads/in-flight` is caller-scoped
+   server-side per §A.1 — own sermons for an editor, but platform-wide for a
+   manager/admin — so the Processing tile is deliberately labelled just
+   "Processing" and its copy never claims "yours".
 
    The Rejected tile fetches each rejected sermon's approval log to surface the
-   rejection note — for AT MOST 5 sermons (plan §A.1, the accepted N+1). No
-   `latest_rejection_note` field is added anywhere.
+   rejection note — for AT MOST `REJECTED_LOG_FETCH_CAP` sermons (plan §A.1, the
+   accepted N+1). No `latest_rejection_note` field is added anywhere.
    ========================================================================== */
 
 /** Titles listed under a tile's count. The reads fetch a slightly larger
     window (`WIP_LIST_LIMIT`); the tile shows the freshest few. */
 const TITLES_SHOWN = 3;
 
-/** Hard cap on approval-log fetches from the Rejected tile (plan §A.1). */
-export const REJECTED_LOG_CAP = 5;
+/** Rows the Rejected tile renders. Kept separate from the fetch cap below so
+    raising it never silently multiplies the approval-log N+1 — the render is
+    `min(display, fetch cap)`. */
+const REJECTED_DISPLAY_LIMIT = 5;
+
+/** Hard ceiling on approval-log GETs from the Rejected tile (plan §A.1): one
+    GET per rendered row, so this bounds the fan-out regardless of the display
+    limit above. */
+const REJECTED_LOG_FETCH_CAP = 5;
 
 function TileShell({
   label,
@@ -181,7 +191,7 @@ function ProcessingTile() {
       {isPending ? (
         <TileSkeleton />
       ) : isError ? (
-        <TileError what="your uploads" />
+        <TileError what="uploads in progress" />
       ) : jobs.length === 0 ? (
         <TileEmpty>Nothing in the pipeline right now.</TileEmpty>
       ) : (
@@ -209,7 +219,7 @@ function RejectedItem({
   sermonId: string;
   title: string;
 }) {
-  const { data } = useApprovalLog(sermonId);
+  const { data, isError } = useApprovalLog(sermonId);
   const note = latestRejectionNote(data);
 
   return (
@@ -226,6 +236,10 @@ function RejectedItem({
           data-slot="wip-rejection-note"
         >
           “{note}”
+        </span>
+      ) : isError ? (
+        <span className="text-[12px] text-ink-faint">
+          Rejected — couldn’t load the note.
         </span>
       ) : (
         <span className="text-[12px] text-ink-faint">Rejected — see the log.</span>
@@ -257,13 +271,15 @@ function RejectedTile() {
         <TileEmpty>Nothing rejected. Clean slate.</TileEmpty>
       ) : (
         <ul className="flex flex-col gap-8">
-          {items.slice(0, REJECTED_LOG_CAP).map((sermon) => (
-            <RejectedItem
-              key={sermon.id}
-              sermonId={sermon.id}
-              title={sermon.title}
-            />
-          ))}
+          {items
+            .slice(0, Math.min(REJECTED_DISPLAY_LIMIT, REJECTED_LOG_FETCH_CAP))
+            .map((sermon) => (
+              <RejectedItem
+                key={sermon.id}
+                sermonId={sermon.id}
+                title={sermon.title}
+              />
+            ))}
         </ul>
       )}
     </TileShell>
@@ -277,7 +293,7 @@ export function WipCards({ className }: { className?: string }) {
     <Card className={cn("flex flex-col gap-12", className)}>
       <div className="flex items-center justify-between gap-12">
         <span className="text-[15px] font-semibold text-ink">
-          Your work in progress
+          Work in progress
         </span>
         <Link
           href="/sermons?status=drafts"

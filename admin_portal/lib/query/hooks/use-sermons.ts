@@ -23,6 +23,10 @@ export interface UseSermonsOptions {
   /** Gate the query. Used by the "In review" branch of `useSermonsQuery`,
       which mounts two `useSermons` calls and only runs them for that tab. */
   enabled?: boolean;
+  /** Per-call freshness window. Omitted → the client default (30s, §A.4).
+      The Dashboard WIP cards pass an explicit value so their cadence does not
+      silently ride on that default (D2). */
+  staleTime?: number;
 }
 
 export function useSermons(
@@ -40,5 +44,6 @@ export function useSermons(
       ),
     placeholderData: keepPreviousData,
     enabled: options.enabled ?? true,
+    ...(options.staleTime === undefined ? {} : { staleTime: options.staleTime }),
   });
 }

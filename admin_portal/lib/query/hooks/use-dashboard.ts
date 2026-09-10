@@ -4,9 +4,16 @@
  * Two groups, and the split is load-bearing:
  *
  *   WIP cards — `useDraftsWip` / `useRejectedWip` / `useInFlightUploads`.
- *     Rendered for EVERY role. Author-scoped: the two sermon reads carry
- *     `created_by=me` (Batch 7 #3); `/uploads/in-flight` is already scoped to
- *     the caller's sermons server-side (Batch 7 #4).
+ *     Rendered for EVERY role. The two sermon reads carry `created_by=me`
+ *     (Batch 7 #3) for every role. `/uploads/in-flight` is scoped to the
+ *     caller's sermons server-side (Batch 7 #4) — own sermons for an editor,
+ *     platform-wide for a manager/admin per §A.1 — so the Processing count is
+ *     not author-scoped and the UI copy does not claim it is.
+ *
+ *     All three carry an explicit `staleTime`: the Dashboard is opened and
+ *     window-refocused constantly, and without one every mount/focus re-fires
+ *     drafts + rejected + in-flight + up to 5 approval-log GETs through the
+ *     rate-limited BFF (Phase 1 risk D2).
  *
  *   Analytics — `useOverview` / `useTopSermons` / `useNewListeners`.
  *     `GET /admin/analytics/*`, each `require_role(MANAGER, ADMIN)`. These hooks
@@ -48,8 +55,16 @@ export const TOP_SERMONS_LIMIT = 5;
 
 /** Poll cadence for the "Processing" card while any job is in flight. Every row
     the endpoint returns is non-terminal by definition, so the predicate is
-    simply "the list is non-empty". */
+    "the list is non-empty" — or the last fetch errored, so a transient failure
+    keeps retrying instead of freezing the card until remount. */
 const IN_FLIGHT_POLL_MS = 5000;
+
+/** Freshness windows for the WIP hooks. Drafts/Rejected match the analytics
+    hooks (60s) so the whole Dashboard is warm for one minute after a load;
+    in-flight uses the poll cadence so a focus refetch never lands tighter than
+    the poll it already runs. */
+const WIP_LIST_STALE_MS = 60_000;
+const IN_FLIGHT_STALE_MS = IN_FLIGHT_POLL_MS;
 
 /* --- WIP: drafts / rejected (author-scoped sermon lists) ---------------- */
 
@@ -60,19 +75,25 @@ const IN_FLIGHT_POLL_MS = 5000;
  * manager/admin so their Dashboard shows *their* work, not everyone's).
  */
 export function useDraftsWip() {
-  return useSermons({
-    status: "draft",
-    created_by: "me",
-    limit: WIP_LIST_LIMIT,
-  });
+  return useSermons(
+    {
+      status: "draft",
+      created_by: "me",
+      limit: WIP_LIST_LIMIT,
+    },
+    { staleTime: WIP_LIST_STALE_MS },
+  );
 }
 
 export function useRejectedWip() {
-  return useSermons({
-    status: "rejected",
-    created_by: "me",
-    limit: WIP_LIST_LIMIT,
-  });
+  return useSermons(
+    {
+      status: "rejected",
+      created_by: "me",
+      limit: WIP_LIST_LIMIT,
+    },
+    { staleTime: WIP_LIST_STALE_MS },
+  );
 }
 
 /* --- WIP: processing (in-flight uploads across the caller's sermons) ---- */
@@ -87,10 +108,15 @@ export function useInFlightUploads() {
   return useQuery({
     queryKey: queryKeys.uploads.inFlight(),
     queryFn: () => loadInFlightUploads(),
+    staleTime: IN_FLIGHT_STALE_MS,
     // A job leaving the pipeline just drops out of this list; poll while it is
-    // non-empty so a freshly-finished transcode clears without a reload.
+    // non-empty so a freshly-finished transcode clears without a reload. Also
+    // poll after an error — otherwise a failed *first* fetch leaves `data`
+    // undefined, the predicate returns `false`, and the card never recovers.
     refetchInterval: (query) =>
-      (query.state.data?.length ?? 0) > 0 ? IN_FLIGHT_POLL_MS : false,
+      (query.state.data?.length ?? 0) > 0 || query.state.status === "error"
+        ? IN_FLIGHT_POLL_MS
+        : false,
   });
 }
 

@@ -196,7 +196,7 @@ describe("DashboardScreen — editor variant", () => {
     expect(
       screen.getByRole("heading", { name: "Good morning, Ada" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Your work in progress")).toBeInTheDocument();
+    expect(screen.getByText("Work in progress")).toBeInTheDocument();
 
     await screen.findByText("The Weight of Mercy");
     expect(document.querySelector('[data-wip="drafts"]')).toBeInTheDocument();
