@@ -114,6 +114,25 @@ export const queryKeys = {
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */
     counts: () => [...queryKeys.nav.all(), "counts"] as const,
   },
+  /** Upload jobs not nested under a single sermon. `inFlight()` is the
+      Dashboard "Processing" WIP card's feed (`GET /uploads/in-flight`) — every
+      still-moving job across the sermons the caller may see. Per-sermon job
+      lists stay under `sermons.uploads(id)`. */
+  uploads: {
+    all: () => ["uploads"] as const,
+    inFlight: () => [...queryKeys.uploads.all(), "in-flight"] as const,
+  },
+  /** Admin analytics reads behind the manager/admin Dashboard variant (W23).
+      Each is its own leaf — they share nothing and invalidate independently.
+      An editor session never mounts the component that runs these, so an
+      editor's cache never holds an `analytics` key. */
+  analytics: {
+    all: () => ["analytics"] as const,
+    overview: () => [...queryKeys.analytics.all(), "overview"] as const,
+    topSermons: () => [...queryKeys.analytics.all(), "top-sermons"] as const,
+    newListeners: () =>
+      [...queryKeys.analytics.all(), "new-listeners"] as const,
+  },
   /** Users & roles screen (W17). Same shape as `announcements` — a domain root,
       a `list()` sub-tree keyed on `{role?, limit, offset}` (React Query hashes
       it stably), plus a sibling `roleCounts()` aggregate that feeds the tiles.
