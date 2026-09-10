@@ -49,6 +49,10 @@ def _single_use_key(jti: str) -> str:
     return f"single_use:{jti}"
 
 
+def _invite_pending_key(user_id: str) -> str:
+    return f"invite_pending:{user_id}"
+
+
 async def store_refresh_jti(user_id: str, jti: str) -> None:
     r = get_redis()
     ttl = settings.refresh_token_expire_days * 24 * 60 * 60
@@ -90,6 +94,48 @@ async def register_single_use(jti: str, ttl_seconds: int) -> None:
     except RedisError as exc:
         log.warning("token_store_unavailable", op="register_single_use")
         raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def mark_invite_pending(user_id: str) -> None:
+    """Flag that this account has an outstanding staff invite and has never set
+    its own password.
+
+    Deliberately has **no TTL**: "this account was invited and never activated"
+    is a durable fact, not a 48h one — the invite *link* expires on its own jti
+    TTL, but a still-pending account must stay re-invitable well past that.
+    Cleared by ``clear_invite_pending`` when the invite is completed. Phase 2
+    keeps invite state in Redis only (no ``invited_at`` column — resolved
+    decision 8); a full Redis data loss would make ``resend-invite`` report a
+    still-pending account as already activated, which is the safe direction to
+    fail (a spurious 409, not a spurious password-reset link).
+    """
+    r = get_redis()
+    try:
+        await r.set(_invite_pending_key(user_id), "1")
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="mark_invite_pending")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def clear_invite_pending(user_id: str) -> None:
+    """Drop the pending-invite flag once the account has set its own password."""
+    r = get_redis()
+    try:
+        await r.delete(_invite_pending_key(user_id))
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="clear_invite_pending")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def is_invite_pending(user_id: str) -> bool:
+    """True while the account still has an unfinished staff invite."""
+    r = get_redis()
+    try:
+        found = await r.get(_invite_pending_key(user_id))
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="is_invite_pending")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+    return found is not None
 
 
 async def consume_single_use(jti: str) -> bool:

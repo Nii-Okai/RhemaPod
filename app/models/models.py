@@ -436,6 +436,18 @@ class ProcessedWebhook(Base):
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     event_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     event_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # The subscription this event resolved to, when it resolved to one at all
+    # (``_find_subscription`` legitimately returns ``None`` for events matching
+    # no local row). Bare nullable UUID — no FK, no index — deliberately: it
+    # turns the dedup ledger into queryable "became paid / lapsed" history for
+    # Phase 3, and nothing in Phase 2 reads it. GATE 5 chose bare-UUID over an
+    # FK because the ``ON DELETE SET NULL`` branch is dead: nothing in the
+    # codebase deletes a ``Subscription`` (cancellation is a status transition;
+    # departed staff are ``is_active=false``), so the FK would buy only
+    # write-time integrity for a column no hot path touches.
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

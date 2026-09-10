@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "ActiveUpdateRequest": {
+        "description": "Target active state for `PATCH /users/{id}/active` \u2014 `false` deactivates\nthe staff account, `true` reactivates it.",
+        "properties": {
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_active"
+        ],
+        "title": "ActiveUpdateRequest",
+        "type": "object"
+      },
       "AnnouncementAdminItem": {
         "description": "Staff view \u2014 adds the fields viewers never see.",
         "properties": {
@@ -3346,6 +3360,24 @@
           "raw_key"
         ],
         "title": "UploadTicket",
+        "type": "object"
+      },
+      "UserActiveResponse": {
+        "description": "The updated account, plus a flag set when a Redis outage forced\nrefresh-token revocation to be deferred at deactivation (plan \u00a7W18,\nGATE 6 = commit-first). The deactivation still committed and every request\nre-checks `is_active`, so the account is locked out regardless; the flag\ntells an operator the residual access-token window was not cut early.",
+        "properties": {
+          "revocation_deferred": {
+            "default": false,
+            "title": "Revocation Deferred",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserPublic"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "UserActiveResponse",
         "type": "object"
       },
       "UserLogin": {
@@ -7948,6 +7980,114 @@
           }
         ],
         "summary": "Role Counts",
+        "tags": [
+          "admin auth"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/active": {
+      "patch": {
+        "description": "Deactivate (`is_active=false`) or reactivate a staff account.\n\nManagers may act on editors only; admins on anyone, except where it would\nleave zero active admins (409). Deactivation commits first, then revokes\nrefresh tokens best-effort: a Redis outage still returns 200 with\n`revocation_deferred=true` rather than 503, because every request re-checks\n`is_active` regardless (plan \u00a7W18, GATE 6).",
+        "operationId": "set_active_api_v1_users__user_id__active_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserActiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Active",
+        "tags": [
+          "admin auth"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/resend-invite": {
+      "post": {
+        "description": "Re-issue the invite for a staff account that has not finished\nset-password. Same authz as `PATCH /users/{id}/active`. A 409 means the\naccount has already been activated (nothing to resend); a 503 means the\nsingle-use invite jti could not be recorded (Redis down) \u2014 unlike\ndeactivate, this operation cannot degrade gracefully without it.",
+        "operationId": "resend_invite_api_v1_users__user_id__resend_invite_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resend Invite",
         "tags": [
           "admin auth"
         ]

@@ -191,6 +191,63 @@ async def test_webhook_is_idempotent(client, engine):
     assert second.json()["outcome"] == "duplicate_ignored"
 
 
+async def test_webhook_records_subscription_id_when_resolved(client, engine):
+    """W16: an event that resolves to a local Subscription writes that
+    subscription's id onto the ledger row (plan §A.4). Nothing reads it in
+    Phase 2 — the assertion is straight off the table."""
+    import uuid as _uuid
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import ProcessedWebhook, Subscription
+
+    await make_viewer(client)
+    uid = await user_id_for(engine, "viewer@example.com")
+    r = await client.post("/api/v1/subscriptions/webhook", json=sub_event(
+        "evt_subid_hit", "checkout.session.completed", uid,
+        id="sub_subid", customer="cus_subid",
+    ))
+    assert r.status_code == 200
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        sub_id = (await s.execute(
+            select(Subscription.id).where(Subscription.user_id == _uuid.UUID(uid))
+        )).scalar_one()
+        row = (await s.execute(
+            select(ProcessedWebhook).where(ProcessedWebhook.event_id == "evt_subid_hit")
+        )).scalar_one()
+    assert row.subscription_id == sub_id
+
+
+async def test_webhook_records_null_subscription_id_when_unresolved(client, engine):
+    """W16: an event that matches no local Subscription writes NULL — the
+    column is nullable precisely because `_find_subscription` legitimately
+    returns None (plan §A.4)."""
+    import uuid as _uuid
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import ProcessedWebhook
+
+    # A well-formed uuid that owns no subscription row, and no provider
+    # subscription id in the payload → `_find_subscription` returns None.
+    orphan_uid = str(_uuid.uuid4())
+    r = await client.post("/api/v1/subscriptions/webhook", json=sub_event(
+        "evt_subid_miss", "invoice.payment_failed", orphan_uid,
+    ))
+    assert r.status_code == 200
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        row = (await s.execute(
+            select(ProcessedWebhook).where(ProcessedWebhook.event_id == "evt_subid_miss")
+        )).scalar_one()
+    assert row.subscription_id is None
+
+
 async def test_concurrent_duplicate_webhook_returns_duplicate_ignored(
     client, engine, monkeypatch
 ):

@@ -411,7 +411,11 @@ async def handle_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
             outcome = "updated"
 
     db.add(ProcessedWebhook(
-        provider=provider_name, event_id=event_id, event_type=event_type
+        provider=provider_name, event_id=event_id, event_type=event_type,
+        # Turns the dedup ledger into queryable history: which subscription
+        # each event moved, NULL when it resolved to none. Nothing reads it in
+        # Phase 2 (plan §A.4).
+        subscription_id=sub.id if sub is not None else None,
     ))
     try:
         await db.commit()

@@ -113,6 +113,24 @@ class RoleUpdateRequest(BaseModel):
     role: UserRole
 
 
+class ActiveUpdateRequest(BaseModel):
+    """Target active state for `PATCH /users/{id}/active` — `false` deactivates
+    the staff account, `true` reactivates it."""
+
+    is_active: bool
+
+
+class UserActiveResponse(BaseModel):
+    """The updated account, plus a flag set when a Redis outage forced
+    refresh-token revocation to be deferred at deactivation (plan §W18,
+    GATE 6 = commit-first). The deactivation still committed and every request
+    re-checks `is_active`, so the account is locked out regardless; the flag
+    tells an operator the residual access-token window was not cut early."""
+
+    user: UserPublic
+    revocation_deferred: bool = False
+
+
 class StaffCreateResponse(BaseModel):
     user: UserPublic
     # Present only when the console email backend is active, so you can grab the
