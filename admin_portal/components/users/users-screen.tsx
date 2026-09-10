@@ -75,20 +75,57 @@ const ROLE_FILTER_OPTIONS: ReadonlyArray<{
 const LAST_ADMIN_MESSAGE =
   "This is the last active admin — promote or reactivate another admin first.";
 
+/** Auto-dismiss window for the success `Toast` (matches `review-screen.tsx`). */
+const TOAST_MS = 6000;
+
+/**
+ * The deferred-revoke note. `PATCH …/active` returns `revocation_deferred: true`
+ * when the state change committed but a Redis outage stopped a refresh-token
+ * revoke from being recorded — set on BOTH paths (plan §W18 / schema):
+ *
+ *   deactivate  the lockout landed, but a still-live token isn't revoked yet
+ *   reactivate  a pre-deactivation refresh token couldn't be force-expired (CWE-613)
+ *
+ * So the copy has to branch on the action: after a deferred deactivate the
+ * account is OFF, after a deferred reactivate it is ON. It is a security signal,
+ * so it is latched — a later unrelated set-active success (which carries
+ * `revocation_deferred: false`) must not clear it; only an explicit dismiss
+ * does — and it names the account it concerns.
+ */
+type DeferredRevokeNote = { name: string; action: "deactivate" | "reactivate" };
+
+function deferredNoteTitle(note: DeferredRevokeNote): string {
+  return note.action === "deactivate"
+    ? `${note.name} is deactivated — existing sessions may take a moment to end`
+    : `${note.name} is active again — an earlier session token may still linger`;
+}
+
+function deferredNoteBody(note: DeferredRevokeNote): string {
+  return note.action === "deactivate"
+    ? `The auth store was briefly unavailable, so ${note.name}'s open sessions close on their next request rather than immediately — a token issued before the change may keep working for a few minutes.`
+    : `${note.name}'s account is back on. A session token issued before it was switched off may still work for a few minutes — the auth store was briefly unavailable, so that earlier token couldn't be force-expired.`;
+}
+
 function personLabel(row: UserPublic): string {
   return row.full_name?.trim() || row.email;
 }
 
 function resendErrorMessage(err: unknown): string {
   if (isApiError(err)) {
+    // The typed 409/429/503 rejections get bespoke copy, but still carry the
+    // `correlation_id` support handle that `errorText()` appends everywhere
+    // else on this screen, so a 503 is chase-able.
+    const ref = err.correlationId ? ` (reference: ${err.correlationId})` : "";
     if (err.status === 409) {
-      return "This account has already been activated — there is nothing to resend.";
+      return `This account has already been activated — there is nothing to resend.${ref}`;
     }
     if (err.status === 429) {
-      return "This invite has been resent too many times. Try again later.";
+      // 429 comes from the W18 rate limiter (3 resends / hour), even though the
+      // OpenAPI response set for resend-invite only enumerates 409 + 503.
+      return `This invite has been resent too many times. Try again later.${ref}`;
     }
     if (err.status === 503) {
-      return "Couldn’t reach the invite service. Try again in a moment.";
+      return `Couldn’t reach the invite service. Try again in a moment.${ref}`;
     }
   }
   return errorText(err, "Couldn’t resend the invite.");
@@ -143,13 +180,22 @@ export function UsersScreen() {
 
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
-  const [deferredNote, setDeferredNote] = React.useState(false);
+  const [deferredNote, setDeferredNote] =
+    React.useState<DeferredRevokeNote | null>(null);
   const [confirmTarget, setConfirmTarget] = React.useState<UserPublic | null>(
     null,
   );
   const [confirmMessage, setConfirmMessage] = React.useState<string | null>(
     null,
   );
+
+  // Auto-dismiss the success toast (the deferred-revoke note is deliberately
+  // NOT on a timer — it is latched until the operator dismisses it).
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const changeRole = useChangeUserRole();
   const setActive = useSetUserActive();
@@ -188,7 +234,15 @@ export function UsersScreen() {
             setConfirmTarget(null);
             setConfirmMessage(null);
           }
-          setDeferredNote(res.revocation_deferred);
+          // Latch: only set the note on an actual deferred revoke, never clear
+          // it here — a false flag on a later action must not erase a still-open
+          // security signal. Dismissal is explicit (the note's own button).
+          if (res.revocation_deferred) {
+            setDeferredNote({
+              name: personLabel(row),
+              action: isActive ? "reactivate" : "deactivate",
+            });
+          }
           setToast(
             isActive
               ? `Reactivated ${personLabel(row)}.`
@@ -362,17 +416,13 @@ export function UsersScreen() {
                 {deferredNote && (
                   <Alert
                     variant="warning"
-                    title="The account is off — sessions may take a moment to end"
+                    title={deferredNoteTitle(deferredNote)}
                   >
                     <span className="flex items-center gap-10">
-                      <span>
-                        The auth store was briefly unavailable, so any active
-                        session is closed on its next request rather than
-                        immediately.
-                      </span>
+                      <span>{deferredNoteBody(deferredNote)}</span>
                       <button
                         type="button"
-                        onClick={() => setDeferredNote(false)}
+                        onClick={() => setDeferredNote(null)}
                         className="shrink-0 font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
                       >
                         Dismiss

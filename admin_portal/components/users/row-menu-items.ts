@@ -13,7 +13,12 @@
  *
  *   active     → Deactivate            (destructive; confirmation dialog)
  *   deactivated→ Reactivate            (constructive; no dialog)
- *   pending    → + Resend invite       (`activated_at == null`, any active state)
+ *   pending    → + Resend invite       (`is_active && activated_at == null`)
+ *
+ * Resend is gated on `is_active` too: a deactivated-never-activated account
+ * can't authenticate, so a fresh set-password link is a dead affordance (the
+ * backend `resend_invite` only checks `activated_at` today — see status.md
+ * [Phase 2 — note] — so the client is the gate for now).
  *
  * A client gate for affordance only — the backend is the real guard and a
  * slipped-through 403 surfaces as the card-top alert. Two deliberate client
@@ -80,7 +85,7 @@ export function userRowMenuItems({
     items.push({ action: "reactivate", label: "Reactivate" });
   }
 
-  if (target.activated_at == null) {
+  if (target.is_active && target.activated_at == null) {
     items.push({ action: "resend-invite", label: "Resend invite" });
   }
 

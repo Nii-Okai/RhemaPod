@@ -394,7 +394,7 @@ describe("UsersScreen W19 — deactivate", () => {
     await vi.waitFor(() => expect(badge).toHaveTextContent("Active"));
   });
 
-  it("`revocation_deferred: true` renders the non-blocking sessions note", async () => {
+  it("`revocation_deferred: true` on a deactivate renders the account-off note, naming the user", async () => {
     backend({
       rows: [EDITOR],
       activeResponse: { revocation_deferred: true },
@@ -413,9 +413,154 @@ describe("UsersScreen W19 — deactivate", () => {
       }),
     );
 
+    // Deactivate copy: the account is OFF, sessions wind down.
+    const note = await screen.findByText(
+      /existing sessions may take a moment to end/i,
+    );
+    expect(note).toHaveTextContent("Ada Nwosu");
     expect(
-      await screen.findByText(/sessions may take a moment to end/i),
+      screen.getByText(/open sessions close on their next request/i),
     ).toBeInTheDocument();
+    // Not the reactivation phrasing.
+    expect(screen.queryByText(/account is back on/i)).not.toBeInTheDocument();
+  });
+
+  it("`revocation_deferred: true` on a reactivate renders the account-ON note, not the deactivate copy", async () => {
+    backend({
+      rows: [EDITOR_OFF],
+      activeResponse: { revocation_deferred: true },
+    });
+    renderScreen(ADMIN_SESSION);
+    await screen.findByText("Eve Duru");
+
+    await userEvent.click(
+      within(await openMenu("Eve Duru")).getByRole("menuitem", {
+        name: "Reactivate",
+      }),
+    );
+
+    // Reactivate copy: the account is ON; an older token may linger (CWE-613).
+    const note = await screen.findByText(/account is back on/i);
+    expect(note).toHaveTextContent("Eve Duru");
+    expect(
+      screen.getByText(/an earlier session token may still linger/i),
+    ).toBeInTheDocument();
+    // The operator is NOT told the account is off.
+    expect(
+      screen.queryByText(/existing sessions may take a moment to end/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("the deferred note is latched — a later non-deferred success does not clear it, only Dismiss does", async () => {
+    backend({ rows: [EDITOR, MANAGER_ROW] });
+    // Per-call flag: first PATCH defers, every later one does not.
+    let calls = 0;
+    server.use(
+      http.patch("*/api/bff/users/:id/active", async ({ params, request }) => {
+        const body = (await request.json()) as { is_active: boolean };
+        await delay(20);
+        calls += 1;
+        return HttpResponse.json({
+          user: { id: params.id, is_active: body.is_active },
+          revocation_deferred: calls === 1,
+        });
+      }),
+    );
+    renderScreen(ADMIN_SESSION);
+    await screen.findByText("Ada Nwosu");
+
+    // 1) Deactivate Ada — deferred note appears, naming Ada.
+    await userEvent.click(
+      within(await openMenu("Ada Nwosu")).getByRole("menuitem", {
+        name: "Deactivate",
+      }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Deactivate",
+      }),
+    );
+    // The title names Ada; the body carries the deactivate ("account off") copy.
+    expect(
+      await screen.findByText(/Ada Nwosu is deactivated/i),
+    ).toBeInTheDocument();
+    await screen.findByText(/open sessions close on their next request/i);
+
+    // 2) Deactivate Dan — this response carries revocation_deferred: false.
+    await userEvent.click(
+      within(await openMenu("Dan Okoye")).getByRole("menuitem", {
+        name: "Deactivate",
+      }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Deactivate",
+      }),
+    );
+    await screen.findByText(/Deactivated Dan Okoye/);
+
+    // Ada's security note is still on screen — not silently cleared.
+    const noteBody = screen.getByText(
+      /open sessions close on their next request/i,
+    );
+    expect(screen.getByText(/Ada Nwosu is deactivated/i)).toBeInTheDocument();
+
+    // 3) Explicit Dismiss (scoped to the note — the success Toast has its own
+    //    "Dismiss" control) clears it.
+    await userEvent.click(
+      within(noteBody.parentElement as HTMLElement).getByRole("button", {
+        name: "Dismiss",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByText(/open sessions close on their next request/i),
+      ).not.toBeInTheDocument(),
+    );
+  });
+});
+
+/* --- keyboard: the `···` menu ---------------------------------- */
+
+describe("UsersScreen W19 — `···` menu keyboard operation", () => {
+  it("opens on Enter, navigates items with ArrowDown, and Escape restores focus to the trigger", async () => {
+    // EDITOR_PENDING yields two items (Deactivate + Resend invite) so ArrowDown
+    // has somewhere to go. The menu lives in the DataTable `__actions` cell,
+    // which stopPropagation()s, and Radix content is portaled — so the W6 row
+    // keydown handler (preventDefaults Arrow/Home/End for row nav) never sees
+    // these keys. W17 shipped a keyboard-dead control on this screen that was
+    // "correct by inspection"; this asserts the wiring for real.
+    const user = userEvent.setup();
+    backend({ rows: [EDITOR_PENDING] });
+    renderScreen(ADMIN_SESSION);
+    await screen.findByText("Ivy Bassey");
+
+    const trigger = screen.getByRole("button", {
+      name: "Actions for Ivy Bassey",
+    });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    // Enter opens the menu (Radix Trigger handles Enter/Space/ArrowDown).
+    await user.keyboard("{Enter}");
+    const menu = await screen.findByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "Deactivate",
+      "Resend invite",
+    ]);
+
+    // Focus lands on the first item; ArrowDown moves to the second.
+    await vi.waitFor(() => expect(items[0]).toHaveFocus());
+    await user.keyboard("{ArrowDown}");
+    await vi.waitFor(() => expect(items[1]).toHaveFocus());
+
+    // Escape closes and returns focus to the trigger.
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
+    await vi.waitFor(() => expect(trigger).toHaveFocus());
   });
 });
 

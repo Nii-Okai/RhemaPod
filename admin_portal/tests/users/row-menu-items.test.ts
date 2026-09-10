@@ -95,14 +95,26 @@ describe("userRowMenuItems — state-correct verbs", () => {
     ).toEqual(["Deactivate"]);
   });
 
-  it("a deactivated, never-activated row offers Reactivate + Resend invite", () => {
+  it("a deactivated, never-activated row offers Reactivate only — not Resend invite", () => {
+    // Resend is gated on `is_active`: a deactivated account can't authenticate,
+    // so a fresh set-password link is a dead affordance.
     expect(
       labels({
         actor: ADMIN,
         target: target({ is_active: false, activated_at: null }),
         activeAdminCount: 3,
       }),
-    ).toEqual(["Reactivate", "Resend invite"]);
+    ).toEqual(["Reactivate"]);
+  });
+
+  it("Resend invite needs `is_active` — an active, pending row still offers it", () => {
+    expect(
+      labels({
+        actor: ADMIN,
+        target: target({ is_active: true, activated_at: null }),
+        activeAdminCount: 3,
+      }),
+    ).toEqual(["Deactivate", "Resend invite"]);
   });
 });
 
