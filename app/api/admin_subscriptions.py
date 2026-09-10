@@ -8,10 +8,11 @@ cancellation and dunning all stay in the Stripe dashboard (resolved decision
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_role
+from app.core.logging import get_logger
 from app.db.database import get_read_db
 from app.models.content_schemas import (
     Page,
@@ -23,6 +24,8 @@ from app.services import subscription_service
 
 router = APIRouter(prefix="/admin/subscriptions", tags=["admin subscriptions"])
 
+log = get_logger("admin_subscriptions")
+
 ReadDbDep = Annotated[AsyncSession, Depends(get_read_db)]
 ManagerPlus = Annotated[
     CurrentUser, Depends(require_role(UserRole.MANAGER, UserRole.ADMIN))
@@ -31,7 +34,7 @@ ManagerPlus = Annotated[
 
 @router.get("/counts", response_model=SubscriptionCounts)
 async def subscription_counts(
-    user: ManagerPlus, db: ReadDbDep
+    user: ManagerPlus, db: ReadDbDep, response: Response
 ) -> SubscriptionCounts:
     """Active paid · Monthly · Annual (plan §A.3).
 
@@ -39,15 +42,26 @@ async def subscription_counts(
     exactly — the same definition the analytics overview and the publish toast
     use. `monthly` + `annual` partition it, so they always sum to `active_paid`.
     """
-    return SubscriptionCounts(
-        **await subscription_service.subscription_counts(db)
+    counts = await subscription_service.subscription_counts(db)
+    # PII-adjacent aggregate — don't let a shared cache retain it.
+    response.headers["Cache-Control"] = "no-store"
+    # Audit trail (CWE-778): who read the paying-membership headline counts, and
+    # what those counts were. No emails / names / customer ids in the line.
+    log.info(
+        "admin_subscriptions_counts_read",
+        actor_user_id=str(user.id),
+        active_paid=counts["active_paid"],
+        monthly=counts["monthly"],
+        annual=counts["annual"],
     )
+    return SubscriptionCounts(**counts)
 
 
 @router.get("", response_model=Page[SubscriptionAdminItem])
 async def list_subscriptions(
     user: ManagerPlus,
     db: ReadDbDep,
+    response: Response,
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status: SubscriptionStatus | None = Query(
@@ -67,6 +81,20 @@ async def list_subscriptions(
         offset=offset,
         status_filter=status,
         tier_filter=tier,
+    )
+    # PII payload (name + email of every paying member) — never cache it.
+    response.headers["Cache-Control"] = "no-store"
+    # Audit trail (CWE-778): who enumerated the paying membership, with what
+    # filters and page window, and how many rows came back. Deliberately no
+    # emails / names / provider_customer_id in the line.
+    log.info(
+        "admin_subscriptions_listed",
+        actor_user_id=str(user.id),
+        status_filter=status.value if status is not None else None,
+        tier_filter=tier.value if tier is not None else None,
+        offset=offset,
+        limit=limit,
+        returned=len(rows),
     )
     return Page[SubscriptionAdminItem](
         items=[SubscriptionAdminItem(**r) for r in rows],

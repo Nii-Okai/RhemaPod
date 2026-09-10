@@ -12,11 +12,13 @@ Hard constraints, all asserted here (not as comments):
   * `require_role(MANAGER, ADMIN)` — editor/viewer 403, manager/admin 200.
 """
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.api.admin_subscriptions as admin_subs_module
 import app.core.payments as payments_module
 from app.models.content_schemas import SubscriptionAdminItem
 from app.models.models import (
@@ -35,6 +37,44 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _sf(engine):
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+class _RecordingLogger:
+    """Stand-in for the router's structlog logger — records every line.
+
+    Same shape as `tests/test_auth_hardening.py::_RecordingLogger`; the codebase
+    injects this via `monkeypatch.setattr(module, "log", recorder)` rather than
+    `structlog.testing.capture_logs`, which does not intercept a module-level
+    logger frozen by `cache_logger_on_first_use=True`.
+    """
+
+    def __init__(self) -> None:
+        self.records: list[dict] = []
+
+    def _record(self, level: str, event: str, **kw) -> None:
+        self.records.append({"level": level, "event": event, **kw})
+
+    def debug(self, event, **kw):
+        self._record("debug", event, **kw)
+
+    def info(self, event, **kw):
+        self._record("info", event, **kw)
+
+    def warning(self, event, **kw):
+        self._record("warning", event, **kw)
+
+    def error(self, event, **kw):
+        self._record("error", event, **kw)
+
+    def exception(self, event, **kw):
+        self._record("exception", event, **kw)
+
+
+async def _user_id(engine, email):
+    async with _sf(engine)() as s:
+        return str((await s.execute(
+            select(User.id).where(User.email == email)
+        )).scalar_one())
 
 
 async def register(client, email, role=None, engine=None):
@@ -61,6 +101,7 @@ async def seed_sub(
     customer_id=None,
     full_name=None,
     valid_until=None,
+    created_at=None,
 ):
     """Create a User + its Subscription row directly through the DB fixture."""
     async with _sf(engine)() as s:
@@ -78,6 +119,10 @@ async def seed_sub(
             provider_customer_id=customer_id,
             valid_until=valid_until,
         )
+        if created_at is not None:
+            # Override the server_default so a test can force a timestamp
+            # collision across rows.
+            sub.created_at = created_at
         s.add(sub)
         await s.commit()
         return str(u.id), str(sub.id)
@@ -99,7 +144,9 @@ async def test_list_and_counts_enforce_manager_plus(client, engine):
 
 async def test_list_unauthenticated_is_rejected(client, engine):
     r = await client.get("/api/v1/admin/subscriptions")
-    assert r.status_code in (401, 403)
+    # `HTTPBearer(auto_error=True)` on this codebase — "no credentials" is 401,
+    # not 403 (which is "authenticated but wrong role").
+    assert r.status_code == 401
 
 
 # ── joined to User for name + email ─────────────────────────────────────────
@@ -221,6 +268,47 @@ async def test_list_paginates(client, engine):
     )).json()
     seen |= {r["id"] for r in p1["items"]} | {r["id"] for r in page2["items"]}
     assert len(seen) == 5
+
+
+async def test_list_pagination_is_stable_when_created_at_collides(client, engine):
+    """>=3 rows sharing an identical `created_at` must still partition cleanly
+    across pages.
+
+    `created_at` is `server_default=func.now()` — transaction-start time on
+    Postgres, 1s resolution on SQLite — so equal timestamps are ordinary.
+    `ORDER BY created_at DESC` alone is not a total order; `id DESC` is the
+    deterministic tiebreaker. Without it a paged client repeats or drops a row
+    when timestamps collide, which W21's paginated table would surface.
+    """
+    admin = await register(client, "admin@example.com", "admin", engine)
+    ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    seeded = []
+    for i in range(5):
+        _, sid = await seed_sub(
+            engine, f"c{i}@example.com", SubscriptionTier.ANNUAL, created_at=ts
+        )
+        seeded.append(sid)
+
+    pages = []
+    for off in (0, 2, 4):
+        body = (await client.get(
+            f"/api/v1/admin/subscriptions?tier=annual&limit=2&offset={off}",
+            headers=admin,
+        )).json()
+        assert body["total"] == 5
+        pages.append([r["id"] for r in body["items"]])
+
+    ordered = pages[0] + pages[1] + pages[2]
+    # No gap and no overlap: the three pages partition the seeded set exactly.
+    assert len(ordered) == 5
+    assert set(ordered) == set(seeded)
+    # Deterministic: `id` desc within the identical timestamp. Repeated calls to
+    # the same window return the same rows.
+    assert ordered == sorted(seeded, reverse=True)
+    again = (await client.get(
+        "/api/v1/admin/subscriptions?tier=annual&limit=2&offset=2", headers=admin
+    )).json()
+    assert [r["id"] for r in again["items"]] == pages[1]
 
 
 async def test_list_has_hard_maximum_page_size(client, engine):
@@ -373,3 +461,101 @@ async def test_no_outbound_provider_call_on_list_or_counts(client, engine):
         row["user_email"] for row in r1.json()["items"]
     }
     assert r2.json()["items"][0]["user_email"] == "paid@example.com"
+
+
+# ── audit logging (CWE-778) ──────────────────────────────────────────────────
+_PII_TOKENS = ("@example.com", "provider_customer_id", "cus_", "user_name", "full_name")
+
+
+async def test_list_emits_audit_line_with_actor_and_filters(
+    client, engine, monkeypatch
+):
+    admin = await register(client, "admin@example.com", "admin", engine)
+    admin_id = await _user_id(engine, "admin@example.com")
+    await seed_sub(engine, "m@example.com",
+                   SubscriptionTier.MONTHLY, SubscriptionStatus.ACTIVE,
+                   customer_id="cus_live_x", full_name="Paid Member")
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(admin_subs_module, "log", recorder)
+
+    r = await client.get(
+        "/api/v1/admin/subscriptions?status=active&tier=monthly&limit=10&offset=0",
+        headers=admin,
+    )
+    assert r.status_code == 200
+
+    lines = [x for x in recorder.records if x["event"] == "admin_subscriptions_listed"]
+    assert len(lines) == 1
+    line = lines[0]
+    assert line["actor_user_id"] == admin_id
+    assert line["status_filter"] == "active"
+    assert line["tier_filter"] == "monthly"
+    assert line["offset"] == 0
+    assert line["limit"] == 10
+    assert line["returned"] == len(r.json()["items"])
+    # No emails / names / customer ids in the audit line.
+    blob = json.dumps(line).lower()
+    assert not any(bad in blob for bad in _PII_TOKENS)
+
+
+async def test_list_audit_line_records_absent_filters_as_null(
+    client, engine, monkeypatch
+):
+    admin = await register(client, "admin@example.com", "admin", engine)
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(admin_subs_module, "log", recorder)
+
+    r = await client.get("/api/v1/admin/subscriptions", headers=admin)
+    assert r.status_code == 200
+
+    line = next(
+        x for x in recorder.records if x["event"] == "admin_subscriptions_listed"
+    )
+    assert line["status_filter"] is None
+    assert line["tier_filter"] is None
+
+
+async def test_counts_emits_audit_line_with_actor_and_counts(
+    client, engine, monkeypatch
+):
+    admin = await register(client, "admin@example.com", "admin", engine)
+    admin_id = await _user_id(engine, "admin@example.com")
+    await seed_sub(engine, "m@example.com",
+                   SubscriptionTier.MONTHLY, SubscriptionStatus.ACTIVE)
+    await seed_sub(engine, "a@example.com",
+                   SubscriptionTier.ANNUAL, SubscriptionStatus.ACTIVE)
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(admin_subs_module, "log", recorder)
+
+    r = await client.get("/api/v1/admin/subscriptions/counts", headers=admin)
+    assert r.status_code == 200
+    body = r.json()
+
+    lines = [
+        x for x in recorder.records
+        if x["event"] == "admin_subscriptions_counts_read"
+    ]
+    assert len(lines) == 1
+    line = lines[0]
+    assert line["actor_user_id"] == admin_id
+    assert line["active_paid"] == body["active_paid"]
+    assert line["monthly"] == body["monthly"]
+    assert line["annual"] == body["annual"]
+    blob = json.dumps(line).lower()
+    assert not any(bad in blob for bad in _PII_TOKENS)
+
+
+# ── Cache-Control: no-store on the PII responses ────────────────────────────
+async def test_pii_responses_are_not_cacheable(client, engine):
+    admin = await register(client, "admin@example.com", "admin", engine)
+    await seed_sub(engine, "m@example.com")
+
+    for path in (
+        "/api/v1/admin/subscriptions",
+        "/api/v1/admin/subscriptions/counts",
+    ):
+        r = await client.get(path, headers=admin)
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "no-store"

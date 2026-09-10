@@ -130,7 +130,11 @@ ge=0)` — the same bounds as `GET /users`. `limit=1000` (or `101`) is rejected
 **422** at the router boundary; the service also clamps to 100 defensively,
 mirroring `auth_service.list_users`. Response shape is `Page[SubscriptionAdminItem]`
 — `{items, total, limit, offset}`, `total` being the filtered count before
-paging. Newest first (`created_at` desc).
+paging. Newest first: `ORDER BY created_at DESC, id DESC`. The `id` tiebreaker is
+load-bearing, not decoration — `created_at` is `server_default=func.now()`
+(transaction-start time on Postgres, 1s resolution on SQLite), so timestamp
+collisions are ordinary and `created_at` alone is not a total order; without the
+`id` key a paged client can repeat or drop a row across page boundaries.
 
 `status` and `tier` are optional query params typed as the `SubscriptionStatus`
 / `SubscriptionTier` enums, so an unknown value is a 422, not a silent empty
@@ -139,12 +143,29 @@ page.
 ## Consequences
 
 - **PII — a staff-readable enumeration of the paying membership (risk P4).** The
-  list joins `Subscription` to `User` for `full_name` and `email`. Mitigations:
-  Manager+ at the dependency, paginated with a hard 100-row ceiling, and the
-  join `SELECT`s **only** the nine columns the DTO needs — no `password_hash`,
-  no `role`, no other user column crosses the boundary. Mandatory
-  `security-reviewer` pass at W20. This is not a gate: GATE 4 settled the
-  posture that creates it (decision 11).
+  list joins `Subscription` to `User` for `full_name` and `email`.
+  - **Access control:** Manager+ at the dependency; the join `SELECT`s **only**
+    the nine columns the DTO needs — no `password_hash`, no `role`, no other user
+    column crosses the boundary. Mandatory `security-reviewer` pass at W20.
+  - **Pagination is not access control.** The hard 100-row page ceiling bounds a
+    single *response*; it does not gate who sees the data or cap how much of it
+    one actor can pull over time. An authorized manager can walk every page and
+    enumerate the full paying membership at will — that is the accepted posture
+    (decisions 4 and 11), not something pagination prevents. It paces
+    enumeration; it does not stop it.
+  - **Detection:** every call to `GET /admin/subscriptions` and
+    `GET /admin/subscriptions/counts` emits one structured audit line
+    (`admin_subscriptions_listed` / `admin_subscriptions_counts_read`) carrying
+    the actor `user_id`, the `status`/`tier` filter values, `offset`/`limit` and
+    the returned row count (or the three counts) — **no** emails, names or
+    `provider_customer_id`. After a manager-account compromise this is what makes
+    a membership scrape visible in the logs rather than indistinguishable from
+    ordinary screen traffic (CWE-778).
+  - **Deferred:** a per-actor rate limit on `/admin/subscriptions` (the global
+    limiter keys on client IP, and all portal traffic shares the BFF's IP, so it
+    does not bound a single manager) is a logged **Phase 2 fast-follow — not
+    built in W20**. See `status.md` (`[Phase 2 — deferred]`).
+  - This is not a gate: GATE 4 settled the posture that creates it (decision 11).
 - **The portal lags Stripe.** Read-only means the screen reflects the last
   webhook, not live Stripe. A member fixed by hand in Stripe still reads
   past-due here until the next event lands. W21's subhead states the lag; a
@@ -155,7 +176,10 @@ page.
   two paths (`GET /api/v1/admin/subscriptions`, `.../counts`), two schemas
   (`SubscriptionAdminItem`, `SubscriptionCounts`) plus the generated
   `Page_SubscriptionAdminItem_` wrapper. No amount / price / currency token
-  appears anywhere in the diff.
+  appears anywhere in the diff. Both responses set `Cache-Control: no-store`
+  (a response header, so it does not appear in the schema) — low risk (the
+  bearer token already defeats shared caches and the BFF is the only client)
+  but correct for a PII payload.
 - **If operational Subscriptions is ever genuinely needed**, it is a Phase 3
   item (§E 6) gated on evidence that running billing through the Stripe
   dashboard is painful — and it would reopen this ADR's decision 2, so it wants

@@ -38,6 +38,18 @@ from app.models.models import (
 settings = get_settings()
 log = get_logger("subscription")
 
+# `subscription_counts` below returns one field per paid tier and hardcodes the
+# MONTHLY / ANNUAL pair, so the `active_paid == monthly + annual` invariant only
+# holds while those are the *only* paid tiers. If a third paid tier is ever added
+# to `PAID_TIERS`, `count_active_paid_subscribers` picks it up but the explicit
+# per-tier fields do not — this assert fires at import so the omission is caught
+# here, not in a drifting analytics tile. Grow `subscription_counts` (and its
+# DTO) a field per new paid tier when it does.
+assert set(PAID_TIERS) == {
+    SubscriptionTier.MONTHLY,
+    SubscriptionTier.ANNUAL,
+}, "PAID_TIERS changed — subscription_service.subscription_counts must grow a field"
+
 
 class SubscriptionError(Exception):
     def __init__(self, message: str, status_code: int = 400):
@@ -135,7 +147,6 @@ async def list_subscriptions_for_staff(
     total = (await db.execute(
         select(func.count())
         .select_from(Subscription)
-        .join(User, User.id == Subscription.user_id)
         .where(*conditions)
     )).scalar_one()
 
@@ -153,7 +164,12 @@ async def list_subscriptions_for_staff(
         )
         .join(User, User.id == Subscription.user_id)
         .where(*conditions)
-        .order_by(Subscription.created_at.desc())
+        # `created_at` is `server_default=func.now()` — transaction-start time on
+        # Postgres, 1s resolution on SQLite — so equal timestamps are common and
+        # `created_at` alone is not a total order. `id` desc is the deterministic
+        # tiebreaker: without it a paged client can repeat or drop a row when two
+        # rows share a timestamp (W21 builds the paginated table on this).
+        .order_by(Subscription.created_at.desc(), Subscription.id.desc())
         .limit(max(1, min(limit, 100)))
         .offset(max(0, offset))
     )).all()
