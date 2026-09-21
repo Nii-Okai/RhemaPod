@@ -37,10 +37,14 @@ import type {
    note preserved), approve-and-publish as two ordered calls + the toast, the
    card title linking to /sermons/{id}, "Start review" claiming a pending card
    (+ rollback), per-card pending gating under concurrent actions, "Watch"
-   opening a media player, the empty state, and (Batch 6) the claim-lock:
+   opening a media player, the empty state, (Batch 6) the claim-lock:
    disabled actions + "Take over review" on a card another manager holds (an
-   admin bypasses), take-over 422/409 handling, and an `approved` card that
-   publishes out of the queue. */
+   admin bypasses), take-over 422/409 handling, an `approved` card that
+   publishes out of the queue, and the review-queue-authorship self-author
+   lock: a manager's own pending/under_review sermon has start-review/approve/
+   reject disabled with the backend's exact 403 copy as the tooltip (admin
+   bypasses), while an own `approved` sermon keeps Reject live (self-correction
+   carve-out). */
 
 /* --- next/navigation + next/link, mocked ----------------------------- */
 
@@ -111,6 +115,10 @@ const baseItem: ReviewQueueItem = {
   renditions_ready: 2,
   review_claimed_by: null,
   review_claimed_by_id: null,
+  // A different id than `ME.id` ("u-1") — the default fixture is someone
+  // ELSE's submission, so every existing test (reviewing, not authoring) is
+  // unaffected by the self-author lock. Tests for that lock override this.
+  created_by: "u-author",
 };
 
 const item = (over: Partial<ReviewQueueItem>): ReviewQueueItem => ({
@@ -573,6 +581,145 @@ describe("ReviewScreen — claim lock (Batch 6 #9)", () => {
     expect(
       screen.queryByRole("button", { name: "Take over review" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewScreen — self-author lock (review-queue authorship)", () => {
+  const SELF_AUTHOR_TITLE =
+    "You submitted this sermon — another manager needs to review it";
+
+  it("own pending_review sermon: Start review/Approve/Reject disabled with the backend's exact 403 copy as the tooltip", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "My own submission",
+        status: "pending_review",
+        created_by: ME.id,
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("My own submission");
+    const card = cardFor("My own submission");
+
+    for (const name of [
+      "Start review",
+      "Approve & publish",
+      "Approve only",
+      "Reject with note",
+    ]) {
+      const btn = within(card).getByRole("button", { name });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute("title", SELF_AUTHOR_TITLE);
+    }
+    // Watch is unaffected by the lock.
+    expect(within(card).getByRole("button", { name: "Watch" })).toBeEnabled();
+  });
+
+  it("own under_review sermon (necessarily claimed by someone else): Approve/Reject disabled, self-author tooltip wins over the claim-lock tooltip, but Take over review stays enabled", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Mine, under review",
+        status: "under_review",
+        created_by: ME.id,
+        review_claimed_by: "Val Reyes",
+        review_claimed_by_id: "u-val",
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("Mine, under review");
+    const card = cardFor("Mine, under review");
+
+    for (const name of ["Approve & publish", "Approve only", "Reject with note"]) {
+      const btn = within(card).getByRole("button", { name });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute("title", SELF_AUTHOR_TITLE);
+    }
+    // Not the claim-lock copy — the self-author reason takes priority.
+    expect(
+      screen.queryByText(/Val Reyes is reviewing this — take over to act/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Take over review" }),
+    ).toBeEnabled();
+  });
+
+  it("own approved sermon: Reject and Publish both stay enabled (self-correction carve-out)", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "My approved sermon",
+        status: "approved",
+        created_by: ME.id,
+        review_claimed_by: "Val Reyes",
+        review_claimed_by_id: "u-val",
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("My approved sermon");
+    const card = cardFor("My approved sermon");
+
+    const reject = within(card).getByRole("button", { name: "Reject" });
+    expect(reject).toBeEnabled();
+    expect(reject).not.toHaveAttribute("title");
+    expect(
+      within(card).getByRole("button", { name: "Publish" }),
+    ).toBeEnabled();
+  });
+
+  it("someone else's sermon is unaffected: the reviewer's own id never matches created_by, so no lock applies", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Not mine",
+        status: "pending_review",
+        created_by: "u-someone-else",
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("Not mine");
+    const card = cardFor("Not mine");
+
+    for (const name of [
+      "Start review",
+      "Approve & publish",
+      "Approve only",
+      "Reject with note",
+    ]) {
+      const btn = within(card).getByRole("button", { name });
+      expect(btn).toBeEnabled();
+      expect(btn).not.toHaveAttribute("title");
+    }
+  });
+
+  it("an admin viewing their own sermon is unaffected: admins bypass the self-author lock", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Admin's own submission",
+        status: "pending_review",
+        created_by: "u-1", // renderScreen's SessionProvider always signs in as id "u-1".
+      }),
+    ]);
+    renderScreen({ name: "Ada Admin", role: "admin" });
+
+    await screen.findByText("Admin's own submission");
+    const card = cardFor("Admin's own submission");
+
+    for (const name of [
+      "Start review",
+      "Approve & publish",
+      "Approve only",
+      "Reject with note",
+    ]) {
+      const btn = within(card).getByRole("button", { name });
+      expect(btn).toBeEnabled();
+      expect(btn).not.toHaveAttribute("title");
+    }
   });
 });
 

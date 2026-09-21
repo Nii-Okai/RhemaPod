@@ -68,6 +68,23 @@ import {
    the backend for this status) + "Watch" — no approve/start-review/take-over.
    Publishing OR rejecting removes it from the queue.
 
+   Self-author lock (review-queue authorship). Segregation of duties: a
+   manager may not review their own sermon (`content_service.transition`'s
+   `_SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS` — `start_review`/`approve`/`reject`,
+   admin bypasses). `selfAuthorLocked` (screen-derived: `item.created_by ===
+   session.id && !isAdmin`) disables "Start review" / "Approve & publish" /
+   "Approve only" / "Reject with note" with the same tooltip mechanism as
+   `claimLocked`, string identical to the backend's 403
+   ("You submitted this sermon — another manager needs to review it") so the
+   UI and the API agree. Carve-out: the `approved` card's "Reject" is NOT
+   gated by this — self-correcting an already-approved sermon isn't the
+   conflict of interest `approve` guards against (mirrors the backend, which
+   only exempts `reject` from `approved`). A self-authored `under_review` card
+   is also, in practice, always `claimedElsewhere` (the creator can never hold
+   the claim — `take_over_review` blocks them too), so both locks can apply at
+   once; the self-author reason takes the tooltip since it's the one that
+   holds regardless of who has the claim.
+
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
    revealing the labelled textarea plus [Send rejection] (rose fill + border +
    text) and [Cancel] — no "Approve & publish" in this branch, since rejecting
@@ -94,6 +111,10 @@ export interface SubmissionCardProps {
   /** `claimedElsewhere` AND the signed-in user is not an admin: the approve /
       reject actions are disabled until the reviewer takes the claim over. */
   claimLocked: boolean;
+  /** This sermon's `created_by` is the signed-in user, who is not an admin:
+      start-review / approve / reject (except from `approved`) are disabled —
+      segregation of duties, mirrors the backend's 403. */
+  selfAuthorLocked: boolean;
   /** A mutation for this card is in flight. */
   busy: boolean;
   /** Card-top error from a failed/rolled-back action. */
@@ -125,6 +146,11 @@ export interface SubmissionCardProps {
 /* speaker · series/standalone · category — the tier is a chip, appended
    separately. `ReviewQueueItem` carries no `episode_number`, so a series shows
    its title only (no "· ep N"). */
+// Verbatim match for `content_service.transition`'s self-author 403 (also
+// `take_over_review`'s) — see the file-header comment.
+const SELF_AUTHOR_LOCK_TITLE =
+  "You submitted this sermon — another manager needs to review it";
+
 function metaText(item: ReviewQueueItem): string {
   return [
     item.speaker_name ?? "Speaker not set",
@@ -139,6 +165,7 @@ export function SubmissionCard({
   claimedByOther,
   claimedElsewhere,
   claimLocked,
+  selfAuthorLocked,
   busy,
   error,
   onDismissError,
@@ -177,6 +204,13 @@ export function SubmissionCard({
       ? `${claimedByOther} is reviewing this — take over to act`
       : "Another reviewer holds this — take over to act"
     : undefined;
+  // The review-entry actions (approve/reject/start-review) are locked by
+  // EITHER reason; when both apply (see file header — a self-authored
+  // `under_review` card is always claimed by someone else too) the
+  // self-author reason wins the tooltip, since it holds regardless of who
+  // has the claim.
+  const actionsLocked = claimLocked || selfAuthorLocked;
+  const actionLockTitle = selfAuthorLocked ? SELF_AUTHOR_LOCK_TITLE : lockTitle;
   // The manager who most recently claimed it (not necessarily the approver);
   // shown next to the "Approved" badge as informational context.
   const approvedClaimant = item.review_claimed_by?.trim() || null;
@@ -308,8 +342,8 @@ export function SubmissionCard({
                   <Button
                     size="sm"
                     variant="primary"
-                    disabled={busy || claimLocked}
-                    title={lockTitle}
+                    disabled={busy || actionsLocked}
+                    title={actionLockTitle}
                     onClick={onApproveAndPublish}
                   >
                     Approve &amp; publish
@@ -317,8 +351,8 @@ export function SubmissionCard({
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={busy || claimLocked}
-                    title={lockTitle}
+                    disabled={busy || actionsLocked}
+                    title={actionLockTitle}
                     onClick={onApproveOnly}
                   >
                     Approve only
@@ -326,8 +360,8 @@ export function SubmissionCard({
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={busy || claimLocked}
-                    title={lockTitle}
+                    disabled={busy || actionsLocked}
+                    title={actionLockTitle}
                     onClick={onStartReject}
                   >
                     Reject with note
@@ -336,7 +370,8 @@ export function SubmissionCard({
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={busy}
+                      disabled={busy || selfAuthorLocked}
+                      title={selfAuthorLocked ? SELF_AUTHOR_LOCK_TITLE : undefined}
                       onClick={onStartReview}
                     >
                       Start review

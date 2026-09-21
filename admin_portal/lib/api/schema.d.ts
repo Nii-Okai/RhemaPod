@@ -2106,6 +2106,11 @@ export interface components {
             category_id: string | null;
             /** Category Name */
             category_name?: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
             /** Description */
             description: string | null;
             /** Duration Seconds */
