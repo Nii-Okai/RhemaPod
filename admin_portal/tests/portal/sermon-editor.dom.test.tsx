@@ -227,6 +227,69 @@ describe("SermonEditor — Access radios ↔ tier", () => {
   });
 });
 
+/* --- Publish at (round 2 — scheduled sermon publish) -------------------- */
+
+describe("SermonEditor — Publish at (Access card)", () => {
+  it("is a native datetime-local picker", async () => {
+    backend({ sermon: detail({ status: "draft" }) });
+    renderEditor();
+
+    expect(await screen.findByLabelText("Publish at")).toHaveAttribute(
+      "type",
+      "datetime-local",
+    );
+  });
+
+  it("setting it sends the picked value as ISO on the wire", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ status: "draft" }),
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    const input = await screen.findByLabelText("Publish at");
+    fireEvent.change(input, { target: { value: "2026-10-01T09:00" } });
+    fireEvent.blur(input);
+
+    await vi.waitFor(() => expect(bodies.length).toBeGreaterThan(0));
+    const sent = bodies[0].publish_at;
+    expect(typeof sent).toBe("string");
+    expect(sent as string).toMatch(/Z$/);
+  });
+
+  it("clearing it back to empty sends null", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({
+        status: "draft",
+        publish_at: "2026-09-10T09:00:00Z",
+      }),
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    const input = await screen.findByLabelText("Publish at");
+    // Pre-filled from the server ISO value, rendered in the local zone — don't
+    // assert the exact wall-clock (timezone-dependent); just wait for it to be
+    // non-empty before clearing it.
+    await vi.waitFor(() => expect(input).not.toHaveValue(""));
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+
+    await vi.waitFor(() =>
+      expect(bodies).toEqual([{ publish_at: null }]),
+    );
+  });
+
+  it("is disabled while the sermon is locked (under_review)", async () => {
+    backend({ sermon: detail({ status: "under_review" }) });
+    renderEditor();
+
+    expect(await screen.findByLabelText("Publish at")).toBeDisabled();
+  });
+});
+
 /* --- Approval log ----------------------------------------------------- */
 
 describe("SermonEditor — approval log timeline", () => {

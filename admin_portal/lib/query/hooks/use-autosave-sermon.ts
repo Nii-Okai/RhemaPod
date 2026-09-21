@@ -64,6 +64,11 @@ export interface SermonFormValues {
   episode_number: number | null;
   tier: SermonTier;
   tags: string[];
+  /** ISO 8601, or null — mirrors `Announcement.publish_at`. A `published`
+      sermon with a future `publish_at` stays hidden from every public read
+      path until it passes; staff always see it. Null = publish immediately
+      on approval. */
+  publish_at: string | null;
 }
 
 export type SermonPatch = Partial<SermonFormValues>;

@@ -1,7 +1,10 @@
 /**
  * `<input type="datetime-local">` value (`YYYY-MM-DDTHH:mm`, local, no zone) ⇄
- * ISO 8601, for the Announcements editor's "Publish at" / "Expires at" fields
- * (W13, design Screen 8).
+ * ISO 8601. Shared by every editor with a scheduling field: the Announcements
+ * editor's "Publish at" / "Expires at" (W13, design Screen 8) and the sermon
+ * editor's Access-panel "Publish at" (round 2) — factored out of
+ * `components/announcements/datetime.ts` once the sermon editor became a
+ * second consumer.
  *
  * Local, not UTC: a church scheduling a 9am notice picks `09:00` and means
  * their own clock. The backend column is `DateTime(timezone=True)`, so we send
@@ -10,7 +13,7 @@
  *
  * Pure; unit-tested. The native picker only ever yields the exact shape or an
  * empty string, but parsing stays strict — a malformed value returns `ok:false`
- * so the panel can show an inline error instead of posting a 422. A space
+ * so a caller can show an inline error instead of posting a 422. A space
  * separator is still accepted so an ISO-ish paste round-trips.
  */
 

@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  formatLocalDateTime,
-  parseLocalDateTime,
-} from "@/components/announcements/datetime";
+import { formatLocalDateTime, parseLocalDateTime } from "@/lib/datetime";
 
-/* W13 (bugfix batch #7) — the editor's `<input type="datetime-local">` value
-   (`YYYY-MM-DDTHH:mm`, local) ⇄ ISO helpers. Strict parsing so a malformed
-   value shows an inline error instead of posting a 422. */
+/* W13 (bugfix batch #7), extracted to `lib/datetime.ts` in round 2 once the
+   sermon editor became a second consumer — the shared `<input
+   type="datetime-local">` value (`YYYY-MM-DDTHH:mm`, local) ⇄ ISO helpers.
+   Strict parsing so a malformed value shows an inline error instead of
+   posting a 422. */
 
 describe("parseLocalDateTime", () => {
   it("blank → ok with a null iso", () => {
