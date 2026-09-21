@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import Link from "next/link";
+import { CalendarClock } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MediaPlaceholder } from "@/components/portal/media-placeholder";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { TierChip } from "@/components/portal/chips";
+import { SchedulePublishPanel } from "@/components/review/schedule-publish-panel";
 import { toBadgeStatus } from "@/components/sermons/sermon-status";
 import { formatDuration } from "@/lib/format";
 import { provenanceLine } from "@/lib/review/summary";
@@ -99,6 +101,24 @@ import {
    `note`/`mode` and keeps them on a failed send, so a rollback re-shows the
    textarea with the note.
 
+   Scheduled publish (round 2 — scheduled-publish authz fix). A small
+   icon-only trigger (`CalendarClock`, ghost, size sm) sits immediately right
+   of "Approve & publish" on a not-locked pending/under-review card
+   (`aria-label="Approve and schedule for later"`), and right of "Publish" on
+   an `approved` card (`aria-label="Schedule for later"`). Either one flips
+   `mode` to `scheduling`, swapping the action row for
+   `SchedulePublishPanel` in the same slot the reject textarea uses.
+   Confirming calls `onApproveAndSchedule` (pending/under-review — the screen
+   runs `approve` then `publish {publish_at}`) or `onSchedule` (approved — a
+   plain `publish {publish_at}`) with the panel's parsed, already-future ISO
+   string. The pending/under-review trigger inherits the EXACT same
+   `disabled`/lock treatment as "Approve & publish" itself (claim lock,
+   self-author lock) — it is gated on the same underlying `approve` action,
+   not a side door around the existing locks. The approved card's trigger is
+   ungated (`disabled={busy}` only), matching "Publish" on that card. There is
+   no reschedule/cancel of an already-scheduled (published-but-gated) sermon
+   yet — deliberately out of scope this round.
+
    Request failures render as an `<Alert>` at the top of THIS card, never a
    toast (design "Errors").
    ========================================================================== */
@@ -126,11 +146,20 @@ export interface SubmissionCardProps {
   /** Card-top error from a failed/rolled-back action. */
   error: string | null;
   onDismissError: () => void;
-  mode: "idle" | "rejecting";
+  mode: "idle" | "rejecting" | "scheduling";
   note: string;
   onNoteChange: (value: string) => void;
   onStartReject: () => void;
   onCancelReject: () => void;
+  /** Local `datetime-local` text for the `scheduling` mode's
+      `SchedulePublishPanel` (round 2 — scheduled sermon publish). */
+  scheduleValue: string;
+  onScheduleChange: (value: string) => void;
+  /** The icon trigger's click — flips `mode` to `scheduling`. Wired the same
+      way whether the card is pending/under-review or approved; only the
+      resulting panel's `variant` and `onConfirm` target differ. */
+  onStartSchedule: () => void;
+  onCancelSchedule: () => void;
   /** Claim this sermon for review (`POST …/{id}/start-review`). Only wired on a
       `pending_review` card. */
   onStartReview: () => void;
@@ -141,9 +170,15 @@ export interface SubmissionCardProps {
   onPlay: () => void;
   onApproveOnly: () => void;
   onApproveAndPublish: () => void;
+  /** `SchedulePublishPanel`'s Confirm on a pending/under-review card — runs
+      `approve` then `publish {publish_at: iso}`. */
+  onApproveAndSchedule: (iso: string) => void;
   /** Publish an already-`approved` sermon (`POST …/{id}/publish`). Only wired on
       an `approved` card. */
   onPublish: () => void;
+  /** `SchedulePublishPanel`'s Confirm on an `approved` card — a plain
+      `publish {publish_at: iso}`, no `approve` leg. */
+  onSchedule: (iso: string) => void;
   onSendRejection: () => void;
   /** Injectable clock for the provenance line (tests). */
   now?: number;
@@ -180,12 +215,18 @@ export function SubmissionCard({
   onNoteChange,
   onStartReject,
   onCancelReject,
+  scheduleValue,
+  onScheduleChange,
+  onStartSchedule,
+  onCancelSchedule,
   onStartReview,
   onTakeOver,
   onPlay,
   onApproveOnly,
   onApproveAndPublish,
+  onApproveAndSchedule,
   onPublish,
+  onSchedule,
   onSendRejection,
   now,
 }: SubmissionCardProps) {
@@ -331,6 +372,16 @@ export function SubmissionCard({
                 </Button>
               </div>
             </div>
+          ) : mode === "scheduling" ? (
+            <SchedulePublishPanel
+              variant={approved ? "publish" : "approve"}
+              value={scheduleValue}
+              onChange={onScheduleChange}
+              onConfirm={approved ? onSchedule : onApproveAndSchedule}
+              onCancel={onCancelSchedule}
+              busy={busy}
+              now={now}
+            />
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-8">
               {approved ? (
@@ -342,6 +393,16 @@ export function SubmissionCard({
                     onClick={onPublish}
                   >
                     Publish
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-[30px] px-0"
+                    disabled={busy}
+                    aria-label="Schedule for later"
+                    onClick={onStartSchedule}
+                  >
+                    <CalendarClock aria-hidden className="size-4" />
                   </Button>
                   {/* Any manager may reject an already-approved sermon — the
                       backend doesn't claim- or self-author-gate this action
@@ -366,6 +427,20 @@ export function SubmissionCard({
                     onClick={onApproveAndPublish}
                   >
                     Approve &amp; publish
+                  </Button>
+                  {/* Same disabled/lock treatment as "Approve & publish" —
+                      gated on the same underlying `approve` action, not a
+                      side door around the claim/self-author locks. */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-[30px] px-0"
+                    disabled={busy || actionsLocked}
+                    title={actionLockTitle}
+                    aria-label="Approve and schedule for later"
+                    onClick={onStartSchedule}
+                  >
+                    <CalendarClock aria-hidden className="size-4" />
                   </Button>
                   <Button
                     size="sm"

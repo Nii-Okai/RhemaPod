@@ -1343,6 +1343,24 @@
         "title": "ProgressUpdate",
         "type": "object"
       },
+      "PublishRequest": {
+        "properties": {
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          }
+        },
+        "title": "PublishRequest",
+        "type": "object"
+      },
       "PublishResponse": {
         "description": "`publish` adds the number the success toast shows (\"Published to the app\n\u00b7 N subscribers\").",
         "properties": {
@@ -2325,18 +2343,6 @@
             "description": "Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.",
             "title": "Episode Number"
           },
-          "publish_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publish At"
-          },
           "series_id": {
             "anyOf": [
               {
@@ -2801,18 +2807,6 @@
               }
             ],
             "title": "Episode Number"
-          },
-          "publish_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publish At"
           },
           "series_id": {
             "anyOf": [
@@ -5013,6 +5007,7 @@
     },
     "/api/v1/approvals/sermons/{sermon_id}/publish": {
       "post": {
+        "description": "`body` is optional so a bodyless POST \u2014 the existing \"publish now\" call\nthe review-queue frontend already makes \u2014 still works unchanged. When a\nbody IS sent (even `{}` or `{\"publish_at\": null}`), it's an explicit\ninstruction from the reviewer and fully replaces `publish_at` on the row:\na future timestamp schedules it, anything else publishes with no gate.",
         "operationId": "publish_api_v1_approvals_sermons__sermon_id__publish_post",
         "parameters": [
           {
@@ -5026,6 +5021,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublishRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

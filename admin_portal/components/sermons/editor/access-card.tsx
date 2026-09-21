@@ -1,10 +1,7 @@
 "use client";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { EditorField } from "@/components/sermons/editor/field";
-import { Input } from "@/components/ui/input";
 import { Radio } from "@/components/ui/radio";
-import { formatLocalDateTime, parseLocalDateTime } from "@/lib/datetime";
 import type { SermonTier } from "@/lib/query/hooks/use-autosave-sermon";
 
 /* =============================================================================
@@ -18,16 +15,12 @@ import type { SermonTier } from "@/lib/query/hooks/use-autosave-sermon";
    The Inherit sub-line names the resolved series tier. Any change flushes
    through the normal autosave patch.
 
-   "Publish at" (round 2 — scheduled sermon publish) mirrors the Announcement
-   editor's field exactly: a native `<input type="datetime-local">`, local ⇄
-   ISO via the shared `lib/datetime.ts` helpers (`SermonFormValues.publish_at`
-   already holds the wire ISO string, same as every other tracked field, so no
-   local text state is needed here — the native picker only ever emits the
-   exact shape or an empty string). A `published` sermon with a future
-   `publish_at` stays hidden from every public read path until it passes;
-   staff always see it (backend, mirrors `Announcement`). No "must be future"
-   validation — the backend doesn't enforce one for `Announcement.publish_at`
-   either, so this field doesn't invent one.
+   No "Publish at" field here, for any role (round 2 — scheduled-publish
+   authz fix). `publish_at` is no longer settable via `SermonCreate` /
+   `SermonUpdate` — an editor could otherwise set their own publish schedule,
+   bypassing review. It's now settable in exactly one place: the reviewing
+   manager/admin's `PublishRequest` body on `POST …/publish` (the review
+   queue's `SchedulePublishPanel`, not this card).
    ========================================================================== */
 
 export interface AccessCardProps {
@@ -36,14 +29,8 @@ export interface AccessCardProps {
   standalone: boolean;
   /** The series' own tier, for the Inherit sub-line (when in a series). */
   seriesTier?: SermonTier;
-  /** ISO 8601, or null. */
-  publishAt: string | null;
   disabled?: boolean;
   onChange: (tier: SermonTier) => void;
-  /** Debounced, mirrors `DetailsCard`'s text fields — queues the patch. */
-  onPublishAtChange: (publishAt: string | null) => void;
-  /** Flush on blur, same as every other text-like field in the editor. */
-  onPublishAtCommit: () => void;
 }
 
 type Choice = "inherit" | "free" | "paid";
@@ -57,11 +44,8 @@ export function AccessCard({
   tier,
   standalone,
   seriesTier,
-  publishAt,
   disabled = false,
   onChange,
-  onPublishAtChange,
-  onPublishAtCommit,
 }: AccessCardProps) {
   const current: Choice = tier === null ? "inherit" : tier;
 
@@ -129,27 +113,6 @@ export function AccessCard({
           );
         })}
       </fieldset>
-
-      <EditorField
-        label="Publish at"
-        htmlFor="sermon-publish-at"
-        hint="Leave blank to publish immediately when approved."
-      >
-        <Input
-          id="sermon-publish-at"
-          type="datetime-local"
-          value={formatLocalDateTime(publishAt)}
-          disabled={disabled}
-          onChange={(e) => {
-            const parsed = parseLocalDateTime(e.target.value);
-            // The native picker only ever yields the exact shape or an empty
-            // string, so an unparseable value can't happen here — but stay
-            // defensive and simply ignore it rather than clobber the field.
-            if (parsed.ok) onPublishAtChange(parsed.iso);
-          }}
-          onBlur={onPublishAtCommit}
-        />
-      </EditorField>
     </Card>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatLocalDateTime, parseLocalDateTime } from "@/lib/datetime";
+import { formatLocalDateTime, isFuture, parseLocalDateTime } from "@/lib/datetime";
 
 /* W13 (bugfix batch #7), extracted to `lib/datetime.ts` in round 2 once the
    sermon editor became a second consumer — the shared `<input
@@ -46,5 +46,29 @@ describe("formatLocalDateTime", () => {
     expect(formatLocalDateTime(null)).toBe("");
     expect(formatLocalDateTime(undefined)).toBe("");
     expect(formatLocalDateTime("not-a-date")).toBe("");
+  });
+});
+
+/* `isFuture` — backs `SchedulePublishPanel`'s Confirm gate (round 2,
+   scheduled sermon publish, review queue). UI-only guard: the backend enforces
+   no future-only rule on `publish_at` either. */
+describe("isFuture", () => {
+  const NOW = Date.parse("2026-09-21T12:00:00Z");
+
+  it("a later instant is future", () => {
+    expect(isFuture("2026-09-21T12:00:01Z", NOW)).toBe(true);
+  });
+
+  it("the exact same instant is NOT strictly future", () => {
+    expect(isFuture("2026-09-21T12:00:00Z", NOW)).toBe(false);
+  });
+
+  it("an earlier instant is not future", () => {
+    expect(isFuture("2026-09-21T11:59:59Z", NOW)).toBe(false);
+  });
+
+  it("an unparseable string is never future", () => {
+    expect(isFuture("garbage", NOW)).toBe(false);
+    expect(isFuture("", NOW)).toBe(false);
   });
 });

@@ -173,12 +173,10 @@ class SermonCreate(BaseModel):
     )
     tier: ContentTier | None = None  # None = inherit from series / free
     tags: list[str] = Field(default_factory=list, max_length=30)
-    # When it becomes publicly visible once published. Settable while the
-    # sermon is still editable (draft/rejected), same as
-    # AnnouncementCreate.publish_at. None = visible as soon as it is
-    # published. Mirrors the announcement field exactly; no "must be in the
-    # future" check — AnnouncementCreate doesn't enforce one either.
-    publish_at: datetime | None = None
+    # publish_at is intentionally NOT settable here. Only a manager/admin may
+    # gate a sermon's public visibility, and only via the publish review
+    # action (`PublishRequest` below) — never at creation, for any role. See
+    # ADR / plan: sermon-schedule-publish-authz.
 
 
 class SermonUpdate(BaseModel):
@@ -190,7 +188,10 @@ class SermonUpdate(BaseModel):
     episode_number: int | None = Field(default=None, ge=0)
     tier: ContentTier | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
-    publish_at: datetime | None = None
+    # publish_at is intentionally NOT editable here. Only a manager/admin may
+    # gate a sermon's public visibility, and only via the publish review
+    # action (`PublishRequest` below) — never through the general editor,
+    # for any role. See ADR / plan: sermon-schedule-publish-authz.
 
 
 class MediaRefPublic(BaseModel):
@@ -286,6 +287,15 @@ class RejectRequest(BaseModel):
         if not stripped:
             raise ValueError("A rejection note is required")
         return stripped
+
+
+class PublishRequest(BaseModel):
+    # Optional schedule for the publish action, set by the reviewing
+    # manager/admin. None (the default, and what an omitted/empty body
+    # resolves to) means "publish now" — this fully replaces whatever
+    # `publish_at` the row may already carry; there is no partial update or
+    # reschedule/cancel here (out of scope for this round — see plan).
+    publish_at: datetime | None = None
 
 
 class ApprovalLogItem(BaseModel):

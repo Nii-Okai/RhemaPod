@@ -83,7 +83,6 @@ const EMPTY_FORM: SermonFormValues = {
   episode_number: null,
   tier: null,
   tags: [],
-  publish_at: null,
 };
 
 /** The locked-fields banner's title, by status — kept distinct so "in
@@ -126,7 +125,6 @@ function fromDetail(detail: SermonAdminDetail): SermonFormValues {
     // (`detail.tier` is the resolved effective tier — for display only.)
     tier: detail.tier_override ?? null,
     tags: detail.tags,
-    publish_at: detail.publish_at ?? null,
   };
 }
 
@@ -517,14 +515,11 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               tier={form.tier}
               standalone={standalone}
               seriesTier={seriesTier}
-              publishAt={form.publish_at}
               disabled={locked}
               onChange={(tier) => {
                 change({ tier });
                 commit();
               }}
-              onPublishAtChange={(publish_at) => change({ publish_at })}
-              onPublishAtCommit={commit}
             />
             <ApprovalLogCard
               entries={timeline}

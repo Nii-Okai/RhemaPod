@@ -34,11 +34,15 @@ import { SermonPlayerDialog } from "@/components/review/sermon-player-dialog";
 const TOAST_MS = 6000;
 
 interface CardState {
-  mode: "idle" | "rejecting";
+  mode: "idle" | "rejecting" | "scheduling";
   note: string;
+  /** Local `datetime-local` text for the "scheduling" mode's
+      `SchedulePublishPanel` (round 2 — scheduled sermon publish). Same
+      per-card ownership as `note`. */
+  schedule: string;
   error: string | null;
 }
-const BLANK: CardState = { mode: "idle", note: "", error: null };
+const BLANK: CardState = { mode: "idle", note: "", schedule: "", error: null };
 
 function ReviewCardSkeleton() {
   return (
@@ -123,13 +127,15 @@ export function ReviewScreen() {
     onApprovedNotPublished: (vars, detail) =>
       // approve-ok / publish-fail: the approve committed, only publishing threw.
       // The row refetches as `approved` and stays in the queue (#12), where its
-      // card now offers a "Publish" retry — so clear any half-open reject `mode`
-      // (else the card lands on the reject textarea, not the Publish button) and
-      // surface the failure as a transient, dismissible card-top alert. No
-      // standing screen banner: the fix is right there on the card.
+      // card now offers a "Publish" retry — so clear any half-open reject/
+      // scheduling `mode` (else the card lands on a stale panel, not the
+      // Publish button) and surface the failure as a transient, dismissible
+      // card-top alert. No standing screen banner: the fix is right there on
+      // the card.
       patchCard(vars.item.id, {
         mode: "idle",
         note: "",
+        schedule: "",
         error: `Approved, but publishing failed. ${detail}`,
       }),
     onSuccess: (vars) => {
@@ -248,6 +254,7 @@ export function ReviewScreen() {
                 onDismissError={() => patchCard(item.id, { error: null })}
                 mode={state.mode}
                 note={state.note}
+                scheduleValue={state.schedule}
                 now={now}
                 onNoteChange={(value) => patchCard(item.id, { note: value })}
                 onStartReject={() =>
@@ -256,6 +263,15 @@ export function ReviewScreen() {
                 onCancelReject={() =>
                   patchCard(item.id, { mode: "idle", note: "" })
                 }
+                onScheduleChange={(value) =>
+                  patchCard(item.id, { schedule: value })
+                }
+                onStartSchedule={() =>
+                  patchCard(item.id, { mode: "scheduling", error: null })
+                }
+                onCancelSchedule={() =>
+                  patchCard(item.id, { mode: "idle", schedule: "" })
+                }
                 onStartReview={() => actions.startReview(item)}
                 onTakeOver={() => actions.takeOver(item)}
                 onPlay={() =>
@@ -263,7 +279,11 @@ export function ReviewScreen() {
                 }
                 onApproveOnly={() => actions.approve(item)}
                 onApproveAndPublish={() => actions.approveAndPublish(item)}
+                onApproveAndSchedule={(iso) =>
+                  actions.approveAndPublish(item, iso)
+                }
                 onPublish={() => actions.publish(item)}
+                onSchedule={(iso) => actions.publish(item, iso)}
                 onSendRejection={() => actions.reject(item, state.note)}
               />
             );

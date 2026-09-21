@@ -497,7 +497,6 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
         tier=data.tier,
         status=SermonStatus.DRAFT,
         created_by=creator.id,
-        publish_at=data.publish_at,
     )
     for tag in {t.strip().lower() for t in data.tags if t.strip()}:
         sermon.tags.append(SermonTag(tag=tag))
@@ -704,12 +703,24 @@ async def _display_name_for(db: AsyncSession, user_id: uuid.UUID) -> str | None:
     )
 
 
+class _Unset:
+    """Sentinel distinguishing "caller didn't pass `publish_at`" (leave the
+    row's value alone — the bodyless "publish now" back-compat call) from
+    "caller passed `publish_at=None`" (explicit: clear any schedule). A plain
+    `None` default can't make that distinction since `None` is itself a valid,
+    meaningful value here."""
+
+
+_UNSET = _Unset()
+
+
 async def transition(
     db: AsyncSession,
     sermon_id: uuid.UUID,
     action: str,
     actor: User,
     note: str | None = None,
+    publish_at: datetime | None | _Unset = _UNSET,
 ) -> Sermon:
     from app.services.approval import TransitionError
 
@@ -805,6 +816,13 @@ async def transition(
     sermon.status = new_status
     if new_status == SermonStatus.PUBLISHED:
         sermon.published_at = datetime.now(timezone.utc)
+
+    # `publish_at` is only meaningful on the `publish` action, and only when
+    # the caller actually passed one. Explicit `None` fully replaces whatever
+    # was on the row (no gate — publishes now); omitting the kwarg entirely
+    # (the bodyless back-compat "publish now" call) leaves it untouched.
+    if action == "publish" and not isinstance(publish_at, _Unset):
+        sermon.publish_at = publish_at
 
     db.add(ApprovalLog(
         sermon_id=sermon.id,
