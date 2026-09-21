@@ -335,6 +335,12 @@ class ReviewQueueItem(BaseModel):
     category_name: str | None = None
     series_id: uuid.UUID | None
     series_title: str | None = None
+    # Sermon.created_by verbatim (mirrors SermonAdminListItem.created_by /
+    # AnnouncementAdminItem.created_by). Lets the client grey out
+    # Start-review/Approve/Reject on a manager's own sermon — self-approval is
+    # already blocked server-side (content_service.transition 403s it), but the
+    # queue had no way to show that state proactively before a failed attempt.
+    created_by: uuid.UUID
     # `series_id is None` already tells the client whether this is a standalone
     # sermon — the sibling list DTOs (SermonListItem / SermonAdminListItem)
     # carry no such bool, so neither does this one.

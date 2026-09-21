@@ -15,10 +15,7 @@ import {
   announcementBadgeLabel,
   toBadgeStatus,
 } from "@/components/announcements/announcement-status";
-import {
-  formatLocalDateTime,
-  parseLocalDateTime,
-} from "@/components/announcements/datetime";
+import { formatLocalDateTime, parseLocalDateTime } from "@/lib/datetime";
 import { isApiError } from "@/lib/api/errors";
 import { IMAGE_ACCEPT_ATTR } from "@/lib/upload";
 import type { AnnouncementAdminItem } from "@/lib/query/hooks/use-announcements";
@@ -50,8 +47,22 @@ import { DEFAULT_DEBOUNCE_MS } from "@/lib/query/hooks/use-autosave-sermon";
    publish/expiry as mono `YYYY-MM-DD HH:mm` local, pin toggle.
 
    Save  = POST (create) / PATCH (update); stays draft.
-   Primary = "Submit for review" (editor) or "Publish" (manager) — the latter
-   runs the shortest legal path to `published` (`useAnnouncementPublish`).
+   Primary = "Submit for review" (editor, or a manager on their OWN content —
+   round 2 self-approval UX) or "Publish" (manager on someone else's content,
+   or an admin, always) — the latter runs the shortest legal path to
+   `published` (`useAnnouncementPublish`).
+
+   Self-approval UX (round 2): the backend 403s a creator's own `approve`
+   (never `submit`, `reject`, or `publish`) — "You can't approve your own
+   announcement — another manager needs to review it." `target` (below) folds
+   this in: a manager on their own draft/rejected/pending_review row gets the
+   editor's `target: "submit"`, so the walk never attempts `approve`. A fresh
+   CREATE-mode draft is always the caller's own (no "create on behalf of"
+   flow), so this applies from the first click too — a manager's brand-new
+   announcement shows "Submit for review", not "Publish", same as an editor's.
+   Once someone ELSE approves it, `publish` isn't gated at all, so `target`
+   flips back to `"publish"` for anyone (creator included) purely from the
+   status leaving the blocked set — no ownership check on `publish` itself.
 
    Auto-draft (review-fix batch, item 8 — reverses the earlier W13 "Save is
    fully explicit" decision): in CREATE mode, once title AND body are both
@@ -107,6 +118,9 @@ function errorMessage(err: unknown, fallback: string): string {
 export interface AnnouncementEditorPanelProps {
   announcement: AnnouncementAdminItem | null;
   role: string;
+  /** The signed-in user's id — self-approval UX (round 2): the primary button
+      must not attempt to auto-approve the caller's own announcement. */
+  sessionUserId: string;
   /** After a create — hand the new row up so the screen can select it. */
   onCreated: (item: AnnouncementAdminItem) => void;
   /** After the primary action fully lands. `reachedPublished` drives the
@@ -120,13 +134,14 @@ export interface AnnouncementEditorPanelProps {
 export function AnnouncementEditorPanel({
   announcement,
   role,
+  sessionUserId,
   onCreated,
   onPrimaryDone,
 }: AnnouncementEditorPanelProps) {
   const isManager = role === "manager" || role === "admin";
+  const isAdmin = role === "admin";
   const mode: "create" | "edit" = announcement ? "edit" : "create";
   const status = announcement?.status ?? "draft";
-  const target: AnnouncementPublishTarget = isManager ? "publish" : "submit";
 
   // Editors may only touch their own draft/rejected work (`_load_editable`
   // 409s otherwise); managers can edit any status.
@@ -273,6 +288,22 @@ export function AnnouncementEditorPanel({
   // just minted here (create walk / a prior Save) and not yet remounted onto.
   const savedRow = announcement ?? createdRow;
 
+  // Self-approval UX (round 2). The backend 403s a creator's own `approve`
+  // (never `submit` or `reject`, and never `publish` either): a NEW draft is
+  // always the caller's own (no "create on behalf of" flow exists), and an
+  // existing row's `created_by` says so directly. Admins bypass, same as the
+  // backend. Gated only up through `pending_review` — once someone ELSE has
+  // approved it, `publish` isn't gated at all, so the shortcut is legitimate
+  // again regardless of who created it (falls out of `target` below once
+  // `status` leaves the blocked set).
+  const isOwnContent = savedRow ? savedRow.created_by === sessionUserId : true;
+  const selfApprovalBlocked =
+    isOwnContent &&
+    !isAdmin &&
+    (status === "draft" || status === "rejected" || status === "pending_review");
+  const target: AnnouncementPublishTarget =
+    isManager && !selfApprovalBlocked ? "publish" : "submit";
+
   // Kept fresh every render (no deps — mirrors `runFlushRef` in
   // `use-autosave-sermon.ts`) so the debounce timer below always fires the
   // latest title/body, not whatever they were when the timer was armed.
@@ -356,7 +387,10 @@ export function AnnouncementEditorPanel({
   const shownImage = image.uploadedUrl ?? announcement?.image_url ?? null;
   const canReplaceImage = mode === "edit" && !locked && !image.isPending;
 
-  const primaryLabel = isManager ? "Publish" : "Submit for review";
+  // Derived from `target`, not the raw role — a manager blocked from
+  // self-approving their own submission sees the editor's label too, until
+  // someone else approves it (see `target` above).
+  const primaryLabel = target === "publish" ? "Publish" : "Submit for review";
   const canAdvance =
     mode === "create" || pathToTarget(status, target).length > 0;
   const primaryDisabled =
@@ -584,7 +618,7 @@ export function AnnouncementEditorPanel({
               locked
                 ? "Locked while the announcement is in review"
                 : !canAdvance
-                  ? isManager
+                  ? target === "publish"
                     ? "This announcement is already published"
                     : "This announcement is already in review"
                   : undefined

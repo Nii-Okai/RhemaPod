@@ -87,7 +87,7 @@ const CONFIRM_DELETE = (title: string) =>
   `Delete “${title}”? This can’t be undone.`;
 
 export function AnnouncementsScreen() {
-  const { role } = useSession();
+  const { role, id: sessionUserId } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -374,6 +374,7 @@ export function AnnouncementsScreen() {
                   title={row.title}
                   status={row.status}
                   role={role}
+                  isOwnContent={row.created_by === sessionUserId}
                   busy={workflow.isPending(row.id)}
                   onAction={(action) => handleRowAction(row, action)}
                 />
@@ -402,6 +403,7 @@ export function AnnouncementsScreen() {
           key={selected?.id ?? "new"}
           announcement={selected}
           role={role}
+          sessionUserId={sessionUserId}
           onCreated={(item) => selectRow(item.id)}
           onPrimaryDone={({ target, reachedPublished }) => {
             setToast(

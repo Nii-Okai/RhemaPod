@@ -5,6 +5,8 @@ Covers:
      item, null on a pending one.
   2. ReviewQueueItem.episode_number — Sermon.episode_number verbatim (value for
      a series sermon, null for a standalone).
+  2b. ReviewQueueItem.created_by — Sermon.created_by verbatim, matching the
+     submitting editor's id.
   3. POST /approvals/sermons/{id}/reject — note is required and non-blank; an
      empty / whitespace-only / missing note is 422, a real note is 200 and lands
      in the approval log.
@@ -139,6 +141,24 @@ async def test_review_queue_carries_episode_number(client, engine):
 
     assert by_id[ep]["episode_number"] == 1
     assert by_id[standalone]["episode_number"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2b. created_by
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_review_queue_carries_created_by(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    ed_id = await _user_id(engine, "ed@example.com")
+
+    sid = await _new_sermon(client, ed, "Authored")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+
+    item = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"][0]
+
+    assert item["created_by"] == str(ed_id)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

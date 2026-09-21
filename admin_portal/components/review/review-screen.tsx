@@ -175,7 +175,16 @@ export function ReviewScreen() {
   //   - `claimLocked`     — `claimedElsewhere` AND I'm not an admin → the
   //                          approve/reject actions are disabled until I take
   //                          over. Admins bypass the lock (backend does too).
+  //
+  // Self-author lock (review-queue authorship): `item.created_by === my id`
+  // AND I'm not an admin → start-review/approve/reject are disabled
+  // (segregation of duties, mirrors `content_service.transition`'s 403).
+  // Independent of the claim state above — see `SubmissionCard`'s file
+  // header for how the two combine when a self-authored card also happens to
+  // be `claimedElsewhere` (it always is, in practice).
   const isAdmin = session.role === "admin";
+  const selfAuthorLockedFor = (item: ReviewQueueItem) =>
+    item.created_by === session.id && !isAdmin;
   const claimFor = (item: ReviewQueueItem) => {
     if (item.status !== "under_review") {
       return { mine: false, claimedByOther: null, claimedElsewhere: false, claimLocked: false };
@@ -233,6 +242,7 @@ export function ReviewScreen() {
                 claimedByOther={claimedByOther}
                 claimedElsewhere={claimedElsewhere}
                 claimLocked={claimLocked}
+                selfAuthorLocked={selfAuthorLockedFor(item)}
                 busy={actions.isPending(item.id)}
                 error={state.error}
                 onDismissError={() => patchCard(item.id, { error: null })}

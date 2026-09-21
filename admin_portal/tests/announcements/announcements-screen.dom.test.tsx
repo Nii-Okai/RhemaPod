@@ -323,7 +323,16 @@ describe("AnnouncementsScreen — row menu actions hit the right endpoint", () =
 
   it("(pending_review, manager) → Approve · Reject · Edit · Delete; Approve POSTs …/approve", async () => {
     let approved = false;
-    backend([row({ status: "pending_review", title: "Needs a call" })]);
+    // A different creator's submission — round 2's self-approval gate only
+    // locks Approve for the viewer's OWN content (see the dedicated
+    // "self-approval UX" describe block below for the own-content case).
+    backend([
+      row({
+        status: "pending_review",
+        title: "Needs a call",
+        created_by: "someone-else",
+      }),
+    ]);
     server.use(
       http.post("*/api/bff/approvals/announcements/a-1/approve", () => {
         approved = true;
@@ -513,6 +522,54 @@ describe("AnnouncementsScreen — row menu actions hit the right endpoint", () =
     expect(
       await screen.findByText(/Nothing to publish/),
     ).toHaveTextContent("reference: cid-x");
+  });
+});
+
+/* --- self-approval UX (round 2) ------------------------------------ */
+
+describe("AnnouncementsScreen — self-approval UX (row menu)", () => {
+  const openRowMenu = async (title: string) => {
+    await userEvent.click(
+      screen.getByRole("button", { name: `Actions for ${title}` }),
+    );
+    return screen.findByRole("menu");
+  };
+
+  it("pending_review, own content, manager → Approve is locked (disabled + explanatory title); Reject/Edit/Delete stay live", async () => {
+    // The default fixture's created_by ("u-1") matches renderScreen("manager")'s
+    // default session id — this row IS the viewer's own submission.
+    backend([row({ status: "pending_review", title: "My own submission" })]);
+
+    renderScreen("manager");
+    await screen.findByText("My own submission");
+    const menu = await openRowMenu("My own submission");
+
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "Approve",
+      "Reject",
+      "Edit",
+      "Delete",
+    ]);
+    const approve = items[0];
+    expect(approve).toHaveAttribute("data-disabled");
+    expect(approve).toHaveAttribute(
+      "title",
+      "You submitted this — another manager needs to review it.",
+    );
+    // Reject is never self-gated.
+    expect(items[1]).not.toHaveAttribute("data-disabled");
+  });
+
+  it("pending_review, own content, admin → unaffected, Approve stays live", async () => {
+    backend([row({ status: "pending_review", title: "Admin's own submission" })]);
+
+    renderScreen("admin");
+    await screen.findByText("Admin's own submission");
+    const menu = await openRowMenu("Admin's own submission");
+
+    const approve = within(menu).getByRole("menuitem", { name: "Approve" });
+    expect(approve).not.toHaveAttribute("data-disabled");
   });
 });
 
