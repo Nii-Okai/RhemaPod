@@ -932,11 +932,13 @@ export interface paths {
         };
         /**
          * Series Episodes
-         * @description Published episodes of a series, ordered by episode number (gaps allowed).
+         * @description Published, visible episodes of a series, ordered by episode number (gaps
+         *     allowed).
          *
          *     Published-only by design; staff reads (a manager ordering drafts) go through
          *     ``GET /sermons?series_id=`` (Isaac's call — no admin/``include_all`` variant
-         *     here).
+         *     here). Also gated on `publish_at` — a scheduled episode doesn't appear here
+         *     before its own catalog listing would show it.
          */
         get: operations["series_episodes_api_v1_series__series_id__episodes_get"];
         put?: never;
@@ -1846,6 +1848,8 @@ export interface components {
             percent_complete: number | null;
             /** Position Seconds */
             position_seconds: number;
+            /** Publish At */
+            publish_at?: string | null;
             /** Series Id */
             series_id: string | null;
             /** Series Title */
@@ -2255,6 +2259,8 @@ export interface components {
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Publish At */
+            publish_at?: string | null;
             /** Published At */
             published_at: string | null;
             /** Series Id */
@@ -2310,6 +2316,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Publish At */
+            publish_at?: string | null;
             /** Series Id */
             series_id: string | null;
             /** Series Title */
@@ -2338,6 +2346,8 @@ export interface components {
              * @description Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.
              */
             episode_number?: number | null;
+            /** Publish At */
+            publish_at?: string | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -2374,6 +2384,8 @@ export interface components {
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Publish At */
+            publish_at?: string | null;
             /** Published At */
             published_at: string | null;
             /** Series Id */
@@ -2418,6 +2430,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Publish At */
+            publish_at?: string | null;
             /** Series Id */
             series_id: string | null;
             /** Series Title */
@@ -2445,6 +2459,8 @@ export interface components {
             description?: string | null;
             /** Episode Number */
             episode_number?: number | null;
+            /** Publish At */
+            publish_at?: string | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
