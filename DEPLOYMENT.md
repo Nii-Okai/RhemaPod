@@ -66,6 +66,13 @@ invocation takes an env file (or injected env vars) carrying at least
 `SECRET_KEY` and `DATABASE_URL` (see §2 for the full production set); never bake
 secrets into the image.
 
+Same story for the local `docker compose` dev stack: the `api` container is a
+static built image with no source volume mount, and nothing runs migrations on
+boot there either. After merging to `main` (or pulling), run
+`scripts/sync-dev.sh` — rebuilds `api` and runs `alembic upgrade head` against
+the persistent dev Postgres. Skipping it serves stale code against a stale
+schema, silently.
+
 ```bash
 # 1. Build (or pull) the image
 docker build -t fastapi-sermon:"$(git rev-parse --short HEAD)" .
