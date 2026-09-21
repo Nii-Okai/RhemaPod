@@ -27,21 +27,27 @@ describe("announcementRowMenuItems", () => {
     expect(labels("rejected", "manager")).toEqual(["Edit", "Delete"]);
   });
 
-  it("pending_review → Approve · Reject · Edit for a manager", () => {
+  it("pending_review → Approve · Reject · Edit · Delete for a manager", () => {
     expect(labels("pending_review", "manager")).toEqual([
       "Approve",
       "Reject",
       "Edit",
+      "Delete",
     ]);
     expect(labels("pending_review", "admin")).toEqual([
       "Approve",
       "Reject",
       "Edit",
+      "Delete",
     ]);
   });
 
-  it("approved → Publish · Edit for a manager", () => {
-    expect(labels("approved", "manager")).toEqual(["Publish", "Edit"]);
+  it("approved → Publish · Edit · Delete for a manager", () => {
+    expect(labels("approved", "manager")).toEqual([
+      "Publish",
+      "Edit",
+      "Delete",
+    ]);
   });
 
   it("published → Unpublish · Edit · Archive for a manager", () => {
@@ -80,6 +86,16 @@ describe("announcementRowMenuItems", () => {
     expect(
       announcementRowMenuItems("published", "manager").find(
         (i) => i.action === "unpublish",
+      )?.destructive,
+    ).toBe(true);
+    expect(
+      announcementRowMenuItems("pending_review", "manager").find(
+        (i) => i.action === "delete",
+      )?.destructive,
+    ).toBe(true);
+    expect(
+      announcementRowMenuItems("approved", "manager").find(
+        (i) => i.action === "delete",
       )?.destructive,
     ).toBe(true);
   });
