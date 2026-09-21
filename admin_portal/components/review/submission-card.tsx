@@ -62,8 +62,11 @@ import {
 
    Approved (Batch 6 #12). An `approved` sermon stays in the queue until it is
    published. Its card shows "Publish" (`onPublish` → `POST …/{id}/publish`,
-   never claim-gated) + "Watch" only — no approve/reject/start-review/take-over.
-   Publishing removes it from the queue.
+   never claim-gated) + "Reject" (round 2 — `onStartReject`, same inline
+   `mode === "rejecting"` flow as every other status; POSTs `/reject` on an
+   `approved` sermon, available to any manager, no claim/self-author gate on
+   the backend for this status) + "Watch" — no approve/start-review/take-over.
+   Publishing OR rejecting removes it from the queue.
 
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
    revealing the labelled textarea plus [Send rejection] (rose fill + border +
@@ -278,14 +281,28 @@ export function SubmissionCard({
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-8">
               {approved ? (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={busy}
-                  onClick={onPublish}
-                >
-                  Publish
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy}
+                    onClick={onPublish}
+                  >
+                    Publish
+                  </Button>
+                  {/* Any manager may reject an already-approved sermon — the
+                      backend doesn't claim- or self-author-gate this action
+                      (round 2: reject-from-approved). Reuses the same
+                      `mode === "rejecting"` textarea as every other status. */}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={onStartReject}
+                  >
+                    Reject
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button

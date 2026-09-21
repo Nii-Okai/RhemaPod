@@ -9,6 +9,11 @@
  *   rejected         → Edit · Delete            (resubmit lives on the editor
  *                                                panel's primary button)
  *   pending_review   → (manager) Approve · Reject · Edit · Delete
+ *                      (manager, own content, not admin) Approve (locked) ·
+ *                        Reject · Edit · Delete — round 2 self-approval UX:
+ *                        the backend 403s a creator's own `approve` (never
+ *                        `reject`), mirrored here the same way the Sermons
+ *                        review queue locks its own-content actions.
  *                      (editor)  Edit (locked)
  *   approved         → (manager) Publish · Edit · Delete
  *                      (editor)  Edit (locked)
@@ -55,12 +60,24 @@ const LOCKED_EDIT: AnnouncementRowMenuItem = {
   title: "This announcement is past draft — a manager can still edit it.",
 };
 const EDIT: AnnouncementRowMenuItem = { action: "edit", label: "Edit" };
+const LOCKED_APPROVE: AnnouncementRowMenuItem = {
+  action: "approve",
+  label: "Approve",
+  disabled: true,
+  title: "You submitted this — another manager needs to review it.",
+};
 
 export function announcementRowMenuItems(
   status: AnnouncementStatus,
   role: string,
+  /** The viewer created this announcement. Ignored for an admin (backend
+      bypasses the self-author check for admins too) — only gates `approve`;
+      `reject` is never self-gated. */
+  isOwnContent = false,
 ): AnnouncementRowMenuItem[] {
   const isManager = role === "manager" || role === "admin";
+  const isAdmin = role === "admin";
+  const selfApproveBlocked = isOwnContent && !isAdmin;
 
   switch (status) {
     case "draft":
@@ -74,7 +91,9 @@ export function announcementRowMenuItems(
     case "pending_review":
       return isManager
         ? [
-            { action: "approve", label: "Approve" },
+            selfApproveBlocked
+              ? LOCKED_APPROVE
+              : { action: "approve", label: "Approve" },
             { action: "reject", label: "Reject" },
             EDIT,
             { action: "delete", label: "Delete", destructive: true },

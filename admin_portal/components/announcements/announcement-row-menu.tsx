@@ -26,6 +26,9 @@ export interface AnnouncementRowMenuProps {
   title: string;
   status: AnnouncementStatus;
   role: string;
+  /** The viewer created this announcement (round 2 self-approval UX) — hides
+      the self-approve shortcut from the `pending_review` menu. */
+  isOwnContent?: boolean;
   /** Fired for every enabled action, including "edit". */
   onAction: (action: AnnouncementRowAction) => void;
   /** A workflow mutation for THIS row is in flight — disable the menu so a
@@ -39,11 +42,12 @@ export function AnnouncementRowMenu({
   title,
   status,
   role,
+  isOwnContent = false,
   onAction,
   busy = false,
   defaultOpen,
 }: AnnouncementRowMenuProps) {
-  const items = announcementRowMenuItems(status, role);
+  const items = announcementRowMenuItems(status, role, isOwnContent);
 
   return (
     <DropdownMenu

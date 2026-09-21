@@ -92,6 +92,14 @@ const item = (over: Partial<AnnouncementAdminItem> = {}): AnnouncementAdminItem 
   ...over,
 });
 
+// A different id than `item()`'s default `created_by` ("u-1") — the default
+// session principal here is NOT the fixture announcement's creator, so every
+// existing test (walk mechanics, role gate, etc.) exercises the "someone
+// else's content" path unless a test opts into the self-approval scenario by
+// passing a matching `sessionUserId` explicitly (see the dedicated
+// "self-approval UX" describe block).
+const OTHER_USER_ID = "u-other-manager";
+
 function renderPanel(props: Partial<React.ComponentProps<typeof AnnouncementEditorPanel>> = {}) {
   const client = new QueryClient({
     defaultOptions: {
@@ -106,6 +114,7 @@ function renderPanel(props: Partial<React.ComponentProps<typeof AnnouncementEdit
       <AnnouncementEditorPanel
         announcement={props.announcement ?? null}
         role={props.role ?? "manager"}
+        sessionUserId={props.sessionUserId ?? OTHER_USER_ID}
         onCreated={onCreated}
         onPrimaryDone={onPrimaryDone}
       />
@@ -127,6 +136,9 @@ function renderPanel(props: Partial<React.ComponentProps<typeof AnnouncementEdit
           <AnnouncementEditorPanel
             announcement={next.announcement ?? props.announcement ?? null}
             role={next.role ?? props.role ?? "manager"}
+            sessionUserId={
+              next.sessionUserId ?? props.sessionUserId ?? OTHER_USER_ID
+            }
             onCreated={next.onCreated ?? onCreated}
             onPrimaryDone={next.onPrimaryDone ?? onPrimaryDone}
           />
@@ -420,6 +432,132 @@ describe("AnnouncementEditorPanel — primary button role gate", () => {
   });
 });
 
+/* --- self-approval UX (round 2) ---------------------------------- */
+
+describe("AnnouncementEditorPanel — self-approval UX", () => {
+  const ME = "u-self";
+
+  it("a manager's own draft shows 'Submit for review' as primary, never 'Publish' — even though they're a manager", () => {
+    renderPanel({
+      announcement: item({ status: "draft", created_by: ME }),
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+
+  it("a manager's own pending_review submission still reads 'Submit for review', disabled ('already in review') — no self-publish shortcut on re-edit", () => {
+    renderPanel({
+      announcement: item({
+        status: "pending_review",
+        created_by: ME,
+      }),
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    const button = screen.getByRole("button", { name: "Submit for review" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      "This announcement is already in review",
+    );
+  });
+
+  it("the primary button never attempts approve for a manager's own pending_review row (would 403 mid-walk)", async () => {
+    // If the button mistakenly targeted "publish" here, clicking it would
+    // hit approve and 403 — assert the button is inert instead (disabled,
+    // per the test above); this test locks in that no request fires at all.
+    let approveHit = false;
+    server.use(
+      http.post(
+        `*/api/bff/approvals/announcements/${A_ID}/approve`,
+        () => {
+          approveHit = true;
+          return HttpResponse.json(
+            {
+              detail:
+                "You can't approve your own announcement — another manager needs to review it",
+              correlation_id: "cid-self",
+            },
+            { status: 403 },
+          );
+        },
+      ),
+    );
+    renderPanel({
+      announcement: item({ status: "pending_review", created_by: ME }),
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    const button = screen.getByRole("button", { name: "Submit for review" });
+    expect(button).toBeDisabled();
+    await userEvent.click(button);
+    expect(approveHit).toBe(false);
+  });
+
+  it("once approved by someone else, 'Publish' appears for the original creator", () => {
+    renderPanel({
+      announcement: item({ status: "approved", created_by: ME }),
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).toBeNull();
+  });
+
+  it("an admin viewing their own draft is unaffected — 'Publish' from the start", () => {
+    renderPanel({
+      announcement: item({ status: "draft", created_by: ME }),
+      role: "admin",
+      sessionUserId: ME,
+    });
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+  });
+
+  it("a manager on someone ELSE's draft is unaffected — 'Publish' from the start", () => {
+    renderPanel({
+      announcement: item({ status: "draft", created_by: "u-someone-else" }),
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+  });
+
+  it("CREATE mode: a plain manager's brand-new draft shows 'Submit for review', not 'Publish' — a fresh draft is always their own", () => {
+    renderPanel({
+      announcement: null,
+      role: "manager",
+      sessionUserId: ME,
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+
+  it("CREATE mode: an admin's brand-new draft still shows 'Publish'", () => {
+    renderPanel({
+      announcement: null,
+      role: "admin",
+      sessionUserId: ME,
+    });
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+  });
+});
+
 /* --- multi-step publish --------------------------------------- */
 
 describe("AnnouncementEditorPanel — manager Publish walks the shortest path", () => {
@@ -519,9 +657,13 @@ describe("AnnouncementEditorPanel — create-mode Publish surfaces the draft fir
     const onCreated = vi.fn((row: AnnouncementAdminItem) =>
       events.push(`select:${row.id}`),
     );
+    // A brand-new draft is always the caller's own (no "create on behalf of"
+    // flow) — a plain manager would be self-approval-blocked from the first
+    // click (see the dedicated describe block below). Admin here so this test
+    // keeps exercising the FULL create→submit→approve→publish walk mechanics.
     const { onPrimaryDone } = renderPanel({
       announcement: null,
-      role: "manager",
+      role: "admin",
       onCreated,
     });
 
@@ -583,9 +725,11 @@ describe("AnnouncementEditorPanel — create-mode Publish surfaces the draft fir
       }),
     );
 
+    // Same reasoning as the test above — admin bypasses self-approval so this
+    // stays a test of the retry/resume mechanics, not the ownership gate.
     const { onPrimaryDone } = renderPanel({
       announcement: null,
-      role: "manager",
+      role: "admin",
     });
 
     await userEvent.type(screen.getByLabelText("Title"), "Youth camp");

@@ -673,6 +673,51 @@ describe("ReviewScreen — approved rows publish out of the queue (Batch 6 #12)"
   });
 });
 
+describe("ReviewScreen — Reject on an approved card (round 2)", () => {
+  it("offers Reject beside Publish, and sending it POSTs /reject and drops the card", async () => {
+    const rejectBodies: Array<{ note?: string }> = [];
+    backend(
+      [
+        item({
+          id: "a1",
+          title: "Approved, not live",
+          status: "approved",
+          review_claimed_by: "Val Reyes",
+          review_claimed_by_id: "u-val",
+        }),
+      ],
+      { rejectBodies },
+    );
+    renderScreen({ name: "Mia Okafor" });
+    const user = userEvent.setup();
+
+    await screen.findByText("Approved, not live");
+    const card = cardFor("Approved, not live");
+
+    expect(within(card).getByRole("button", { name: "Publish" })).toBeEnabled();
+    const reject = within(card).getByRole("button", { name: "Reject" });
+    expect(reject).toBeEnabled();
+
+    await user.click(reject);
+    await user.type(
+      within(card).getByLabelText(
+        "Rejection note (sent to the editor and kept in the log)",
+      ),
+      "Actually the intro needs a re-record.",
+    );
+    await user.click(
+      within(card).getByRole("button", { name: "Send rejection" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Approved, not live")).not.toBeInTheDocument(),
+    );
+    expect(rejectBodies).toEqual([
+      { note: "Actually the intro needs a re-record." },
+    ]);
+  });
+});
+
 describe("ReviewScreen — inline reject flow", () => {
   it("opens the textarea, gates Send rejection on a non-empty note, posts {note}, and drops the card", async () => {
     const rejectBodies: Array<{ note?: string }> = [];

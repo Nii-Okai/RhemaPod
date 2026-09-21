@@ -8,8 +8,11 @@ import type { AnnouncementStatus } from "@/components/announcements/announcement
    every transition it must offer, and that an editor never sees a manager
    action (or an Edit on a locked row). */
 
-const labels = (status: AnnouncementStatus, role: string) =>
-  announcementRowMenuItems(status, role).map((i) => i.label);
+const labels = (
+  status: AnnouncementStatus,
+  role: string,
+  isOwnContent = false,
+) => announcementRowMenuItems(status, role, isOwnContent).map((i) => i.label);
 
 describe("announcementRowMenuItems", () => {
   it("draft → Edit · Submit for review · Delete (any role)", () => {
@@ -75,6 +78,33 @@ describe("announcementRowMenuItems", () => {
       expect(items[0].disabled).toBe(true);
       expect(items[0].label).toBe("Edit (locked)");
     }
+  });
+
+  it("pending_review, own content, manager (not admin) → Approve is locked; Reject/Edit/Delete stay live", () => {
+    const items = announcementRowMenuItems("pending_review", "manager", true);
+    expect(items.map((i) => i.action)).toEqual([
+      "approve",
+      "reject",
+      "edit",
+      "delete",
+    ]);
+    const approve = items[0];
+    expect(approve.label).toBe("Approve");
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe(
+      "You submitted this — another manager needs to review it.",
+    );
+    expect(items[1].disabled).toBeFalsy();
+  });
+
+  it("pending_review, own content, admin → unaffected, Approve stays live", () => {
+    const items = announcementRowMenuItems("pending_review", "admin", true);
+    expect(items.find((i) => i.action === "approve")?.disabled).toBeFalsy();
+  });
+
+  it("pending_review, NOT own content, manager → Approve stays live", () => {
+    const items = announcementRowMenuItems("pending_review", "manager", false);
+    expect(items.find((i) => i.action === "approve")?.disabled).toBeFalsy();
   });
 
   it("marks Delete and Unpublish destructive", () => {
