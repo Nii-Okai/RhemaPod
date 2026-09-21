@@ -356,6 +356,11 @@ class ReviewQueueItem(BaseModel):
     # already blocked server-side (content_service.transition 403s it), but the
     # queue had no way to show that state proactively before a failed attempt.
     created_by: uuid.UUID
+    # Display name of `created_by`, resolved the same way `review_claimed_by`
+    # is (batch User lookup) — shown on the queue card so a reviewer can see
+    # who submitted the sermon without following a link. None if the author's
+    # full_name is blank (display_name's existing fallback).
+    created_by_name: str | None = None
     # `series_id is None` already tells the client whether this is a standalone
     # sermon — the sibling list DTOs (SermonListItem / SermonAdminListItem)
     # carry no such bool, so neither does this one.

@@ -163,6 +163,22 @@ async def test_review_queue_carries_created_by(client, engine):
     assert item["created_by"] == str(ed_id)
 
 
+async def test_review_queue_carries_created_by_name(client, engine):
+    ed = await make_user(
+        client, engine, "ed@example.com", "editor", full_name="Edith Author"
+    )
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+
+    sid = await _new_sermon(client, ed, "Authored")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+
+    item = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"][0]
+
+    assert item["created_by_name"] == "Edith Author"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2c. thumbnail_url
 # ═══════════════════════════════════════════════════════════════════════════════

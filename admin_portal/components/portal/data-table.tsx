@@ -697,7 +697,7 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                         : undefined
                     }
                     className={cn(
-                      "grid h-[60px] items-center gap-12 border-b border-border-subtle px-20 outline-none transition-colors duration-[140ms] ease-out last:border-b-0 focus-visible:focus-ring-button",
+                      "grid h-[76px] items-center gap-12 border-b border-border-subtle px-20 outline-none transition-colors duration-[140ms] ease-out last:border-b-0 focus-visible:focus-ring-button",
                       selected ? "bg-clay-50" : "hover:bg-surface-sunken",
                       onRowClick ? "cursor-pointer" : undefined,
                     )}

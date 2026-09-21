@@ -293,13 +293,13 @@ export function SermonsScreen() {
         header: "Status",
         gridWidth: "1.1fr",
         cell: (row) => (
-          <div className="flex flex-col items-start gap-4">
+          <div className="flex flex-col items-start gap-8">
             <StatusBadge
               status={toBadgeStatus(row.status)}
               className="whitespace-nowrap"
             />
             {row.publish_at && isScheduled(row, now) ? (
-              <Tag className="whitespace-nowrap">
+              <Tag className="whitespace-nowrap px-11">
                 {`Scheduled · ${scheduledChipLabel(row.publish_at)}`}
               </Tag>
             ) : null}

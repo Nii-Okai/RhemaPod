@@ -1015,7 +1015,9 @@ async def review_queue_page(
         )).all():
             media_counts[sid] = count
 
-    actor_ids = {row[2] for row in rows if row[2] is not None}
+    actor_ids = {row[2] for row in rows if row[2] is not None} | {
+        row[0].created_by for row in rows
+    }
     actor_names: dict[uuid.UUID, str | None] = {}
     if actor_ids:
         for uid, full_name in (await db.execute(
@@ -1037,6 +1039,7 @@ async def review_queue_page(
             series_title=names.series.get(sermon.series_id),
             thumbnail_url=_thumbnail_url(sermon.thumbnail_key),
             created_by=sermon.created_by,
+            created_by_name=actor_names.get(sermon.created_by),
             episode_number=sermon.episode_number,
             tier=effective_tier(sermon, series_map.get(sermon.series_id)),
             status=sermon.status,

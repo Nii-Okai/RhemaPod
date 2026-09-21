@@ -102,7 +102,9 @@ import {
    textarea with the note.
 
    Scheduled publish (round 2 — scheduled-publish authz fix). A small
-   icon-only trigger (`CalendarClock`, ghost, size sm) sits immediately right
+   icon-only trigger (`CalendarClock`, secondary, size sm, size-5 glyph, clay-600
+   border/icon — bumped from ghost/size-4/neutral border, it was easy to miss)
+   sits immediately right
    of "Approve & publish" on a not-locked pending/under-review card
    (`aria-label="Approve and schedule for later"`), and right of "Publish" on
    an `approved` card (`aria-label="Schedule for later"`). Either one flips
@@ -194,6 +196,11 @@ const SELF_AUTHOR_LOCK_TITLE =
 
 function metaText(item: ReviewQueueItem): string {
   return [
+    // Author first — who submitted it is the first thing a reviewer wants
+    // at a glance. Omitted (not "Author not set") when the account has no
+    // full_name — that's a data-quality gap, not a content attribute worth
+    // flagging the way an unset speaker/category is.
+    ...(item.created_by_name ? [`By ${item.created_by_name}`] : []),
     item.speaker_name ?? "Speaker not set",
     item.series_title ?? "Standalone",
     item.category_name ?? "Uncategorised",
@@ -396,13 +403,13 @@ export function SubmissionCard({
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
-                    className="w-[30px] px-0"
+                    variant="secondary"
+                    className="w-[38px] border-clay-600 px-0 text-clay-600 hover:bg-clay-50"
                     disabled={busy}
                     aria-label="Schedule for later"
                     onClick={onStartSchedule}
                   >
-                    <CalendarClock aria-hidden className="size-4" />
+                    <CalendarClock aria-hidden className="size-5" />
                   </Button>
                   {/* Any manager may reject an already-approved sermon — the
                       backend doesn't claim- or self-author-gate this action
@@ -433,14 +440,14 @@ export function SubmissionCard({
                       side door around the claim/self-author locks. */}
                   <Button
                     size="sm"
-                    variant="ghost"
-                    className="w-[30px] px-0"
+                    variant="secondary"
+                    className="w-[38px] border-clay-600 px-0 text-clay-600 hover:bg-clay-50"
                     disabled={busy || actionsLocked}
                     title={actionLockTitle}
                     aria-label="Approve and schedule for later"
                     onClick={onStartSchedule}
                   >
-                    <CalendarClock aria-hidden className="size-4" />
+                    <CalendarClock aria-hidden className="size-5" />
                   </Button>
                   <Button
                     size="sm"

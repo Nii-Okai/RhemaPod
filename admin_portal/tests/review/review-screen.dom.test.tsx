@@ -387,6 +387,34 @@ describe("ReviewScreen — card thumbnail (review-queue-thumbnail)", () => {
   });
 });
 
+describe("ReviewScreen — card author name (review-queue-author-name)", () => {
+  it("shows 'By {name}' first in the meta line when created_by_name is set", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Authored sermon",
+        created_by_name: "Edith Author",
+      }),
+    ]);
+    renderScreen();
+
+    await screen.findByText("Authored sermon");
+    const card = cardFor("Authored sermon");
+    expect(within(card).getByText(/^By Edith Author ·/)).toBeInTheDocument();
+  });
+
+  it("omits the author segment (no placeholder) when created_by_name is null", async () => {
+    backend([
+      item({ id: "a1", title: "No name on file", created_by_name: null }),
+    ]);
+    renderScreen();
+
+    await screen.findByText("No name on file");
+    const card = cardFor("No name on file");
+    expect(within(card).queryByText(/^By /)).not.toBeInTheDocument();
+  });
+});
+
 describe("ReviewScreen — claim state", () => {
   it("keys 'mine' off review_claimed_by_id, not the display name: my card keeps 'Approve only' but drops 'Take over review'", async () => {
     backend([
