@@ -13,6 +13,10 @@ import { toBadgeStatus } from "@/components/sermons/sermon-status";
 import { formatDuration } from "@/lib/format";
 import { provenanceLine } from "@/lib/review/summary";
 import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
+import {
+  pickPlaybackVariant,
+  useSermonStream,
+} from "@/lib/query/hooks/use-sermon-stream";
 
 /* =============================================================================
    SubmissionCard — one Review queue card (design Screen 5, plan W10).
@@ -29,14 +33,21 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    (`onStartReview` → `POST …/{id}/start-review`): the card stays in the queue
    but flips to `under_review` with `review_claimed_by(_id)` set.
 
-   "Watch" opens a media player for the sermon (`onPlay` → a <video>/<audio>
-   dialog fed by `GET /sermons/{id}/stream`). It is disabled when the sermon
-   has no processed renditions yet.
+   "Watch"/"Listen" opens a media player for the sermon (`onPlay` → a
+   <video>/<audio> dialog fed by `GET /sermons/{id}/stream`). It is disabled
+   when the sermon has no processed renditions yet. `ReviewQueueItem` carries
+   no media-type hint, so once `renditions_ready > 0` this card fetches the
+   stream metadata proactively (not lazily on click) to learn `variant.type`
+   and label the button "Listen" for audio-only media, "Watch" otherwise
+   (also the default while that fetch is still in flight). The dialog re-uses
+   the same query key, so it opens against warm cache and just revalidates
+   the (short-lived) signed URL in the background.
 
    Claim state (Batch 6 #9). `mine` / `claimedElsewhere` / `claimLocked` are
    derived by the screen from `review_claimed_by_id` vs the session id:
-     - `mine` — slate "Under review · you", NO "Approve only", no "Start review",
-       no "Take over review". Approve / reject / watch enabled.
+     - `mine` — slate "Under review · you", no "Start review", no "Take over
+       review". Approve (both "Approve & publish" and "Approve only") / reject /
+       watch enabled.
      - `claimedElsewhere` (a manager) → `claimLocked` is set: "Under review ·
        <name>", the approve/reject actions are DISABLED with a "take over to act"
        tooltip, and "Take over review" (`onTakeOver` → `POST …/{id}/take-over-review`)
@@ -55,10 +66,12 @@ import type { ReviewQueueItem } from "@/lib/query/hooks/use-review-queue";
    Publishing removes it from the queue.
 
    The reject flow is inline: "Reject with note" flips `mode` to `rejecting`,
-   revealing the labelled textarea plus [Approve & publish] and [Send rejection]
-   (rose fill + border + text). "Send rejection" is disabled until the note is
-   non-empty. Cancel returns to `idle`. The screen owns `note`/`mode` and keeps
-   them on a failed send, so a rollback re-shows the textarea with the note.
+   revealing the labelled textarea plus [Send rejection] (rose fill + border +
+   text) and [Cancel] — no "Approve & publish" in this branch, since rejecting
+   and approving are mutually exclusive intents. "Send rejection" is disabled
+   until the note is non-empty. Cancel returns to `idle`. The screen owns
+   `note`/`mode` and keeps them on a failed send, so a rollback re-shows the
+   textarea with the note.
 
    Request failures render as an `<Alert>` at the top of THIS card, never a
    toast (design "Errors").
@@ -144,8 +157,16 @@ export function SubmissionCard({
   const underReview = item.status === "under_review";
   const pendingReview = item.status === "pending_review";
   const approved = item.status === "approved";
-  // "Watch" plays the processed media; nothing to play until a rendition exists.
+  // "Watch"/"Listen" plays the processed media; nothing to play until a
+  // rendition exists.
   const hasMedia = item.renditions_ready > 0;
+  // Proactively (not lazily on click) learn the media type so the button can
+  // read "Listen" for audio — `ReviewQueueItem` carries no such hint.
+  const stream = useSermonStream(item.id, hasMedia);
+  const playVariant = stream.data
+    ? pickPlaybackVariant(stream.data.variants)
+    : null;
+  const playLabel = playVariant?.type === "audio" ? "Listen" : "Watch";
   // The other reviewer's name for the claim-lock tooltip — falls back to a
   // generic phrasing when the name didn't resolve but the id did.
   const lockTitle = claimLocked
@@ -236,15 +257,6 @@ export function SubmissionCard({
               <div className="flex flex-wrap gap-8">
                 <Button
                   size="sm"
-                  variant="primary"
-                  disabled={busy || claimLocked}
-                  title={lockTitle}
-                  onClick={onApproveAndPublish}
-                >
-                  Approve &amp; publish
-                </Button>
-                <Button
-                  size="sm"
                   variant="destructive"
                   className="bg-rose-bg"
                   disabled={busy || claimLocked || note.trim() === ""}
@@ -285,17 +297,15 @@ export function SubmissionCard({
                   >
                     Approve &amp; publish
                   </Button>
-                  {!mine ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={busy || claimLocked}
-                      title={lockTitle}
-                      onClick={onApproveOnly}
-                    >
-                      Approve only
-                    </Button>
-                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy || claimLocked}
+                    title={lockTitle}
+                    onClick={onApproveOnly}
+                  >
+                    Approve only
+                  </Button>
                   <Button
                     size="sm"
                     variant="destructive"
@@ -334,7 +344,7 @@ export function SubmissionCard({
                 onClick={onPlay}
                 title={hasMedia ? undefined : "No media uploaded yet"}
               >
-                Watch
+                {playLabel}
               </Button>
               {underReview ? (
                 <span className="text-[13px] font-medium text-slate">
