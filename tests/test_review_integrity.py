@@ -6,12 +6,20 @@ Covers:
      (a different manager can; an admin bypasses). `reject` stays ungated for
      the announcement's own creator (self-correction); a sermon's own creator
      is blocked from the whole review-entry surface (start-review,
-     take-over-review, approve, reject), not just approve — `publish` is
-     never gated (mirrors the existing publish-is-never-claim-gated rule).
+     take-over-review, approve, reject) while the sermon is pending/under
+     review, not just approve — `publish` is never gated (mirrors the
+     existing publish-is-never-claim-gated rule).
   2. `update_sermon` refuses a PATCH once a sermon is `approved` or
      `published` — the real backend guard (the frontend's client-side lock is
      UX only). `unpublish` returns it to `unpublished`, which is editable
      again.
+  3. `reject` also accepts `approved` as a source status (Isaac's call): sends
+     it straight to `rejected` with a note, no publish/unpublish detour
+     needed. Unlike reject-from-review-states, reject-from-approved is NOT
+     gated for the sermon's own creator — by the time a sermon reaches
+     `approved`, someone else already made that call, so the creator
+     rejecting it back is self-correction (equivalent to withdraw), not a
+     conflict of interest.
 """
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -310,3 +318,100 @@ async def test_unpublish_unlocks_the_sermon_for_editing(client, engine):
     )
     assert r.status_code == 200, r.text
     assert r.json()["title"] == "now editable"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# reject accepts APPROVED as a source (no publish/unpublish detour needed)
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_reject_approved_sermon_by_admin(client, engine):
+    admin = await make_user(client, engine, "admin@example.com", "admin")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    sid = await _new_sermon(client, admin, "Reconsider")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=admin)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "actually, let's hold this"}, headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+    # The rejection note landed in the approval log, same as any other reject
+    # (log is oldest-first, so the reject is the last entry).
+    log = (await client.get(
+        f"/api/v1/approvals/sermons/{sid}/approval-log", headers=admin
+    )).json()
+    assert log[-1]["to_status"] == "rejected"
+    assert log[-1]["note"] == "actually, let's hold this"
+
+
+async def test_reject_approved_sermon_by_different_manager(client, engine):
+    mgr_a = await make_user(client, engine, "a@example.com", "manager")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager")
+    sid = await _new_sermon(client, mgr_a, "Own work")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=mgr_a)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr_b)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "second thoughts"}, headers=mgr_b,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+
+async def test_reject_own_approved_sermon_by_creator_allowed(client, engine):
+    """The self-approval carve-out: mgr_a created and cannot approve their own
+    sermon (mgr_b does), but mgr_a CAN reject it back once it's approved — the
+    conflict of interest `approve` guards against isn't present here, since
+    mgr_a isn't the one who made the approval call."""
+    mgr_a = await make_user(client, engine, "a@example.com", "manager")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager")
+    sid = await _new_sermon(client, mgr_a, "Own work")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=mgr_a)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr_b)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "pulling this back myself"}, headers=mgr_a,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+
+async def test_reject_still_gated_for_creator_from_under_review(client, engine):
+    """Unchanged: reject-from-under_review (before anyone has approved
+    anything) is still blocked for the sermon's own creator — the carve-out is
+    specific to the APPROVED source status, not `reject` in general."""
+    mgr_a = await make_user(client, engine, "a@example.com", "manager")
+    mgr_b = await make_user(client, engine, "b@example.com", "manager")
+    sid = await _new_sermon(client, mgr_a, "Own work")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=mgr_a)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/start-review", headers=mgr_b)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "no"}, headers=mgr_a,
+    )
+    assert r.status_code == 403, r.text
+    assert "another manager needs to review it" in r.json()["detail"]
+
+
+async def test_resubmit_after_reject_from_approved(client, engine):
+    """rejected already accepts submit back to pending_review (pre-existing) —
+    confirms the new reject-from-approved path re-enters the normal flow, not
+    a dead end."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    sid = await _new_sermon(client, ed, "Round trip")
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+    await client.post(
+        f"/api/v1/approvals/sermons/{sid}/reject",
+        json={"note": "needs another pass"}, headers=mgr,
+    )
+
+    r = await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "pending_review"

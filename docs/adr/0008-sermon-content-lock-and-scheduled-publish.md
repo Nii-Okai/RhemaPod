@@ -6,17 +6,25 @@
   status guard, no route/schema change); new nullable `sermons.publish_at`
   column (migration `b3c4d5e6f7a8`), `SermonCreate`/`SermonUpdate`/
   `SermonListItem` schema fields, and the public sermon-visibility read paths
-  (catalog list/detail, search, series episodes, streaming)
+  (catalog list/detail, search, series episodes, streaming). §4 (same-day fix
+  pass, follow-up commit): `approval.TRANSITIONS["reject"]`,
+  `content_service.transition`'s self-author check,
+  `content_service.reorder_series_episodes` /
+  `episode_position_move_locked`, `content_service.confirm_thumbnail`.
 - **Deciders:** Isaac
 - **Relates to:** `Announcement.publish_at` / `announcement_service.is_visible`
   (the pattern this item copies exactly), `docs/adr/0006-staff-subscriptions-read-api.md`
-  (precedent for "additive migration, no gate, mandatory record")
+  (precedent for "additive migration, no gate, mandatory record"),
+  `docs/adr/0007-no-self-approval.md` (§4's self-author carve-out extends that
+  ADR's rule, doesn't relitigate it)
 
 > Records two independent, additive changes shipped in the same backend
 > batch: (1) sermons in `approved`/`published` status are now content-locked
 > against `update_sermon`, and (2) sermons gained a `publish_at` field that
 > mirrors `Announcement.publish_at` field-for-field, including the
-> public/staff DTO exposure split.
+> public/staff DTO exposure split. §4 records a same-day follow-up commit
+> that closed three gaps the mandatory `reviewer-gilfoyle` /
+> `security-reviewer` passes found in that batch.
 
 ---
 
@@ -83,24 +91,23 @@ again immediately — no separate "unlock" action needed. This is the intended
 cycle: publish locks it, unpublish unlocks it, exactly as `Announcement`'s
 `unpublish → approved` already works.
 
-**Known pre-existing gap, not fixed here (flagged, not silently worked
-around):** `approved` has no path back to an editable status except
-`approved → published → unpublished`. Looking at `approval.TRANSITIONS`, the
-only action with `approved` in its `allowed_from` is `publish`; neither
-`withdraw` nor `reject` accepts `approved` as a source status. So an
-`approved`-but-not-yet-published sermon that needs a fix must be published
-and then unpublished to become editable again — there is no direct
-"un-approve." This is a pre-existing state-machine gap (not introduced by
-this change) surfaced by adding the lock; widening `withdraw` or `reject` to
-accept `approved` as a source is a state-machine change belonging to its own
-plan step and Isaac's ruling, not folded into this batch.
+**Resolved in the fix pass below (§4): `reject` now accepts `approved` as a
+source.** The gap described in the original text of this ADR — `approved`
+having no path back to editable except the `published → unpublished` detour —
+is closed; see §4 for the transition and the segregation-of-duties interaction
+it raised.
 
-**Dead code, kept.** `update_sermon`'s existing
+**Dead code, deleted.** `update_sermon`'s
 `if changed and sermon.status == SermonStatus.PUBLISHED: await invalidate_catalog_cache()`
-can no longer execute — the new guard above it refuses the update before this
-line is reached whenever status is `PUBLISHED`. Left in place, commented, as
-defense-in-depth against a future relaxation of the guard silently reopening
-the catalog-staleness bug it exists to prevent, rather than deleted.
+was kept at first commit as a commented "defense-in-depth" branch, but a
+comment enforces nothing — flagged in review (gilfoyle) as cargo cult. Removed
+in the fix pass, along with the now-pointless `changed` bookkeeping that only
+existed to feed it. The reasoning it stood for is now a prose comment instead
+of a dead conditional: the guard above unconditionally refuses any update
+while `status == PUBLISHED`, so this function can never be the one that
+dirties a published sermon's cached catalog card — the only path that can is
+unpublish → edit → republish, and `publish`/`unpublish` in
+`content_service.transition` already invalidate the cache themselves.
 
 ### 2 — `publish_at`: mirrors `Announcement.publish_at` exactly
 
@@ -170,6 +177,83 @@ sermon published with no schedule at all (it also waits out the same TTL).
 Not a regression introduced by this change; `announcement_service.list_visible`
 has no such cache, so there is no precedent to match here either way.
 
+### 4 — Fix pass (2026-09-21, same day, separate commit): closing the gaps the reviews found
+
+Both `reviewer-gilfoyle` ("Approve with nits") and `security-reviewer` ("Pass
+with notes") signed off on the batch above but flagged three loose ends. All
+three are addressed in one follow-up commit on the same branch:
+
+**`reject` now accepts `approved` as a source (Isaac's call).** Closes the gap
+noted in §1: `approval.TRANSITIONS["reject"]` now allows `APPROVED →
+REJECTED`, same role rule as the existing pending/under-review case (Manager
+or Admin). A rejected sermon already re-enters the normal flow via `submit`
+(`TRANSITIONS["submit"]` already accepted `REJECTED` as a source, unchanged),
+so rejecting an approved sermon is a real, complete path back to editable —
+not a new dead end.
+
+**Segregation-of-duties interaction, decided explicitly.**
+`content_service.transition`'s self-author block
+(`_SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS = {start_review, approve, reject}`) gates
+on the *action*, not the source status — so without a carve-out, a sermon's
+own creator would also be blocked from rejecting their own **approved**
+sermon, the same as they're blocked from rejecting their own
+pending/under-review one. Decided **not** to block it: by the time a sermon
+reaches `approved`, self-approval is already enforced, so someone else
+necessarily made that call. The creator rejecting their own already-approved
+sermon isn't reviewing their own work — there's no second judgment call being
+skipped, no second person's sign-off being bypassed. It's "I want to pull this
+back," functionally equivalent to `withdraw` (never gated) and directly
+mirrors the existing precedent that an announcement's `reject` is never
+self-gated (`announcement_service.transition`, same reasoning: rejecting your
+own submission is self-correction, not a conflict of interest). Implemented as
+a narrow carve-out in the existing check — `reject` stays gated for the
+sermon's own creator when the source status is `pending_review`/`under_review`
+(unchanged: rejecting *unreviewed* work is still a review decision), gated off
+only when the source is `approved`. Admin bypass is unaffected either way
+(admins were never gated here).
+
+**`reorder_series_episodes` closed the same lock gap `update_sermon` already
+has.** Security review: the bulk `PUT /series/{id}/episode-order` endpoint
+only ever consulted `episode_position_move_locked` against the *review-lock*
+statuses (`pending_review`/`under_review`), never against
+`_CONTENT_LOCKED_MESSAGES` (`approved`/`published`) — so a manager could
+renumber an approved or published episode's `episode_number` through the bulk
+endpoint even though the single-row `PATCH /sermons/{id}` already 409s on the
+identical field for the identical sermon. Fixed by generalising
+`episode_position_move_locked` to take a `locked_statuses` parameter
+(defaulting to the existing review-lock set, so every other call site is
+unaffected), and having `reorder_series_episodes` run the same
+"would this position actually change" check a second time against
+`tuple(_CONTENT_LOCKED_MESSAGES)`. Two separate checks, two separate 409
+messages (an in-review lock reads "in review"; a content lock reads "approved
+or published") so the caller can tell which rule fired, same as the two
+distinct messages `_CONTENT_LOCKED_MESSAGES` already gives per status.
+**No-op semantics preserved, not reinvented:** because both checks reuse the
+same `episode_position_move_locked` predicate, "stays at its current number
+while other episodes shuffle around it" is allowed under the content lock for
+exactly the reason it's already allowed under the review lock — it isn't a
+move.
+
+**`confirm_thumbnail` — lock extended to sermons, deliberately not to
+series.** Security review / gilfoyle: `confirm_thumbnail` had no status check
+at all, so a thumbnail could be swapped on an approved/published sermon with
+no guard, sidestepping the field lock via a different field on the same row.
+Decided to extend `_CONTENT_LOCKED_MESSAGES` to `confirm_thumbnail` for
+`kind == "sermons"` — same 409, same message shape as `update_sermon`'s,
+because a sermon's thumbnail is not incidental presentation metadata: it rides
+on the cached public `SermonListItem` catalog card exactly like title,
+description, and duration do (§1's own reasoning for why *any* field edit on
+a locked sermon needs refusing). **Deliberately not extended to
+`kind == "series"`:** a series never enters the review workflow at all — its
+`status` column only ever moves `draft <-> published` via `update_series`
+(manager-only), which itself imposes no lock on a published series' other
+fields (title, description, tier, thumbnail are all still PATCH-able while
+`published`). Locking only the thumbnail on a published series while leaving
+every other series field open would be a new, inconsistent, unrequested
+restriction — not a gap closure. If Isaac wants a content lock on published
+series generally, that's a separate decision belonging to its own ADR, not an
+extension of this one by implication.
+
 ## Consequences
 
 - **`openapi.json` regenerated and committed.** Additive only: `publish_at`
@@ -187,3 +271,28 @@ has no such cache, so there is no precedent to match here either way.
   from catalog list/detail(404)/search/series-episodes/streaming; staff sees
   it regardless of `publish_at`, always; once `publish_at` passes it appears
   everywhere; `publish_at=None` is an unchanged regression case).
+- **Fix-pass coverage (§4), `openapi.json` unaffected** — none of the four
+  fixes changes a request/response schema (all are service-layer status
+  checks and one state-machine table entry), confirmed by re-running the dump
+  script and diffing against the committed file: no drift.
+  - `tests/test_review_integrity.py` — `reject` from `approved` by admin (log
+    entry + note recorded), by a different manager, and by the sermon's own
+    creator (the SoD carve-out); `reject` still gated for the creator from
+    `under_review` (unchanged case, confirms the carve-out is
+    status-specific); resubmit-after-reject-from-approved round-trips back
+    into `pending_review`.
+  - `tests/test_portal_batch5.py` — bulk reorder refused (409, episode named)
+    when it would renumber an `approved` or a `published` episode, message
+    distinct from the in-review case; a reorder that leaves an approved
+    episode's number unchanged while others move around it still succeeds
+    (same no-op semantics as the existing in-review case).
+  - `tests/test_thumbnails.py` — `confirm_thumbnail` 409s on an
+    `approved`/`published` sermon; a `confirm_thumbnail` on a `published`
+    **series** still succeeds (documents the deliberate series exemption, not
+    an oversight).
+  - `tests/test_sermon_scheduled_publish.py` — `test_staff_streams_scheduled_sermon`:
+    the missing positive case gilfoyle flagged — a manager and the owning
+    editor both get 200 + playback variants from `/stream` on a
+    future-`publish_at`, `PUBLISHED` sermon (the anonymous-404 side was
+    already covered; this closes the untested branch of the same
+    conditional).

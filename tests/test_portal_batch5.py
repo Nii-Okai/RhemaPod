@@ -2,7 +2,8 @@
 
 Covers:
   1. PUT /api/v1/series/{id}/episode-order — bulk atomic reorder, set-equality
-     validation (422), the review lock (409), and the manager-only guard (403).
+     validation (422), the review lock (409), the approved/published content
+     lock (409, ADR 0008 §1), and the manager-only guard (403).
   2. Review lock on episode_number in PATCH /api/v1/sermons/{id} (single row).
   3. Minimal series publish — `status` on SeriesUpdate (manager-only, draft <->
      published only).
@@ -241,6 +242,76 @@ async def test_episode_order_allows_reorder_that_keeps_in_review_number(client, 
     await _submit(client, ed, e2["id"])  # E2 pending_review, number 2
 
     # E2 stays at position 2 — its number does not change, so this is allowed.
+    resp = await client.put(
+        f"/api/v1/series/{series['id']}/episode-order",
+        json={"episode_ids": [e3["id"], e2["id"], e1["id"]]},
+        headers=mgr,
+    )
+    assert resp.status_code == 200
+    assert await _episode_numbers(client, mgr, series["id"]) == {"E1": 3, "E2": 2, "E3": 1}
+
+
+async def test_episode_order_refused_when_approved_episode_would_move(client, engine):
+    """ADR 0008 §1's content lock (APPROVED/PUBLISHED), extended to this bulk
+    endpoint — same episode_number column PATCH /sermons/{id} already refuses
+    to touch on an approved sermon."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    series = await _series(client, ed, "S")
+    e1 = await _episode(client, ed, series["id"], "E1")
+    e2 = await _episode(client, ed, series["id"], "E2")
+    e3 = await _episode(client, ed, series["id"], "E3")
+    await _submit(client, ed, e2["id"])
+    await _start_review(client, mgr, e2["id"])
+    r = await client.post(f"/api/v1/approvals/sermons/{e2['id']}/approve", headers=mgr)
+    assert r.status_code == 200, r.text  # E2 -> approved, number 2
+
+    resp = await client.put(
+        f"/api/v1/series/{series['id']}/episode-order",
+        json={"episode_ids": [e2["id"], e1["id"], e3["id"]]},  # E2 2 -> 1
+        headers=mgr,
+    )
+    assert resp.status_code == 409
+    assert "E2" in resp.json()["detail"]
+    assert "approved" in resp.json()["detail"].lower()
+    # Distinct from the in-review lock message.
+    assert "in review" not in resp.json()["detail"]
+    # Nothing written.
+    assert await _episode_numbers(client, mgr, series["id"]) == {"E1": 1, "E2": 2, "E3": 3}
+
+
+async def test_episode_order_refused_when_published_episode_would_move(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    series = await _series(client, ed, "S")
+    e1 = await _episode(client, ed, series["id"], "E1")
+    e2 = await _episode(client, ed, series["id"], "E2")
+    await _publish(client, ed, mgr, e1["id"])  # E1 -> published, number 1
+
+    resp = await client.put(
+        f"/api/v1/series/{series['id']}/episode-order",
+        json={"episode_ids": [e2["id"], e1["id"]]},  # E1 1 -> 2
+        headers=mgr,
+    )
+    assert resp.status_code == 409
+    assert "E1" in resp.json()["detail"]
+    assert "published" in resp.json()["detail"].lower()
+
+
+async def test_episode_order_allows_reorder_that_keeps_approved_number(client, engine):
+    """Same no-op semantics as the in-review case: staying at its current
+    number while others shuffle around it is not a move."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    series = await _series(client, ed, "S")
+    e1 = await _episode(client, ed, series["id"], "E1")
+    e2 = await _episode(client, ed, series["id"], "E2")
+    e3 = await _episode(client, ed, series["id"], "E3")
+    await _submit(client, ed, e2["id"])
+    await _start_review(client, mgr, e2["id"])
+    r = await client.post(f"/api/v1/approvals/sermons/{e2['id']}/approve", headers=mgr)
+    assert r.status_code == 200, r.text  # E2 -> approved, number 2
+
     resp = await client.put(
         f"/api/v1/series/{series['id']}/episode-order",
         json={"episode_ids": [e3["id"], e2["id"], e1["id"]]},

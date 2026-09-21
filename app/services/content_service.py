@@ -88,11 +88,13 @@ def episode_position_move_locked(
     target_episode_number: int | None = None,
     new_series_id: uuid.UUID | None = None,
     series_id_provided: bool = False,
+    locked_statuses: tuple[SermonStatus, ...] = _REVIEW_LOCK_STATUSES,
 ) -> bool:
-    """True when `sermon` is in review and the given change would move it.
+    """True when `sermon` is locked and the given change would move it.
 
-    An episode in ``pending_review`` / ``under_review`` is an immovable fixed
-    point until the review finishes — along BOTH position axes:
+    An episode in ``pending_review`` / ``under_review`` (the default
+    ``locked_statuses``) is an immovable fixed point until the review
+    finishes — along BOTH position axes:
 
     * ``target_episode_number`` — a number different from the current one.
     * ``series_id`` — moving the episode to a different series at all. Pass
@@ -102,10 +104,13 @@ def episode_position_move_locked(
 
     Both entry points route through here: the single-row ``PATCH /sermons/{id}``
     (which can change either axis) and the bulk
-    ``PUT /series/{id}/episode-order`` (episode number only). A target equal to
-    the current value — or not supplied — is not a move.
+    ``PUT /series/{id}/episode-order`` (episode number only, which also passes
+    ``locked_statuses=tuple(_CONTENT_LOCKED_MESSAGES)`` for a second pass — an
+    approved/published episode is equally immovable, same "would this actually
+    change its number" logic). A target equal to the current value — or not
+    supplied — is not a move, regardless of which lock is being checked.
     """
-    if sermon.status not in _REVIEW_LOCK_STATUSES:
+    if sermon.status not in locked_statuses:
         return False
     if (
         target_episode_number is not None
@@ -559,15 +564,12 @@ async def update_sermon(
             status_code=409,
         )
 
-    changed = False
     for key, value in fields.items():
-        if getattr(sermon, key) != value:
-            changed = True
         setattr(sermon, key, value)
 
-    # Tags are excluded from `fields` (and so from the `changed` check) on
-    # purpose: they are not part of SermonListItem / the cached catalog row, so
-    # a tags-only edit never needs to bust the catalog cache below.
+    # Tags are excluded from `fields` on purpose: they are not part of
+    # SermonListItem / the cached catalog row, so a tags-only edit never needs
+    # to bust a catalog cache entry.
     if data.tags is not None:
         sermon.tags.clear()
         for tag in {t.strip().lower() for t in data.tags if t.strip()}:
@@ -576,21 +578,14 @@ async def update_sermon(
     await db.commit()
     await db.refresh(sermon)
 
-    # A published sermon's card is cached in the public catalog (5 min TTL). Any
-    # effective change to it — not just tier: the cached SermonListItem carries
-    # title, description, thumbnail, duration, episode number, the denormalised
-    # speaker/category/series names and tier — leaves the catalog disagreeing
-    # with the live detail/stream endpoints until the TTL lapses. Commit first,
-    # then invalidate (mirrors update_series / the approval transitions).
-    #
-    # `sermon.status == PUBLISHED` cannot actually be true here any more — the
-    # _CONTENT_LOCKED_MESSAGES guard above now refuses the update before this
-    # point is ever reached. Left in as defense-in-depth (a status this
-    # function never mutates, checked against a moving target — a future
-    # relaxation of that guard must not silently reopen the staleness bug this
-    # line exists to prevent) rather than deleted.
-    if changed and sermon.status == SermonStatus.PUBLISHED:
-        await invalidate_catalog_cache()
+    # No catalog-cache invalidation here (unlike update_series / the approval
+    # transitions): the _CONTENT_LOCKED_MESSAGES guard above already refuses
+    # this function's write entirely while `sermon.status == PUBLISHED`, so a
+    # PATCH that reaches this point can never be dirtying a cached catalog
+    # card in the first place. The only path that mutates a published
+    # sermon's fields is unpublish → edit → republish, and `publish`/
+    # `unpublish` in `content_service.transition` already invalidate the
+    # cache themselves.
 
     log.info("sermon_updated", sermon_id=str(sermon.id), by=str(editor.id))
     return sermon
@@ -642,6 +637,13 @@ _CLAIM_GATED_ACTIONS: frozenset[str] = frozenset({"approve", "reject", "withdraw
 # publish-is-never-claim-gated precedent above). Admin bypasses. Covers
 # `transition()`'s actions; `take_over_review()` (a separate function, not
 # an action in this table) carries the same check inline.
+#
+# `reject` is in this set for the pending_review/under_review case (rejecting
+# your own not-yet-reviewed work is still a review decision), but
+# `transition()` carves out `reject` from APPROVED specifically — see the
+# comment at that check. `approved` is only reachable via someone else's
+# `approve` in the first place, so a self-reject there isn't the same
+# conflict of interest.
 _SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS: frozenset[str] = frozenset(
     {"start_review", "approve", "reject"}
 )
@@ -761,8 +763,18 @@ async def transition(
     # action that's illegal from this status 409s for everyone, self-authored
     # or not — this 403 fires only for an action that would otherwise be
     # allowed.
+    #
+    # Carve-out: `reject` from APPROVED is not gated even for the sermon's own
+    # author. By the time a sermon reaches `approved`, self-approval is
+    # already blocked above, so someone else must have made that call — the
+    # conflict of interest `approve` guards against isn't present when the
+    # author later rejects (pulls back) their own already-approved sermon.
+    # That's self-correction equivalent to `withdraw` (never gated), not a
+    # review decision needing a second person — mirrors the announcement
+    # precedent that `reject` is never self-gated there either.
     if (
         action in _SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS
+        and not (action == "reject" and sermon.status == SermonStatus.APPROVED)
         and sermon.created_by == actor.id
         and actor.role != UserRole.ADMIN
     ):
@@ -1415,9 +1427,11 @@ async def reorder_series_episodes(
 
     Episodes are renumbered ``1..N`` by position, matching
     ``next_episode_number`` (1-based). An episode in ``pending_review`` /
-    ``under_review`` is an immovable fixed point: if the new order would change
-    its number the whole operation is refused with 409, naming the locked
-    episode(s). All rows are written in one transaction or none.
+    ``under_review``, or ``approved`` / ``published``, is an immovable fixed
+    point: if the new order would change its number the whole operation is
+    refused with 409, naming the locked episode(s) (two separate checks, two
+    separate messages, so the caller knows which lock applies). All rows are
+    written in one transaction or none.
 
     NOTE (known race, accepted): the episode set is read with a plain SELECT —
     no ``FOR UPDATE``, no version check. Two managers reordering the same series
@@ -1470,6 +1484,33 @@ async def reorder_series_episodes(
         raise ContentError(
             "Can't reorder — these episodes are in review and their position is "
             f"locked: {named}",
+            status_code=409,
+        )
+
+    # Same immovable-position rule extends to APPROVED/PUBLISHED episodes
+    # (ADR 0008 §1's content lock) — this endpoint mutates the identical
+    # `episode_number` column `PATCH /sermons/{id}` already refuses to touch on
+    # those statuses, so it must refuse it too. Reuses the same "would this
+    # position actually change" predicate, just against the content-locked
+    # statuses instead of the review-locked ones — a no-op position (staying
+    # at its current number while others shuffle around it) is allowed, same
+    # as the review-lock case above.
+    content_locked = [
+        by_id[eid]
+        for position, eid in enumerate(episode_ids, start=1)
+        if episode_position_move_locked(
+            by_id[eid],
+            target_episode_number=position,
+            locked_statuses=tuple(_CONTENT_LOCKED_MESSAGES),
+        )
+    ]
+    if content_locked:
+        named = ", ".join(
+            f"{s.title!r} (episode {s.episode_number})" for s in content_locked
+        )
+        raise ContentError(
+            "Can't reorder — these episodes are approved or published and "
+            f"their position is locked: {named}",
             status_code=409,
         )
 
@@ -1649,6 +1690,18 @@ async def confirm_thumbnail(
     from app.core import storage as storage_module
 
     entity = await _load_thumbnail_target(db, kind, entity_id, actor)
+
+    # Same content lock as `update_sermon` (ADR 0008 §1): a sermon's thumbnail
+    # rides on the cached public catalog card exactly like its other fields, so
+    # swapping it out from under an approved/published sermon would silently
+    # invalidate what was reviewed/what is live, same as any other field edit.
+    # Series-only: `kind == "series"` never reaches an approval workflow at
+    # all (a series is draft/published only, via `update_series`, which has no
+    # equivalent lock on PUBLISHED) — nothing to extend there.
+    if kind == "sermons" and entity.status in _CONTENT_LOCKED_MESSAGES:
+        raise ContentError(
+            _CONTENT_LOCKED_MESSAGES[entity.status], status_code=409
+        )
 
     # The key is supplied by the client, so confine it to this entity's prefix —
     # otherwise a caller could point their thumbnail at any object in the bucket.

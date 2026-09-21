@@ -57,6 +57,54 @@ async def test_sermon_thumbnail_ticket_and_confirm(client, engine):
     assert confirm.json()["thumbnail_url"]
 
 
+async def test_confirm_rejects_approved_sermon(client, engine):
+    """Same content lock as update_sermon (ADR 0008 §1): a thumbnail swap on
+    an approved/published sermon is refused for the same reason — it rides on
+    the cached public catalog card exactly like any other field."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/thumbnail-url", json=IMG, headers=ed,
+    )).json()
+    key = ticket["thumbnail_key"]
+
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/thumbnail/confirm",
+        params={"thumbnail_key": key}, headers=mgr,
+    )
+    assert r.status_code == 409, r.text
+    assert "approved" in r.json()["detail"] and "locked" in r.json()["detail"]
+
+
+async def test_confirm_rejects_published_sermon(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/thumbnail-url", json=IMG, headers=ed,
+    )).json()
+    key = ticket["thumbnail_key"]
+
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/thumbnail/confirm",
+        params={"thumbnail_key": key}, headers=mgr,
+    )
+    assert r.status_code == 409, r.text
+    assert "published" in r.json()["detail"] and "locked" in r.json()["detail"]
+
+
 async def test_sermon_thumbnail_appears_in_catalog(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     mgr = await make_user(client, engine, "m@example.com", "manager")
@@ -147,6 +195,26 @@ async def test_viewer_cannot_set_thumbnail(client, engine):
 
 
 # ── series thumbnails ─────────────────────────────────────────────────────────
+async def test_confirm_thumbnail_on_published_series_still_allowed(client, engine):
+    """Series are deliberately exempt from the sermon content lock: a series
+    never enters the review workflow at all (draft <-> published only, via
+    update_series, which itself has no lock on a published series' other
+    fields either) — nothing to extend here."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Faith"}, headers=ed
+    )).json()
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+
+    ticket, confirm = await upload_thumbnail(client, mgr, "series", series["id"])
+    assert ticket.status_code == 201
+    assert confirm.status_code == 200, confirm.text
+
+
 async def test_series_thumbnail_roundtrip(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     series = (await client.post(

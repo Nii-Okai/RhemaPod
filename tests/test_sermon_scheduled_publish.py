@@ -7,7 +7,7 @@ Covers:
   * A published sermon with a future `publish_at` does not appear in the
     public catalog list, detail (404), search, series-episodes, or the
     streaming endpoint — but a manager/admin's staff read always sees it,
-    regardless of `publish_at`.
+    regardless of `publish_at`, and so does the owning editor's own stream.
   * Once `publish_at` passes, it appears everywhere, exactly like a normal
     publish.
   * `publish_at=None` behaves exactly as before (regression).
@@ -39,6 +39,20 @@ async def make_user(client, engine, email, role):
 
 def iso(dt):
     return dt.isoformat()
+
+
+VIDEO = {"filename": "sermon.mp4", "content_type": "video/mp4", "media_type": "video"}
+
+
+async def _upload_and_process(client, headers, sid, payload=None):
+    """Full upload flow: ticket -> (stub storage auto-'uploads') -> confirm.
+    Mirrors test_media.py's helper of the same shape."""
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=payload or VIDEO, headers=headers
+    )).json()
+    return await client.post(
+        f"/api/v1/uploads/{ticket['job_id']}/confirm", headers=headers
+    )
 
 
 async def _publish(client, ed, mgr, sid):
@@ -156,6 +170,31 @@ async def test_future_publish_at_blocks_streaming(client, engine):
 
     r = await client.get(f"/api/v1/sermons/{sid}/stream")
     assert r.status_code == 404
+
+
+async def test_staff_streams_scheduled_sermon(client, engine):
+    """The positive counterpart to test_future_publish_at_blocks_streaming: a
+    manager (unrestricted) and the owning editor (their own sermon, so
+    staff_scope_hides doesn't apply) both bypass the publish_at gate on
+    /stream, same as they already do on detail/list. media_service.get_stream's
+    `is_staff` check is unconditional on `publish_at` — this pins that so a
+    future refactor of that conditional can't silently regress it."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    future = iso(datetime.now(timezone.utc) + timedelta(days=1))
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": "Scheduled", "publish_at": future},
+        headers=ed,
+    )).json()["id"]
+    upload = await _upload_and_process(client, ed, sid)
+    assert upload.status_code == 200, upload.text
+    await _publish(client, ed, mgr, sid)
+
+    for headers in (mgr, ed):
+        r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["variants"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
