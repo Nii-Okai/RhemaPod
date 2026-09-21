@@ -154,8 +154,10 @@ shipped. This ADR does not touch it.
   `test_publish_action_empty_body_publishes_immediately`,
   `test_publish_action_explicit_null_overrides_stale_publish_at`,
   `test_publish_action_bodyless_leaves_existing_publish_at_untouched` — the
-  last two are the sentinel's actual test: explicit `null` clears, omission
-  preserves.
+  last two are the sentinel's actual test: explicit `null` clears a stale
+  `publish_at` on republish, and a second, genuinely bodyless `publish` call
+  (schedule → unpublish → republish with no `json=` body at all) leaves an
+  already-set `publish_at` untouched.
 
 ## Alternatives considered
 

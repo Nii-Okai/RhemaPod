@@ -375,14 +375,32 @@ async def test_publish_action_bodyless_leaves_existing_publish_at_untouched(
     sends no body at all. That must keep working exactly as it does today —
     distinct from an explicit `{}`/`null`, a truly bodyless POST is a no-op on
     `publish_at` and any value already on the row (e.g. from an earlier
-    publish call's `publish_at`) survives."""
+    publish call's `publish_at`) survives.
+
+    Mirrors `test_publish_action_explicit_null_overrides_stale_publish_at`'s
+    round trip (schedule → unpublish → republish) but the republish here
+    omits the `json=` kwarg entirely — no `Content-Length`, no body on the
+    wire — to actually exercise the `_Unset`-preserves-existing-value leg of
+    the three-way contract, rather than just re-asserting the state that the
+    first, explicit-body publish call already produced."""
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     future = iso(datetime.now(timezone.utc) + timedelta(days=1))
     sid = await _scheduled_sermon(client, ed, mgr, future, title="Bodyless")
+    await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr
+    )
+    assert r.status_code == 200, r.text
 
     listing = (await client.get("/api/v1/catalog/sermons")).json()
     assert listing == []
 
     staff_detail = (await client.get(f"/api/v1/sermons/{sid}", headers=mgr)).json()
     assert staff_detail["publish_at"] is not None
+    got = datetime.fromisoformat(staff_detail["publish_at"].replace("Z", "+00:00"))
+    want = datetime.fromisoformat(future)
+    if got.tzinfo is None:
+        got = got.replace(tzinfo=timezone.utc)
+    assert got == want
