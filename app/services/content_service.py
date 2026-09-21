@@ -1017,6 +1017,7 @@ async def review_queue_page(
             category_name=names.categories.get(sermon.category_id),
             series_id=sermon.series_id,
             series_title=names.series.get(sermon.series_id),
+            thumbnail_url=_thumbnail_url(sermon.thumbnail_key),
             created_by=sermon.created_by,
             episode_number=sermon.episode_number,
             tier=effective_tier(sermon, series_map.get(sermon.series_id)),

@@ -7,6 +7,8 @@ Covers:
      a series sermon, null for a standalone).
   2b. ReviewQueueItem.created_by — Sermon.created_by verbatim, matching the
      submitting editor's id.
+  2c. ReviewQueueItem.thumbnail_url — present for a sermon with a confirmed
+     thumbnail, null for an audio-only one.
   3. POST /approvals/sermons/{id}/reject — note is required and non-blank; an
      empty / whitespace-only / missing note is 422, a real note is 200 and lands
      in the approval log.
@@ -159,6 +161,31 @@ async def test_review_queue_carries_created_by(client, engine):
     )).json()["items"][0]
 
     assert item["created_by"] == str(ed_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2c. thumbnail_url
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_review_queue_carries_thumbnail_url(client, engine):
+    from tests.test_thumbnails import upload_thumbnail
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+
+    with_thumb = await _new_sermon(client, ed, "With cover")
+    await upload_thumbnail(client, ed, "sermons", with_thumb)
+    await client.post(f"/api/v1/sermons/{with_thumb}/submit", headers=ed)
+
+    without_thumb = await _new_sermon(client, ed, "Audio only")
+    await client.post(f"/api/v1/sermons/{without_thumb}/submit", headers=ed)
+
+    items = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"]
+    by_id = {i["id"]: i for i in items}
+
+    assert by_id[with_thumb]["thumbnail_url"]
+    assert by_id[without_thumb]["thumbnail_url"] is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
