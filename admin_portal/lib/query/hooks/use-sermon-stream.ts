@@ -25,10 +25,12 @@ export type StreamVariant = components["schemas"]["StreamVariant"];
 export async function loadSermonStream(
   sermonId: string,
   client: ApiClient = api,
+  signal?: AbortSignal,
 ): Promise<StreamResponse> {
   return unwrap(
     client.GET("/api/v1/sermons/{sermon_id}/stream", {
       params: { path: { sermon_id: sermonId } },
+      signal,
     }),
   );
 }
@@ -47,7 +49,7 @@ export function useSermonStream(
 ) {
   return useQuery({
     queryKey: queryKeys.sermons.stream(sermonId ?? ""),
-    queryFn: () => loadSermonStream(sermonId as string),
+    queryFn: ({ signal }) => loadSermonStream(sermonId as string, api, signal),
     enabled: Boolean(sermonId) && enabled,
     // The signed URLs expire; don't hand a stale one to a <video> minutes later.
     staleTime: 0,
