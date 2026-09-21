@@ -88,16 +88,28 @@ async def test_publish_at_settable_on_create(client, engine):
     assert staff["publish_at"] is not None
 
 
-async def test_publish_at_settable_on_update_while_draft(client, engine):
+async def test_publish_at_ignored_by_general_update(client, engine):
+    """`SermonUpdate` no longer has a `publish_at` field (sermon-schedule-
+    publish-authz fix) — a PATCH carrying it is an unrecognized field on that
+    schema and is silently dropped (this model's existing extra-field
+    behavior; no `extra="forbid"` anywhere in this codebase), not a 422. The
+    rest of the PATCH still applies, and the sermon's `publish_at` is
+    unchanged. It is now settable only via the publish review action."""
     ed = await make_user(client, engine, "ed@example.com", "editor")
     sid = (await client.post(
         "/api/v1/sermons", json={"title": "S"}, headers=ed
     )).json()["id"]
     future = iso(datetime.now(timezone.utc) + timedelta(days=2))
     r = await client.patch(
-        f"/api/v1/sermons/{sid}", json={"publish_at": future}, headers=ed
+        f"/api/v1/sermons/{sid}",
+        json={"title": "S2", "publish_at": future},
+        headers=ed,
     )
     assert r.status_code == 200, r.text
+
+    detail = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
+    assert detail["title"] == "S2"
+    assert detail["publish_at"] is None
 
 
 async def test_publish_at_appears_in_staff_admin_list(client, engine):
@@ -247,3 +259,104 @@ async def test_publish_at_none_publishes_normally(client, engine):
     listing = (await client.get("/api/v1/catalog/sermons")).json()
     assert any(i["id"] == sid for i in listing)
     assert next(i for i in listing if i["id"] == sid)["publish_at"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# `publish_at` on the publish action itself (sermon-schedule-publish-authz):
+# only a manager/admin, only via `POST .../publish`'s optional body.
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_publish_action_sets_future_publish_at(client, engine):
+    """The manager, not the editor, is the one scheduling: a sermon with no
+    publish_at at creation is scheduled via the publish call's body, and the
+    existing visibility gate (_is_visible / sermon_publish_time_passed) picks
+    it up — same as a create-time publish_at, just set through the correct
+    door this time."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Manager-scheduled"}, headers=ed
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    future = iso(datetime.now(timezone.utc) + timedelta(days=1))
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/publish",
+        json={"publish_at": future},
+        headers=mgr,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "published"
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert listing == []
+
+    staff_detail = (await client.get(f"/api/v1/sermons/{sid}", headers=mgr)).json()
+    assert staff_detail["publish_at"] is not None
+
+
+async def test_publish_action_empty_body_publishes_immediately(client, engine):
+    """An explicit `{}` body (distinct from no body at all) is still an
+    explicit "publish now" — same as the bodyless call, and it clears any
+    stale `publish_at` on the row."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S"}, headers=ed
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/publish", json={}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert any(i["id"] == sid for i in listing)
+
+
+async def test_publish_action_explicit_null_overrides_stale_publish_at(client, engine):
+    """A create-time `publish_at` (still settable on `SermonCreate` — out of
+    scope for this fix, see report) is a stale value by the time a manager
+    reviews it. An explicit `{"publish_at": null}` on the publish call is the
+    manager overriding it to "no gate", and takes precedence over whatever was
+    there — this is the authz fix: the reviewer's decision wins."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    future = iso(datetime.now(timezone.utc) + timedelta(days=1))
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "S", "publish_at": future}, headers=ed
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/approvals/sermons/{sid}/publish",
+        json={"publish_at": None},
+        headers=mgr,
+    )
+    assert r.status_code == 200, r.text
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert any(i["id"] == sid for i in listing)
+
+
+async def test_publish_action_bodyless_leaves_existing_publish_at_untouched(
+    client, engine
+):
+    """Backward compat: the review-queue frontend's current `publishCall`
+    sends no body at all. That must keep working exactly as it does today —
+    distinct from an explicit `{}`/`null`, a truly bodyless POST is a no-op on
+    `publish_at` and any value already on the row (e.g. from
+    `SermonCreate.publish_at`) survives."""
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    future = iso(datetime.now(timezone.utc) + timedelta(days=1))
+    sid = await _scheduled_sermon(client, ed, mgr, future, title="Bodyless")
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert listing == []
+
+    staff_detail = (await client.get(f"/api/v1/sermons/{sid}", headers=mgr)).json()
+    assert staff_detail["publish_at"] is not None

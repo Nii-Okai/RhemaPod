@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.models.content_schemas import (
     ApprovalLogItem,
     Page,
+    PublishRequest,
     PublishResponse,
     RejectRequest,
     ReviewQueueItem,
@@ -116,10 +117,23 @@ async def reject(
 
 
 @router.post("/{sermon_id}/publish", response_model=PublishResponse)
-async def publish(sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> PublishResponse:
+async def publish(
+    sermon_id: uuid.UUID, user: ManagerPlus, db: DbDep, body: PublishRequest | None = None
+) -> PublishResponse:
+    """`body` is optional so a bodyless POST — the existing "publish now" call
+    the review-queue frontend already makes — still works unchanged. When a
+    body IS sent (even `{}` or `{"publish_at": null}`), it's an explicit
+    instruction from the reviewer and fully replaces `publish_at` on the row:
+    a future timestamp schedules it, anything else publishes with no gate.
+    """
     actor = await _actor(db, user)
     try:
-        s = await content_service.transition(db, sermon_id, "publish", actor)
+        if body is not None:
+            s = await content_service.transition(
+                db, sermon_id, "publish", actor, publish_at=body.publish_at
+            )
+        else:
+            s = await content_service.transition(db, sermon_id, "publish", actor)
     except ContentError as exc:
         raise _err(exc)
     # The sermon is already published and committed — a failure counting
