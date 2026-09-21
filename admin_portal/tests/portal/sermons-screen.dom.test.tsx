@@ -219,6 +219,38 @@ describe("SermonsScreen — filter bar writes the URL", () => {
   });
 });
 
+describe("SermonsScreen — row thumbnail", () => {
+  it("renders an <img> from thumbnail_url when the sermon has one", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-thumb",
+          title: "Has art",
+          thumbnail_url: "https://cdn.test/s-thumb.jpg",
+        },
+      ],
+    });
+    const view = renderScreen();
+
+    await screen.findByText("Has art");
+    // Decorative (alt="") next to the title link, so it carries no accessible
+    // name/role — assert on the element directly rather than by role.
+    const img = view.container.querySelector("img");
+    expect(img).toHaveAttribute("src", "https://cdn.test/s-thumb.jpg");
+    expect(img).toHaveAttribute("alt", "");
+  });
+
+  it("falls back to the striped placeholder when thumbnail_url is null", async () => {
+    backend({ rows: [{ ...draftRow, thumbnail_url: null }] });
+    const view = renderScreen();
+
+    await screen.findByText(draftRow.title);
+    expect(view.container.querySelector("img")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("image placeholder")).toBeInTheDocument();
+  });
+});
+
 describe("SermonsScreen — empty state", () => {
   it("renders 'No sermons yet' when the list is empty on the default view", async () => {
     nav.search = new URLSearchParams();

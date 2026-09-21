@@ -9,7 +9,13 @@ import {
   it,
   vi,
 } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -21,8 +27,13 @@ import type { AnnouncementAdminItem } from "@/lib/query/hooks/use-announcements"
 /* W13 — the inline editor panel. BFF calls are MSW (§A.11); the storage PUT is
    a fake XHR (same seam as the sermon/series thumbnail tests). Covers: create
    (POST), edit (PATCH), the expires>publish inline guard, the role gate on the
-   primary button, the multi-step Publish path + its failure-phase report, and
-   the image flow (ticket → PUT → confirm, disabled until the draft exists). */
+   primary button, the multi-step Publish path + its failure-phase report, the
+   image flow (ticket → PUT → confirm, disabled until the draft exists), and
+   (review-fix batch, item 8) the debounced auto-draft on title+body with no
+   Save click — fake timers, same technique as
+   `tests/portal/autosave-sermon.dom.test.tsx` (`fireEvent` + `vi.
+   advanceTimersByTimeAsync`, never `userEvent` + fake timers together, and
+   never `waitFor` under fake timers — both deadlock). */
 
 const A_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const STORAGE_URL = "http://storage.test/ann/put";
@@ -102,10 +113,25 @@ function renderPanel(props: Partial<React.ComponentProps<typeof AnnouncementEdit
   );
   return {
     ...utils,
+    client,
     onCreated,
     onPrimaryDone,
     fileInput: () =>
       utils.container.querySelector('input[type="file"]') as HTMLInputElement,
+    /** Re-render with a new `announcement` prop on the SAME client — what the
+        real Announcements screen does after `onCreated` selects the fresh
+        row (`?sel=`) and its detail lands in cache. */
+    rerenderWith: (next: Partial<React.ComponentProps<typeof AnnouncementEditorPanel>>) =>
+      utils.rerender(
+        <QueryClientProvider client={client}>
+          <AnnouncementEditorPanel
+            announcement={next.announcement ?? props.announcement ?? null}
+            role={next.role ?? props.role ?? "manager"}
+            onCreated={next.onCreated ?? onCreated}
+            onPrimaryDone={next.onPrimaryDone ?? onPrimaryDone}
+          />
+        </QueryClientProvider>,
+      ),
   };
 }
 
@@ -237,6 +263,141 @@ describe("AnnouncementEditorPanel — Save", () => {
     expect(d.getDate()).toBe(10);
     expect(d.getHours()).toBe(9);
     expect(d.getMinutes()).toBe(0);
+  });
+});
+
+/* --- auto-draft on title+body (review-fix batch, item 8) --------- */
+
+describe("AnnouncementEditorPanel — auto-draft (debounced, no Save click)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("fires a create once title AND body are both non-empty, 2s after the last change — no Save click", async () => {
+    vi.useFakeTimers();
+    let createCount = 0;
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.post("*/api/bff/announcements", async ({ request }) => {
+        createCount += 1;
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(item({ title: "Youth camp" }), {
+          status: 201,
+        });
+      }),
+    );
+
+    const { onCreated } = renderPanel({ announcement: null });
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Youth camp" },
+    });
+    fireEvent.change(screen.getByLabelText("Body (markdown)"), {
+      target: { value: "Deposits due Friday." },
+    });
+
+    expect(createCount).toBe(0); // still inside the debounce
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1900);
+    });
+    expect(createCount).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(createCount).toBe(1);
+    expect(body).toMatchObject({
+      title: "Youth camp",
+      body: "Deposits due Friday.",
+    });
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("title alone does not create — AnnouncementCreate.body is required, unlike SermonCreate", async () => {
+    vi.useFakeTimers();
+    let createCount = 0;
+    server.use(
+      http.post("*/api/bff/announcements", async () => {
+        createCount += 1;
+        return HttpResponse.json(item(), { status: 201 });
+      }),
+    );
+
+    renderPanel({ announcement: null });
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Youth camp" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(createCount).toBe(0);
+  });
+
+  it("an empty (title-less) editor never fires a create", async () => {
+    vi.useFakeTimers();
+    let createCount = 0;
+    server.use(
+      http.post("*/api/bff/announcements", async () => {
+        createCount += 1;
+        return HttpResponse.json(item(), { status: 201 });
+      }),
+    );
+
+    renderPanel({ announcement: null });
+    fireEvent.change(screen.getByLabelText("Body (markdown)"), {
+      target: { value: "Deposits due Friday." },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(createCount).toBe(0);
+  });
+
+  it("the image slot enables once the debounced create resolves and the screen re-selects the row", async () => {
+    vi.useFakeTimers();
+    server.use(
+      http.post("*/api/bff/announcements", async ({ request }) => {
+        const sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { ...item(), ...sent, image_url: null },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const createdRows: AnnouncementAdminItem[] = [];
+    const { rerenderWith } = renderPanel({
+      announcement: null,
+      onCreated: (row) => createdRows.push(row),
+    });
+
+    const addImage = screen.getByRole("button", { name: "Add image" });
+    expect(addImage).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Youth camp" },
+    });
+    fireEvent.change(screen.getByLabelText("Body (markdown)"), {
+      target: { value: "Deposits due Friday." },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(createdRows).toHaveLength(1);
+    const created = createdRows[0]!;
+
+    // What the real screen does next: select the row, its detail lands in
+    // props as `announcement`.
+    rerenderWith({ announcement: created });
+
+    expect(
+      screen.getByRole("button", { name: "Add image" }),
+    ).toBeEnabled();
   });
 });
 

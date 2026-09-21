@@ -33,6 +33,7 @@ import {
   type AnnouncementPublishTarget,
   pathToTarget,
 } from "@/lib/query/hooks/use-announcement-publish";
+import { DEFAULT_DEBOUNCE_MS } from "@/lib/query/hooks/use-autosave-sermon";
 
 /* =============================================================================
    AnnouncementEditorPanel — the right column of the Announcements screen
@@ -51,6 +52,21 @@ import {
    Save  = POST (create) / PATCH (update); stays draft.
    Primary = "Submit for review" (editor) or "Publish" (manager) — the latter
    runs the shortest legal path to `published` (`useAnnouncementPublish`).
+
+   Auto-draft (review-fix batch, item 8 — reverses the earlier W13 "Save is
+   fully explicit" decision): in CREATE mode, once title AND body are both
+   non-empty, a debounced (`DEFAULT_DEBOUNCE_MS`, same window as the sermon
+   editor's autosave) effect fires the SAME create path `handleSave` uses, so
+   the image slot (`canReplaceImage`, gated on a saved row existing) unlocks
+   without an explicit click. Title ALONE does not trigger it, unlike the
+   sermon editor: `AnnouncementCreate.body` is `min_length=1` (required) where
+   `SermonCreate` has no required field beyond title — creating on title alone
+   would just 422. This means an abandoned `/announcements/new` with only a
+   title now leaves nothing behind (consistent with the old behavior for that
+   partial case); once both title and body exist, though, a draft WILL be
+   created and left behind if abandoned — the same "abandoned but real" state
+   the sermon editor already accepts, and a deliberate reversal of the old
+   "abandoned /announcements/new creates nothing" guarantee.
 
    `expires_at > publish_at` is checked inline before submit, matching the
    server validator, so it never surfaces as a 422. Request failures render as
@@ -256,6 +272,42 @@ export function AnnouncementEditorPanel({
   // The saved row this panel is working, whether it arrived as a prop or was
   // just minted here (create walk / a prior Save) and not yet remounted onto.
   const savedRow = announcement ?? createdRow;
+
+  // Kept fresh every render (no deps — mirrors `runFlushRef` in
+  // `use-autosave-sermon.ts`) so the debounce timer below always fires the
+  // latest title/body, not whatever they were when the timer was armed.
+  const autoCreateRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    autoCreateRef.current = () => {
+      if (savedRow || create.isPending) return;
+      if (form.title.trim() === "" || form.body.trim() === "") return;
+      if (hasBlockingError) return;
+      create.mutate(buildCreateBody(), {
+        onSuccess: (item) => {
+          setCreatedRow(item);
+          setBaseline(stateFrom(item));
+          onCreated(item);
+        },
+        onError: (err) =>
+          setAlert(errorMessage(err, "Couldn’t create the announcement.")),
+      });
+    };
+  });
+
+  // Debounced auto-draft — see the file-header comment. Only in CREATE mode,
+  // and only until a row exists; once `savedRow` is set this effect goes
+  // inert (further edits flow through the explicit Save/patch path, same as
+  // before this change).
+  React.useEffect(() => {
+    if (mode !== "create" || savedRow) return;
+    if (form.title.trim() === "" || form.body.trim() === "") return;
+    if (hasBlockingError) return;
+    const timer = setTimeout(
+      () => autoCreateRef.current(),
+      DEFAULT_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [mode, savedRow, form.title, form.body, hasBlockingError]);
 
   const handleSave = () => {
     if (!guard()) return;

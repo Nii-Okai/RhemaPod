@@ -12,7 +12,9 @@
  *   publish    POST /api/v1/approvals/announcements/{id}/publish        manager+
  *   unpublish  POST /api/v1/approvals/announcements/{id}/unpublish      manager+
  *   archive    POST /api/v1/approvals/announcements/{id}/archive        manager+
- *   delete     DELETE /api/v1/announcements/{id}                        editor+ (own draft/rejected)
+ *   delete     DELETE /api/v1/announcements/{id}                        editor+ (own draft/rejected);
+ *                                                                        manager+ (any non-published status —
+ *                                                                        draft/rejected/pending_review/approved/archived)
  *
  * Status transitions are NOT optimistic — the W10 review-actions precedent:
  * show the server's result, don't flip a badge on a guess and risk a rollback

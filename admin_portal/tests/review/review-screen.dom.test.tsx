@@ -31,8 +31,9 @@ import type {
 } from "@/lib/query/hooks/use-review-queue";
 
 /* W10 — the Review queue, rendered (happy-dom). Every backend call is MSW,
-   never a mocked fetch (§A.11). Covers: the >48h alert, "Under review · you"
-   dropping "Approve only", the inline reject flow (guard + rollback with the
+   never a mocked fetch (§A.11). Covers: the >48h alert, "Approve only"
+   staying available whether the card is unclaimed or claimed by me, the
+   inline reject flow (guard + rollback with the
    note preserved), approve-and-publish as two ordered calls + the toast, the
    card title linking to /sermons/{id}, "Start review" claiming a pending card
    (+ rollback), per-card pending gating under concurrent actions, "Watch"
@@ -255,6 +256,25 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
         return HttpResponse.json({ id: params.id, status: "rejected" });
       },
     ),
+    // Default stream stub — SubmissionCard now fetches this proactively (not
+    // just on "Watch"/"Listen" click) for any card with renditions_ready > 0,
+    // to learn the media type for the button label. Every `item()` default
+    // has renditions_ready: 2, so most tests in this file hit this route
+    // whether or not they care about playback; a test that DOES care
+    // registers its own `server.use(...)` afterward, which takes priority.
+    http.get("*/api/bff/sermons/:id/stream", ({ params }) =>
+      HttpResponse.json({
+        sermon_id: params.id,
+        expires_in: 3600,
+        variants: [
+          {
+            quality: "720p",
+            type: "video",
+            url: `https://cdn.test/${params.id}.mp4`,
+          },
+        ],
+      }),
+    ),
   );
 }
 
@@ -314,7 +334,7 @@ describe("ReviewScreen — >48h alert", () => {
 });
 
 describe("ReviewScreen — claim state", () => {
-  it("keys 'mine' off review_claimed_by_id, not the display name: my card drops 'Approve only' and 'Take over review'", async () => {
+  it("keys 'mine' off review_claimed_by_id, not the display name: my card keeps 'Approve only' but drops 'Take over review'", async () => {
     backend([
       item({
         id: "a1",
@@ -338,8 +358,8 @@ describe("ReviewScreen — claim state", () => {
     const mine = cardFor("Mine to review");
     expect(within(mine).getByText("Under review · you")).toBeInTheDocument();
     expect(
-      within(mine).queryByRole("button", { name: "Approve only" }),
-    ).not.toBeInTheDocument();
+      within(mine).getByRole("button", { name: "Approve only" }),
+    ).toBeEnabled();
     expect(
       within(mine).queryByRole("button", { name: "Take over review" }),
     ).not.toBeInTheDocument();
@@ -749,74 +769,39 @@ describe("ReviewScreen — approve & publish", () => {
     expect(calls).toEqual(["approve", "publish"]);
   });
 
-  it("approve-ok / publish-fail from inside reject mode: clears the reject textarea, leaves an approved card with a card-top error and a Publish retry — no standing screen banner", async () => {
-    const calls: string[] = [];
-    backend([item({ id: "s7", title: "Half shipped" })], {
-      calls,
-      publishFailTimes: 1,
-      keepApproved: true,
-    });
+  it("reject mode hides 'Approve & publish' — only 'Send rejection' and 'Cancel' show, and Cancel restores the full action row", async () => {
+    backend([item({ id: "s7", title: "Half shipped" })]);
 
     renderScreen();
     const user = userEvent.setup();
     await screen.findByText("Half shipped");
-
-    // Open reject mode first, then approve & publish from inside it — this is the
-    // path that used to leave the card dangling in `mode: "rejecting"`.
-    await user.click(screen.getByRole("button", { name: "Reject with note" }));
-    await user.type(
-      screen.getByLabelText(
-        "Rejection note (sent to the editor and kept in the log)",
-      ),
-      "changed my mind, shipping it",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Approve & publish" }),
-    );
-
-    // approve committed, publish 500. The row refetches as `approved` and stays
-    // in the queue (#12); its card carries a card-top alert (not a screen-level
-    // banner) and the "Publish" retry.
-    await waitFor(() =>
-      expect(
-        within(cardFor("Half shipped")).getByText(
-          /That action didn’t go through/,
-        ),
-      ).toBeInTheDocument(),
-    );
     const card = cardFor("Half shipped");
-    expect(
-      within(card).getByText(/Approved, but publishing failed/),
-    ).toBeInTheDocument();
-    expect(within(card).getByText(/Encoder queue unreachable/)).toBeInTheDocument();
 
-    // The reject mode is cleared — no textarea, no "Send rejection".
+    await user.click(within(card).getByRole("button", { name: "Reject with note" }));
+
+    // While rejecting: no "Approve & publish" — approving and rejecting are
+    // mutually exclusive intents (fix: reject mode no longer offers it).
+    expect(
+      within(card).queryByRole("button", { name: "Approve & publish" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Send rejection" }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Cancel" }),
+    ).toBeInTheDocument();
+
+    // Cancel returns to idle: the full action row (incl. "Approve & publish")
+    // is back, and the reject textarea is gone.
+    await user.click(within(card).getByRole("button", { name: "Cancel" }));
+    expect(
+      within(card).getByRole("button", { name: "Approve & publish" }),
+    ).toBeEnabled();
     expect(
       within(card).queryByLabelText(
         "Rejection note (sent to the editor and kept in the log)",
       ),
     ).not.toBeInTheDocument();
-    expect(
-      within(card).queryByRole("button", { name: "Send rejection" }),
-    ).not.toBeInTheDocument();
-
-    // It shows the "Publish" retry and no approve/reject affordance.
-    expect(
-      within(card).getByRole("button", { name: "Publish" }),
-    ).toBeInTheDocument();
-    expect(
-      within(card).queryByRole("button", { name: "Approve & publish" }),
-    ).not.toBeInTheDocument();
-
-    // No screen-level "publish it elsewhere" banner, no `sermon page` link.
-    expect(
-      screen.queryByText(/was approved, but publishing failed/),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "sermon page" }),
-    ).not.toBeInTheDocument();
-
-    expect(calls).toEqual(["approve", "publish"]);
   });
 
   it("a card never in reject mode is unaffected by the mode reset: approve-ok / publish-fail still lands on a Publish retry", async () => {
@@ -967,7 +952,7 @@ describe("useReviewActions — approvePublish on an already-approved item", () =
 });
 
 describe("ReviewScreen — Start review claims the sermon", () => {
-  it("POSTs start-review, keeps the card in the queue as 'Under review · you', and drops 'Start review' + 'Approve only'", async () => {
+  it("POSTs start-review, keeps the card in the queue as 'Under review · you', drops 'Start review' but keeps 'Approve only'", async () => {
     const calls: string[] = [];
     backend([item({ id: "a1", title: "Claim me" })], {
       calls,
@@ -985,13 +970,20 @@ describe("ReviewScreen — Start review claims the sermon", () => {
     expect(
       screen.queryByRole("button", { name: "Start review" }),
     ).not.toBeInTheDocument();
+    // Present now that I hold the claim, but still busy (this same mutation
+    // is in flight) until it settles.
     expect(
-      screen.queryByRole("button", { name: "Approve only" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Approve only" }),
+    ).toBeDisabled();
 
     await waitFor(() => expect(calls).toContain("start-review"));
-    // Still claimed after the settle refetch.
+    // Still claimed after the settle refetch, and now actionable.
     expect(screen.getByText("Under review · you")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Approve only" }),
+      ).toBeEnabled(),
+    );
     expect(calls.filter((c) => c === "start-review")).toHaveLength(1);
   });
 
@@ -1094,11 +1086,14 @@ describe("ReviewScreen — concurrent actions", () => {
     const secondCard = cardFor("Second up");
     // a2's mutation has settled — its actions are live again, NOT held disabled
     // by a1's still-in-flight approve (per-id gating, not one global flag).
+    // It rolled back still in reject mode (note preserved), so it's the
+    // reject-mode pair — "Approve & publish" isn't offered here — not "Approve
+    // & publish" itself.
     expect(
       within(secondCard).getByRole("button", { name: "Send rejection" }),
     ).toBeEnabled();
     expect(
-      within(secondCard).getByRole("button", { name: "Approve & publish" }),
+      within(secondCard).getByRole("button", { name: "Cancel" }),
     ).toBeEnabled();
 
     // The bystander card was never acted on and is never disabled — proof the
@@ -1169,25 +1164,36 @@ describe("ReviewScreen — Watch plays the sermon media", () => {
     const user = userEvent.setup();
     await screen.findByText("Watch me");
 
+    // The card already fetched this proactively (for the button label) —
+    // wait for that to settle before clicking, then opening the dialog
+    // revalidates the (short-lived) signed URL once more.
+    await waitFor(() => expect(hit).toBeGreaterThanOrEqual(1));
     await user.click(screen.getByRole("button", { name: "Watch" }));
 
     const dialog = await screen.findByRole("dialog");
     const player = await within(dialog).findByTestId("sermon-player");
     expect(player.tagName).toBe("VIDEO");
     expect(player).toHaveAttribute("src", "https://cdn.test/a1.mp4");
-    expect(hit).toBe(1);
+    expect(hit).toBeGreaterThanOrEqual(1);
   });
 
-  it("mounts an <audio> player when the media ref is audio", async () => {
-    backend([item({ id: "a1", title: "Listen", renditions_ready: 1 })]);
+  it("mounts an <audio> player when the media ref is audio, and labels the button 'Listen'", async () => {
+    backend([item({ id: "a1", title: "Listen to this", renditions_ready: 1 })]);
     server.use(
       stream([{ type: "audio", url: "https://cdn.test/a1.m4a" }]),
     );
 
     renderScreen();
     const user = userEvent.setup();
-    await screen.findByText("Listen");
-    await user.click(screen.getByRole("button", { name: "Watch" }));
+    await screen.findByText("Listen to this");
+
+    // The proactive prefetch resolves the media type to audio before any
+    // click — the button reads "Listen", not "Watch".
+    const listen = await screen.findByRole("button", { name: "Listen" });
+    expect(
+      screen.queryByRole("button", { name: "Watch" }),
+    ).not.toBeInTheDocument();
+    await user.click(listen);
 
     const dialog = await screen.findByRole("dialog");
     const player = await within(dialog).findByTestId("sermon-player");

@@ -196,11 +196,20 @@ export function SermonsScreen() {
         gridWidth: "2.4fr",
         cell: (row) => (
           <div className="flex min-w-0 items-center gap-10">
-            <MediaPlaceholder
-              scale="thumb"
-              aria-hidden
-              className="h-[24px] w-[40px] shrink-0 rounded-4 p-0"
-            />
+            {row.thumbnail_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={row.thumbnail_url}
+                alt=""
+                className="h-[24px] w-[40px] shrink-0 rounded-4 object-cover"
+              />
+            ) : (
+              <MediaPlaceholder
+                scale="thumb"
+                aria-hidden
+                className="h-[24px] w-[40px] shrink-0 rounded-4 p-0"
+              />
+            )}
             <Link
               href={`/sermons/${row.id}`}
               onClick={(event) => event.stopPropagation()}

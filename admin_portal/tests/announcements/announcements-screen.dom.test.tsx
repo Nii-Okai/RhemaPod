@@ -321,7 +321,7 @@ describe("AnnouncementsScreen — row menu actions hit the right endpoint", () =
     return screen.findByRole("menu");
   };
 
-  it("(pending_review, manager) → Approve · Reject · Edit; Approve POSTs …/approve", async () => {
+  it("(pending_review, manager) → Approve · Reject · Edit · Delete; Approve POSTs …/approve", async () => {
     let approved = false;
     backend([row({ status: "pending_review", title: "Needs a call" })]);
     server.use(
@@ -339,7 +339,7 @@ describe("AnnouncementsScreen — row menu actions hit the right endpoint", () =
       within(menu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["Approve", "Reject", "Edit"]);
+    ).toEqual(["Approve", "Reject", "Edit", "Delete"]);
 
     await userEvent.click(within(menu).getByRole("menuitem", { name: "Approve" }));
     await vi.waitFor(() => expect(approved).toBe(true));

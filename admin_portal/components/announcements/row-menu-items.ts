@@ -8,9 +8,9 @@
  *   draft            → Edit · Submit for review · Delete
  *   rejected         → Edit · Delete            (resubmit lives on the editor
  *                                                panel's primary button)
- *   pending_review   → (manager) Approve · Reject · Edit
+ *   pending_review   → (manager) Approve · Reject · Edit · Delete
  *                      (editor)  Edit (locked)
- *   approved         → (manager) Publish · Edit
+ *   approved         → (manager) Publish · Edit · Delete
  *                      (editor)  Edit (locked)
  *   published        → (manager) Unpublish · Edit · Archive
  *                      (editor)  Edit (locked)
@@ -77,11 +77,16 @@ export function announcementRowMenuItems(
             { action: "approve", label: "Approve" },
             { action: "reject", label: "Reject" },
             EDIT,
+            { action: "delete", label: "Delete", destructive: true },
           ]
         : [LOCKED_EDIT];
     case "approved":
       return isManager
-        ? [{ action: "publish", label: "Publish" }, EDIT]
+        ? [
+            { action: "publish", label: "Publish" },
+            EDIT,
+            { action: "delete", label: "Delete", destructive: true },
+          ]
         : [LOCKED_EDIT];
     case "published":
       return isManager
