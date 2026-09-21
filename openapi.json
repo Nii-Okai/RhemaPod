@@ -2343,18 +2343,6 @@
             "description": "Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.",
             "title": "Episode Number"
           },
-          "publish_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publish At"
-          },
           "series_id": {
             "anyOf": [
               {

@@ -497,7 +497,6 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
         tier=data.tier,
         status=SermonStatus.DRAFT,
         created_by=creator.id,
-        publish_at=data.publish_at,
     )
     for tag in {t.strip().lower() for t in data.tags if t.strip()}:
         sermon.tags.append(SermonTag(tag=tag))

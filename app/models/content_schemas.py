@@ -173,12 +173,10 @@ class SermonCreate(BaseModel):
     )
     tier: ContentTier | None = None  # None = inherit from series / free
     tags: list[str] = Field(default_factory=list, max_length=30)
-    # When it becomes publicly visible once published. Settable while the
-    # sermon is still editable (draft/rejected), same as
-    # AnnouncementCreate.publish_at. None = visible as soon as it is
-    # published. Mirrors the announcement field exactly; no "must be in the
-    # future" check — AnnouncementCreate doesn't enforce one either.
-    publish_at: datetime | None = None
+    # publish_at is intentionally NOT settable here. Only a manager/admin may
+    # gate a sermon's public visibility, and only via the publish review
+    # action (`PublishRequest` below) — never at creation, for any role. See
+    # ADR / plan: sermon-schedule-publish-authz.
 
 
 class SermonUpdate(BaseModel):
