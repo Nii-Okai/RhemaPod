@@ -1441,6 +1441,11 @@
             ],
             "title": "Category Name"
           },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
           "description": {
             "anyOf": [
               {
@@ -1583,6 +1588,7 @@
           "speaker_id",
           "category_id",
           "series_id",
+          "created_by",
           "tier",
           "status",
           "submitted_at",
