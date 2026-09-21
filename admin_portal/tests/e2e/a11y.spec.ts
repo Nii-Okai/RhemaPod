@@ -38,12 +38,18 @@ import {
 
 const PASSWORD = "SeedDev-Passphrase-2026";
 const MANAGER = "manager.mo@seed.rhemapod.dev";
+const EDITOR = "editor.sam@seed.rhemapod.dev";
 
-// Seeded rows (deterministic — see app/scripts/seed_dev.py). A draft sermon so
-// the editor renders in its editable state, and a seeded series for the
-// episode-order panel.
-const DRAFT_SERMON_ID = "2541fff9-9592-4339-a5ee-b80358f8b606";
-const SERIES_ID = "f2699cc3-a15e-468c-aead-e85575a3b1a1";
+// A seeded draft sermon (so the editor renders in its editable state) and a
+// seeded series (for the episode-order panel), located by their stable `[SEED]`
+// titles. `seed_dev.py` assigns sermons/series RANDOM UUIDs — not deterministic
+// ones — so the ids are resolved at run time in `beforeAll` (against the
+// authenticated BFF) rather than hardcoded; hardcoded constants here silently
+// rotted and broke the moment `seed_dev.py --fresh` ran (W24).
+const DRAFT_SERMON_TITLE = "[SEED] Draft: On Mercy";
+const SEED_SERIES_TITLE = "[SEED] Walking in Faith";
+let draftSermonId = "";
+let seedSeriesId = "";
 
 const IMPACT_FAIL = new Set(["serious", "critical"]);
 
@@ -52,6 +58,31 @@ const IMPACT_FAIL = new Set(["serious", "critical"]);
 // (and needless). `beforeAll` signs in once, captures the httpOnly auth cookies,
 // and every authed test re-applies them to its fresh context before navigating.
 let managerCookies: Cookie[] = [];
+
+/** Sign an account in through the real login form and return its httpOnly auth
+ *  cookies — the Phase 2 block logs in two roles (manager + editor) and applies
+ *  the right set per test, so it cannot lean on the single shared `beforeEach`
+ *  the Phase 1 block uses. */
+async function loginCookies(
+  browser: import("@playwright/test").Browser,
+  baseURL: string | undefined,
+  email: string,
+): Promise<Cookie[]> {
+  const ctx = await browser.newContext({ baseURL });
+  const page = await ctx.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  const cookies = await ctx.cookies();
+  await ctx.close();
+  expect(
+    cookies.some((c) => c.name === "rp_at" || c.name === "rp_rt"),
+    `loginCookies(${email}): expected the BFF to set the auth cookies`,
+  ).toBe(true);
+  return cookies;
+}
 
 /** Run axe on the current page, split by impact, attach the full result. */
 async function sweep(page: Page, testInfo: TestInfo, screen: string) {
@@ -114,11 +145,35 @@ test.describe("axe sweep — Phase 1 screens", () => {
       await page.getByRole("button", { name: "Sign in" }).click();
       await page.waitForURL((url) => !url.pathname.startsWith("/login"));
       managerCookies = await ctx.cookies();
+
+      // Resolve the seeded detail-view ids by their stable `[SEED]` titles,
+      // through the now-authenticated BFF — before closing the context.
+      draftSermonId = await page.evaluate(async (title) => {
+        const r = await fetch(
+          `/api/bff/sermons?q=${encodeURIComponent(title)}&limit=50`,
+        );
+        const j = (await r.json()) as { items?: { id: string; title: string }[] };
+        return (j.items ?? []).find((s) => s.title === title)?.id ?? "";
+      }, DRAFT_SERMON_TITLE);
+      seedSeriesId = await page.evaluate(async (title) => {
+        const r = await fetch(`/api/bff/series`);
+        const j = (await r.json()) as { id: string; title: string }[];
+        return (j ?? []).find((s) => s.title === title)?.id ?? "";
+      }, SEED_SERIES_TITLE);
+
       await ctx.close();
       expect(
         managerCookies.some((c) => c.name === "rp_at" || c.name === "rp_rt"),
         "beforeAll: expected the BFF to set the auth cookies on login",
       ).toBe(true);
+      expect(
+        draftSermonId,
+        `beforeAll: could not resolve the seeded "${DRAFT_SERMON_TITLE}" id`,
+      ).toMatch(/^[0-9a-f-]{36}$/);
+      expect(
+        seedSeriesId,
+        `beforeAll: could not resolve the seeded "${SEED_SERIES_TITLE}" id`,
+      ).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     test.beforeEach(async ({ context }: { context: BrowserContext }) => {
@@ -138,7 +193,7 @@ test.describe("axe sweep — Phase 1 screens", () => {
     });
 
     test("sermon detail (draft)", async ({ page }, testInfo) => {
-      await page.goto(`/sermons/${DRAFT_SERMON_ID}`);
+      await page.goto(`/sermons/${draftSermonId}`);
       await expect(page.getByLabel("Title")).toBeVisible();
       await sweep(page, testInfo, "sermons-detail");
     });
@@ -150,7 +205,10 @@ test.describe("axe sweep — Phase 1 screens", () => {
     });
 
     test("series detail (episode order)", async ({ page }, testInfo) => {
-      await page.goto(`/series/${SERIES_ID}`);
+      await page.goto(`/series/${seedSeriesId}`);
+      await expect(
+        page.getByRole("heading", { level: 1, name: SEED_SERIES_TITLE }),
+      ).toBeVisible();
       await page.waitForLoadState("networkidle").catch(() => {});
       await sweep(page, testInfo, "series-detail");
     });
@@ -216,5 +274,180 @@ test.describe("axe sweep — Phase 1 screens", () => {
 
       expect(results.violations, report).toEqual([]);
     });
+  });
+});
+
+/* =============================================================================
+   W24 — the three new Phase 2 screens at the same bar (plan §W24 deliverable 1).
+
+   `@axe-core/playwright`, the same four WCAG tags as Phase 1, `color-contrast`
+   split out (it stays the documented `--color-ink-faint` token debt, §W14 §c —
+   NOT re-litigated here). Gate: zero `serious`/`critical`; `moderate`/`minor`
+   logged and attached.
+
+   Coverage:
+     /dashboard  BOTH role variants — a manager session (greeting + WIP +
+                 analytics blocks) AND an editor session (greeting + WIP only).
+     /users      manager session; the seeded DEACTIVATED row (`editor.dana`,
+                 W24 fixture) is on page 1, so the sweep covers a greyed row.
+     /subscriptions  manager session; seeded `Past due` rows present.
+
+   Plus the structural role-gating §W24 acceptance calls for and unit tests
+   cannot reach: an editor's /dashboard makes ZERO `/admin/analytics/*`
+   requests and renders no analytics DOM, and /users + /subscriptions 404 an
+   editor.
+   ========================================================================== */
+test.describe("axe sweep — Phase 2 screens (W24)", () => {
+  let mgrCookies: Cookie[] = [];
+  let editorCookies: Cookie[] = [];
+
+  test.beforeAll(async ({ browser, baseURL }) => {
+    mgrCookies = await loginCookies(browser, baseURL, MANAGER);
+    editorCookies = await loginCookies(browser, baseURL, EDITOR);
+  });
+
+  /** Fresh context with the given role's cookies applied. */
+  async function pageAs(
+    browser: import("@playwright/test").Browser,
+    baseURL: string | undefined,
+    cookies: Cookie[],
+  ): Promise<{ context: BrowserContext; page: Page }> {
+    const context = await browser.newContext({ baseURL });
+    await context.addCookies(cookies);
+    const page = await context.newPage();
+    return { context, page };
+  }
+
+  test("dashboard — manager variant (greeting + WIP + analytics)", async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const { context, page } = await pageAs(browser, baseURL, mgrCookies);
+    try {
+      await page.goto("/dashboard");
+      await expect(
+        page.getByRole("heading", { name: /Good morning/ }),
+      ).toBeVisible();
+      // The manager/admin-only blocks are in the tree for this variant.
+      await expect(
+        page.locator('[data-slot="dashboard-analytics"]'),
+      ).toBeVisible();
+      await sweep(page, testInfo, "dashboard-manager");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("dashboard — editor variant (greeting + WIP only, no analytics)", async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const { context, page } = await pageAs(browser, baseURL, editorCookies);
+    try {
+      const analyticsRequests: string[] = [];
+      page.on("request", (req) => {
+        if (/\/admin\/analytics\//.test(req.url())) {
+          analyticsRequests.push(`${req.method()} ${req.url()}`);
+        }
+      });
+
+      await page.goto("/dashboard");
+      await expect(
+        page.getByRole("heading", { name: /Good morning/ }),
+      ).toBeVisible();
+      // Give a wrongly-queued analytics fetch its chance to fire before we
+      // assert it never did. `networkidle` resolves the instant the network is
+      // actually quiet (fast path) and is capped so the HMR socket under
+      // `next dev` can't hang it — a bounded settle, not a fixed hard sleep.
+      await page
+        .waitForLoadState("networkidle", { timeout: 2_000 })
+        .catch(() => {});
+
+      // §A.1 / decision 1a: the analytics blocks are absent from the render
+      // tree for an editor — not hidden, not placeholdered.
+      await expect(
+        page.locator('[data-slot="dashboard-analytics"]'),
+      ).toHaveCount(0);
+      expect(
+        analyticsRequests,
+        `editor /dashboard must issue zero /admin/analytics/* requests; saw:\n${analyticsRequests.join(
+          "\n",
+        )}`,
+      ).toEqual([]);
+
+      await sweep(page, testInfo, "dashboard-editor");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("users (manager session, deactivated row on page 1)", async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const { context, page } = await pageAs(browser, baseURL, mgrCookies);
+    try {
+      await page.goto("/users");
+      await expect(
+        page.getByRole("heading", { name: "Users & roles" }),
+      ).toBeVisible();
+      // The W6 DataTable is non-interactive here → role="table" (W21 fix pass).
+      await expect(
+        page.getByRole("table", { name: "Staff accounts" }),
+      ).toBeVisible();
+      // The sweep must actually cover a greyed/deactivated row (W24 fixture).
+      await expect(
+        page
+          .locator('[data-slot="user-state"][data-state="deactivated"]')
+          .first(),
+      ).toBeVisible();
+      await sweep(page, testInfo, "users");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("subscriptions (manager session)", async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const { context, page } = await pageAs(browser, baseURL, mgrCookies);
+    try {
+      await page.goto("/subscriptions");
+      await expect(
+        page.getByRole("heading", { name: "Subscriptions" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("table", { name: "Paying members" }),
+      ).toBeVisible();
+      await expect(
+        page.locator('[data-slot="subscription-status"]').first(),
+      ).toBeVisible();
+      await sweep(page, testInfo, "subscriptions");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("role-gating — an editor is refused /users and /subscriptions", async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await pageAs(browser, baseURL, editorCookies);
+    try {
+      await page.goto("/users");
+      await expect(
+        page.getByRole("heading", { name: "Users & roles" }),
+      ).toHaveCount(0);
+      await expect(page.getByText(/404|not found/i).first()).toBeVisible();
+
+      await page.goto("/subscriptions");
+      await expect(
+        page.getByRole("heading", { name: "Subscriptions" }),
+      ).toHaveCount(0);
+      await expect(page.getByText(/404|not found/i).first()).toBeVisible();
+    } finally {
+      await context.close();
+    }
   });
 });
