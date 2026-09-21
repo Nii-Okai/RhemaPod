@@ -173,6 +173,12 @@ class SermonCreate(BaseModel):
     )
     tier: ContentTier | None = None  # None = inherit from series / free
     tags: list[str] = Field(default_factory=list, max_length=30)
+    # When it becomes publicly visible once published. Settable while the
+    # sermon is still editable (draft/rejected), same as
+    # AnnouncementCreate.publish_at. None = visible as soon as it is
+    # published. Mirrors the announcement field exactly; no "must be in the
+    # future" check — AnnouncementCreate doesn't enforce one either.
+    publish_at: datetime | None = None
 
 
 class SermonUpdate(BaseModel):
@@ -184,6 +190,7 @@ class SermonUpdate(BaseModel):
     episode_number: int | None = Field(default=None, ge=0)
     tier: ContentTier | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
+    publish_at: datetime | None = None
 
 
 class MediaRefPublic(BaseModel):
@@ -217,6 +224,12 @@ class SermonListItem(BaseModel):
     episode_number: int | None
     tier: ContentTier
     locked: bool
+    # When it becomes visible once published — None means "as soon as it is
+    # published". Mirrors AnnouncementListItem.publish_at, which is public for
+    # the same reason: this DTO is only ever returned for a sermon that has
+    # already cleared sermon_visibility_clause, so a returned publish_at is
+    # always already in the past (or unset) — nothing premature leaks.
+    publish_at: datetime | None = None
 
 
 class SermonAdminListItem(SermonListItem):

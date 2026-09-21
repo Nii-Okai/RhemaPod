@@ -209,6 +209,14 @@ class Sermon(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When it becomes publicly visible once PUBLISHED. Null = as soon as it is
+    # published. Mirrors Announcement.publish_at exactly — same derived,
+    # query-time visibility pattern (see content_service.sermon_visibility_
+    # clause / sermon_publish_time_passed), no background worker. No
+    # `expires_at` equivalent — sermons don't expire.
+    publish_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

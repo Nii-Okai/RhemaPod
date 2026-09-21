@@ -20,7 +20,6 @@ from app.core.logging import get_logger
 from app.models.models import (
     ContentTier,
     Sermon,
-    SermonStatus,
     SermonTag,
     Series,
     Speaker,
@@ -29,6 +28,7 @@ from app.models.models import (
 from app.services.content_service import (
     _has_subscription,
     effective_tier,
+    sermon_visibility_clause,
     to_list_item,
 )
 
@@ -87,15 +87,16 @@ async def search_sermons(
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list, int]:
-    """Search published sermons. Returns (items, total).
+    """Search published, visible sermons. Returns (items, total).
 
-    Only published content is searchable — an unpublished sermon must not be
-    discoverable through search when it is hidden everywhere else.
+    Only visible content is searchable — an unpublished sermon, or one whose
+    `publish_at` hasn't arrived yet, must not be discoverable through search
+    when it is hidden everywhere else (mirrors the catalog gate).
     """
     limit = max(1, min(limit, MAX_LIMIT))
     offset = max(0, offset)
 
-    conditions = [Sermon.status == SermonStatus.PUBLISHED]
+    conditions = list(sermon_visibility_clause())
 
     if query:
         conditions.append(_search_filter(db, query))
@@ -168,7 +169,7 @@ async def suggest(db: AsyncSession, prefix: str, limit: int = 8) -> list[str]:
     titles = (await db.execute(
         select(Sermon.title)
         .where(
-            Sermon.status == SermonStatus.PUBLISHED,
+            *sermon_visibility_clause(),
             func.lower(Sermon.title).like(pattern),
         )
         .limit(limit)

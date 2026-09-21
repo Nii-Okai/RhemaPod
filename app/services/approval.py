@@ -4,10 +4,13 @@ Kept separate from the ORM models so the allowed transitions live in one place
 and can be reasoned about (and tested) on their own.
 
     draft ─submit→ pending_review ─start_review→ under_review ─approve→ approved
-      ↑                                              │                    │
-      └────────────── reject ──────────────────────-┘                 publish
-                                                                          │
-                                        unpublish ← published ←──────────-┘
+      ↑                                              │                    │  │
+      └────────────── reject ──────────────────────-┘                 publish│
+                                                                          │   │
+                                        unpublish ← published ←──────────-┘   │
+                                                                               │
+    `reject` also accepts `approved` directly (no publish detour needed to ───┘
+    un-approve): approved ─reject→ rejected, same as the pending/under-review case.
 """
 from __future__ import annotations
 
@@ -39,8 +42,12 @@ TRANSITIONS: dict[str, tuple[tuple[SermonStatus, ...], SermonStatus, tuple[UserR
         SermonStatus.APPROVED,
         (UserRole.MANAGER, UserRole.ADMIN),
     ),
+    # Also accepts APPROVED as a source (Isaac's call): the review-lock work
+    # left `approved` with no way back to editable short of a publish/unpublish
+    # detour. Rejecting an approved sermon sends it straight to `rejected` with
+    # a note, same role/actor rules as rejecting out of review.
     "reject": (
-        (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW),
+        (SermonStatus.PENDING_REVIEW, SermonStatus.UNDER_REVIEW, SermonStatus.APPROVED),
         SermonStatus.REJECTED,
         (UserRole.MANAGER, UserRole.ADMIN),
     ),

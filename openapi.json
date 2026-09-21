@@ -804,6 +804,18 @@
             "title": "Position Seconds",
             "type": "integer"
           },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          },
           "series_id": {
             "anyOf": [
               {
@@ -1925,6 +1937,18 @@
             "title": "Media Refs",
             "type": "array"
           },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          },
           "published_at": {
             "anyOf": [
               {
@@ -2134,6 +2158,18 @@
             "title": "Locked",
             "type": "boolean"
           },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          },
           "series_id": {
             "anyOf": [
               {
@@ -2272,6 +2308,18 @@
             "description": "Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.",
             "title": "Episode Number"
           },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          },
           "series_id": {
             "anyOf": [
               {
@@ -2405,6 +2453,18 @@
             },
             "title": "Media Refs",
             "type": "array"
+          },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
           },
           "published_at": {
             "anyOf": [
@@ -2582,6 +2642,18 @@
             "title": "Locked",
             "type": "boolean"
           },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
+          },
           "series_id": {
             "anyOf": [
               {
@@ -2712,6 +2784,18 @@
               }
             ],
             "title": "Episode Number"
+          },
+          "publish_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish At"
           },
           "series_id": {
             "anyOf": [
@@ -6406,7 +6490,7 @@
     },
     "/api/v1/series/{series_id}/episodes": {
       "get": {
-        "description": "Published episodes of a series, ordered by episode number (gaps allowed).\n\nPublished-only by design; staff reads (a manager ordering drafts) go through\n``GET /sermons?series_id=`` (Isaac's call \u2014 no admin/``include_all`` variant\nhere).",
+        "description": "Published, visible episodes of a series, ordered by episode number (gaps\nallowed).\n\nPublished-only by design; staff reads (a manager ordering drafts) go through\n``GET /sermons?series_id=`` (Isaac's call \u2014 no admin/``include_all`` variant\nhere). Also gated on `publish_at` \u2014 a scheduled episode doesn't appear here\nbefore its own catalog listing would show it.",
         "operationId": "series_episodes_api_v1_series__series_id__episodes_get",
         "parameters": [
           {

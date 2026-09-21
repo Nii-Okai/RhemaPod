@@ -41,6 +41,7 @@ from app.services.content_service import (
     ContentError,
     effective_tier,
     ensure_editor_can_access,
+    sermon_publish_time_passed,
     staff_scope_hides,
 )
 
@@ -507,7 +508,11 @@ async def get_stream(
     # URLs for another editor's unpublished draft (BOLA). Non-owner editor on
     # an unpublished sermon -> 404, consistent with the staff read.
     hidden_by_scope = user is not None and staff_scope_hides(sermon, user)
-    if sermon.status != SermonStatus.PUBLISHED and (not is_staff or hidden_by_scope):
+    not_yet_visible = (
+        sermon.status != SermonStatus.PUBLISHED
+        or not sermon_publish_time_passed(sermon)
+    )
+    if not_yet_visible and (not is_staff or hidden_by_scope):
         raise ContentError("Sermon not found", status_code=404)
 
     series = await db.get(Series, sermon.series_id) if sermon.series_id else None

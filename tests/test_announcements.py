@@ -36,14 +36,20 @@ async def make_viewer(client, email="viewer@example.com"):
 BASE = {"title": "Service times", "description": "Christmas schedule", "body": "Full details here."}
 
 
-async def create_published(client, mgr, **overrides):
-    """Full workflow: create -> submit -> approve -> publish."""
+async def create_published(client, engine, mgr, **overrides):
+    """Full workflow: create -> submit -> approve -> publish.
+
+    Approval is done by a second manager — the segregation-of-duties guard
+    (no self-approval) blocks `mgr` from approving their own draft, so this
+    mints/reuses a stand-in approver rather than testing that rule here.
+    """
     ann = (await client.post(
         "/api/v1/announcements", json={**BASE, **overrides}, headers=mgr
     )).json()
     aid = ann["id"]
     await client.post(f"/api/v1/announcements/{aid}/submit", headers=mgr)
-    await client.post(f"/api/v1/approvals/announcements/{aid}/approve", headers=mgr)
+    approver = await make_user(client, engine, "approver@example.com", "manager")
+    await client.post(f"/api/v1/approvals/announcements/{aid}/approve", headers=approver)
     await client.post(f"/api/v1/approvals/announcements/{aid}/publish", headers=mgr)
     return ann
 
@@ -79,7 +85,7 @@ async def test_editor_can_create(client, engine):
 async def test_anonymous_can_list_published(client, engine):
     """Announcements are open to everyone, no auth required."""
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    await create_published(client, mgr)
+    await create_published(client, engine, mgr)
     r = await client.get("/api/v1/announcements")
     assert r.status_code == 200
     assert len(r.json()) == 1
@@ -87,7 +93,7 @@ async def test_anonymous_can_list_published(client, engine):
 
 async def test_viewer_can_read_detail(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    ann = await create_published(client, mgr)
+    ann = await create_published(client, engine, mgr)
     v = await make_viewer(client)
     r = await client.get(f"/api/v1/announcements/{ann['id']}", headers=v)
     assert r.status_code == 200
@@ -104,7 +110,7 @@ async def test_draft_hidden_from_public(client, engine):
 
 async def test_unpublish_removes_from_public(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    ann = await create_published(client, mgr)
+    ann = await create_published(client, engine, mgr)
     assert len((await client.get("/api/v1/announcements")).json()) == 1
     await client.post(f"/api/v1/approvals/announcements/{ann['id']}/unpublish", headers=mgr)
     assert (await client.get("/api/v1/announcements")).json() == []
@@ -112,7 +118,7 @@ async def test_unpublish_removes_from_public(client, engine):
 
 async def test_archive_removes_from_public(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    ann = await create_published(client, mgr)
+    ann = await create_published(client, engine, mgr)
     r = await client.post(f"/api/v1/approvals/announcements/{ann['id']}/archive", headers=mgr)
     assert r.json()["status"] == "archived"
     assert (await client.get("/api/v1/announcements")).json() == []
@@ -123,14 +129,14 @@ async def test_future_publish_at_not_yet_visible(client, engine):
     """Scheduled announcements appear on their own, with no worker running."""
     mgr = await make_user(client, engine, "m@example.com", "manager")
     future = datetime.now(timezone.utc) + timedelta(days=1)
-    await create_published(client, mgr, publish_at=iso(future))
+    await create_published(client, engine, mgr, publish_at=iso(future))
     assert (await client.get("/api/v1/announcements")).json() == []
 
 
 async def test_past_publish_at_is_visible(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
     past = datetime.now(timezone.utc) - timedelta(hours=1)
-    await create_published(client, mgr, publish_at=iso(past))
+    await create_published(client, engine, mgr, publish_at=iso(past))
     assert len((await client.get("/api/v1/announcements")).json()) == 1
 
 
@@ -139,7 +145,7 @@ async def test_expired_announcement_hidden(client, engine):
     past_start = datetime.now(timezone.utc) - timedelta(days=2)
     past_end = datetime.now(timezone.utc) - timedelta(days=1)
     await create_published(
-        client, mgr, publish_at=iso(past_start), expires_at=iso(past_end)
+        client, engine, mgr, publish_at=iso(past_start), expires_at=iso(past_end)
     )
     assert (await client.get("/api/v1/announcements")).json() == []
 
@@ -158,8 +164,8 @@ async def test_expiry_must_follow_publish(client, engine):
 # ── ordering ──────────────────────────────────────────────────────────────────
 async def test_pinned_sorts_first(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    await create_published(client, mgr, title="Normal")
-    await create_published(client, mgr, title="Important", pinned=True)
+    await create_published(client, engine, mgr, title="Normal")
+    await create_published(client, engine, mgr, title="Important", pinned=True)
     items = (await client.get("/api/v1/announcements")).json()
     assert items[0]["title"] == "Important"
 
@@ -179,7 +185,7 @@ async def test_update_announcement(client, engine):
 async def test_cannot_delete_published(client, engine):
     """Published announcements must be unpublished first."""
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    ann = await create_published(client, mgr)
+    ann = await create_published(client, engine, mgr)
     aid = ann["id"]
     assert (await client.delete(
         f"/api/v1/announcements/{aid}", headers=mgr
@@ -194,7 +200,7 @@ async def test_cannot_delete_published(client, engine):
 
 async def test_viewer_cannot_delete(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
-    ann = await create_published(client, mgr)
+    ann = await create_published(client, engine, mgr)
     v = await make_viewer(client)
     r = await client.delete(f"/api/v1/announcements/{ann['id']}", headers=v)
     assert r.status_code == 403
@@ -204,7 +210,7 @@ async def test_viewer_cannot_delete(client, engine):
 async def test_admin_list_includes_drafts(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
     await client.post("/api/v1/announcements", json=BASE, headers=mgr)
-    await create_published(client, mgr, title="Live")
+    await create_published(client, engine, mgr, title="Live")
 
     public = (await client.get("/api/v1/announcements")).json()
     admin = (await client.get("/api/v1/announcements/admin/all", headers=mgr)).json()["items"]
@@ -215,7 +221,7 @@ async def test_admin_list_includes_drafts(client, engine):
 async def test_admin_status_filter(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
     await client.post("/api/v1/announcements", json=BASE, headers=mgr)
-    await create_published(client, mgr, title="Live")
+    await create_published(client, engine, mgr, title="Live")
     drafts = (await client.get(
         "/api/v1/announcements/admin/all?status=draft", headers=mgr
     )).json()["items"]
@@ -250,7 +256,8 @@ async def test_image_upload_roundtrip(client, engine):
 
     aid = ann["id"]
     await client.post(f"/api/v1/announcements/{aid}/submit", headers=mgr)
-    await client.post(f"/api/v1/approvals/announcements/{aid}/approve", headers=mgr)
+    approver = await make_user(client, engine, "approver@example.com", "manager")
+    await client.post(f"/api/v1/approvals/announcements/{aid}/approve", headers=approver)
     await client.post(f"/api/v1/approvals/announcements/{aid}/publish", headers=mgr)
     assert (await client.get("/api/v1/announcements")).json()[0]["image_url"]
 

@@ -2,10 +2,18 @@
 
 `f5a6b7c8d9e0` (processed_webhooks.subscription_id) and `a6b7c8d9e0f1`
 (users.activated_at) are additive. This module runs the sequence the acceptance
-criteria call out — ``alembic upgrade head`` -> ``downgrade -2`` -> ``upgrade
+criteria call out — ``alembic upgrade head`` -> downgrade past both -> ``upgrade
 head`` — against a throwaway PostgreSQL database and asserts the ``users`` and
 ``processed_webhooks`` column schemas are byte-identical before and after, and
-that each column is genuinely gone at ``-2``.
+that each column is genuinely gone once downgraded past it.
+
+The downgrade target is the explicit revision id one below `f5a6b7c8d9e0`
+(``e4f5a6b7c8d9``), not a relative ``-2`` — a relative offset from *head*
+silently changes meaning every time a later migration is chained on top (as
+happened when `b3c4d5e6f7a8`, sermons.publish_at, landed after
+`a6b7c8d9e0f1`: ``-2`` from the new head only reached `a6b7c8d9e0f1`'s parent,
+one short of where this test needs to land). An explicit revision id is head-
+independent and stays correct regardless of how many migrations follow.
 
 PostgreSQL only: the migrations emit PG DDL (``postgresql.UUID`` etc.) and the
 suite's SQLite DB is built from ``Base.metadata``, not Alembic. Skipped with a
@@ -129,7 +137,7 @@ def test_phase2_migrations_roundtrip_users_and_processed_webhooks(throwaway_db):
     assert users_head["activated_at"] == ("timestamp with time zone", "YES", None)
     assert "subscription_id" in webhooks_head
 
-    _alembic(alembic_url, "downgrade", "-2")
+    _alembic(alembic_url, "downgrade", "e4f5a6b7c8d9")
     assert "activated_at" not in _columns(inspect_dsn, "users")
     assert "subscription_id" not in _columns(inspect_dsn, "processed_webhooks")
 

@@ -20,7 +20,12 @@ from app.models.content_schemas import (
 
 from app.models.models import Series, User, UserRole
 from app.services import auth_service, content_service
-from app.services.content_service import ContentError, effective_tier, to_list_item
+from app.services.content_service import (
+    ContentError,
+    effective_tier,
+    sermon_visibility_clause,
+    to_list_item,
+)
 
 router = APIRouter(prefix="/series", tags=["series"])
 
@@ -181,11 +186,13 @@ async def reorder_episode_order(
 async def series_episodes(
     series_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
 ) -> list[SermonListItem]:
-    """Published episodes of a series, ordered by episode number (gaps allowed).
+    """Published, visible episodes of a series, ordered by episode number (gaps
+    allowed).
 
     Published-only by design; staff reads (a manager ordering drafts) go through
     ``GET /sermons?series_id=`` (Isaac's call — no admin/``include_all`` variant
-    here).
+    here). Also gated on `publish_at` — a scheduled episode doesn't appear here
+    before its own catalog listing would show it.
     """
     series = await db.get(Series, series_id)
     if series is None:
@@ -193,11 +200,11 @@ async def series_episodes(
 
     from sqlalchemy import select
 
-    from app.models.models import Sermon, SermonStatus
+    from app.models.models import Sermon
 
     stmt = (
         select(Sermon)
-        .where(Sermon.series_id == series_id, Sermon.status == SermonStatus.PUBLISHED)
+        .where(Sermon.series_id == series_id, *sermon_visibility_clause())
         .order_by(Sermon.episode_number.asc().nullslast())
     )
     rows = (await db.execute(stmt)).scalars().all()
