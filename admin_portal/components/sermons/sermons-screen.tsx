@@ -12,7 +12,9 @@ import { MediaPlaceholder } from "@/components/portal/media-placeholder";
 import { PageHeader } from "@/components/portal";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { TierChip } from "@/components/portal/chips";
+import { Tag } from "@/components/ui/tag";
 import { useSession } from "@/lib/auth/session-context";
+import { isFuture } from "@/lib/datetime";
 import { formatDuration } from "@/lib/format";
 import { useSermonCounts, sermonCountLine } from "@/lib/query/hooks/use-sermon-counts";
 import { useSeriesList } from "@/lib/query/hooks/use-series";
@@ -50,6 +52,27 @@ function seriesCell(row: SermonListItem): string {
     : row.series_title;
 }
 
+/** True only for a `published` row whose `publish_at` hasn't passed yet — the
+    query-time visibility gate (`content_service.sermon_visibility_clause`),
+    not a pipeline status, so it never touches `StatusBadge`'s registry. Round
+    2 (scheduled-publish authz fix): the review queue drops a scheduled card
+    the moment it's approved-and-scheduled, so this list is the only place the
+    fact shows at all. */
+function isScheduled(row: SermonListItem, now: number): boolean {
+  return (
+    row.status === "published" &&
+    row.publish_at != null &&
+    isFuture(row.publish_at, now)
+  );
+}
+
+function scheduledChipLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 const CONFIRM_DELETE = (count: number) =>
   count === 1
     ? "Delete this sermon? This can’t be undone."
@@ -77,6 +100,11 @@ export function SermonsScreen() {
   const counts = useSermonCounts();
   const speakers = useSpeakers();
   const series = useSeriesList();
+
+  // Fixed at mount, like ReviewScreen's `now` — the "Scheduled · {date}" chip
+  // only needs to be accurate for the life of the session, not re-derived on
+  // every render.
+  const [now] = useState(() => Date.now());
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
@@ -265,14 +293,21 @@ export function SermonsScreen() {
         header: "Status",
         gridWidth: "1.1fr",
         cell: (row) => (
-          <StatusBadge
-            status={toBadgeStatus(row.status)}
-            className="whitespace-nowrap"
-          />
+          <div className="flex flex-col items-start gap-4">
+            <StatusBadge
+              status={toBadgeStatus(row.status)}
+              className="whitespace-nowrap"
+            />
+            {row.publish_at && isScheduled(row, now) ? (
+              <Tag className="whitespace-nowrap">
+                {`Scheduled · ${scheduledChipLabel(row.publish_at)}`}
+              </Tag>
+            ) : null}
+          </div>
         ),
       },
     ],
-    [],
+    [now],
   );
 
   const countLine = sermonCountLine(counts.data);

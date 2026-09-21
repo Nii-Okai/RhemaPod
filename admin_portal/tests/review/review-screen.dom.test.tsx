@@ -10,6 +10,7 @@ import {
 } from "vitest";
 import {
   act,
+  fireEvent,
   render,
   renderHook,
   screen,
@@ -144,6 +145,11 @@ interface BackendOpts {
       dropping it — simulates a stale tab / not-yet-refetched queue so the
       already-approved retry is observable on-screen. */
   keepApproved?: boolean;
+  /** Records the parsed body of every `publish` POST — `null` for a bodyless
+      call (round 2 — scheduled sermon publish; the existing "publish now"
+      path stays bodyless, `SchedulePublishPanel`'s Confirm sends an explicit
+      `{publish_at}`). */
+  publishBodies?: Array<{ publish_at?: string | null } | null>;
 }
 
 /** One review-queue endpoint served from a mutable list, plus the four action
@@ -159,6 +165,7 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
     takeOverDelayMs = 0,
     publishFailTimes = 0,
     keepApproved = false,
+    publishBodies,
   } = opts;
   let live = [...initial];
   let publishCalls = 0;
@@ -241,9 +248,15 @@ function backend(initial: ReviewQueueItem[], opts: BackendOpts = {}) {
       }
       return HttpResponse.json({ id: params.id, status: "approved" });
     }),
-    http.post("*/api/bff/approvals/sermons/:id/publish", ({ params }) => {
+    http.post("*/api/bff/approvals/sermons/:id/publish", async ({ params, request }) => {
       calls?.push("publish");
       publishCalls += 1;
+      if (publishBodies) {
+        // A bodyless POST (the "publish now" call) has no JSON to parse —
+        // record `null` rather than let `request.json()` throw on empty text.
+        const text = await request.text();
+        publishBodies.push(text ? (JSON.parse(text) as { publish_at?: string | null }) : null);
+      }
       if (publishCalls <= publishFailTimes) {
         return HttpResponse.json(
           { detail: "Encoder queue unreachable", correlation_id: "cid-pub-1" },
@@ -1433,6 +1446,206 @@ describe("ReviewScreen — Watch plays the sermon media", () => {
     const watch = await screen.findByRole("button", { name: "Watch" });
     expect(watch).toBeDisabled();
     expect(watch).toHaveAttribute("title", "No media uploaded yet");
+  });
+});
+
+/* Round 2 — scheduled sermon publish. The icon-only schedule trigger's
+   presence and gating, per card status and lock state. */
+describe("ReviewScreen — schedule trigger (round 2)", () => {
+  it("appears next to 'Approve & publish' on an unclaimed pending_review card, enabled", async () => {
+    backend([item({ id: "a1", title: "Schedule me" })]);
+    renderScreen();
+
+    await screen.findByText("Schedule me");
+    const trigger = screen.getByRole("button", {
+      name: "Approve and schedule for later",
+    });
+    expect(trigger).toBeEnabled();
+  });
+
+  it("is disabled with the claim-lock tooltip on a card claimed by another manager", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Val is on this",
+        status: "under_review",
+        review_claimed_by: "Val Reyes",
+        review_claimed_by_id: "u-val",
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("Val is on this");
+    const trigger = screen.getByRole("button", {
+      name: "Approve and schedule for later",
+    });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute(
+      "title",
+      "Val Reyes is reviewing this — take over to act",
+    );
+  });
+
+  it("is disabled with the self-author tooltip on the reviewer's own submission", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "My own submission",
+        status: "pending_review",
+        created_by: ME.id,
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("My own submission");
+    const trigger = screen.getByRole("button", {
+      name: "Approve and schedule for later",
+    });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute(
+      "title",
+      "You submitted this sermon — another manager needs to review it",
+    );
+  });
+
+  it("appears next to 'Publish' on an approved card, ungated even for the self-authoring reviewer", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "My approved sermon",
+        status: "approved",
+        created_by: ME.id,
+      }),
+    ]);
+    renderScreen({ name: "Mia Okafor" });
+
+    await screen.findByText("My approved sermon");
+    const trigger = screen.getByRole("button", { name: "Schedule for later" });
+    expect(trigger).toBeEnabled();
+    // Not the pending/under-review trigger's label or lock treatment.
+    expect(
+      screen.queryByRole("button", {
+        name: "Approve and schedule for later",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("is absent while the card is in reject mode (the action row is swapped out)", async () => {
+    backend([item({ id: "a1", title: "Reject me" })]);
+    renderScreen();
+
+    await screen.findByText("Reject me");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reject with note" }),
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Approve and schedule for later",
+      }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+/* Round 2 — scheduled sermon publish. Confirming the panel fires the right
+   mutation(s) with the right `PublishRequest` body. A far-future fixed date
+   (2099) keeps `isFuture` true regardless of when this suite runs. */
+describe("ReviewScreen — schedule confirm wiring (round 2)", () => {
+  const FUTURE_LOCAL = "2099-06-15T09:00";
+
+  it("on a pending_review card: runs approve then publish with {publish_at}, shows the toast, and drops the card", async () => {
+    const calls: string[] = [];
+    const publishBodies: Array<{ publish_at?: string | null } | null> = [];
+    backend([item({ id: "a1", title: "Schedule me" })], {
+      calls,
+      publishBodies,
+    });
+    renderScreen();
+    const user = userEvent.setup();
+
+    await screen.findByText("Schedule me");
+    await user.click(
+      screen.getByRole("button", { name: "Approve and schedule for later" }),
+    );
+
+    const input = await screen.findByLabelText("Publish at");
+    fireEvent.change(input, { target: { value: FUTURE_LOCAL } });
+
+    const confirm = screen.getByRole("button", { name: "Approve & schedule" });
+    await vi.waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    expect(
+      await screen.findByText("Published to the app"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Schedule me")).not.toBeInTheDocument(),
+    );
+    expect(calls).toEqual(["approve", "publish"]);
+    expect(publishBodies).toHaveLength(1);
+    const sent = publishBodies[0]?.publish_at;
+    expect(typeof sent).toBe("string");
+    expect(sent as string).toMatch(/Z$/);
+    expect(Date.parse(sent as string)).toBe(
+      Date.parse(`${FUTURE_LOCAL}:00`),
+    );
+  });
+
+  it("on an approved card: runs publish alone with {publish_at}, no approve leg, and drops the card", async () => {
+    const calls: string[] = [];
+    const publishBodies: Array<{ publish_at?: string | null } | null> = [];
+    backend(
+      [item({ id: "a1", title: "Approved, not live", status: "approved" })],
+      { calls, publishBodies },
+    );
+    renderScreen();
+    const user = userEvent.setup();
+
+    await screen.findByText("Approved, not live");
+    await user.click(
+      screen.getByRole("button", { name: "Schedule for later" }),
+    );
+
+    const input = await screen.findByLabelText("Publish at");
+    fireEvent.change(input, { target: { value: FUTURE_LOCAL } });
+
+    const confirm = screen.getByRole("button", { name: "Schedule" });
+    await vi.waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    expect(
+      await screen.findByText("Published to the app"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Approved, not live")).not.toBeInTheDocument(),
+    );
+    expect(calls).toEqual(["publish"]);
+    expect(calls).not.toContain("approve");
+    expect(publishBodies).toHaveLength(1);
+    expect(Date.parse(publishBodies[0]?.publish_at as string)).toBe(
+      Date.parse(`${FUTURE_LOCAL}:00`),
+    );
+  });
+
+  it("Cancel returns the card to the normal action row without confirming", async () => {
+    const calls: string[] = [];
+    backend([item({ id: "a1", title: "Schedule me" })], { calls });
+    renderScreen();
+    const user = userEvent.setup();
+
+    await screen.findByText("Schedule me");
+    await user.click(
+      screen.getByRole("button", { name: "Approve and schedule for later" }),
+    );
+    await screen.findByLabelText("Publish at");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(
+      screen.getByRole("button", { name: "Approve & publish" }),
+    ).toBeEnabled();
+    expect(screen.queryByLabelText("Publish at")).not.toBeInTheDocument();
+    expect(calls).toEqual([]);
   });
 });
 

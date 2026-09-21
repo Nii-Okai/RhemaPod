@@ -455,7 +455,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Publish */
+        /**
+         * Publish
+         * @description `body` is optional so a bodyless POST — the existing "publish now" call
+         *     the review-queue frontend already makes — still works unchanged. When a
+         *     body IS sent (even `{}` or `{"publish_at": null}`), it's an explicit
+         *     instruction from the reviewer and fully replaces `publish_at` on the row:
+         *     a future timestamp schedules it, anything else publishes with no gate.
+         */
         post: operations["publish_api_v1_approvals_sermons__sermon_id__publish_post"];
         delete?: never;
         options?: never;
@@ -2062,6 +2069,11 @@ export interface components {
              */
             watched_delta: number;
         };
+        /** PublishRequest */
+        PublishRequest: {
+            /** Publish At */
+            publish_at?: string | null;
+        };
         /**
          * PublishResponse
          * @description `publish` adds the number the success toast shows ("Published to the app
@@ -2353,8 +2365,6 @@ export interface components {
              * @description Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.
              */
             episode_number?: number | null;
-            /** Publish At */
-            publish_at?: string | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -2466,8 +2476,6 @@ export interface components {
             description?: string | null;
             /** Episode Number */
             episode_number?: number | null;
-            /** Publish At */
-            publish_at?: string | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -3629,7 +3637,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

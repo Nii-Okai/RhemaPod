@@ -251,6 +251,94 @@ describe("SermonsScreen — row thumbnail", () => {
   });
 });
 
+describe("SermonsScreen — 'Scheduled · {date}' chip (round 2, scheduled sermon publish)", () => {
+  // Fixed, far outside "now" either direction — deterministic regardless of
+  // when/where the suite runs, and matched via the same
+  // `toLocaleDateString` call the component uses, so it's TZ-safe too.
+  const FUTURE_ISO = "2099-06-15T12:00:00Z";
+  const PAST_ISO = "2020-06-15T12:00:00Z";
+  const futureLabel = new Date(FUTURE_ISO).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  it("shows next to the status badge for a published row with a future publish_at", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-sched",
+          title: "Scheduled sermon",
+          status: "published",
+          publish_at: FUTURE_ISO,
+        },
+      ],
+    });
+    renderScreen();
+
+    const title = await screen.findByText("Scheduled sermon");
+    const row = title.closest('[role="row"]') as HTMLElement;
+    expect(
+      within(row).getByText(`Scheduled · ${futureLabel}`),
+    ).toBeInTheDocument();
+    expect(within(row).getByText("Published")).toBeInTheDocument();
+  });
+
+  it("is absent for a published row with a past publish_at (already live)", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-live",
+          title: "Already live",
+          status: "published",
+          publish_at: PAST_ISO,
+        },
+      ],
+    });
+    renderScreen();
+
+    await screen.findByText("Already live");
+    expect(screen.queryByText(/^Scheduled ·/)).not.toBeInTheDocument();
+  });
+
+  it("is absent for a published row with no publish_at", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-nosched",
+          title: "No schedule",
+          status: "published",
+          publish_at: null,
+        },
+      ],
+    });
+    renderScreen();
+
+    await screen.findByText("No schedule");
+    expect(screen.queryByText(/^Scheduled ·/)).not.toBeInTheDocument();
+  });
+
+  it("is absent for a non-published row even with a future publish_at (not a real pipeline status)", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-draft-future",
+          title: "Draft with a stray publish_at",
+          status: "draft",
+          publish_at: FUTURE_ISO,
+        },
+      ],
+    });
+    renderScreen();
+
+    await screen.findByText("Draft with a stray publish_at");
+    expect(screen.queryByText(/^Scheduled ·/)).not.toBeInTheDocument();
+  });
+});
+
 describe("SermonsScreen — empty state", () => {
   it("renders 'No sermons yet' when the list is empty on the default view", async () => {
     nav.search = new URLSearchParams();

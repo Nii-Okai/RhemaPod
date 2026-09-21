@@ -227,38 +227,34 @@ describe("SermonEditor — Access radios ↔ tier", () => {
   });
 });
 
-/* --- Publish at (round 2 — scheduled sermon publish) -------------------- */
+/* --- Publish at is gone from the editor, for any role (round 2 —
+   scheduled-publish authz fix) ------------------------------------------- */
 
-describe("SermonEditor — Publish at (Access card)", () => {
-  it("is a native datetime-local picker", async () => {
+// This is the regression the whole fix exists to prevent: `publish_at` used
+// to be a plain Access-card field (any editor could set their own publish
+// schedule at creation or edit time — the authz gap). It's now settable in
+// exactly one place, the reviewing manager/admin's `PublishRequest` body on
+// `POST …/publish` (`SchedulePublishPanel`, review queue) — never here, for
+// any role or status, draft or otherwise.
+describe("SermonEditor — no Publish at input anywhere (regression)", () => {
+  it("does not render a 'Publish at' field on an editable draft", async () => {
     backend({ sermon: detail({ status: "draft" }) });
     renderEditor();
 
-    expect(await screen.findByLabelText("Publish at")).toHaveAttribute(
-      "type",
-      "datetime-local",
-    );
+    await screen.findByLabelText("Title");
+    expect(screen.queryByLabelText("Publish at")).not.toBeInTheDocument();
+    expect(screen.queryByText("Publish at")).not.toBeInTheDocument();
   });
 
-  it("setting it sends the picked value as ISO on the wire", async () => {
-    const bodies: Array<Record<string, unknown>> = [];
-    backend({
-      sermon: detail({ status: "draft" }),
-      onPatch: (b) => bodies.push(b),
-    });
+  it("does not render a 'Publish at' field on a locked (under_review) sermon", async () => {
+    backend({ sermon: detail({ status: "under_review" }) });
     renderEditor();
 
-    const input = await screen.findByLabelText("Publish at");
-    fireEvent.change(input, { target: { value: "2026-10-01T09:00" } });
-    fireEvent.blur(input);
-
-    await vi.waitFor(() => expect(bodies.length).toBeGreaterThan(0));
-    const sent = bodies[0].publish_at;
-    expect(typeof sent).toBe("string");
-    expect(sent as string).toMatch(/Z$/);
+    await screen.findByLabelText("Title");
+    expect(screen.queryByLabelText("Publish at")).not.toBeInTheDocument();
   });
 
-  it("clearing it back to empty sends null", async () => {
+  it("never sends publish_at on the autosave PATCH wire, even for a sermon that already carries one", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     backend({
       sermon: detail({
@@ -269,24 +265,13 @@ describe("SermonEditor — Publish at (Access card)", () => {
     });
     renderEditor();
 
-    const input = await screen.findByLabelText("Publish at");
-    // Pre-filled from the server ISO value, rendered in the local zone — don't
-    // assert the exact wall-clock (timezone-dependent); just wait for it to be
-    // non-empty before clearing it.
-    await vi.waitFor(() => expect(input).not.toHaveValue(""));
-    fireEvent.change(input, { target: { value: "" } });
-    fireEvent.blur(input);
+    const title = await screen.findByLabelText("Title");
+    await userEvent.clear(title);
+    await userEvent.type(title, "The Prodigal Son — revised");
+    fireEvent.blur(title);
 
-    await vi.waitFor(() =>
-      expect(bodies).toEqual([{ publish_at: null }]),
-    );
-  });
-
-  it("is disabled while the sermon is locked (under_review)", async () => {
-    backend({ sermon: detail({ status: "under_review" }) });
-    renderEditor();
-
-    expect(await screen.findByLabelText("Publish at")).toBeDisabled();
+    await vi.waitFor(() => expect(bodies.length).toBeGreaterThan(0));
+    expect(bodies[0]).not.toHaveProperty("publish_at");
   });
 });
 

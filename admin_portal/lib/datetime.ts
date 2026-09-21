@@ -66,3 +66,13 @@ export function parseLocalDateTime(input: string): ParsedDateTime {
   }
   return { ok: true, iso: d.toISOString() };
 }
+
+/** Strictly-future check for an already-parsed ISO instant against `now` (ms
+    epoch, injectable for tests). Backs `SchedulePublishPanel`'s Confirm gate
+    (round 2 — scheduled sermon publish, review queue): a UI-only guard, since
+    the backend doesn't enforce one for `publish_at` either (mirrors
+    `Announcement.publish_at`). An unparseable `iso` is never future. */
+export function isFuture(iso: string, now: number): boolean {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) && ms > now;
+}

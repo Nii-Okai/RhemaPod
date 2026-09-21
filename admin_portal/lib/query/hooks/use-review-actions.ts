@@ -60,6 +60,14 @@
  * any request. (The backend does **not** yet enforce a non-empty note —
  * `RejectRequest.note` is optional with no validator; owed to a backend batch.)
  *
+ * Scheduled publish (round 2 — scheduled-publish authz fix). `publish` and
+ * `approvePublish` both take an optional `publishAt` (ISO), threaded onto the
+ * `publish` leg's wire call as an explicit `PublishRequest {publish_at}` body
+ * — `SchedulePublishPanel`'s Confirm is the only caller that passes one.
+ * Omitted, the call sends no body at all (the existing "publish now"
+ * behaviour, unchanged). This hook does no date validation itself — the panel
+ * only ever confirms an already-parsed, already-future ISO string.
+ *
  * `onSettled` invalidates `review.queue()`, `sermons.lists()`,
  * `sermons.counts()` and `nav.counts()` (the sidebar review-queue pill).
  */
@@ -94,6 +102,14 @@ export interface ReviewActionVars {
   item: ReviewQueueItem;
   /** Only for `reject` — the (already non-empty) rejection note. */
   note?: string;
+  /** Only for `publish` / `approvePublish` — an explicit schedule for the
+      `publish` leg's `PublishRequest` body (round 2 — scheduled sermon
+      publish, `SchedulePublishPanel`'s Confirm). Undefined means "send no
+      body at all", the existing bodyless "publish now" call — NOT the same
+      as sending `{publish_at: null}`, which is also a valid explicit choice
+      but not one this hook's callers make (the panel only ever confirms a
+      future instant). */
+  publishAt?: string;
 }
 
 const VERB: Record<ReviewActionKind, string> = {
@@ -248,9 +264,13 @@ const approveCall = (id: string) =>
   api.POST("/api/v1/approvals/sermons/{sermon_id}/approve", {
     params: { path: { sermon_id: id } },
   });
-const publishCall = (id: string) =>
+/** `publishAt` undefined → no body at all (the existing bodyless "publish
+    now" call, backward compatible). Defined → an explicit `PublishRequest`
+    body, which fully replaces `publish_at` on the row. */
+const publishCall = (id: string, publishAt?: string) =>
   api.POST("/api/v1/approvals/sermons/{sermon_id}/publish", {
     params: { path: { sermon_id: id } },
+    ...(publishAt !== undefined ? { body: { publish_at: publishAt } } : {}),
   });
 const rejectCall = (id: string, note: string) =>
   api.POST("/api/v1/approvals/sermons/{sermon_id}/reject", {
@@ -277,7 +297,7 @@ async function runAction(vars: ReviewActionVars): Promise<void> {
       await approveCall(id);
       return;
     case "publish":
-      await publishCall(id);
+      await publishCall(id, vars.publishAt);
       return;
     case "approvePublish": {
       // Two ordered calls — there is no combined route. The failure of each leg
@@ -300,7 +320,7 @@ async function runAction(vars: ReviewActionVars): Promise<void> {
         }
       }
       try {
-        await publishCall(id);
+        await publishCall(id, vars.publishAt);
       } catch (err) {
         throw new ReviewActionError("publish", approved, err);
       }
@@ -443,11 +463,14 @@ export function useReviewActions(options: UseReviewActionsOptions) {
     approve: (item: ReviewQueueItem) =>
       mutation.mutate({ kind: "approve", item }),
     /** Publish an already-`approved` card (`POST …/{id}/publish`). Not
-        claim-gated — any manager. The card leaves the queue on success. */
-    publish: (item: ReviewQueueItem) =>
-      mutation.mutate({ kind: "publish", item }),
-    approveAndPublish: (item: ReviewQueueItem) =>
-      mutation.mutate({ kind: "approvePublish", item }),
+        claim-gated — any manager. The card leaves the queue on success.
+        `publishAt` (round 2 — scheduled sermon publish): omitted sends no
+        body ("publish now"); an ISO from `SchedulePublishPanel`'s Confirm
+        sends an explicit `PublishRequest`. */
+    publish: (item: ReviewQueueItem, publishAt?: string) =>
+      mutation.mutate({ kind: "publish", item, publishAt }),
+    approveAndPublish: (item: ReviewQueueItem, publishAt?: string) =>
+      mutation.mutate({ kind: "approvePublish", item, publishAt }),
     reject: (item: ReviewQueueItem, note: string) => {
       if (!note.trim()) return;
       mutation.mutate({ kind: "reject", item, note });
