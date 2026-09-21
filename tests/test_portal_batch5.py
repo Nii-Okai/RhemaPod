@@ -554,10 +554,14 @@ async def test_speaker_sermon_count_scoped_to_caller(client, engine):
         (await client.get("/api/v1/speakers", headers=ed)).json(), speaker["id"]
     )["sermon_count"] == 2
 
-    # Detach the published sermon — anon drops to 0, staff to 1.
+    # Detach the published sermon — anon drops to 0, staff to 1. A published
+    # sermon is content-locked (see the approved/published field-lock guard),
+    # so unpublish first, edit, then republish.
+    await client.post(f"/api/v1/approvals/sermons/{s1['id']}/unpublish", headers=mgr)
     await client.patch(
         f"/api/v1/sermons/{s1['id']}", json={"speaker_id": None}, headers=ed
     )
+    await client.post(f"/api/v1/approvals/sermons/{s1['id']}/publish", headers=mgr)
     assert (await client.get(f"/api/v1/speakers/{speaker['id']}")).json()["sermon_count"] == 0
     assert (await client.get(
         f"/api/v1/speakers/{speaker['id']}", headers=ed
@@ -605,9 +609,12 @@ async def test_category_sermon_count_scoped_to_caller(client, engine):
     assert _c((await client.get("/api/v1/categories", headers=ed)).json()) == 2
     assert _c((await client.get("/api/v1/catalog/categories", headers=ed)).json()) == 2
 
+    # Published sermon is content-locked — unpublish first, edit, republish.
+    await client.post(f"/api/v1/approvals/sermons/{s1['id']}/unpublish", headers=mgr)
     await client.patch(
         f"/api/v1/sermons/{s1['id']}", json={"category_id": None}, headers=ed
     )
+    await client.post(f"/api/v1/approvals/sermons/{s1['id']}/publish", headers=mgr)
     assert (await client.get(f"/api/v1/categories/{cat['id']}")).json()["sermon_count"] == 0
     assert (await client.get(
         f"/api/v1/categories/{cat['id']}", headers=ed

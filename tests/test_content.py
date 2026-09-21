@@ -266,11 +266,15 @@ async def test_category_rejects_unknown_parent_field(client, engine):
 
 
 # ── catalog cache invalidation on sermon edit (finding 1) ─────────────────────
-async def test_patch_published_sermon_busts_catalog_cache(client, engine):
-    """A tier PATCH on a published sermon must invalidate the cached catalog so
-    /catalog/sermons and the live stream/detail endpoints never disagree on
-    `locked`/`tier`. Pre-fix, update_sermon never busts the cache, so the
-    anonymous re-read below still serves the stale `free`/unlocked row.
+async def test_patch_published_sermon_is_locked_not_silently_stale(client, engine):
+    """A published sermon is now content-locked (see the approved/published
+    field-lock guard) — a direct PATCH is refused 409, so the pre-lock finding
+    ("a tier PATCH on a published sermon left the catalog cache stale") can no
+    longer happen via this path at all. The only legal way to change a live
+    sermon's fields is unpublish -> edit -> publish, and that cycle must still
+    leave /catalog/sermons agreeing with the live detail/stream endpoints —
+    checked here via the same cache-priming shape the original regression
+    test used.
     """
     editor = await make_user(client, engine, "editor@example.com", "editor")
     manager = await make_user(client, engine, "manager@example.com", "manager")
@@ -288,13 +292,27 @@ async def test_patch_published_sermon_busts_catalog_cache(client, engine):
     assert row["tier"] == "free"
     assert row["locked"] is False
 
-    # Owning editor flips it to paid.
+    # A direct PATCH while published is refused — the sermon is locked.
+    r = await client.patch(
+        f"/api/v1/sermons/{sid}", json={"tier": "paid"}, headers=editor
+    )
+    assert r.status_code == 409
+    assert "locked" in r.json()["detail"]
+    # And the (correctly unchanged) catalog cache still agrees.
+    unchanged = (await client.get("/api/v1/catalog/sermons")).json()
+    row = next(i for i in unchanged if i["id"] == sid)
+    assert row["tier"] == "free" and row["locked"] is False
+
+    # The real path: unpublish (unlocks it), edit, republish.
+    await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=manager)
     r = await client.patch(
         f"/api/v1/sermons/{sid}", json={"tier": "paid"}, headers=editor
     )
     assert r.status_code == 200
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
 
-    # Immediately re-read: the cache must reflect the new tier.
+    # Immediately re-read: the cache must reflect the new tier, not the stale
+    # pre-edit row.
     after = (await client.get("/api/v1/catalog/sermons")).json()
     row = next(i for i in after if i["id"] == sid)
     assert row["tier"] == "paid"

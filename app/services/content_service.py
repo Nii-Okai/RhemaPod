@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import case, func, literal_column, nullslast, select
+from sqlalchemy import case, func, literal_column, nullslast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -154,6 +154,34 @@ def effective_tier(sermon: Sermon, series: Series | None) -> ContentTier:
     return ContentTier.FREE
 
 
+# ── Scheduled publish visibility ────────────────────────────────────────────────
+# Mirrors announcement_service.is_visible: visibility is computed at read time
+# from status + publish_at, not by a background job flipping rows. Sermons
+# have no expires_at equivalent (not asked for), so this is the publish_at
+# half only — callers pair it with a PUBLISHED status check (VIEWER_VISIBLE_
+# STATUSES for a single row, sermon_visibility_clause for a query).
+def sermon_publish_time_passed(sermon: Sermon, at: datetime | None = None) -> bool:
+    """True when `sermon.publish_at` is unset, or has passed as of `at` (now
+    by default)."""
+    now = at or datetime.now(timezone.utc)
+    publish_at = sermon.publish_at
+    if publish_at is not None and publish_at.tzinfo is None:
+        publish_at = publish_at.replace(tzinfo=timezone.utc)
+    return publish_at is None or publish_at <= now
+
+
+def sermon_visibility_clause(at: datetime | None = None):
+    """SQL predicate for public sermon visibility: PUBLISHED and publish_at
+    unset-or-passed. The query-level twin of `sermon_publish_time_passed`
+    (paired with VIEWER_VISIBLE_STATUSES), for the list/search queries that
+    filter in SQL rather than testing one already-loaded row."""
+    now = at or datetime.now(timezone.utc)
+    return (
+        Sermon.status == SermonStatus.PUBLISHED,
+        or_(Sermon.publish_at.is_(None), Sermon.publish_at <= now),
+    )
+
+
 def _thumbnail_url(key: str | None) -> str | None:
     """Turn a stored thumbnail key into a fetchable URL.
 
@@ -198,6 +226,7 @@ def to_list_item(
         episode_number=sermon.episode_number,
         tier=tier,
         locked=(tier == ContentTier.PAID and not has_subscription),
+        publish_at=sermon.publish_at,
     )
 
 
@@ -268,7 +297,7 @@ async def list_published_sermons(
     async def _load() -> list[dict]:
         stmt = (
             select(Sermon)
-            .where(Sermon.status == SermonStatus.PUBLISHED)
+            .where(*sermon_visibility_clause())
             .order_by(Sermon.published_at.desc().nullslast())
         )
         rows = (await db.execute(stmt)).scalars().all()
@@ -406,7 +435,11 @@ async def get_sermon_detail(
     is_staff = user is not None and user.role in (
         UserRole.EDITOR, UserRole.MANAGER, UserRole.ADMIN
     )
-    if sermon.status not in VIEWER_VISIBLE_STATUSES and not is_staff:
+    is_visible = (
+        sermon.status in VIEWER_VISIBLE_STATUSES
+        and sermon_publish_time_passed(sermon)
+    )
+    if not is_visible and not is_staff:
         raise ContentError("Sermon not found", status_code=404)
 
     return await _assemble_sermon_detail(db, sermon, user)
@@ -459,6 +492,7 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
         tier=data.tier,
         status=SermonStatus.DRAFT,
         created_by=creator.id,
+        publish_at=data.publish_at,
     )
     for tag in {t.strip().lower() for t in data.tags if t.strip()}:
         sermon.tags.append(SermonTag(tag=tag))
@@ -469,10 +503,32 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
     return sermon
 
 
+# A sermon in one of these statuses is content-locked: the approval decision
+# (or the publish itself) is done, so editing the fields out from under it —
+# even by a manager/admin — would silently invalidate what was reviewed/what
+# is live. This is the real guard; a client-side lock is UX only. Keyed by
+# status so the 409 message names the one that actually applies.
+_CONTENT_LOCKED_MESSAGES: dict[SermonStatus, str] = {
+    SermonStatus.APPROVED: (
+        "This sermon is approved and locked — publish it, then unpublish to "
+        "make changes."
+    ),
+    SermonStatus.PUBLISHED: (
+        "This sermon is published and locked — unpublish it first to make "
+        "changes."
+    ),
+}
+
+
 async def update_sermon(
     db: AsyncSession, sermon_id: uuid.UUID, data: SermonUpdate, editor: User
 ) -> Sermon:
     sermon = await _load_editable(db, sermon_id, editor)
+
+    if sermon.status in _CONTENT_LOCKED_MESSAGES:
+        raise ContentError(
+            _CONTENT_LOCKED_MESSAGES[sermon.status], status_code=409
+        )
 
     fields = data.model_dump(exclude_unset=True, exclude={"tags"})
 
@@ -526,6 +582,13 @@ async def update_sermon(
     # speaker/category/series names and tier — leaves the catalog disagreeing
     # with the live detail/stream endpoints until the TTL lapses. Commit first,
     # then invalidate (mirrors update_series / the approval transitions).
+    #
+    # `sermon.status == PUBLISHED` cannot actually be true here any more — the
+    # _CONTENT_LOCKED_MESSAGES guard above now refuses the update before this
+    # point is ever reached. Left in as defense-in-depth (a status this
+    # function never mutates, checked against a moving target — a future
+    # relaxation of that guard must not silently reopen the staleness bug this
+    # line exists to prevent) rather than deleted.
     if changed and sermon.status == SermonStatus.PUBLISHED:
         await invalidate_catalog_cache()
 
@@ -566,6 +629,22 @@ _EDITOR_SCOPE_DENIED: dict[str, tuple[int, str]] = {
 # action, so any manager may publish an approved sermon and a claim left by an
 # absent reviewer never blocks publication.
 _CLAIM_GATED_ACTIONS: frozenset[str] = frozenset({"approve", "reject", "withdraw"})
+
+# Segregation of duties: the manager who authored a sermon may not review it
+# — not "someone else already claimed it" (that's the claim lock above), but
+# "you may never claim it at all". Blocks the whole review-entry surface:
+# starting a review, taking one over, approving, rejecting. `withdraw` is
+# deliberately absent — pulling your own submission back to draft is
+# self-correction, the same reasoning that leaves an announcement's `reject`
+# ungated on your own content. `publish` is absent too: once legitimately
+# approved by someone else, publishing is a mechanical last step, not a
+# review decision (mirrors the announcement rule and the existing
+# publish-is-never-claim-gated precedent above). Admin bypasses. Covers
+# `transition()`'s actions; `take_over_review()` (a separate function, not
+# an action in this table) carries the same check inline.
+_SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS: frozenset[str] = frozenset(
+    {"start_review", "approve", "reject"}
+)
 # Enforce the claim only while the sermon is actually in an active review
 # (`under_review`). An unclaimed `pending_review` sermon stays open to any
 # manager; nothing is gated once the sermon reaches `approved` (publish is open
@@ -677,6 +756,21 @@ async def transition(
     except TransitionError as exc:
         raise ContentError(exc.message, status_code=409)
 
+    # Segregation of duties: a manager cannot review their own sermon at all
+    # (see _SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS). Checked after legality so an
+    # action that's illegal from this status 409s for everyone, self-authored
+    # or not — this 403 fires only for an action that would otherwise be
+    # allowed.
+    if (
+        action in _SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS
+        and sermon.created_by == actor.id
+        and actor.role != UserRole.ADMIN
+    ):
+        raise ContentError(
+            "You submitted this sermon — another manager needs to review it",
+            status_code=403,
+        )
+
     # Review-claim lock (Batch 6 #9): while a sermon is `under_review`, only the
     # manager who claimed it (via start-review or take-over) — or an admin —
     # may approve / reject / withdraw it. An unclaimed `pending_review` sermon
@@ -756,6 +850,15 @@ async def take_over_review(
         raise ContentError(
             f"cannot take over a sermon in status '{sermon.status.value}'",
             status_code=422,
+        )
+
+    # Segregation of duties (see _SELF_AUTHOR_REVIEW_BLOCKED_ACTIONS): the
+    # sermon's own author may not take over its review either — taking over is
+    # a review-entry action, same as start-review.
+    if sermon.created_by == actor.id and actor.role != UserRole.ADMIN:
+        raise ContentError(
+            "You submitted this sermon — another manager needs to review it",
+            status_code=403,
         )
 
     claimer_id = await _review_claimer_id(db, sermon.id)

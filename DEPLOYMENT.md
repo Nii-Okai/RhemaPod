@@ -35,7 +35,7 @@ Required when `ENVIRONMENT=production`:
 Inject these from AWS Secrets Manager / GCP Secret Manager / Vault — not a file
 on disk.
 
-`S3_PUBLIC_ENDPOINT` is a **dev-only** shim (see §7). The preflight refuses to
+`S3_PUBLIC_ENDPOINT` is a **dev-only** shim (see §8). The preflight refuses to
 boot in production if it is set to a localhost/compose value; leave it unset.
 
 ## 3. Deploy sequence
@@ -159,7 +159,36 @@ out of scope here.
 Verify locally first: `stripe listen --forward-to
 localhost:8000/api/v1/subscriptions/webhook`.
 
-## 7. S3 / CORS
+## 7. Email (Resend)
+
+`app/core/email.py` already has a working, provider-agnostic SMTP backend
+(`_send_smtp_blocking`), gated by `settings.email_is_live`
+(`SMTP_HOST` + `SMTP_FROM_EMAIL` both set — see §2; the production preflight
+already refuses to boot without them). **Resend supports SMTP relay
+directly**, so nothing in the send path changes — this is configuration only.
+
+1. Create a Resend account and verify a sending domain (Resend gives you DNS
+   records — SPF/DKIM — to add at your registrar; verification can take a
+   few minutes to propagate). **Isaac does this step himself** — account
+   creation, domain verification and API key generation are not things this
+   codebase or its agents can do on your behalf.
+2. Generate an API key in the Resend dashboard.
+3. Set the five `SMTP_*` variables (see `.env.example` for the placeholder
+   block):
+
+   | Variable | Value |
+   |---|---|
+   | `SMTP_HOST` | `smtp.resend.com` |
+   | `SMTP_PORT` | `587` (STARTTLS) or `465` (implicit TLS) — `email.py` handles both |
+   | `SMTP_USERNAME` | the literal string `resend` |
+   | `SMTP_PASSWORD` | your Resend API key |
+   | `SMTP_FROM_EMAIL` | a verified sender address on your verified domain |
+
+No code change, no new dependency. `send_staff_invite` and
+`send_password_reset` (both in `email.py`) are unaffected — they call the
+same `_send` seam regardless of which SMTP provider is configured behind it.
+
+## 8. S3 / CORS
 
 The IAM policy needs `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on both
 buckets, plus `s3:ListBucket` on the buckets themselves (without it S3 returns
@@ -207,7 +236,7 @@ Two dev-only wrinkles, both handled in `docker-compose.yml`:
   used rather than a per-bucket `mc cors` rule — `mc cors` support varies by
   release; the server env var is stable.)
 
-## 8. Edge caching and the `Authorization` header
+## 9. Edge caching and the `Authorization` header
 
 Seven public GET routes return a **different body depending on whether the
 caller is authenticated staff**:
@@ -234,7 +263,7 @@ routes with optional `HTTPBearer` security, which is the signal to key on.
 The API itself sets no cache headers on them; the count queries bypass the
 `cache_aside` layer, so this is purely an edge-layer concern.
 
-## 9. Operational behaviour when Redis is down
+## 10. Operational behaviour when Redis is down
 
 Redis backs refresh-token rotation, the one-shot reset/invite ledger, and login
 rate limiting. The failure posture is split on purpose:
@@ -250,7 +279,7 @@ All 503s carry the correlation ID and a generic message. `/health/ready`
 already returns 503 while Redis is unreachable, so a load balancer drains the
 instance; the per-request behaviour above covers the window before it does.
 
-## 10. What is still deferred
+## 11. What is still deferred
 
 - **Transcoding** is passthrough: the uploaded MP4 is served directly. Fine for
   launch; revisit when bandwidth cost or mobile buffering justifies an HLS

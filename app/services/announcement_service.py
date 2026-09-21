@@ -268,6 +268,23 @@ async def transition(
     ):
         raise ContentError("You can only submit your own announcements", 403)
 
+    # Segregation of duties: a manager who authored this announcement cannot
+    # also approve it — self-review is the conflict of interest. `reject` is
+    # deliberately NOT gated: rejecting your own draft is harmless
+    # self-correction, not a review decision needing a second person. Admin
+    # bypasses, mirroring the review-claim admin-bypass on the sermon side
+    # (content_service.transition).
+    if (
+        action == "approve"
+        and actor.id == ann.created_by
+        and actor.role != UserRole.ADMIN
+    ):
+        raise ContentError(
+            "You can't approve your own announcement — another manager needs "
+            "to review it",
+            403,
+        )
+
     try:
         new_status = resolve_announcement_transition(action, ann.status, actor.role)
     except TransitionError as exc:
