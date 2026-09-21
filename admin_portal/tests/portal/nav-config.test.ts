@@ -12,27 +12,46 @@ import {
    that decision rides on. */
 
 describe("navGroupsForRole — role gating", () => {
-  it("hides the Community group for an editor", () => {
+  it("hides the Community and Account groups for an editor", () => {
     const ids = navGroupsForRole("editor").map((g) => g.id);
     expect(ids).not.toContain("community");
-    expect(ids).toEqual(["overview", "library", "workflow", "account"]);
+    expect(ids).not.toContain("account");
+    expect(ids).toEqual(["overview", "library", "workflow"]);
   });
 
-  it.each(["manager", "admin"])("shows every group for %s", (role) => {
-    const ids = navGroupsForRole(role).map((g) => g.id);
-    expect(ids).toEqual([
-      "overview",
-      "library",
-      "workflow",
-      "community",
-      "account",
-    ]);
-  });
-
-  it("hides Community for an unknown / lower role too (fail closed)", () => {
-    expect(navGroupsForRole("viewer").map((g) => g.id)).not.toContain(
-      "community",
+  it("drops 'Review queue' but keeps 'Announcements' in Workflow for an editor", () => {
+    const workflow = navGroupsForRole("editor").find(
+      (g) => g.id === "workflow",
     );
+    expect(workflow?.items.map((i) => i.label)).toEqual(["Announcements"]);
+  });
+
+  it.each(["manager", "admin"])(
+    "shows every group, and both Workflow items, for %s",
+    (role) => {
+      const groups = navGroupsForRole(role);
+      expect(groups.map((g) => g.id)).toEqual([
+        "overview",
+        "library",
+        "workflow",
+        "community",
+        "account",
+      ]);
+      const workflow = groups.find((g) => g.id === "workflow");
+      expect(workflow?.items.map((i) => i.label)).toEqual([
+        "Review queue",
+        "Announcements",
+      ]);
+    },
+  );
+
+  it("hides Community/Account/Review queue for an unknown / lower role too (fail closed)", () => {
+    const editorish = navGroupsForRole("viewer");
+    expect(editorish.map((g) => g.id)).not.toContain("community");
+    expect(editorish.map((g) => g.id)).not.toContain("account");
+    expect(
+      editorish.find((g) => g.id === "workflow")?.items.map((i) => i.label),
+    ).toEqual(["Announcements"]);
     expect(roleSeesCommunity("editor")).toBe(false);
     expect(roleSeesCommunity("admin")).toBe(true);
   });
@@ -41,6 +60,14 @@ describe("navGroupsForRole — role gating", () => {
     const a = navGroupsForRole("admin");
     a.pop();
     expect(navGroupsForRole("admin")).toHaveLength(5);
+
+    const workflow = navGroupsForRole("admin").find(
+      (g) => g.id === "workflow",
+    );
+    workflow?.items.pop();
+    expect(
+      navGroupsForRole("admin").find((g) => g.id === "workflow")?.items,
+    ).toHaveLength(2);
   });
 });
 

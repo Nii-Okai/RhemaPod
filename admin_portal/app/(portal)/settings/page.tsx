@@ -1,10 +1,16 @@
+import { requireRole } from "@/lib/auth/require-role";
 import { EmptyState, PageHeader } from "@/components/portal";
 
 /**
- * Placeholder — Settings is Phase 2 (§C). In the Account nav group, which every
- * role sees, so no `requireRole` here.
+ * Placeholder — Settings is Phase 2 (§C). Manager/Admin only: `requireRole`
+ * returns 404 for an Editor (plan §A.7 layer 4 — 404, not a login redirect, so
+ * the route's existence isn't disclosed), matching `/review`, `/users` and
+ * `/subscriptions`. The Account nav group is hidden from an Editor too
+ * (`nav-config.ts`), so this is the enforcement layer behind that cosmetic
+ * gate, not the only one.
  */
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  await requireRole("manager");
   return (
     <>
       <PageHeader

@@ -23,6 +23,10 @@ export interface NavItem {
   href: string;
   /** Trailing count source. `reviewQueue` renders as the clay-600 pill. */
   count?: NavCountKey;
+  /** Hidden from an Editor — manager/admin only (same role check as
+      `roleSeesCommunity`). Cosmetic, like the group-level filter below: the
+      route itself is the real gate (`requireRole()`, 404 not redirect). */
+  managerOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -54,7 +58,12 @@ const WORKFLOW: NavGroup = {
   id: "workflow",
   eyebrow: "Workflow",
   items: [
-    { label: "Review queue", href: "/review", count: "reviewQueue" },
+    {
+      label: "Review queue",
+      href: "/review",
+      count: "reviewQueue",
+      managerOnly: true,
+    },
     { label: "Announcements", href: "/announcements" },
   ],
 };
@@ -83,25 +92,45 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   ACCOUNT,
 ];
 
-/** Roles that see the Community group. Managers + admins; Editors do not. */
+/** Roles that see the Community group — and every other manager-only group
+    or item (`ACCOUNT`'s "Settings", `WORKFLOW`'s "Review queue"). Managers +
+    admins; Editors do not. One check, reused everywhere role visibility is
+    cosmetically gated in the nav (the name stays `*Community` since that's
+    the group most callers/tests reach for it through). */
 export function roleSeesCommunity(role: string): boolean {
   return role === "manager" || role === "admin";
 }
 
+const MANAGER_ONLY_GROUPS: ReadonlySet<NavGroup["id"]> = new Set([
+  "community",
+  "account",
+]);
+
 /**
  * The nav tree for a role.
  *
- * COSMETIC ONLY. Hiding the Community group keeps an Editor from seeing chrome
- * they cannot use; `require_role` on the FastAPI side is the real enforcement
- * (plan §A.7 layer 1). A hand-crafted request to `/subscriptions` still renders
- * the shell — the manager-only *pages* gate themselves with `requireRole()`
- * and return 404 (see `lib/auth/require-role.ts`).
+ * COSMETIC ONLY. Hiding a group/item keeps an Editor from seeing chrome they
+ * cannot use; `require_role` on the FastAPI side is the real enforcement
+ * (plan §A.7 layer 1). A hand-crafted request to `/subscriptions` or
+ * `/settings` still renders the shell — the manager-only *pages* gate
+ * themselves with `requireRole()` and return 404 (see
+ * `lib/auth/require-role.ts`).
+ *
+ * `COMMUNITY` and `ACCOUNT` are hidden whole (every item in each is
+ * manager-only today). `WORKFLOW` mixes visibility — "Announcements" stays
+ * for an Editor, "Review queue" doesn't — so it's filtered per-item via
+ * `NavItem.managerOnly` instead.
  */
 export function navGroupsForRole(role: string): NavGroup[] {
-  const seesCommunity = roleSeesCommunity(role);
+  const seesManagerOnly = roleSeesCommunity(role);
   return NAV_GROUPS.filter(
-    (group) => group.id !== "community" || seesCommunity,
-  );
+    (group) => seesManagerOnly || !MANAGER_ONLY_GROUPS.has(group.id),
+  ).map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => seesManagerOnly || !item.managerOnly,
+    ),
+  }));
 }
 
 /**
