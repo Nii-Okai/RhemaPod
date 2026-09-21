@@ -101,7 +101,10 @@ export interface UseAutosaveSermonResult {
   isDirty: boolean;
 }
 
-const DEFAULT_DEBOUNCE_MS = 2000;
+// Exported so other editors that mirror this debounce (the announcement
+// editor's auto-draft-on-title, review-fix batch item 8) share one source of
+// truth instead of a second hardcoded "2000".
+export const DEFAULT_DEBOUNCE_MS = 2000;
 const DEFAULT_RETRY_MS = 4000;
 
 function messageFor(err: unknown): string {

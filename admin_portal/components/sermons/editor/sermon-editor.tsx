@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeader } from "@/components/portal";
 import { StatusBadge } from "@/components/portal/status-badge";
+import { Toast } from "@/components/portal/toast";
 import { toBadgeStatus, type SermonStatus } from "@/components/sermons/sermon-status";
 
 import { AccessCard } from "@/components/sermons/editor/access-card";
@@ -48,7 +49,30 @@ import { useSpeakers } from "@/lib/query/hooks/use-speakers";
    real "saved N min ago" baseline.
    ========================================================================== */
 
-const IN_REVIEW: readonly SermonStatus[] = ["pending_review", "under_review"];
+// Statuses where the editor's fields are read-only. `pending_review` /
+// `under_review` lock while a manager is actively reviewing; `approved` and
+// `published` lock too (a backend guard added alongside this — 409 on PATCH —
+// matches). `Withdraw` only exists as a transition out of the first two
+// (`app/services/approval.py::TRANSITIONS`) — there is no transition back to
+// draft from `approved` or `published` — so `canWithdraw` below is
+// deliberately narrower than this set; see the action-row branch.
+const FIELD_LOCKED_STATUSES: readonly SermonStatus[] = [
+  "pending_review",
+  "under_review",
+  "approved",
+  "published",
+];
+const WITHDRAWABLE_STATUSES: readonly SermonStatus[] = [
+  "pending_review",
+  "under_review",
+];
+
+// Success toast for an explicit "Save draft" click (review-fix batch, item 2
+// — Save draft previously gave zero click-confirmation, only the passive
+// mono "saved N min ago" stamp). Same shape as `review-screen.tsx`'s toast
+// (`TOAST_MS`, auto-dismiss); inlined rather than shared since this is a
+// single new consumer, not a second one — see status.md.
+const TOAST_MS = 6000;
 
 const EMPTY_FORM: SermonFormValues = {
   title: "",
@@ -60,6 +84,33 @@ const EMPTY_FORM: SermonFormValues = {
   tier: null,
   tags: [],
 };
+
+/** The locked-fields banner's title, by status — kept distinct so "in
+    review" never gets shown for an approved/published sermon. */
+function lockedBannerTitle(status: SermonStatus): string {
+  switch (status) {
+    case "approved":
+      return "This sermon is approved";
+    case "published":
+      return "This sermon is published";
+    default:
+      return "This sermon is in review";
+  }
+}
+
+/** The locked-fields banner's body, by status — each points at the actual
+    way (if any) to unlock it; `approved` has none (no transition back to
+    draft exists — `app/services/approval.py::TRANSITIONS`). */
+function lockedBannerBody(status: SermonStatus): string {
+  switch (status) {
+    case "approved":
+      return "Fields are locked now that it’s approved. It can still be published, but there’s no way to send it back for edits.";
+    case "published":
+      return "Fields are locked while it’s live. A manager can unpublish it from the Sermons list to edit it again.";
+    default:
+      return "Fields are locked while a manager reviews it. Withdraw it to keep editing.";
+  }
+}
 
 function fromDetail(detail: SermonAdminDetail): SermonFormValues {
   return {
@@ -163,6 +214,19 @@ function EditorForm({ mode, initial }: EditorFormProps) {
     null,
   );
   const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
+  // Armed by an explicit Save-draft click, cleared the next time `autosave.
+  // status` settles — distinguishes "the click's own save landed" from any
+  // OTHER autosave tick (a field edit's debounced save, or this same flush
+  // firing from elsewhere) so the toast fires once per click, not per tick.
+  // State, not a ref: it's read/adjusted during render (below), and a ref
+  // can't be — same reason `statusOverride` is state.
+  const [saveDraftArmed, setSaveDraftArmed] = useState(false);
 
   // The live sermon (same query key as `SermonEditor` → shared cache, no extra
   // request). Its `status` / `thumbnail_url` stay fresh across a submit/withdraw
@@ -224,18 +288,26 @@ function EditorForm({ mode, initial }: EditorFormProps) {
   }
 
   const displayStatus: SermonStatus = statusOverride ?? serverStatus;
-  // The editor is read-only ONLY while a manager is reviewing the sermon —
-  // `pending_review` or `under_review`. A `draft` or `rejected` sermon is
-  // always fully editable, series-attached or not, and the backend agrees
-  // (`update_sermon` only guards an in-review sermon's episode/series
-  // position, never a draft's fields).
+  // The editor is read-only while a manager is reviewing the sermon
+  // (`pending_review` / `under_review`), and again once it's `approved` or
+  // `published` — a decision already made shouldn't be re-litigated by
+  // editing the record under it. A `draft` or `rejected` sermon is always
+  // fully editable, series-attached or not, and the backend agrees
+  // (`update_sermon` guards an in-review/approved/published sermon's fields,
+  // never a draft's).
   //
   // `current.locked` is deliberately NOT consulted: on `SermonAdminDetail`
   // that flag is the per-user paywall signal (paid tier + no subscription),
   // computed off the resolved tier — so a draft in a paid series would lock
   // the form and wrongly show the "in review" banner. It has no editing
   // meaning on the staff screen.
-  const locked = mode === "edit" && IN_REVIEW.includes(displayStatus);
+  const locked = mode === "edit" && FIELD_LOCKED_STATUSES.includes(displayStatus);
+  // Narrower than `locked` — "Withdraw" (→ draft) only exists as a backend
+  // transition from pending_review/under_review. An approved/published
+  // sermon has no editor-side undo (approved: no transition back at all;
+  // published: only "Unpublish" from the Sermons list, manager-only), so the
+  // action row below offers nothing rather than a button that would 409.
+  const canWithdraw = mode === "edit" && WITHDRAWABLE_STATUSES.includes(displayStatus);
 
   const titleEmpty = form.title.trim().length === 0;
   const titleError =
@@ -267,8 +339,30 @@ function EditorForm({ mode, initial }: EditorFormProps) {
       autosave.status === "saving",
   );
 
+  // Fires the click-confirmation toast once the flush this SAME click armed
+  // actually settles — not on an unrelated debounced autosave tick that
+  // happens to land around the same time. Adjust-state-during-render (the
+  // pattern this file already uses above for the optimistic-badge clear and
+  // the form re-seed), not an effect: a `setState` synchronously derived from
+  // other state belongs in render, not in an effect body.
+  if (saveDraftArmed && autosave.status === "saved") {
+    setSaveDraftArmed(false);
+    setToast("Draft saved.");
+  } else if (
+    saveDraftArmed &&
+    (autosave.status === "error" || autosave.status === "idle")
+  ) {
+    // "error": already surfaced as the card-top "Your last change didn't
+    // save" alert — no toast on top of that. "idle": a create-mode flush with
+    // no title yet is a no-op (`useAutosaveSermon` holds it) — the inline
+    // "Title is required." error is the feedback there. Either way, disarm so
+    // a LATER unrelated tick can't fire a stale toast.
+    setSaveDraftArmed(false);
+  }
+
   const onSaveDraft = () => {
     setTitleTouched(true);
+    setSaveDraftArmed(true);
     void autosave.flush();
   };
 
@@ -321,7 +415,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               savedAt={autosave.savedAt}
               unsaved={!sermonId}
             />
-            {locked ? (
+            {canWithdraw ? (
               <Button
                 size="md"
                 variant="secondary"
@@ -330,7 +424,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               >
                 Withdraw
               </Button>
-            ) : (
+            ) : locked ? null : (
               <>
                 <Button
                   size="md"
@@ -387,9 +481,8 @@ function EditorForm({ mode, initial }: EditorFormProps) {
             )}
 
             {locked ? (
-              <Alert variant="warning" title="This sermon is in review">
-                Fields are locked while a manager reviews it. Withdraw it to keep
-                editing.
+              <Alert variant="warning" title={lockedBannerTitle(displayStatus)}>
+                {lockedBannerBody(displayStatus)}
               </Alert>
             ) : null}
 
@@ -441,6 +534,12 @@ function EditorForm({ mode, initial }: EditorFormProps) {
           </div>
         </div>
       </div>
+
+      {toast ? (
+        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-6">
+          <Toast message={toast} onDismiss={() => setToast(null)} />
+        </div>
+      ) : null}
     </UploadProvider>
   );
 }

@@ -8,7 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -21,7 +21,9 @@ import type { SermonAdminDetail } from "@/lib/query/hooks/use-sermon-admin";
    MSW (§A.11). Covers: Access radios ↔ tier (`tier_override` drives the
    control; the standalone lock), the newest-first approval-log timeline + empty state,
    optimistic Submit with rollback on a 500, Withdraw-from-under_review's 409
-   message, and locked fields under review. */
+   message, locked fields under review, and (review-fix batch) the field lock
+   extending to approved/published with no Withdraw and a status-specific
+   banner. */
 
 vi.mock("next/link", () => ({
   default: ({
@@ -45,7 +47,10 @@ vi.mock("next/link", () => ({
 }));
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.useRealTimers();
+});
 afterAll(() => server.close());
 
 const SERMON_ID = "11111111-1111-1111-1111-111111111111";
@@ -346,6 +351,53 @@ describe("SermonEditor — in-review lock + Withdraw", () => {
   });
 });
 
+/* --- approved / published lock ------------------------------------------ */
+
+describe("SermonEditor — approved/published lock (no Withdraw, status-specific banner)", () => {
+  it("approved: locks the fields, offers no action button, and shows an approved-specific banner", async () => {
+    backend({ sermon: detail({ status: "approved" }) });
+    renderEditor();
+
+    const title = await screen.findByLabelText("Title");
+    expect(title).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Save draft" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).not.toBeInTheDocument();
+    // No transition exists back to draft from `approved` — no Withdraw either.
+    expect(
+      screen.queryByRole("button", { name: "Withdraw" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("This sermon is approved")).toBeInTheDocument();
+    expect(
+      screen.queryByText("This sermon is in review"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("published: locks the fields, offers no action button, and shows a published-specific banner", async () => {
+    backend({ sermon: detail({ status: "published" }) });
+    renderEditor();
+
+    const title = await screen.findByLabelText("Title");
+    expect(title).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Save draft" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Withdraw" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("This sermon is published")).toBeInTheDocument();
+    expect(
+      screen.getByText(/A manager can unpublish it from the Sermons list/),
+    ).toBeInTheDocument();
+  });
+});
+
 /* --- draft is always editable (bugfix batch #5) ------------------------- */
 
 describe("SermonEditor — a draft is never locked", () => {
@@ -375,6 +427,67 @@ describe("SermonEditor — a draft is never locked", () => {
     expect(
       screen.getByRole("button", { name: "Submit for review" }),
     ).toBeInTheDocument();
+  });
+});
+
+/* --- Save draft click confirmation (review-fix batch, item 2) ----------- */
+
+describe("SermonEditor — Save draft shows a click-confirmation toast", () => {
+  it("clicking Save draft (with a change already made) shows a 'Draft saved.' toast", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ status: "draft" }),
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    const title = await screen.findByLabelText("Title");
+    await userEvent.clear(title);
+    await userEvent.type(title, "The Prodigal Son — revised");
+
+    // "Save draft" flushes immediately — it doesn't wait out the debounce.
+    await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    await vi.waitFor(() => expect(bodies.length).toBeGreaterThan(0));
+    expect(await screen.findByText("Draft saved.")).toBeInTheDocument();
+  });
+
+  it("does not toast on a plain debounced autosave tick — only on the Save-draft click", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ status: "draft" }),
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    // Real timers for the initial render/data-fetch — `findBy*`/`waitFor`
+    // poll on real timers, so switching to fake timers before this resolves
+    // deadlocks (same caution as `autosave-sermon.dom.test.tsx`).
+    const title = await screen.findByLabelText("Title");
+
+    vi.useFakeTimers();
+    fireEvent.change(title, {
+      target: { value: "The Prodigal Son — revised" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(screen.queryByText("Draft saved.")).not.toBeInTheDocument();
+  });
+
+  it("does not toast when Save draft is clicked with no unsaved change (nothing to flush)", async () => {
+    backend({ sermon: detail({ status: "draft" }) });
+    renderEditor();
+
+    await screen.findByLabelText("Title");
+    await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    // No pending edits → `flush()` is a no-op (status never reaches "saved").
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText("Draft saved.")).not.toBeInTheDocument();
   });
 });
 
