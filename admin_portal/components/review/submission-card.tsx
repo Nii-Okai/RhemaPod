@@ -21,10 +21,16 @@ import {
 /* =============================================================================
    SubmissionCard — one Review queue card (design Screen 5, plan W10).
 
-   White, radius 16, padding 20. A 180px 16:9 striped thumb (duration chip
+   White, radius 16, padding 20. A 180px 16:9 thumb (duration chip
    bottom-right) beside a gap-9 stack: title (Newsreader 22) + status badge ·
    a 13.5px ink-muted meta line · a 14/1.55 description capped at 62ch · a mono
    provenance line · the action row.
+
+   Thumbnail (review-queue-thumbnail). `item.thumbnail_url` renders as a
+   decorative `<img>` (object-cover, alt="") when set — null for audio-only or
+   not-yet-confirmed sermons falls back to the striped `MediaPlaceholder`, same
+   pairing as the Sermons list row thumb. Both sit in a `relative` wrapper so
+   the duration chip overlays either one identically.
 
    The title links to `/sermons/{id}` (the staff detail/editor route); the
    action buttons sit beside it, not inside the link, so they never navigate.
@@ -237,12 +243,25 @@ export function SubmissionCard({
       ) : null}
 
       <div className="flex flex-wrap gap-18">
-        <MediaPlaceholder
-          scale="card"
-          duration={duration}
-          label={`Thumbnail for ${item.title}`}
-          className="aspect-video w-[180px] shrink-0 rounded-5"
-        />
+        <div className="relative aspect-video w-[180px] shrink-0 overflow-hidden rounded-5">
+          {item.thumbnail_url ? (
+            // Decorative: the title is right beside it as visible text (same
+            // treatment as the Sermons list row thumb).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.thumbnail_url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <MediaPlaceholder scale="card" aria-hidden className="h-full w-full" />
+          )}
+          {duration ? (
+            <span className="absolute bottom-10 right-10 rounded-4 bg-[rgba(46,39,35,0.72)] px-6 py-2 font-mono text-[11px] tracking-[0.06em] text-surface-sunken">
+              {duration}
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-9">
           <div className="flex flex-wrap items-center gap-10">

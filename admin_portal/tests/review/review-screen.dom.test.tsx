@@ -341,6 +341,39 @@ describe("ReviewScreen — >48h alert", () => {
   });
 });
 
+describe("ReviewScreen — card thumbnail (review-queue-thumbnail)", () => {
+  it("renders an <img> from thumbnail_url when the sermon has one", async () => {
+    backend([
+      item({
+        id: "a1",
+        title: "Has art",
+        thumbnail_url: "https://cdn.test/a1-thumb.jpg",
+      }),
+    ]);
+    renderScreen();
+
+    await screen.findByText("Has art");
+    // Decorative (alt=""), same treatment as the Sermons list row thumb — the
+    // title beside it already carries the accessible name, so assert on the
+    // element directly rather than by role.
+    const img = cardFor("Has art").querySelector("img");
+    expect(img).toHaveAttribute("src", "https://cdn.test/a1-thumb.jpg");
+    expect(img).toHaveAttribute("alt", "");
+  });
+
+  it("falls back to the striped placeholder when thumbnail_url is null", async () => {
+    backend([
+      item({ id: "a1", title: "No art yet", thumbnail_url: null }),
+    ]);
+    renderScreen();
+
+    await screen.findByText("No art yet");
+    const card = cardFor("No art yet");
+    expect(card.querySelector("img")).not.toBeInTheDocument();
+    expect(within(card).getByLabelText("image placeholder")).toBeInTheDocument();
+  });
+});
+
 describe("ReviewScreen — claim state", () => {
   it("keys 'mine' off review_claimed_by_id, not the display name: my card keeps 'Approve only' but drops 'Take over review'", async () => {
     backend([

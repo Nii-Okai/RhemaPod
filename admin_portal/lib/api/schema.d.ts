@@ -2139,6 +2139,8 @@ export interface components {
             status: components["schemas"]["SermonStatus"];
             /** Submitted At */
             submitted_at: string | null;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
             tier: components["schemas"]["ContentTier"];
             /** Title */
             title: string;
