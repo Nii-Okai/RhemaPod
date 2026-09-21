@@ -1572,6 +1572,17 @@
             ],
             "title": "Submitted At"
           },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
           "tier": {
             "$ref": "#/components/schemas/ContentTier"
           },

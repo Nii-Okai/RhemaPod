@@ -335,6 +335,11 @@ class ReviewQueueItem(BaseModel):
     category_name: str | None = None
     series_id: uuid.UUID | None
     series_title: str | None = None
+    # Sermon.thumbnail_key resolved to a fetchable URL (mirrors
+    # SermonListItem.thumbnail_url / SermonAdminListItem.thumbnail_url). None
+    # for an audio-only sermon or one with no thumbnail confirmed yet — the
+    # queue card falls back to a placeholder client-side.
+    thumbnail_url: str | None = None
     # Sermon.created_by verbatim (mirrors SermonAdminListItem.created_by /
     # AnnouncementAdminItem.created_by). Lets the client grey out
     # Start-review/Approve/Reject on a manager's own sermon — self-approval is
