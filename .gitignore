@@ -45,6 +45,16 @@ docs/*
 !docs/reviews/**
 status.md
 
+# Expo / React Native mobile artifacts
+.expo/
+.expo-shared/
+dist/
+mobile/.gradle/
+mobile/android/local.properties
+mobile/android/app/release/
+mobile/ios/Pods/
+mobile/node_modules/
+
 # Local Docker Compose override (auto-loaded by `docker compose`). Used on
 # machines where a host-native Postgres already holds 127.0.0.1:5432 — the
 # override republishes the container's Postgres on 5433. Never committed:
