@@ -1,10 +1,43 @@
-"""Redis-backed token stores: refresh-token rotation + a single-use ledger.
+"""Redis-backed token stores: multi-session refresh rotation + a single-use
+ledger.
 
-Each user's active refresh-token jti is stored under a key. On refresh we
-verify the presented jti matches the stored one, then replace it (rotation).
-A stolen refresh token can therefore be used at most once before detection.
-The single-use ledger (``register_single_use`` / ``consume_single_use``) backs
-one-shot reset and invite tokens the same way.
+Multi-session refresh rotation (status.md "W0.4 kickoff decisions", D1-D3):
+each user's live refresh sessions live under one key, ``refresh:{user_id}``,
+now a Redis HASH whose fields are ``session_id`` ("sid" — generated at login,
+stable across rotations) and whose values are a packed JSON blob
+``{jti, prev_jti, grace_until, expires_at}`` for that session. A second login
+on a second device gets its own field; it no longer overwrites the first
+(the bug this rework exists to fix — a single global `refresh:{user_id}`
+STRING keyed only by user, one slot, clobbered on every login).
+
+Why a hash and not per-session keys or a Postgres table — the decision record
+in status.md has the full reasoning; the load-bearing part is that
+**global revoke must stay one atomic command.** `reset_password`,
+`change_password`, `change_role`, `set_active` all still kill *every* session
+for a user (plan §A.3 #4) — with one hash that's still `DEL refresh:{user_id}`,
+identical to the pre-rework semantics, one round trip, no partial-failure
+window. Flat per-session keys would need SCAN-or-index + multi-key DELETE:
+non-atomic, partially-failable, and a partial failure returns 200 while a
+session survives — the exact silent failure this design avoids.
+
+Cost of the hash shape: no per-field TTL (Redis <7.4 has no `HEXPIRE`), so a
+session's own expiry (`expires_at`) is carried in its packed value and
+enforced ON READ, not by Redis itself — `claim_and_rotate` prunes an expired
+field opportunistically inside its own atomic claim. The hash's overall key
+TTL is refreshed to cover the newest write on every mutation, so the whole
+key is never deleted out from under a still-live session.
+
+``claim_and_rotate`` is the atomic claim-first replacement for the old
+check-then-write `is_current_refresh_jti` -> `store_refresh_jti` pair, which
+had a real TOCTOU race (qa-strategist's W0.3 finding, reproduced against
+`FakeRedis` via `asyncio.gather`): two concurrent refreshes presenting the
+same still-valid jti could both pass the check before either wrote, and the
+second write silently orphaned the first. The fix inverts the order —
+pre-generate the new jti, claim it FIRST in one atomic Redis operation, only
+mint the JWT with that exact jti after the claim succeeds — implemented as a
+single Lua script (EVALSHA-cached) so the whole check-compare-write happens in
+one round trip, the same "atomic claim in one round trip" idiom
+`consume_single_use` already uses via `GETDEL`.
 
 Failure posture — deliberate, and the exact opposite of ``rate_limit.py``:
 
@@ -13,7 +46,7 @@ Failure posture — deliberate, and the exact opposite of ``rate_limit.py``:
     clean 503. We never:
       - issue a refresh token whose jti we could not record (it would be
         impossible to revoke),
-      - report a session as revoked when the DELETE never reached Redis —
+      - report a session as revoked when the DELETE/HDEL never reached Redis —
         logout / change-password / role-change returning 200 after a
         silently-failed revocation is a lie to the client,
       - accept a reset/invite token we cannot atomically consume.
@@ -22,6 +55,10 @@ Failure posture — deliberate, and the exact opposite of ``rate_limit.py``:
     login because Redis blinked is worse than briefly not throttling, and a
     Redis outage is not itself an attack signal.
 """
+import json
+import time
+from enum import Enum
+
 from redis.exceptions import RedisError
 
 from app.core.config import get_settings
@@ -37,8 +74,20 @@ class TokenStoreUnavailable(Exception):
 
     Translated to HTTP 503 at the router boundary (see ``main.py``). A
     credential path must fail closed on this — never pretend a token was
-    issued, a session revoked, or a one-shot token consumed.
+    issued, a session created or revoked, or a one-shot token consumed.
     """
+
+
+class ClaimOutcome(str, Enum):
+    """Result of ``claim_and_rotate``. Kept as a distinct enum, not a bool —
+    auth_service maps each value to its own log line and HTTP response, so
+    the reuse signal (`REUSE_REVOKED`) is never collapsed into a generic
+    401 indistinguishable from an expired/unknown session."""
+
+    ROTATED = "ROTATED"
+    ROTATED_VIA_GRACE = "ROTATED_VIA_GRACE"
+    REUSE_REVOKED = "REUSE_REVOKED"
+    NO_SESSION = "NO_SESSION"
 
 
 def _key(user_id: str) -> str:
@@ -53,27 +102,184 @@ def _invite_jti_key(user_id: str) -> str:
     return f"invite_jti:{user_id}"
 
 
-async def store_refresh_jti(user_id: str, jti: str) -> None:
+# Operates on one hash field (KEYS[1]=hash key, ARGV[1]=sid). See the module
+# docstring and status.md "W0.4 kickoff decisions" D3 for the design; the two
+# points worth calling out here because they are easy to get subtly wrong on
+# a re-read:
+#
+#   - On ANY accept (direct match or grace), `prev_jti` becomes the OLD
+#     `jti` — never the presented value. That's what makes grace single-use
+#     per generation without a separate flag: once a jti has been consumed
+#     (as either the live jti or as prev_jti), it can never match `prev_jti`
+#     again, because prev_jti has already moved forward. This is what GR5
+#     (a second presentation of the same grace-eligible jti must be reuse,
+#     not grace again) requires.
+#   - Grace accepts mint a genuinely NEW jti (ARGV[3]), same as a direct
+#     match — a grace accept is not a no-op replay. This keeps the recovery
+#     case (an app killed mid-refresh, relaunched later, presenting the old
+#     jti) self-consistent: the caller always walks away with a fresh,
+#     currently-valid session, never a stale echo.
+_CLAIM_AND_ROTATE_LUA = """
+local key = KEYS[1]
+local sid = ARGV[1]
+local presented = ARGV[2]
+local new_jti = ARGV[3]
+local now = tonumber(ARGV[4])
+local ttl_seconds = tonumber(ARGV[5])
+local grace_seconds = tonumber(ARGV[6])
+
+local raw = redis.call('HGET', key, sid)
+if not raw then
+  return 'NO_SESSION'
+end
+
+local ok, data = pcall(cjson.decode, raw)
+if not ok or type(data) ~= 'table' or not data.jti then
+  redis.call('HDEL', key, sid)
+  return 'NO_SESSION'
+end
+
+if not data.expires_at or now >= tonumber(data.expires_at) then
+  -- Own TTL lapsed. Prune it now (there is no field-level HEXPIRE on Redis
+  -- <7.4) rather than leaving it for the whole key's TTL to catch up.
+  redis.call('HDEL', key, sid)
+  return 'NO_SESSION'
+end
+
+local accepted = false
+if data.jti == presented then
+  accepted = true
+elseif data.prev_jti and data.prev_jti == presented
+    and data.grace_until and now < tonumber(data.grace_until) then
+  accepted = true
+end
+
+if not accepted then
+  -- No match at all, or a grace match that's since expired/been consumed:
+  -- reuse of a token this session no longer recognizes. Revoke the whole
+  -- session (family) — not the user's other sessions (D2, scoped revoke).
+  redis.call('HDEL', key, sid)
+  return 'REUSE_REVOKED'
+end
+
+local was_grace = (data.jti ~= presented)
+local new_value = cjson.encode({
+  jti = new_jti,
+  prev_jti = data.jti,
+  grace_until = now + grace_seconds,
+  expires_at = now + ttl_seconds,
+})
+redis.call('HSET', key, sid, new_value)
+redis.call('EXPIRE', key, ttl_seconds)
+
+if was_grace then
+  return 'ROTATED_VIA_GRACE'
+end
+return 'ROTATED'
+"""
+
+# Lazily registered against the first real `redis.asyncio.Redis` client seen
+# (its `.sha` is a local hashlib digest, no I/O — safe to reuse across the
+# short-lived client instances `get_redis()` hands back). Left unset until
+# then rather than built at import time, because a test double
+# (`tests/fake_redis.py`) has no `register_script` and must never need one —
+# see `_run_claim_and_rotate`.
+_claim_and_rotate_script = None
+
+
+async def _run_claim_and_rotate(
+    r,
+    key: str,
+    sid: str,
+    presented_jti: str,
+    new_jti: str,
+    now: int,
+    ttl_seconds: int,
+    grace_seconds: int,
+) -> str:
+    # Escape hatch for test doubles (status.md D3 point 5): a client that
+    # exposes its own `claim_and_rotate` coroutine implements the
+    # operation's *semantics* directly rather than running Lua — that's
+    # `FakeRedis`, used for the fail-closed/wiring cases. A real
+    # `redis.asyncio.Redis` has no such method, so it falls through to the
+    # Lua script, which is what proves the actual production code path.
+    native = getattr(r, "claim_and_rotate", None)
+    if native is not None:
+        return await native(key, sid, presented_jti, new_jti, now, ttl_seconds, grace_seconds)
+
+    global _claim_and_rotate_script
+    if _claim_and_rotate_script is None:
+        _claim_and_rotate_script = r.register_script(_CLAIM_AND_ROTATE_LUA)
+    return await _claim_and_rotate_script(
+        keys=[key],
+        args=[sid, presented_jti, new_jti, now, ttl_seconds, grace_seconds],
+        client=r,
+    )
+
+
+async def create_session(user_id: str, sid: str, jti: str) -> None:
+    """Record a brand-new session (login). Adds a field to the user's hash
+    rather than overwriting it — this is the actual fix for the multi-session
+    bug: a second device's login no longer evicts the first's."""
     r = get_redis()
     ttl = settings.refresh_token_expire_days * 24 * 60 * 60
+    now = int(time.time())
+    packed = json.dumps({
+        "jti": jti,
+        "prev_jti": None,
+        "grace_until": 0,
+        "expires_at": now + ttl,
+    })
     try:
-        await r.setex(_key(user_id), ttl, jti)
+        await r.hset(_key(user_id), sid, packed)
+        await r.expire(_key(user_id), ttl)
     except RedisError as exc:
-        log.warning("token_store_unavailable", op="store_refresh_jti")
+        log.warning("token_store_unavailable", op="create_session")
         raise TokenStoreUnavailable("redis unavailable") from exc
 
 
-async def is_current_refresh_jti(user_id: str, jti: str) -> bool:
+async def claim_and_rotate(
+    user_id: str, sid: str, presented_jti: str, new_jti: str
+) -> ClaimOutcome:
+    """Atomically claim `presented_jti` for session `sid` and, on success,
+    rotate it to `new_jti`. See the module docstring and the Lua script above
+    for the full state machine. Never raises on a rejected claim — a
+    mismatch, an already-expired session, or detected reuse are all
+    ordinary outcomes the caller maps to a response; only a Redis outage
+    raises."""
+    r = get_redis()
+    now = int(time.time())
+    ttl_seconds = settings.refresh_token_expire_days * 24 * 60 * 60
+    grace_seconds = settings.refresh_grace_seconds
+    try:
+        raw_outcome = await _run_claim_and_rotate(
+            r, _key(user_id), sid, presented_jti, new_jti, now, ttl_seconds, grace_seconds
+        )
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="claim_and_rotate")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+    return ClaimOutcome(raw_outcome)
+
+
+async def revoke_session(user_id: str, sid: str) -> None:
+    """Revoke exactly one session (per-device logout, plan §A.3 #4). Leaves
+    every other session for this user untouched — the scoped counterpart to
+    `revoke_refresh` below."""
     r = get_redis()
     try:
-        stored = await r.get(_key(user_id))
+        await r.hdel(_key(user_id), sid)
     except RedisError as exc:
-        log.warning("token_store_unavailable", op="is_current_refresh_jti")
+        log.warning("token_store_unavailable", op="revoke_session")
         raise TokenStoreUnavailable("redis unavailable") from exc
-    return stored is not None and stored == jti
 
 
 async def revoke_refresh(user_id: str) -> None:
+    """Revoke every session for this user — one atomic `DEL` of the whole
+    hash, unchanged in mechanism from the pre-rework single-string key
+    (D1: this atomicity is *why* the multi-session shape is a hash and not
+    flat per-session keys). Reserved for `reset_password`, `change_password`,
+    `change_role`, and `set_active` (plan §A.3 #4) — `logout` uses
+    `revoke_session` instead, scoped to the caller's own device."""
     r = get_redis()
     try:
         await r.delete(_key(user_id))

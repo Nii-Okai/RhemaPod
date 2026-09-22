@@ -85,7 +85,11 @@ async def test_logout_returns_503_rather_than_false_success_when_redis_down(clie
     tokens = (await _login(client)).json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
     with _fake.failing():
-        r = await client.post("/api/v1/auth/logout", headers=headers)
+        r = await client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": tokens["refresh_token"]},
+            headers=headers,
+        )
     # A 200 here would claim the session was revoked when it was not.
     assert r.status_code == 503
     assert r.json()["correlation_id"]

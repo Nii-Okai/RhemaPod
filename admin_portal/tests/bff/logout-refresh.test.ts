@@ -12,11 +12,13 @@ beforeEach(() => __resetRefreshDedupe());
 afterEach(() => __resetRefreshDedupe());
 
 describe("POST /api/auth/logout", () => {
-  it("revokes upstream, then clears both cookies", async () => {
+  it("revokes upstream with the refresh token in the body, then clears both cookies", async () => {
     let revoked = false;
+    let sawBody: unknown;
     server.use(
-      http.post(`${API}/api/v1/auth/logout`, ({ request }) => {
+      http.post(`${API}/api/v1/auth/logout`, async ({ request }) => {
         revoked = request.headers.get("authorization") === "Bearer at";
+        sawBody = await request.json();
         return HttpResponse.json({ message: "Logged out" });
       }),
     );
@@ -31,6 +33,10 @@ describe("POST /api/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(revoked).toBe(true);
+    // The backend's per-device logout (W0.4) requires `refresh_token` in the
+    // body to know which session to revoke — a bearer-only call 422s and
+    // silently fails to revoke anything (the regression this test guards).
+    expect(sawBody).toEqual({ refresh_token: "rt" });
     const c = parseSetCookies(res);
     expect(c.rp_at.attrs["max-age"]).toBe("0");
     expect(c.rp_rt.attrs["max-age"]).toBe("0");
@@ -52,6 +58,30 @@ describe("POST /api/auth/logout", () => {
     );
 
     expect(res.status).toBe(200);
+    const c = parseSetCookies(res);
+    expect(c.rp_at.attrs["max-age"]).toBe("0");
+    expect(c.rp_rt.attrs["max-age"]).toBe("0");
+  });
+
+  it("skips the upstream call and still clears cookies when there is no rp_rt", async () => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/logout`, () => {
+        called = true;
+        return HttpResponse.json({ message: "Logged out" });
+      }),
+    );
+
+    const res = await LOGOUT(
+      makeRequest("http://localhost:3000/api/auth/logout", {
+        method: "POST",
+        cookies: { rp_at: "at" },
+        sameOrigin: true,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(called).toBe(false);
     const c = parseSetCookies(res);
     expect(c.rp_at.attrs["max-age"]).toBe("0");
     expect(c.rp_rt.attrs["max-age"]).toBe("0");

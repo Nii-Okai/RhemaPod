@@ -44,6 +44,15 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    """Per-device logout (plan §A.3 #4): the presented refresh token's `sid`
+    is what identifies which session to revoke. Public API contract change
+    from the pre-rework `/auth/logout` (no body, revoked by user id / every
+    device) — see status.md "W0.4 multi-session refresh"."""
+
+    refresh_token: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

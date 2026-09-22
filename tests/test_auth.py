@@ -86,10 +86,27 @@ async def test_refresh_rotates(client):
     new_tokens = r.json()
     assert new_tokens["refresh_token"] != tokens["refresh_token"]
 
+    # The just-rotated-away jti is grace-eligible immediately after rotation
+    # (plan §A.3 #2 — an app killed mid-refresh must not become an
+    # unrecoverable logout), so ONE more presentation of it still succeeds.
+    grace = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert grace.status_code == 200
+
+    # Grace tolerates exactly one extra use, not unlimited replay (§A.3 #2/#3)
+    # — a SECOND presentation of that same old jti is reuse, and revokes the
+    # whole session: both the token `grace` just minted and the one
+    # `new_tokens` holds stop working.
     reuse = await client.post(
         "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert reuse.status_code == 401
+
+    also_dead = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": new_tokens["refresh_token"]}
+    )
+    assert also_dead.status_code == 401
 
 
 async def test_access_token_rejected_as_refresh(client):
@@ -107,6 +124,7 @@ async def test_logout_revokes_refresh(client):
     tokens = (await login(client)).json()
     await client.post(
         "/api/v1/auth/logout",
+        json={"refresh_token": tokens["refresh_token"]},
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
     r = await client.post(

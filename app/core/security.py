@@ -90,13 +90,25 @@ def create_access_token(user_id: str, role: str) -> str:
     )
 
 
-def create_refresh_token(user_id: str) -> tuple[str, str]:
-    """Return (token, jti). The jti is stored in Redis for rotation checks.
+def create_refresh_token(user_id: str, sid: str, jti: str) -> str:
+    """Encode a refresh JWT for a caller-supplied session id and jti.
+
+    Unlike the other `create_*_token` functions, `jti` (and now `sid`) are
+    supplied by the caller rather than generated here. This is deliberate
+    (status.md "W0.4 kickoff decisions", D3): `auth_service` pre-generates the
+    jti and claims it in the token store BEFORE minting, so a mint always
+    follows a successful claim, never the other way around — closes the
+    check-then-write race the old self-generating version had no way to avoid.
+
+    `sid` identifies the session ("family", D2) and is stable across
+    rotations; `jti` rotates on every refresh. Every refresh token minted from
+    here carries a `sid` — one that doesn't (issued before this rework) is
+    rejected outright by `rotate_refresh`, no legacy fallback (Isaac,
+    status.md "sid rollout decision").
 
     Deliberately carries no role — a stale refresh token must not be able to
     mint an access token with privileges the user no longer holds. Refresh
     re-reads the user row instead."""
-    jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -105,11 +117,11 @@ def create_refresh_token(user_id: str) -> tuple[str, str]:
         "nbf": now,
         "exp": now + timedelta(days=settings.refresh_token_expire_days),
         "jti": jti,
+        "sid": sid,
         "iss": settings.jwt_issuer,
         "aud": settings.jwt_audience,
     }
-    token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
-    return token, jti
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
 def create_reset_token(user_id: str) -> tuple[str, str]:
