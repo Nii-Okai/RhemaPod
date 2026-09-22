@@ -204,6 +204,31 @@ async def test_review_queue_carries_thumbnail_url(client, engine):
     assert by_id[without_thumb]["thumbnail_url"] is None
 
 
+async def test_thumbnail_url_falls_back_to_presigned_when_cdn_set_without_signing(
+    client, engine, monkeypatch
+):
+    """Same CDN-bypass regression as media streaming, for thumbnails: a
+    bare, unsigned f"{cdn_base_url}/{key}" URL must never be emitted."""
+    from tests.test_thumbnails import upload_thumbnail
+    from app.services import content_service
+
+    monkeypatch.setattr(content_service.settings, "cdn_base_url", "https://cdn.example.com")
+
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+
+    sid = await _new_sermon(client, ed, "With cover")
+    await upload_thumbnail(client, ed, "sermons", sid)
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+
+    items = (await client.get(
+        "/api/v1/approvals/sermons/review-queue", headers=mgr
+    )).json()["items"]
+    url = {i["id"]: i for i in items}[sid]["thumbnail_url"]
+    assert url
+    assert "cdn.example.com" not in url
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. reject requires a non-blank note
 # ═══════════════════════════════════════════════════════════════════════════════

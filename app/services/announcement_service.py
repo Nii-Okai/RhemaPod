@@ -62,20 +62,24 @@ def is_visible(ann: Announcement, at: datetime | None = None) -> bool:
 
 
 def image_url(key: str | None) -> str | None:
-    """Resolve a stored image key to a fetchable URL (CDN, else signed)."""
+    """Resolve a stored image key to a fetchable URL.
+
+    Always signs a time-limited URL against the media bucket, then defers to
+    `storage_module.cdn_url_for` to decide whether a CDN URL can safely
+    replace it (today it never can — see that function's docstring).
+    """
     if not key:
         return None
-    if settings.cdn_base_url:
-        return f"{settings.cdn_base_url.rstrip('/')}/{key}"
     from app.core import storage as storage_module
 
     try:
-        return storage_module.get_storage().presigned_download_url(
+        presigned = storage_module.get_storage().presigned_download_url(
             settings.s3_media_bucket, key, settings.stream_url_expire_seconds
         )
     except Exception:
         log.warning("announcement_image_url_failed", key=key)
         return None
+    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
 
 
 def to_public(ann: Announcement) -> dict:

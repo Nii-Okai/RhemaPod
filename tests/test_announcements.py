@@ -262,6 +262,36 @@ async def test_image_upload_roundtrip(client, engine):
     assert (await client.get("/api/v1/announcements")).json()[0]["image_url"]
 
 
+async def test_image_url_falls_back_to_presigned_when_cdn_set_without_signing(
+    client, engine, monkeypatch
+):
+    """Same CDN-bypass regression as media streaming, for announcement
+    images: a bare, unsigned f"{cdn_base_url}/{key}" URL must never be
+    emitted."""
+    from app.services import announcement_service
+
+    monkeypatch.setattr(
+        announcement_service.settings, "cdn_base_url", "https://cdn.example.com"
+    )
+
+    mgr = await make_user(client, engine, "m2@example.com", "manager")
+    ann = (await client.post("/api/v1/announcements", json=BASE, headers=mgr)).json()
+
+    ticket = (await client.post(
+        f"/api/v1/announcements/{ann['id']}/image-url",
+        json={"filename": "cover.jpg", "content_type": "image/jpeg"}, headers=mgr,
+    ))
+    key = ticket.json()["thumbnail_key"]
+
+    confirm = await client.post(
+        f"/api/v1/announcements/{ann['id']}/image/confirm",
+        params={"thumbnail_key": key}, headers=mgr,
+    )
+    url = confirm.json()["thumbnail_url"]
+    assert url
+    assert "cdn.example.com" not in url
+
+
 async def test_image_rejects_non_image(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
     ann = (await client.post("/api/v1/announcements", json=BASE, headers=mgr)).json()

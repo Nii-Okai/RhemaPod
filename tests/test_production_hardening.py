@@ -41,6 +41,15 @@ def test_fully_configured_production_boots():
     s = _settings()
     assert s.is_production
     assert s.payments_are_live and s.storage_is_live and s.email_is_live
+    assert s.cdn_base_url is None
+
+
+def test_production_refuses_cdn_without_signing():
+    """CDN_BASE_URL with no signing scheme means unsigned URLs for
+    deterministic, publicly-guessable object keys (media_key()) — the exact
+    bug this preflight check exists to catch before it reaches production."""
+    with pytest.raises(ValueError, match="CDN_BASE_URL"):
+        _settings(cdn_base_url="https://cdn.example.com")
 
 
 def test_production_refuses_mock_payments():

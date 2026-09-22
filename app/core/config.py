@@ -145,8 +145,11 @@ class Settings(BaseSettings):
     max_thumbnail_bytes: int = 10 * 1024 * 1024   # 10 MB
     # How long a playback URL stays valid.
     stream_url_expire_seconds: int = 21600      # 6 hours
-    # Optional CDN in front of the media bucket. When set, playback URLs are
-    # signed against this host instead of the bucket directly.
+    # Optional CDN in front of the media bucket. NOT WIRED UP YET: there is no
+    # CDN request-signing implementation in this codebase, so setting this
+    # today does nothing but trip `production_preflight` below (and, for
+    # staging, the preflight script) — see app/core/storage.py's
+    # cdn_url_for(), which is where real signing belongs once it exists.
     cdn_base_url: str | None = None
     max_upload_bytes: int = 5 * 1024 * 1024 * 1024   # 5 GB
     # Run transcodes inline (dev/test) instead of via a background worker.
@@ -393,6 +396,18 @@ class Settings(BaseSettings):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by
         # trusted_proxies_are_scoped (a field validator) — not repeated here.
+        if self.cdn_base_url:
+            problems.append(
+                "CDN_BASE_URL is set but this codebase has no CDN request-signing "
+                "implementation (no signing key/keypair setting exists). "
+                "app/core/storage.py's cdn_url_for() always falls back to the "
+                "presigned S3 URL for exactly this reason, so enabling it today "
+                "only adds a config footgun with no CDN benefit — a bare CDN URL "
+                "built from an object key carries no access control, and object "
+                "keys are deterministic and public (see media_key()). Remove "
+                "CDN_BASE_URL until real CDN signing is implemented, or extend "
+                "this check alongside cdn_url_for() once it is."
+            )
 
         if problems:
             raise ValueError(
