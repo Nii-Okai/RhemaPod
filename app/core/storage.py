@@ -243,3 +243,40 @@ def thumbnail_key(kind: str, entity_id: uuid.UUID, filename: str) -> str:
     """
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
     return f"thumbnails/{kind}/{entity_id}/{uuid.uuid4()}.{suffix}"
+
+
+def cdn_url_for(key: str, *, presigned_fallback: str) -> str:
+    """Resolve the URL a client should use to fetch `key`.
+
+    This is the ONE place that decides CDN vs. presigned S3 for every
+    CDN-eligible asset (media playback, thumbnails, announcement images) —
+    callers compute a presigned URL first (it's the safe default) and hand it
+    here as `presigned_fallback`, rather than each building its own
+    `f"{cdn_base_url}/{key}"` string.
+
+    There is currently no CDN request-signing implementation in this codebase
+    — no signing key/keypair setting exists alongside `cdn_base_url` — so a
+    bare CDN URL carries no access control at all. For a deterministic key
+    (e.g. `media_key()`'s sermon_id/kind/quality path, built from a
+    publicly-visible sermon UUID) that isn't a cosmetic gap: it lets anyone
+    construct a URL to any rendition by editing the key, bypassing whatever
+    the caller was gating (see media_service.get_stream's paid-quality
+    filter). So until real CDN signing is built, this always returns the
+    presigned fallback rather than ever emitting an unsigned CDN URL.
+    `Settings.production_preflight` refuses to boot with `cdn_base_url` set
+    at all for exactly this reason, and `app/scripts/preflight.py` mirrors
+    that check for staging — so the branch below should be unreachable in a
+    correctly configured deployment; it's a second line of defense, not the
+    primary control. When real signing is implemented, it belongs here, so
+    every call site below picks it up automatically.
+    """
+    if settings.cdn_base_url:
+        log.error(
+            "cdn_signing_unavailable",
+            key=key,
+            msg=(
+                "cdn_base_url is configured but no CDN signing is implemented; "
+                "serving a presigned URL instead of an unsigned CDN URL"
+            ),
+        )
+    return presigned_fallback

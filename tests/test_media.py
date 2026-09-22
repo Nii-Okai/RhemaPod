@@ -195,6 +195,33 @@ async def test_stream_free_sermon(client, engine):
     assert body["variants"][0]["quality"] is None
 
 
+async def test_stream_url_falls_back_to_presigned_when_cdn_set_without_signing(
+    client, engine, monkeypatch
+):
+    """Regression test for the CDN bypass: cdn_base_url set but no CDN
+    signing exists must never produce a bare, unsigned CDN URL — a
+    deterministic, publicly-guessable key (media_key()) plus an unsigned URL
+    lets anyone edit the quality segment and bypass the paid-tier gate."""
+    from app.services import media_service
+
+    monkeypatch.setattr(media_service.settings, "cdn_base_url", "https://cdn.example.com")
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=viewer)
+    assert r.status_code == 200
+    url = r.json()["variants"][0]["url"]
+    assert "cdn.example.com" not in url
+    assert "local-storage.invalid" in url  # still the presigned stub URL
+
+
 async def test_free_tier_quality_cap_when_transcoding(client, engine, monkeypatch):
     """With a real HLS ladder, non-subscribers are capped at 480p."""
     from app.services import media_service

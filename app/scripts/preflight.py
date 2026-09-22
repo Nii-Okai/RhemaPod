@@ -76,6 +76,25 @@ async def _check_email() -> str:
     return f"smtp: {s.smtp_host}:{s.smtp_port}"
 
 
+async def _check_cdn() -> str:
+    """CDN_BASE_URL without CDN signing serves unsigned URLs for deterministic,
+    publicly-guessable object keys — see app/core/storage.py's cdn_url_for().
+    `production_preflight` in app/core/config.py already refuses to construct
+    Settings at all with this set in production; this check exists so the same
+    misconfiguration is caught here too (this script also runs against
+    staging, which that validator does not cover)."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    if not s.cdn_base_url:
+        return "not configured (presigned URLs)"
+    raise RuntimeError(
+        "CDN_BASE_URL is set but no CDN request-signing is implemented — "
+        "this would serve unsigned CDN URLs. Remove CDN_BASE_URL until "
+        "cdn_url_for() in app/core/storage.py implements real signing."
+    )
+
+
 async def _check_migrations() -> str:
     from sqlalchemy import text
     from app.db.database import primary_engine
@@ -107,6 +126,7 @@ async def _run() -> int:
         _check("migrations", _check_migrations()),
         _check("redis", _check_redis()),
         _check("storage", _check_storage()),
+        _check("cdn", _check_cdn()),
         _check("payments", _check_payments()),
         _check("email", _check_email()),
     )

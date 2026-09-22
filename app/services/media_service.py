@@ -540,13 +540,12 @@ async def get_stream(
         ):
             continue
         playback_key = ref.hls_manifest_key or ref.s3_key
-        url = store.presigned_download_url(
+        presigned = store.presigned_download_url(
             ref.bucket or settings.s3_media_bucket,
             playback_key,
             settings.stream_url_expire_seconds,
         )
-        if settings.cdn_base_url:
-            url = f"{settings.cdn_base_url.rstrip('/')}/{playback_key}"
+        url = storage_module.cdn_url_for(playback_key, presigned_fallback=presigned)
         variants.append(
             StreamVariant(type=ref.type, quality=ref.quality, url=url)
         )
