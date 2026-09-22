@@ -52,6 +52,7 @@ dist/
 mobile/.gradle/
 mobile/android/local.properties
 mobile/android/app/release/
+*.tsbuildinfo
 mobile/ios/Pods/
 mobile/node_modules/
 
