@@ -109,34 +109,86 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
 
 
 async def issue_token_pair(user: User) -> tuple[str, str]:
+    """Mint a brand-new session (login). `sid` identifies the session and is
+    stable across rotations (D1); a fresh `jti` names this particular refresh
+    token. The session is recorded in the store BEFORE the refresh JWT is
+    minted with that exact jti — same claim-first ordering as rotation, so a
+    token is never returned that the store doesn't already know about."""
+    sid = str(uuid.uuid4())
+    jti = str(uuid.uuid4())
+    await token_store.create_session(str(user.id), sid, jti)
     access = security.create_access_token(str(user.id), user.role.value)
-    refresh, jti = security.create_refresh_token(str(user.id))
-    await token_store.store_refresh_jti(str(user.id), jti)
+    refresh = security.create_refresh_token(str(user.id), sid, jti)
     return access, refresh
 
 
 async def rotate_refresh(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
+    """Rotate a refresh token via the atomic claim-first path (status.md
+    "W0.4 kickoff decisions", D3): the new jti is pre-generated and claimed
+    in the store BEFORE it is minted into a JWT, closing the check-then-write
+    race the old GET-then-SET version had (two concurrent refreshes on the
+    same still-valid jti could both pass the check before either wrote)."""
     payload = security.decode_token(refresh_token, security.REFRESH)
     if payload is None:
         raise AuthError("Invalid or expired refresh token")
 
     user_id = payload["sub"]
-    jti = payload["jti"]
-
-    if not await token_store.is_current_refresh_jti(user_id, jti):
-        # Token reuse or already rotated — revoke everything as a precaution.
-        await token_store.revoke_refresh(user_id)
+    presented_jti = payload["jti"]
+    sid = payload.get("sid")
+    if not sid:
+        # Every refresh token minted after this rework carries a `sid`. One
+        # that doesn't predates it and is rejected outright, no legacy
+        # fallback — Isaac, status.md "sid rollout decision": deploying this
+        # logs out every session that was live before the deploy, once.
+        log.info("refresh_rejected_no_sid", user_id=user_id)
         raise AuthError("Invalid or expired refresh token")
 
+    new_jti = str(uuid.uuid4())
+    outcome = await token_store.claim_and_rotate(user_id, sid, presented_jti, new_jti)
+
+    if outcome is token_store.ClaimOutcome.NO_SESSION:
+        raise AuthError("Invalid or expired refresh token")
+    if outcome is token_store.ClaimOutcome.REUSE_REVOKED:
+        # Load-bearing for D2: the scoped revoke this session just took
+        # (claim_and_rotate already HDEL'd it) is only defensible alongside
+        # this being observable. Do not drop this log line.
+        log.warning("refresh_reuse_detected", user_id=user_id, sid=sid)
+        raise AuthError("Invalid or expired refresh token")
+    if outcome is token_store.ClaimOutcome.ROTATED_VIA_GRACE:
+        log.info("refresh_rotated_via_grace", user_id=user_id, sid=sid)
+
+    # The claim is already burned in the store at this point (ROTATED or
+    # ROTATED_VIA_GRACE). The DB round-trip runs AFTER the claim, not before
+    # (D3 point 4) — a claimed-but-inactive user must not get a token pair,
+    # and the claim stays burned in that case: fail-closed, worst case is a
+    # re-login, never a grant on an unverified claim.
     user = await get_user_by_id(db, uuid.UUID(user_id))
     if user is None or not user.is_active:
         raise AuthError("Invalid or expired refresh token")
 
-    return await issue_token_pair(user)
+    access = security.create_access_token(str(user.id), user.role.value)
+    refresh = security.create_refresh_token(str(user.id), sid, new_jti)
+    return access, refresh
 
 
-async def logout(user_id: str) -> None:
-    await token_store.revoke_refresh(user_id)
+async def logout(user_id: str, refresh_token: str) -> None:
+    """Per-device logout (plan §A.3 #4): revoke only the session the
+    presented refresh token identifies, not every device the user has.
+    Global revoke stays reserved for reset_password / change_password /
+    change_role / set_active, unchanged by this rework.
+
+    If the refresh token is missing, expired, malformed, or was minted for a
+    different user than the authenticated caller, there is no session this
+    can safely identify — it no-ops rather than falling back to a global
+    revoke, which would reintroduce the exact cross-device eviction bug this
+    rework removes (a logout from any one device killing every other)."""
+    payload = security.decode_token(refresh_token, security.REFRESH)
+    sid = payload.get("sid") if payload is not None else None
+    if payload is None or not sid or payload.get("sub") != user_id:
+        log.info("logout_no_session_identified", user_id=user_id)
+        return
+    await token_store.revoke_session(user_id, sid)
+    log.info("logout", user_id=user_id, sid=sid)
 
 
 async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:

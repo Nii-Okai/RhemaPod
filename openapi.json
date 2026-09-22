@@ -967,6 +967,20 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LogoutRequest": {
+        "description": "Per-device logout (plan \u00a7A.3 #4): the presented refresh token's `sid`\nis what identifies which session to revoke. Public API contract change\nfrom the pre-rework `/auth/logout` (no body, revoked by user id / every\ndevice) \u2014 see status.md \"W0.4 multi-session refresh\".",
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "LogoutRequest",
+        "type": "object"
+      },
       "MediaRefPublic": {
         "properties": {
           "hls_manifest_key": {
@@ -5416,7 +5430,18 @@
     },
     "/api/v1/auth/logout": {
       "post": {
+        "description": "Per-device: revokes only the session the presented refresh token\nidentifies, not every device the caller is signed in on (plan \u00a7A.3 #4).\nPublic API contract change from the pre-rework body-less version \u2014 see\nstatus.md \"W0.4 multi-session refresh\".",
         "operationId": "logout_api_v1_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -5427,6 +5452,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

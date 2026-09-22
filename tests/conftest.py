@@ -68,6 +68,7 @@ async def engine():
 @pytest_asyncio.fixture
 async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     _fake.store.clear()
+    _fake.hashes.clear()
     _fake.fail = False  # a leaked failure-injection flag would cascade-fail the suite
     storage_module.set_storage(storage_module.LocalStorage())
     # Fresh mock payment provider per test — no seeded period-ends or counter

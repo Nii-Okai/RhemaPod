@@ -104,6 +104,14 @@ class Settings(BaseSettings):
     jwt_audience: str = "sermon-platform-api"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Multi-session refresh rotation (plan §A.3 / status.md "W0.4 kickoff
+    # decisions", D3): the immediately-previous jti of a session stays
+    # acceptable for this long after rotation, so an app killed mid-refresh
+    # (response never received/persisted) isn't an unrecoverable logout. A
+    # SECOND presentation of that same previous jti — grace tolerates exactly
+    # one extra use, not unlimited replay — is treated as reuse and revokes
+    # that session (token_store.claim_and_rotate).
+    refresh_grace_seconds: int = 60
     password_reset_expire_minutes: int = 30
       # Staff invite links (set-your-password) live longer than a self-service reset.
     invite_token_expire_hours: int = 48

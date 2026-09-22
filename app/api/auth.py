@@ -14,6 +14,7 @@ from app.db.database import get_db
 from app.models.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
+    LogoutRequest,
     MessageResponse,
     RefreshRequest,
     ResetPasswordRequest,
@@ -92,8 +93,12 @@ async def refresh(data: RefreshRequest, db: DbDep) -> TokenPair:
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(user: CurrentUserDep) -> MessageResponse:
-    await auth_service.logout(str(user.id))
+async def logout(data: LogoutRequest, user: CurrentUserDep) -> MessageResponse:
+    """Per-device: revokes only the session the presented refresh token
+    identifies, not every device the caller is signed in on (plan §A.3 #4).
+    Public API contract change from the pre-rework body-less version — see
+    status.md "W0.4 multi-session refresh"."""
+    await auth_service.logout(str(user.id), data.refresh_token)
     return MessageResponse(message="Logged out")
 
 
