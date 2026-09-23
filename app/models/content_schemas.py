@@ -449,6 +449,17 @@ class StreamResponse(BaseModel):
     variants: list[StreamVariant]
 
 
+class AudioDownloadResponse(BaseModel):
+    """GET .../download/audio (W1.6) — a short-lived signed URL for the
+    audio rendition only, for offline download. Deliberately minimal: no
+    `type`/`variants` list like StreamResponse, since this endpoint can only
+    ever answer with audio (L6, locked — never a video path)."""
+
+    sermon_id: uuid.UUID
+    url: str
+    expires_in: int
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 5: Subscriptions
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -698,6 +709,30 @@ class NewListenersBucket(BaseModel):
 
     week_start: date
     count: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Notes
+# ═══════════════════════════════════════════════════════════════════════════════
+class NoteCreate(BaseModel):
+    position_seconds: int = Field(ge=0)
+    body: str = Field(min_length=1)
+
+
+class NoteUpdate(BaseModel):
+    position_seconds: int | None = Field(default=None, ge=0)
+    body: str | None = Field(default=None, min_length=1)
+
+
+class NotePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sermon_id: uuid.UUID
+    position_seconds: int
+    body: str
+    created_at: datetime
+    updated_at: datetime | None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -122,7 +122,7 @@ does not terminate TLS itself.
 
 ## 5. Scheduled jobs
 
-Two jobs **must** run on a schedule in **every** deployed environment:
+Three jobs **must** run on a schedule in **every** deployed environment:
 
 ```bash
 # Hourly — safety net for webhooks that never arrived. Without it a missed
@@ -134,10 +134,16 @@ uv run python -m app.scripts.expire_subscriptions
 # per-sermon open-job cap, which can lock a sermon out of new uploads for up
 # to STALE_UPLOAD_HOURS (default 24h).
 uv run python -m app.scripts.sweep_uploads
+
+# Hourly — safety net for Cloudflare Stream webhooks that never arrived, and
+# retries a Stream ingest whose initial kickoff never got a uid. Without it a
+# missed "ready" event leaves a sermon's video permanently un-ingested, and a
+# failed Glacier archive copy (§12) is never retried. See §12.
+uv run python -m app.scripts.sweep_stream_jobs
 ```
 
-**Local / self-host:** the compose `sweeps` profile runs both on a 1-hour
-`sleep` loop:
+**Local / self-host:** the compose `sweeps` profile runs all three on a
+1-hour `sleep` loop:
 
 ```bash
 docker compose --profile sweeps up -d sweeps
@@ -295,3 +301,123 @@ instance; the per-request behaviour above covers the window before it does.
 - **Read replica** is supported via `DATABASE_REPLICA_URL` but unset by default.
 - **Metrics/tracing**: structured JSON logs with correlation IDs are in place.
   Ship them to your log platform; add OpenTelemetry when you need spans.
+
+## 12. Cloudflare Stream and Glacier Deep Archive (mobile app media pipeline)
+
+Plan §A.2: on `POST /uploads/{job_id}/confirm`, the server presigns the raw S3
+master and hands Cloudflare Stream a "copy from URL" ingest job
+(`app/core/stream.py`); once Stream reports the video ready (or error), the
+same master is copied into `/sermon_archives/` in the raw bucket at S3 Glacier
+Deep Archive storage class (`app/core/storage.py`'s `copy_object` /
+`archive_key`). The admin portal's upload UI is unchanged — see §8 for the
+existing presigned-PUT flow, which this does not touch.
+
+### Cloudflare Stream setup
+
+1. Create a Cloudflare account, enable Stream, and mint an API token scoped to
+   Stream only. **Isaac does this step himself** — same reason as the Resend
+   step in §7: account creation and credential custody are not things this
+   codebase or its agents can do on your behalf.
+2. Set `CF_ACCOUNT_ID`, `CF_STREAM_API_TOKEN`, `CF_STREAM_CUSTOMER_SUBDOMAIN`
+   (see `.env.example`). Without both `CF_ACCOUNT_ID` and
+   `CF_STREAM_API_TOKEN`, `app/core/stream.get_provider()` returns the local
+   stub — the production preflight refuses to boot on it (§2).
+3. Register the webhook notification URL:
+
+   ```bash
+   curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/stream/webhook" \
+     -H "Authorization: Bearer $CF_STREAM_API_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"notificationUrl": "https://<your-api>/api/v1/media/stream/webhook"}'
+   ```
+
+   The response's `result.secret` is the value for `CF_STREAM_WEBHOOK_SECRET`
+   — copy it immediately, Cloudflare does not show it again (re-running the
+   `PUT` rotates it, which is also how to rotate it later). The production
+   preflight refuses to boot with Stream live but this unset — without it the
+   webhook endpoint cannot verify inbound events and must reject all of them.
+4. Verify locally with the real test master before relying on it: the seam's
+   `get_status(uid=...)` is a plain authenticated `GET`, so a working token
+   proves itself against any known video uid in the account (see status.md
+   "W1.1-W1.4 stream pipeline core" for this build's own live check).
+5. Generate a Stream signing key (needed for `get_stream`/`get_audio_download`
+   to hand out playback URLs, W1.5 — **Isaac does this step himself**, same
+   reasoning as above):
+
+   ```bash
+   curl -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/stream/keys" \
+     -H "Authorization: Bearer $CF_STREAM_API_TOKEN"
+   ```
+
+   The response's `result.id` and `result.pem` are `CF_STREAM_SIGNING_KEY_ID`
+   and `CF_STREAM_SIGNING_KEY_PEM` — copy both immediately, Cloudflare shows
+   the PEM only this once (there is no "re-fetch the private key" call; a
+   lost PEM means minting a new key, not recovering the old one). Fold the
+   PEM's real newlines into literal `\n` for `.env`/compose (see
+   `.env.example`'s comment). Until both are set, the production preflight
+   refuses to boot with Stream otherwise live (§2), and in every other
+   environment `get_stream`/`get_audio_download` fall back to the pre-Stream
+   presigned-S3 path for any Stream-ingested rendition rather than failing
+   the request — see `app/services/media_service.py`'s
+   `_resolve_variant_url`.
+
+### Glacier Deep Archive setup
+
+1. Confirm (or create) `/sermon_archives` as a prefix in the **raw** bucket,
+   at S3 Glacier Deep Archive storage class. **Isaac does this step
+   himself**, same reasoning as above — this was done for the mobile plan's
+   GATE M2 (status.md "W0.1 Glacier archive location confirmed").
+2. Nothing else to provision: the archival code sets `StorageClass` explicitly
+   on every copy (`app/core/storage.py`'s `S3Storage.copy_object`), so it does
+   not depend on a bucket-level lifecycle rule ever firing. A lifecycle rule
+   is still sensible defense-in-depth for anything that somehow lands in that
+   prefix without going through this code path, but is not what makes the
+   archive real.
+3. IAM: the credentials in `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` need
+   `s3:GetObject` and `s3:PutObject` on `/sermon_archives/*` in addition to
+   the grants in §8 (the copy is a same-bucket `GetObject` + `PutObject`
+   under the hood, issued as one `CopyObject`/managed-copy call).
+
+### Restoring an archived master (Deep Archive retrieval)
+
+Deep Archive objects are **not** readable directly — a restore request must
+complete first. There is no Expedited tier for Deep Archive; only two:
+
+| Tier | Typical latency |
+|---|---|
+| `Standard` | ~12 hours |
+| `Bulk` (cheapest) | ~48 hours |
+
+[Amazon S3: Understanding archive retrieval options](https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html)
+
+To restore one sermon's archived master (kept for 7 days once restored, then
+reverts to Deep Archive-only — raise `Days` for a longer window):
+
+```bash
+aws s3api restore-object \
+  --bucket <raw-bucket> \
+  --key "sermon_archives/<sermon-id>/<filename>" \
+  --restore-request '{"Days": 7, "GlacierJobParameters": {"Tier": "Standard"}}'
+```
+
+Poll for completion with `head-object` — `Restore` in the response moves from
+`ongoing-request="true"` to `ongoing-request="false", expiry-date=...` once
+the object is readable:
+
+```bash
+aws s3api head-object --bucket <raw-bucket> --key "sermon_archives/<sermon-id>/<filename>"
+```
+
+This is insurance against losing the Cloudflare Stream original, not a hot
+backup — plan this into any incident response as an hours-not-minutes
+recovery path, not something to reach for mid-outage expecting immediate
+results.
+
+### Operational behaviour
+
+`app/scripts/sweep_stream_jobs.py` (§5) covers two failure modes: a Stream
+"ready"/"error" webhook that never arrived, and an archive copy that failed
+after Stream did report ready. Both are retried automatically on the hourly
+sweep; neither is a silent failure — failed archive attempts log at `ERROR`
+(`stream_sweep_archive_failed` / a propagated `StorageError` on the webhook
+path, surfaced as a 500 so Cloudflare redelivers).

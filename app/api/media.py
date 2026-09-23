@@ -2,15 +2,19 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, get_optional_user, require_role
+from app.core.logging import get_logger
+from app.core.stream import StreamError
+from app.core.stream import get_provider as get_stream_provider
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
+    AudioDownloadResponse,
     MediaRefPublic,
-    UploadConfirm,
     StreamResponse,
+    UploadConfirm,
     UploadJobPublic,
     UploadRequest,
     UploadTicket,
@@ -18,6 +22,8 @@ from app.models.content_schemas import (
 from app.models.models import MediaType, User, UserRole
 from app.services import auth_service, content_service, media_service
 from app.services.content_service import ContentError
+
+log = get_logger("media_api")
 
 router = APIRouter(tags=["media"])
 
@@ -148,6 +154,33 @@ async def delete_upload_job(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/media/stream/webhook", include_in_schema=False)
+async def stream_webhook(request: Request, db: DbDep) -> dict:
+    """Receive Cloudflare Stream ready/error notifications.
+
+    Unauthenticated by design — the signature is the authentication. Mirrors
+    subscriptions.provider_webhook's shape for the same reason: return 200
+    quickly so the provider doesn't retry on slow processing, and let a
+    genuine processing failure (StreamError from a bad signature is caught
+    here; anything else, e.g. a StorageError from a failed archive copy,
+    propagates to the global handler as a 500 so Cloudflare redelivers).
+    """
+    payload = await request.body()
+    signature = request.headers.get("webhook-signature")
+
+    try:
+        event = get_stream_provider().verify_webhook(payload, signature)
+    except StreamError as exc:
+        log.warning("stream_webhook_rejected", reason=str(exc))
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+
+    try:
+        outcome = await media_service.handle_stream_webhook(db, event)
+    except ContentError as exc:
+        raise _err(exc)
+    return {"received": True, "outcome": outcome}
+
+
 @router.get("/sermons/{sermon_id}/stream", response_model=StreamResponse)
 async def get_stream(
     sermon_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
@@ -157,6 +190,22 @@ async def get_stream(
     has_sub = await content_service._has_subscription(db, user)
     try:
         return await media_service.get_stream(db, sermon_id, user, has_sub)
+    except ContentError as exc:
+        raise _err(exc)
+
+
+@router.get(
+    "/sermons/{sermon_id}/download/audio", response_model=AudioDownloadResponse
+)
+async def download_audio(
+    sermon_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> AudioDownloadResponse:
+    """Short-lived signed URL for the audio rendition only — offline
+    downloads are audio-only in this app, by design (plan §A.6, L6). Same
+    authorization as get_stream; 409 if the sermon has no audio rendition."""
+    has_sub = await content_service._has_subscription(db, user)
+    try:
+        return await media_service.get_audio_download(db, sermon_id, user, has_sub)
     except ContentError as exc:
         raise _err(exc)
 

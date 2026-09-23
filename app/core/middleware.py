@@ -119,7 +119,32 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
-    """Coarse per-IP request cap, on top of the per-endpoint login limiter.
+    """Token-bucket request cap, keyed by identity, on top of the
+    per-endpoint login limiter.
+
+    Key selection (status.md "MOBILE — W2.1 kickoff decision"): if the
+    request carries a bearer token that decodes as a valid, signature-verified
+    access token, it draws from that user's bucket (`user:{sub}`) — one
+    budget shared across a person's devices, not one per session. Otherwise
+    it draws from the calling IP's bucket (`ip:{client}`).
+
+    HARD RULE, load-bearing, do not relax: token validation here is always
+    `security.decode_token(token, security.ACCESS)` — the exact same
+    signature-verified, DB-free function `get_current_user` calls — called
+    with the exact same arguments. Never decode with `verify_signature:
+    False`, never hand-split/parse the JWT, never add a second validation
+    path. If either of those happened, an attacker could set `sub` to a
+    fresh value on every request and the limiter would silently become
+    unlimited — that is a real vulnerability, not a style preference. The
+    one deliberate gap versus `get_current_user` is that this never checks
+    Postgres for the user existing/being active: that check is irrelevant to
+    choosing a partition key (worst case, a deactivated user with an
+    unexpired token gets their own bucket for the rest of that token's life
+    instead of sharing the IP bucket — the request still 401s downstream,
+    no worse than sharing the IP bucket). The decoded payload is never
+    stashed on `request.state` for `get_current_user` to reuse either — that
+    would make this a second source of truth for auth, which is exactly the
+    divergent path the rule above exists to prevent.
 
     Fails open: if Redis is unavailable the request proceeds. A rate limiter
     that takes the whole site down when its backing store blips is worse than
@@ -127,23 +152,52 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        limit = _settings.global_rate_limit
-        if limit <= 0 or request.url.path.startswith("/health"):
+        if request.url.path.startswith("/health"):
             return await call_next(request)
 
-        from app.core.net import client_ip
-        from app.core.rate_limit import check_rate_limit
+        key, capacity, refill_per_minute = self._bucket_for(request)
+        if capacity <= 0 or refill_per_minute <= 0:
+            return await call_next(request)
 
-        client = client_ip(request)
+        from app.core.rate_limit import check_token_bucket
 
-        allowed = await check_rate_limit(
-            f"global:{client}", limit, _settings.global_rate_window_seconds
-        )
+        allowed = await check_token_bucket(key, capacity, refill_per_minute)
         if not allowed:
-            log.warning("global_rate_limit_exceeded", client=client)
+            log.warning("rate_limit_exceeded", key=key)
+            retry_after = max(1, -(-60 // refill_per_minute))  # ceil(60 / rate)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Too many requests. Please slow down."},
-                headers={"Retry-After": str(_settings.global_rate_window_seconds)},
+                headers={"Retry-After": str(retry_after)},
             )
         return await call_next(request)
+
+    @staticmethod
+    def _bucket_for(request: Request) -> tuple[str, int, int]:
+        """Pick the (key, burst_capacity, refill_per_minute) bucket for this
+        request. See the class docstring's HARD RULE before touching this."""
+        from fastapi.security.utils import get_authorization_scheme_param
+
+        from app.core.net import client_ip
+        from app.core.security import ACCESS, decode_token
+
+        scheme, token = get_authorization_scheme_param(
+            request.headers.get("authorization")
+        )
+        if scheme.lower() == "bearer" and token:
+            payload = decode_token(token, ACCESS)
+            if payload is not None:
+                sub = payload.get("sub")
+                if sub:
+                    return (
+                        f"user:{sub}",
+                        _settings.user_rate_limit_burst,
+                        _settings.user_rate_limit_per_minute,
+                    )
+
+        client = client_ip(request)
+        return (
+            f"ip:{client}",
+            _settings.ip_rate_limit_burst,
+            _settings.ip_rate_limit_per_minute,
+        )

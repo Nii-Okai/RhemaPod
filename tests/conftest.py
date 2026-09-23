@@ -38,6 +38,14 @@ import app.core.payments as payments_module  # noqa: E402
 
 payments_module.set_provider(payments_module.MockProvider())
 
+# Force the local stub Stream provider. Without this, a developer with real
+# Cloudflare credentials in docker-compose.override.yml (never root .env —
+# see status.md "W0.1 Cloudflare credentials received") would have the suite
+# hit live Cloudflare.
+import app.core.stream as stream_module  # noqa: E402
+
+stream_module.set_provider(stream_module.LocalStream())
+
 from app.db.database import Base, get_db, get_read_db  # noqa: E402
 from main import app  # noqa: E402
 
@@ -69,11 +77,16 @@ async def engine():
 async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     _fake.store.clear()
     _fake.hashes.clear()
+    _fake.buckets.clear()  # GlobalRateLimitMiddleware runs on every request;
+    # an un-cleared bucket would leak rate-limit state across tests.
     _fake.fail = False  # a leaked failure-injection flag would cascade-fail the suite
     storage_module.set_storage(storage_module.LocalStorage())
     # Fresh mock payment provider per test — no seeded period-ends or counter
     # state bleeds between tests.
     payments_module.set_provider(payments_module.MockProvider())
+    # Fresh stub Stream provider per test — no seeded uid/status state bleeds
+    # between tests.
+    stream_module.set_provider(stream_module.LocalStream())
     TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async def override_get_db():

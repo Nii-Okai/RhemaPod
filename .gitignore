@@ -49,12 +49,16 @@ status.md
 .expo/
 .expo-shared/
 dist/
-mobile/.gradle/
-mobile/android/local.properties
-mobile/android/app/release/
 *.tsbuildinfo
-mobile/ios/Pods/
 mobile/node_modules/
+# Managed Expo workflow (Expo Router, no eject) — ios/ and android/ are
+# `expo prebuild` output, regenerated on demand, never source. Whole
+# directories ignored, not just their own build artifacts (a bare-workflow
+# assumption the narrower entries below used to make).
+mobile/ios/
+mobile/android/
+mobile/spike/ios/
+mobile/spike/android/
 
 # Local Docker Compose override (auto-loaded by `docker compose`). Used on
 # machines where a host-native Postgres already holds 127.0.0.1:5432 — the

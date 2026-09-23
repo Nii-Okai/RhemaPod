@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
+from app.api.notes import router as notes_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
@@ -191,6 +192,7 @@ for _router in (
     subscriptions_router,
     search_router,
     analytics_router,
+    notes_router,
     admin_router,
     admin_subscriptions_router,
     announcement_approvals_router,

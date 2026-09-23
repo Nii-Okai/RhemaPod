@@ -14,24 +14,37 @@ background worker; nothing else in the app changes.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import storage as storage_module
+from app.core import stream as stream_module
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import check_rate_limit
-from app.models.content_schemas import StreamResponse, StreamVariant, UploadTicket
+from app.core.storage import StorageError
+from app.core.stream import StreamError
+from app.models.content_schemas import (
+    AudioDownloadResponse,
+    StreamResponse,
+    StreamVariant,
+    UploadTicket,
+)
 from app.models.models import (
     ContentTier,
     MediaRef,
     MediaType,
+    ProcessedWebhook,
+    Series,
     Sermon,
     SermonStatus,
-    Series,
     UploadJob,
     UploadStatus,
     User,
@@ -48,12 +61,12 @@ from app.services.content_service import (
 settings = get_settings()
 log = get_logger("media")
 
-# Renditions produced per media type. Video ladder is capped at 480p for free
-# tier by the streaming layer, not here — we always produce the full ladder.
+# Renditions produced per media type. Historically the streaming layer capped
+# free-tier viewers at 480p (FREE_TIER_MAX_QUALITY); deleted in W1.5 (plan
+# L10) — moot once Cloudflare Stream owns the rendition ladder, since Stream
+# serves one adaptive manifest per video, not discrete quality-tier files.
 VIDEO_QUALITIES = ("1080p", "720p", "480p")
 AUDIO_QUALITIES = ("128k",)
-
-FREE_TIER_MAX_QUALITY = "480p"
 
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/x-matroska", "video/webm"}
 ALLOWED_AUDIO_TYPES = {"audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav"}
@@ -247,6 +260,13 @@ async def confirm_upload(
     if settings.transcode_inline:
         await process_upload(db, job.id)
         await db.refresh(job)
+        # Hand the raw master to Cloudflare Stream (plan §A.2, W1.3), after
+        # the existing pipeline above — never instead of it. Video only:
+        # audio renditions are served straight from S3 (W1.6), never through
+        # Stream. Best-effort: a Stream outage must not fail the
+        # upload-confirm response — sweep_stream_jobs.py retries later.
+        if job.status == UploadStatus.READY and job.media_type == MediaType.VIDEO:
+            await _start_stream_ingest(db, job)
     return job
 
 
@@ -476,21 +496,62 @@ async def delete_upload_job(
 
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
-# Free viewers are capped at this rendition even on free content, keeping
-# bandwidth costs predictable. Paid viewers get the full ladder.
+# W1.5 (plan L10): the free-tier rendition-quality cap that used to live here
+# is gone. Stream owns the ladder now — it serves one adaptive manifest per
+# video, not discrete quality-tier files, so there is nothing left to cap.
 
 
+def _resolve_variant_url(ref: MediaRef, *, expires_in: int) -> str:
+    """The one rule for turning a MediaRef into a playable/downloadable URL,
+    shared by get_stream and get_audio_download (W1.6) so both endpoints
+    degrade identically.
 
-async def get_stream(
+    If this rendition has gone through Cloudflare Stream ingest
+    (`stream_uid` set — video only, today, and only for a passthrough master;
+    `_start_stream_ingest` skips the ambiguous multi-rendition-ladder case),
+    serve a Stream signed-token playback URL. Otherwise — not yet ingested,
+    ingest skipped/still pending, or a type Stream never ingests (audio,
+    W1.6) — fall back to the pre-Stream presigned-S3 path unchanged. This is
+    what makes the incremental rollout work: nothing needs every sermon
+    backfilled before it can be listed (W1.9 does the backfill later).
+
+    A `stream_uid` that IS set but fails to sign (StreamError — today's
+    concrete case: CF_STREAM_SIGNING_KEY_ID/_PEM not configured yet, plan
+    §A.2's known W1.5 gap) also falls back here rather than 500ing a playback
+    request. Logged, not silent: production's preflight requires the signing
+    key once Stream is live, so this branch should be unreachable there and
+    only a dev/staging convenience in practice.
+    """
+    if ref.stream_uid:
+        try:
+            return stream_module.get_provider().signed_playback_url(
+                uid=ref.stream_uid, expires_in=expires_in
+            )
+        except StreamError as exc:
+            log.warning(
+                "stream_signed_url_failed_falling_back_to_s3",
+                media_ref_id=str(ref.id), stream_uid=ref.stream_uid, error=str(exc),
+            )
+
+    store = storage_module.get_storage()
+    playback_key = ref.hls_manifest_key or ref.s3_key
+    presigned = store.presigned_download_url(
+        ref.bucket or settings.s3_media_bucket, playback_key, expires_in
+    )
+    return storage_module.cdn_url_for(playback_key, presigned_fallback=presigned)
+
+
+async def _authorize_stream_access(
     db: AsyncSession,
     sermon_id: uuid.UUID,
     user: User | None,
     has_subscription: bool,
-) -> StreamResponse:
-    """Return signed playback URLs, enforcing the paid-content gate.
-
-    This is where `locked` stops being advisory: a locked sermon returns 403
-    with upgrade_required, so the catalog can stay fully browsable.
+) -> tuple[Sermon, bool]:
+    """Shared authorization gate for get_stream and get_audio_download
+    (W1.6 reuses this rather than reimplementing it, per the plan). Returns
+    the sermon (with media_refs eager-loaded) and whether the caller is
+    staff. This is where `locked` stops being advisory: a locked sermon
+    raises 403 upgrade_required, so the catalog can stay fully browsable.
     """
     sermon = (await db.execute(
         select(Sermon)
@@ -521,37 +582,36 @@ async def get_stream(
     if tier == ContentTier.PAID and not has_subscription and not is_staff:
         raise ContentError("upgrade_required", status_code=403)
 
+    return sermon, is_staff
+
+
+async def get_stream(
+    db: AsyncSession,
+    sermon_id: uuid.UUID,
+    user: User | None,
+    has_subscription: bool,
+) -> StreamResponse:
+    """Return signed playback URLs, enforcing the paid-content gate.
+
+    One variant per MediaRef, unfiltered (see the W1.5 note above) — the
+    `url` is Stream-signed or presigned-S3 per `_resolve_variant_url`.
+    """
+    sermon, _is_staff = await _authorize_stream_access(
+        db, sermon_id, user, has_subscription
+    )
+
     if not sermon.media_refs:
         raise ContentError("No playable media for this sermon yet", status_code=409)
 
-    store = storage_module.get_storage()
-    variants: list[StreamVariant] = []
-    for ref in sermon.media_refs:
-        # Cap video quality for non-subscribers; audio is unrestricted.
-        # Cap video quality for non-subscribers. A rendition with no quality
-        # label is a passthrough original — there's nothing to choose between,
-        # so it is never filtered out (that would leave nothing playable).
-        if (
-            ref.type == MediaType.VIDEO
-            and not has_subscription
-            and not is_staff
-            and ref.quality is not None
-            and ref.quality != FREE_TIER_MAX_QUALITY
-        ):
-            continue
-        playback_key = ref.hls_manifest_key or ref.s3_key
-        presigned = store.presigned_download_url(
-            ref.bucket or settings.s3_media_bucket,
-            playback_key,
-            settings.stream_url_expire_seconds,
+    expires_in = settings.stream_url_expire_seconds
+    variants = [
+        StreamVariant(
+            type=ref.type,
+            quality=ref.quality,
+            url=_resolve_variant_url(ref, expires_in=expires_in),
         )
-        url = storage_module.cdn_url_for(playback_key, presigned_fallback=presigned)
-        variants.append(
-            StreamVariant(type=ref.type, quality=ref.quality, url=url)
-        )
-
-    if not variants:
-        raise ContentError("No playable rendition available", status_code=409)
+        for ref in sermon.media_refs
+    ]
 
     log.info(
         "stream_issued",
@@ -561,9 +621,47 @@ async def get_stream(
     )
     return StreamResponse(
         sermon_id=sermon.id,
-        expires_in=settings.stream_url_expire_seconds,
+        expires_in=expires_in,
         variants=variants,
     )
+
+
+async def get_audio_download(
+    db: AsyncSession,
+    sermon_id: uuid.UUID,
+    user: User | None,
+    has_subscription: bool,
+) -> AudioDownloadResponse:
+    """Short-lived signed URL for the AUDIO rendition only (plan §A.6, W1.6,
+    L6 — offline downloads are audio-only in this app, by design, not a gap
+    the video path happens to be missing from).
+
+    Same authorization as get_stream — reused via _authorize_stream_access,
+    not reimplemented. 409 when the sermon has no audio rendition, matching
+    the "no media exists" framing get_stream already uses (never 404: the
+    sermon itself is visible and authorized, only playable audio is absent).
+    """
+    sermon, _is_staff = await _authorize_stream_access(
+        db, sermon_id, user, has_subscription
+    )
+
+    audio_ref = next(
+        (ref for ref in sermon.media_refs if ref.type == MediaType.AUDIO), None
+    )
+    if audio_ref is None:
+        raise ContentError(
+            "No audio rendition available for this sermon", status_code=409
+        )
+
+    expires_in = settings.stream_url_expire_seconds
+    url = _resolve_variant_url(audio_ref, expires_in=expires_in)
+
+    log.info(
+        "audio_download_issued",
+        sermon_id=str(sermon.id),
+        user_id=str(user.id) if user else None,
+    )
+    return AudioDownloadResponse(sermon_id=sermon.id, url=url, expires_in=expires_in)
 
 
 # ── Media ref management ──────────────────────────────────────────────────────
@@ -687,8 +785,6 @@ async def sweep_stale_jobs(db: AsyncSession, older_than_hours: int | None = None
 
     Returns how many were swept.
     """
-    from datetime import datetime, timedelta, timezone
-
     # `or` would treat an explicit 0 as unset — deliberate check for None.
     hours = settings.stale_upload_hours if older_than_hours is None else older_than_hours
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -711,3 +807,389 @@ async def sweep_stale_jobs(db: AsyncSession, older_than_hours: int | None = None
         await db.commit()
         log.info("stale_uploads_swept", count=swept)
     return swept
+
+
+# ── Stream ingest (plan §A.2, W1.2/W1.3/W1.4) ─────────────────────────────────
+# How many times _start_stream_ingest may be retried by the sweep for a job
+# whose initial kickoff never produced a uid (network blip, Stream outage,
+# or an ambiguous/missing MediaRef — see the skip branches below). Past this
+# the sweep stops retrying. There is no dashboard signal for this today —
+# GET .../media doesn't expose stream_uid at all — so a job that exhausts
+# its attempts is only visible to an operator via the WARNING log lines
+# these branches emit; surfacing it in the editor Dashboard is future work.
+STREAM_INGEST_MAX_ATTEMPTS = 5
+
+# How long an in-flight Stream ingest (or a failed archive copy — see
+# _apply_stream_state) is left alone before sweep_stream_jobs treats it as
+# "check it now" rather than "still working". Cloudflare's own ingests
+# typically resolve in minutes for a sermon-length file, so an hour is
+# conservative, not eager.
+STREAM_SWEEP_STALE_MINUTES = 60
+
+
+async def _start_stream_ingest(db: AsyncSession, job: UploadJob) -> None:
+    """Hand `job`'s raw master to Cloudflare Stream via a presigned GET.
+
+    Targets the MediaRef the existing pipeline just created for this job's
+    (sermon, media_type) — see confirm_upload. Best-effort: a StreamError here
+    is logged and swallowed, not raised, so a Stream outage never fails the
+    upload-confirm response; sweep_stream_jobs.py retries later using
+    `attempts`/`started_at`.
+    """
+    refs = (await db.execute(
+        select(MediaRef).where(
+            MediaRef.sermon_id == job.sermon_id, MediaRef.type == MediaType.VIDEO
+        )
+    )).scalars().all()
+    if not refs:
+        # No video rendition to ingest — e.g. its MediaRef was deleted via
+        # DELETE /sermons/{id}/media after this job reached READY. Still
+        # counts as an attempt: without bumping `attempts`/`started_at` here,
+        # sweep_stream_jobs's retry-candidate query (attempts <
+        # STREAM_INGEST_MAX_ATTEMPTS, ignoring `started_at`'s staleness gate
+        # on the very first pass) would re-select and re-skip this job every
+        # sweep, forever.
+        job.attempts += 1
+        job.started_at = datetime.now(timezone.utc)
+        await db.commit()
+        log.warning("stream_ingest_skipped_no_media_ref", job_id=str(job.id))
+        return
+    if len(refs) > 1:
+        # A real HLS ladder (transcode_enabled=True) produces one MediaRef per
+        # quality — several rows for one VIDEO job, none of which is "the"
+        # Stream target. Not the pipeline this phase covers (§A.2 targets the
+        # passthrough single-master path); skip rather than guess which row
+        # to tag. W1.5 replaces this quality-ladder concept with Stream's own
+        # adaptive bitrate, which removes the ambiguity entirely. Bump
+        # `attempts`/`started_at` regardless — same reasoning as the
+        # no-MediaRef branch above: this case is permanent for a given job
+        # (the ladder doesn't collapse to one MediaRef on its own), so
+        # without this the sweep would re-skip it every hour forever instead
+        # of eventually giving up at STREAM_INGEST_MAX_ATTEMPTS.
+        job.attempts += 1
+        job.started_at = datetime.now(timezone.utc)
+        await db.commit()
+        log.warning(
+            "stream_ingest_skipped_multiple_media_refs",
+            job_id=str(job.id), count=len(refs),
+        )
+        return
+    ref = refs[0]
+
+    store = storage_module.get_storage()
+    source_url = store.presigned_download_url(
+        settings.s3_raw_bucket, job.raw_key, settings.stream_ingest_url_expire_seconds
+    )
+
+    job.attempts += 1
+    job.started_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    try:
+        ingest = await stream_module.get_provider().start_ingest(
+            source_url=source_url,
+            meta={"sermon_id": str(job.sermon_id), "upload_job_id": str(job.id)},
+        )
+    except StreamError as exc:
+        log.warning(
+            "stream_ingest_failed",
+            job_id=str(job.id), attempts=job.attempts, error=str(exc),
+        )
+        return
+
+    ref.stream_uid = ingest.uid
+    await db.commit()
+    log.info(
+        "stream_ingest_started",
+        job_id=str(job.id), stream_uid=ingest.uid, state=ingest.state,
+    )
+
+
+async def _active_video_job_for_sermon(
+    db: AsyncSession, sermon_id: uuid.UUID
+) -> UploadJob | None:
+    """The most recent not-yet-finished VIDEO upload job for a sermon — the
+    job a Stream ready/error notification for that sermon's video should be
+    attributed to. MediaRef carries no FK back to the UploadJob that created
+    it, so this is a best-effort correlation by (sermon_id, media_type,
+    unfinished); a superseded re-upload can leave an old job's `finished_at`
+    permanently unset (a stale bookkeeping row, harmless — see
+    sweep_stream_jobs docstring)."""
+    return (await db.execute(
+        select(UploadJob)
+        .where(
+            UploadJob.sermon_id == sermon_id,
+            UploadJob.media_type == MediaType.VIDEO,
+            UploadJob.finished_at.is_(None),
+        )
+        .order_by(UploadJob.created_at.desc())
+    )).scalars().first()
+
+
+async def _archive_raw_master(ref: MediaRef, job: UploadJob | None) -> None:
+    """Copy the raw master into Deep Archive once Stream is done with it
+    (ready or error — see _apply_stream_state). This is the step that makes
+    the Cloudflare Stream vendor choice reversible (plan §A.2, L8): the S3
+    master survives independent of Cloudflare. Not optional, not deferrable.
+
+    Idempotent by construction: S3 copy overwrites the same destination key,
+    so a retry after a prior failure is safe to just redo in full. Runs in a
+    worker thread — boto3 is sync and a multi-GB copy can take a real amount
+    of wall-clock time, which must not block the event loop.
+
+    That idempotency claim covers retry-after-failure, not true concurrency:
+    a sweep poll and a webhook racing on the same ref both copy from the same
+    source key, so it's still last-write-wins on S3 with no lock between
+    them. Believed harmless given the webhook-side ledger dedup (see
+    handle_stream_webhook's "duplicate_ignored" outcome) keeps both callers
+    writing the same bytes, but that's an assumption, not a guarantee this
+    function itself enforces.
+    """
+    if job is None:
+        log.error(
+            "archive_skipped_no_job",
+            sermon_id=str(ref.sermon_id), stream_uid=ref.stream_uid,
+        )
+        raise StorageError("No upload job to source the raw master from")
+
+    store = storage_module.get_storage()
+    dest_key = storage_module.archive_key(ref.sermon_id, job.raw_key)
+    await asyncio.to_thread(
+        store.copy_object,
+        settings.s3_raw_bucket, job.raw_key,
+        settings.s3_raw_bucket, dest_key,
+        storage_class=settings.s3_archive_storage_class,
+    )
+    log.info(
+        "raw_master_archived",
+        sermon_id=str(ref.sermon_id), src=job.raw_key, dest=dest_key,
+    )
+
+
+async def _apply_stream_state(
+    ref: MediaRef, job: UploadJob | None, *, state: str, ready_to_stream: bool
+) -> str:
+    """Apply a Stream status (from a webhook event or a sweep poll — both
+    produce the same (state, ready_to_stream) shape) to the MediaRef/UploadJob
+    rows. Shared by handle_stream_webhook and sweep_stream_jobs so both paths
+    apply exactly the same transition.
+
+    Returns "ready", "error", or "not_terminal" (queued/downloading/inprogress
+    — nothing to do yet).
+    """
+    if state == "ready" and ready_to_stream:
+        outcome = "ready"
+    elif state == "error":
+        outcome = "error"
+    else:
+        return "not_terminal"
+
+    # Archive first, mark finished second. If the archive copy raises, this
+    # function raises too and `job.finished_at` is never set — the job stays
+    # eligible for the next sweep_stream_jobs pass to retry the archive.
+    # Silently marking the job "finished" with no archive copy would collapse
+    # the reversibility argument the whole Stream decision rests on.
+    await _archive_raw_master(ref, job)
+
+    if job is not None and job.finished_at is None:
+        job.finished_at = datetime.now(timezone.utc)
+    log.info(
+        "stream_ingest_resolved",
+        sermon_id=str(ref.sermon_id), stream_uid=ref.stream_uid, outcome=outcome,
+    )
+    return outcome
+
+
+async def _already_processed_stream_event(
+    db: AsyncSession, provider: str, event_id: str
+) -> bool:
+    found = (await db.execute(
+        select(ProcessedWebhook).where(
+            ProcessedWebhook.provider == provider,
+            ProcessedWebhook.event_id == event_id,
+        )
+    )).scalar_one_or_none()
+    return found is not None
+
+
+def _is_stream_webhook_ledger_violation(exc: IntegrityError) -> bool:
+    """True when an IntegrityError is the `uq_webhook_provider_event`
+    collision (a concurrent duplicate delivery). Mirrors
+    subscription_service._is_webhook_ledger_violation exactly — same table,
+    same constraint, same reasoning: match the constraint by name (Postgres)
+    or by its exact column pair (SQLite, which never names it), so a future
+    unrelated constraint on the table still surfaces instead of being
+    silently swallowed."""
+    text = str(getattr(exc, "orig", exc)).lower()
+    if "uq_webhook_provider_event" in text:
+        return True
+    return (
+        "unique" in text
+        and "processed_webhooks.provider" in text
+        and "processed_webhooks.event_id" in text
+    )
+
+
+async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
+    """Apply a Cloudflare Stream ready/error notification. Idempotent: a
+    redelivered event is a no-op (ProcessedWebhook ledger — same precedent
+    subscription_service.handle_webhook uses for Stripe).
+
+    A StorageError from the archive step (see _apply_stream_state) propagates
+    uncaught: the route returns 500, Cloudflare redelivers the webhook later,
+    and the ledger row is never written for this attempt (it commits only
+    after _apply_stream_state returns), so the redelivery retries the archive
+    too rather than being deduped away.
+    """
+    provider_name = stream_module.get_provider().name
+    uid = str(event.get("uid") or "")
+    status_obj = event.get("status") or {}
+    state = str(status_obj.get("state") or "")
+    if not uid or not state:
+        raise ContentError("Webhook missing uid or status.state", status_code=400)
+
+    # Cloudflare Stream webhooks carry no event id (unlike Stripe) — the
+    # (uid, state) pair is the redelivery identity: two deliveries of the same
+    # "ready" event for the same uid must dedupe. A later, genuinely different
+    # state for the same uid is a distinct event_id and is not swallowed.
+    event_id = f"{uid}:{state}"
+
+    if await _already_processed_stream_event(db, provider_name, event_id):
+        return "duplicate_ignored"
+
+    ref = (await db.execute(
+        select(MediaRef).where(MediaRef.stream_uid == uid)
+    )).scalar_one_or_none()
+    if ref is None:
+        # Unknown uid: still record the ledger entry below so a redelivery
+        # storm for an id we don't recognise doesn't hammer this branch
+        # forever. Not something the provider should keep retrying over.
+        log.warning("stream_webhook_unknown_uid", uid=uid, state=state)
+        outcome = "unknown_uid"
+    else:
+        job = await _active_video_job_for_sermon(db, ref.sermon_id)
+        outcome = await _apply_stream_state(
+            ref, job, state=state, ready_to_stream=bool(event.get("readyToStream", False)),
+        )
+
+    db.add(ProcessedWebhook(provider=provider_name, event_id=event_id, event_type=state))
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        if not _is_stream_webhook_ledger_violation(exc):
+            raise
+        await db.rollback()
+        log.info("stream_webhook_duplicate_ignored", uid=uid, state=state)
+        return "duplicate_ignored"
+
+    log.info("stream_webhook_handled", uid=uid, state=state, outcome=outcome)
+    return outcome
+
+
+async def sweep_stream_jobs(db: AsyncSession, older_than_minutes: int | None = None) -> int:
+    """Reconcile Stream ingests a webhook never resolved, and retry ingests
+    whose initial kickoff never produced a uid.
+
+    Two cases, both keyed off `upload_jobs.started_at`/`finished_at`/
+    `attempts` (added alongside `media_refs.stream_uid` — plan §A.2, W1.1):
+
+    1. Ingest under way (we have a stream_uid) but never resolved — poll
+       Cloudflare directly and apply the same transition the webhook would
+       have (_apply_stream_state). This also covers a "ready" that resolved
+       but whose archive copy failed: `finished_at` is only set once the
+       archive succeeds too, so a job in that state is picked up again here
+       and the poll-then-archive is simply retried.
+    2. The initial `_start_stream_ingest` call never produced a uid at all
+       (Stream outage at confirm time) — retry it, up to
+       STREAM_INGEST_MAX_ATTEMPTS.
+
+    A superseded re-upload (editor replaces a sermon's video while an older
+    ingest is still in flight) can leave the OLD upload job's `finished_at`
+    permanently unset — the MediaRef it was tracking gets deleted and
+    recreated by the newer upload's process_upload() call, so this sweep
+    can no longer find it via `_active_video_job_for_sermon`. That old job
+    then sits inert (case 2 would touch it, but the sermon's current
+    MediaRef already has a *different* stream_uid, so it is skipped as
+    "already started"). Harmless — a stale bookkeeping row, not a retry
+    loop or a stuck sermon — and not fixed here; the S3/Stream orphan cleanup
+    this implies is the same class of "sweep's problem, later" already noted
+    elsewhere in this module for deleted MediaRefs.
+
+    Returns how many jobs were touched (resolved or retried).
+    """
+    minutes = STREAM_SWEEP_STALE_MINUTES if older_than_minutes is None else older_than_minutes
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+    def _stale(started_at: datetime | None) -> bool:
+        if started_at is None:
+            return True
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        return started_at <= cutoff
+
+    resolved = 0
+    retried = 0
+
+    # Case 1: has a uid, not yet fully resolved.
+    in_flight_refs = (await db.execute(
+        select(MediaRef).where(
+            MediaRef.type == MediaType.VIDEO, MediaRef.stream_uid.is_not(None)
+        )
+    )).scalars().all()
+    for ref in in_flight_refs:
+        job = await _active_video_job_for_sermon(db, ref.sermon_id)
+        if job is None or not _stale(job.started_at):
+            continue
+        try:
+            status = await stream_module.get_provider().get_status(uid=ref.stream_uid)
+        except StreamError as exc:
+            log.warning(
+                "stream_sweep_status_check_failed",
+                sermon_id=str(ref.sermon_id), uid=ref.stream_uid, error=str(exc),
+            )
+            continue
+        try:
+            outcome = await _apply_stream_state(
+                ref, job, state=status.state, ready_to_stream=status.ready_to_stream
+            )
+        except StorageError as exc:
+            # Archive failed again — leave finished_at unset so the next pass
+            # retries. Loud (ERROR), never silently swallowed.
+            log.error(
+                "stream_sweep_archive_failed",
+                sermon_id=str(ref.sermon_id), uid=ref.stream_uid, error=str(exc),
+            )
+            continue
+        if outcome != "not_terminal":
+            resolved += 1
+
+    if resolved:
+        # _apply_stream_state only mutates in-memory objects; this is the
+        # transaction boundary for all of case 1's changes (job.finished_at).
+        await db.commit()
+
+    # Case 2: the initial kickoff never even got a uid — retry it.
+    candidates = (await db.execute(
+        select(UploadJob).where(
+            UploadJob.media_type == MediaType.VIDEO,
+            UploadJob.status == UploadStatus.READY,
+            UploadJob.finished_at.is_(None),
+            UploadJob.attempts < STREAM_INGEST_MAX_ATTEMPTS,
+        )
+    )).scalars().all()
+    for job in candidates:
+        if not _stale(job.started_at):
+            continue
+        refs = (await db.execute(
+            select(MediaRef).where(
+                MediaRef.sermon_id == job.sermon_id, MediaRef.type == MediaType.VIDEO
+            )
+        )).scalars().all()
+        if any(r.stream_uid is not None for r in refs):
+            continue  # already has a uid — case 1 owns it now
+        await _start_stream_ingest(db, job)
+        retried += 1
+
+    if resolved or retried:
+        log.info("stream_jobs_swept", resolved=resolved, retried=retried)
+    return resolved + retried

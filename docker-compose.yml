@@ -163,6 +163,7 @@ services:
       - >
         while true; do
           python -m app.scripts.sweep_uploads || true;
+          python -m app.scripts.sweep_stream_jobs || true;
           python -m app.scripts.expire_subscriptions || true;
           sleep 3600;
         done

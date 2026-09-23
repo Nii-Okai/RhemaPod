@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -201,7 +203,13 @@ async def test_stream_url_falls_back_to_presigned_when_cdn_set_without_signing(
     """Regression test for the CDN bypass: cdn_base_url set but no CDN
     signing exists must never produce a bare, unsigned CDN URL — a
     deterministic, publicly-guessable key (media_key()) plus an unsigned URL
-    lets anyone edit the quality segment and bypass the paid-tier gate."""
+    lets anyone edit the quality segment and bypass the paid-tier gate.
+
+    Uses AUDIO specifically: video goes through Cloudflare Stream ingest on
+    confirm (W1.1-W1.4) and, once stream_uid is set, get_stream serves a
+    Stream URL instead of ever reaching this S3/CDN code path at all (W1.5)
+    — audio is what stays on the presigned-S3 path this test is actually
+    checking."""
     from app.services import media_service
 
     monkeypatch.setattr(media_service.settings, "cdn_base_url", "https://cdn.example.com")
@@ -211,7 +219,7 @@ async def test_stream_url_falls_back_to_presigned_when_cdn_set_without_signing(
     sid = (await client.post(
         "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
     )).json()["id"]
-    await upload_and_process(client, ed, sid)
+    await upload_and_process(client, ed, sid, payload=AUDIO)
     await publish(client, ed, mgr, sid)
 
     viewer = await make_viewer(client)
@@ -222,8 +230,14 @@ async def test_stream_url_falls_back_to_presigned_when_cdn_set_without_signing(
     assert "local-storage.invalid" in url  # still the presigned stub URL
 
 
-async def test_free_tier_quality_cap_when_transcoding(client, engine, monkeypatch):
-    """With a real HLS ladder, non-subscribers are capped at 480p."""
+async def test_full_ladder_returned_unfiltered_when_transcoding(client, engine, monkeypatch):
+    """W1.5 (plan L10): the old free-tier 480p cap is gone — Stream owns the
+    rendition ladder now, so every rendition goes to every viewer regardless
+    of subscription. This also exercises the presigned-S3 fallback for
+    video: a real HLS ladder produces 3 MediaRef rows for one job, which
+    _start_stream_ingest deliberately skips (no single well-defined Stream
+    target for an ambiguous ladder — W1.1-W1.4), so none of them ever get a
+    stream_uid."""
     from app.services import media_service
 
     monkeypatch.setattr(media_service.settings, "transcode_enabled", True)
@@ -240,7 +254,88 @@ async def test_free_tier_quality_cap_when_transcoding(client, engine, monkeypatc
     r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=viewer)
     assert r.status_code == 200
     variants = r.json()["variants"]
-    assert variants and all(v["quality"] == "480p" for v in variants)
+    assert {v["quality"] for v in variants} == {"1080p", "720p", "480p"}
+    # No stream_uid on any of them (ambiguous-ladder skip) -> presigned S3,
+    # not a Stream URL.
+    assert all("local-storage.invalid" in v["url"] for v in variants)
+
+
+async def test_stream_falls_back_to_presigned_when_video_not_yet_ingested(
+    client, engine, monkeypatch
+):
+    """A video whose Stream ingest never produced a uid — the pre-backfill
+    (W1.9) case for every sermon uploaded before this pipeline existed, or
+    any ingest kickoff that failed — must still stream via the pre-Stream
+    presigned-S3 path, unchanged. This is what makes the incremental
+    rollout safe: nothing needs a stream_uid to stay playable."""
+    from app.core import stream as stream_module
+
+    async def boom(self, *, source_url, meta=None):
+        raise stream_module.StreamError("simulated Cloudflare outage")
+
+    monkeypatch.setattr(stream_module.LocalStream, "start_ingest", boom)
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=viewer)
+    assert r.status_code == 200
+    variants = r.json()["variants"]
+    assert len(variants) == 1
+    assert "local-storage.invalid" in variants[0]["url"]
+
+
+async def test_stream_falls_back_to_presigned_on_malformed_signing_key(
+    client, engine, monkeypatch
+):
+    """A stream_uid IS set (ingest succeeded) but the signing key is
+    PRESENT and MALFORMED -- e.g. newlines not folded correctly when
+    hand-pasted (DEPLOYMENT.md §12 step 5), the likely real-world mistake
+    since a human pastes this key once, by hand. jwt.encode raises straight
+    from PyJWT/cryptography (InvalidKeyError, or a bare TypeError for an
+    encrypted key) rather than this codebase's own StreamError, so this must
+    be normalized in CloudflareStreamProvider.signed_playback_url -- without
+    that, this case 500s instead of degrading to presigned S3 the way the
+    unconfigured-key case already does. Exercises the full HTTP path, not
+    just the provider unit, so the actual client-visible response is
+    asserted, not just that signing doesn't raise."""
+    from app.core import stream as stream_module
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)
+    await publish(client, ed, mgr, sid)
+
+    # Ingest above ran against the LocalStream stub and set a real
+    # stream_uid. Now swap in a CloudflareStreamProvider with a malformed
+    # signing key -- only for playback resolution, ingest has already
+    # happened -- to simulate the misconfigured-key case at request time.
+    bad_provider = stream_module.CloudflareStreamProvider.__new__(
+        stream_module.CloudflareStreamProvider
+    )
+    monkeypatch.setattr(stream_module.settings, "cf_stream_signing_key_id", "key123")
+    monkeypatch.setattr(
+        stream_module.settings, "cf_stream_signing_key_pem", "not-a-valid-pem"
+    )
+    monkeypatch.setattr(stream_module.settings, "cf_stream_customer_subdomain", "abcxyz")
+    monkeypatch.setattr(stream_module, "get_provider", lambda: bad_provider)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=viewer)
+    assert r.status_code == 200
+    variants = r.json()["variants"]
+    assert len(variants) == 1
+    assert "local-storage.invalid" in variants[0]["url"]
+    assert "cloudflarestream.com" not in variants[0]["url"]
 
 
 async def test_stream_paid_sermon_blocked_for_viewer(client, engine):
@@ -315,6 +410,124 @@ async def test_stream_without_media_returns_409(client, engine):
     viewer = await make_viewer(client)
     r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=viewer)
     assert r.status_code == 409
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Audio download (W1.6) — GET /sermons/{id}/download/audio
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_audio_download_free_sermon(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=viewer)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sermon_id"] == sid
+    assert "local-storage.invalid" in body["url"]  # presigned S3 stub, unchanged
+    from app.core.config import get_settings
+
+    assert body["expires_in"] == get_settings().stream_url_expire_seconds
+
+
+async def test_audio_download_paid_sermon_blocked_for_viewer(client, engine):
+    """Authz parity with get_stream: same 403 upgrade_required gate."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Paid", "tier": "paid"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=viewer)
+    assert r.status_code == 403
+    assert r.json()["detail"]["upgrade_required"] is True
+
+
+async def test_audio_download_unpublished_hidden_from_viewer(client, engine):
+    """Authz parity with get_stream: same 404 non-disclosure for unpublished."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=viewer)
+    assert r.status_code == 404
+
+
+async def test_audio_download_editor_cannot_preview_another_editors_draft(client, engine):
+    """Authz parity with get_stream: same BOLA ownership guard."""
+    a = await make_user(client, engine, "a@example.com", "editor")
+    b = await make_user(client, engine, "b@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "A"}, headers=a)).json()["id"]
+    await upload_and_process(client, a, sid, payload=AUDIO)
+
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=b)
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=a)
+    ).status_code == 200
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=mgr)
+    ).status_code == 200
+
+
+async def test_audio_download_returns_409_when_no_audio_rendition(client, engine):
+    """Video-only sermon: 409, never a 404 (sermon itself is visible/
+    authorized) and never a video URL (L6 — no video path, ever)."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)  # VIDEO only
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=viewer)
+    assert r.status_code == 409
+
+
+async def test_audio_download_uses_stream_url_when_ingested(client, engine):
+    """Not a type-gated special case — _resolve_variant_url is generic on
+    stream_uid. Audio never gets a stream_uid through the app's own ingest
+    path today (only VIDEO jobs call _start_stream_ingest), but the shared
+    helper must still route through Stream for any MediaRef that has one,
+    proving the W1.5/W1.6 fallback rule is one rule, not two copies of it."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import MediaRef, MediaType
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await publish(client, ed, mgr, sid)
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        ref = (await s.execute(
+            select(MediaRef).where(
+                MediaRef.sermon_id == uuid.UUID(sid), MediaRef.type == MediaType.AUDIO
+            )
+        )).scalars().first()
+        ref.stream_uid = "stubaudiotestuid0000000000000001"
+        await s.commit()
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/audio", headers=viewer)
+    assert r.status_code == 200
+    assert "cloudflarestream.test" in r.json()["url"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

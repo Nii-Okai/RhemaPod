@@ -4,15 +4,17 @@ Implements only the methods the app uses: get, setex, set, incr, expire,
 delete, getdel, ping, plus hash ops (hget/hset/hdel/hgetall) for the
 multi-session refresh store (app/core/token_store.py).
 
-``claim_and_rotate`` is a deliberate exception to "this fake doesn't know
-what a Lua script does": per status.md "W0.4 kickoff decisions" D3 point 5,
-this double implements ``token_store.claim_and_rotate``'s *semantics*
-directly in Python rather than faking a Lua interpreter — token_store detects
-this via duck typing (any client exposing a `claim_and_rotate` coroutine is
-used directly, no `register_script`/`eval` involved) and uses it only for the
-fail-closed/wiring cases. Anything timing-dependent (the grace window,
-reuse-vs-grace edge cases) is proven against the real Lua script via a real
-Redis instance instead — see tests/test_multi_session.py.
+``claim_and_rotate`` and ``token_bucket_take`` are a deliberate exception to
+"this fake doesn't know what a Lua script does": per status.md "W0.4 kickoff
+decisions" D3 point 5 (and "MOBILE — W2.1" for the latter), this double
+implements each Lua script's *semantics* directly in Python rather than
+faking a Lua interpreter — the app detects this via duck typing (any client
+exposing that coroutine is used directly, no `register_script`/`eval`
+involved) and uses it only for the fail-closed/fail-open/wiring cases.
+Anything timing-dependent (the grace window and reuse-vs-grace edge cases for
+`claim_and_rotate`; burst/refill arithmetic for `token_bucket_take`) is
+proven against the real Lua script via a real Redis instance instead — see
+tests/test_multi_session.py and tests/test_rate_limit.py respectively.
 
 Failure injection: wrap a block in ``with fake.failing():`` (or set
 ``fake.fail = True``) and every operation raises ``redis.exceptions.
@@ -33,6 +35,11 @@ class FakeRedis:
         # existing get/setex/set caller) rather than a mixed str-or-dict
         # value type that every caller would need to guard against.
         self.hashes: dict[str, dict[str, str]] = {}
+        # Token-bucket state (app/core/rate_limit.py's `check_token_bucket`):
+        # key -> (tokens, last_computed_ts). Kept separate from `hashes` for
+        # the same reason `hashes` is separate from `store` — a distinct
+        # value shape callers don't need to guard against.
+        self.buckets: dict[str, tuple[float, float]] = {}
         self.fail = False
 
     def _guard(self) -> None:
@@ -176,3 +183,25 @@ class FakeRedis:
             "expires_at": now + ttl_seconds,
         })
         return "ROTATED_VIA_GRACE" if was_grace else "ROTATED"
+
+    # --- token_bucket_take: the Python-mirror of rate_limit.py's token
+    # bucket Lua script. See the module docstring for why this is a
+    # dedicated method rather than a fake Lua interpreter. Semantics must
+    # stay in lockstep with app/core/rate_limit.py's `_TOKEN_BUCKET_LUA` —
+    # the real script is the authority (see tests/test_rate_limit.py's
+    # real-Redis burst/refill cases); this is only for the fail-open/wiring
+    # and key-selection tests.
+    async def token_bucket_take(
+        self, key: str, capacity: float, refill_rate: float, now: float
+    ) -> int:
+        self._guard()
+        tokens, ts = self.buckets.get(key, (capacity, now))
+        elapsed = max(0.0, now - ts)
+        tokens = min(capacity, tokens + elapsed * refill_rate)
+        if tokens >= 1:
+            tokens -= 1
+            allowed = 1
+        else:
+            allowed = 0
+        self.buckets[key] = (tokens, now)
+        return allowed

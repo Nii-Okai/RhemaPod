@@ -609,7 +609,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
+        /**
+         * Logout
+         * @description Per-device: revokes only the session the presented refresh token
+         *     identifies, not every device the caller is signed in on (plan §A.3 #4).
+         *     Public API contract change from the pre-rework body-less version — see
+         *     status.md "W0.4 multi-session refresh".
+         */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -815,6 +821,52 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Notes
+         * @description Every note the caller has ever taken, across all sermons, most recent
+         *     first.
+         */
+        get: operations["list_my_notes_api_v1_me_notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Note
+         * @description Ownership-only: same 404-not-403 rule as update_note.
+         */
+        delete: operations["delete_note_api_v1_notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Note
+         * @description Ownership-only: a note that doesn't belong to the caller 404s, the
+         *     same as one that doesn't exist — no staff bypass, see notes_service.
+         */
+        patch: operations["update_note_api_v1_notes__note_id__patch"];
         trace?: never;
     };
     "/api/v1/search": {
@@ -1048,6 +1100,28 @@ export interface paths {
         patch: operations["update_sermon_api_v1_sermons__sermon_id__patch"];
         trace?: never;
     };
+    "/api/v1/sermons/{sermon_id}/download/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Audio
+         * @description Short-lived signed URL for the audio rendition only — offline
+         *     downloads are audio-only in this app, by design (plan §A.6, L6). Same
+         *     authorization as get_stream; 409 if the sermon has no audio rendition.
+         */
+        get: operations["download_audio_api_v1_sermons__sermon_id__download_audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}/media": {
         parameters: {
             query?: never;
@@ -1087,6 +1161,28 @@ export interface paths {
          * @description Detach one rendition. The sermon must not be published.
          */
         delete: operations["delete_media_api_v1_sermons__sermon_id__media__media_ref_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sermon Notes
+         * @description The caller's own notes on one sermon. Strictly user-owned — this never
+         *     returns anyone else's notes, staff included.
+         */
+        get: operations["list_sermon_notes_api_v1_sermons__sermon_id__notes_get"];
+        put?: never;
+        /** Create Sermon Note */
+        post: operations["create_sermon_note_api_v1_sermons__sermon_id__notes_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1775,6 +1871,24 @@ export interface components {
             /** To Status */
             to_status: string;
         };
+        /**
+         * AudioDownloadResponse
+         * @description GET .../download/audio (W1.6) — a short-lived signed URL for the
+         *     audio rendition only, for offline download. Deliberately minimal: no
+         *     `type`/`variants` list like StreamResponse, since this endpoint can only
+         *     ever answer with audio (L6, locked — never a video path).
+         */
+        AudioDownloadResponse: {
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Url */
+            url: string;
+        };
         /** CategoryCreate */
         CategoryCreate: {
             /** Name */
@@ -1914,6 +2028,17 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * LogoutRequest
+         * @description Per-device logout (plan §A.3 #4): the presented refresh token's `sid`
+         *     is what identifies which session to revoke. Public API contract change
+         *     from the pre-rework `/auth/logout` (no body, revoked by user id / every
+         *     device) — see status.md "W0.4 multi-session refresh".
+         */
+        LogoutRequest: {
+            /** Refresh Token */
+            refresh_token: string;
+        };
         /** MediaRefPublic */
         MediaRefPublic: {
             /** Hls Manifest Key */
@@ -1956,6 +2081,44 @@ export interface components {
              * Format: date
              */
             week_start: string;
+        };
+        /** NoteCreate */
+        NoteCreate: {
+            /** Body */
+            body: string;
+            /** Position Seconds */
+            position_seconds: number;
+        };
+        /** NotePublic */
+        NotePublic: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position Seconds */
+            position_seconds: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** NoteUpdate */
+        NoteUpdate: {
+            /** Body */
+            body?: string | null;
+            /** Position Seconds */
+            position_seconds?: number | null;
         };
         /** OverviewStats */
         OverviewStats: {
@@ -3899,7 +4062,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoutRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3908,6 +4075,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4299,6 +4475,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgressPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_notes_api_v1_me_notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotePublic"][];
+                };
+            };
+        };
+    };
+    delete_note_api_v1_notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_note_api_v1_notes__note_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotePublic"];
                 };
             };
             /** @description Validation Error */
@@ -4834,6 +5094,37 @@ export interface operations {
             };
         };
     };
+    download_audio_api_v1_sermons__sermon_id__download_audio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudioDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_media_api_v1_sermons__sermon_id__media_get: {
         parameters: {
             query?: never;
@@ -4917,6 +5208,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sermon_notes_api_v1_sermons__sermon_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotePublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_sermon_note_api_v1_sermons__sermon_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotePublic"];
+                };
             };
             /** @description Validation Error */
             422: {

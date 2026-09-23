@@ -52,6 +52,30 @@ async def _check_storage() -> str:
     return f"s3: {s.s3_media_bucket}"
 
 
+async def _check_stream() -> str:
+    from app.core.config import get_settings
+    from app.core.stream import LocalStream, get_provider
+
+    s = get_settings()
+    provider = get_provider()
+    if isinstance(provider, LocalStream):
+        if s.is_production:
+            raise RuntimeError("stub Stream provider active in production")
+        return "local stub (development)"
+    if not s.cf_stream_webhook_secret:
+        raise RuntimeError(
+            "CF_STREAM_WEBHOOK_SECRET not set — the webhook endpoint cannot "
+            "verify inbound Cloudflare Stream events"
+        )
+    if not s.stream_signing_is_configured:
+        raise RuntimeError(
+            "CF_STREAM_SIGNING_KEY_ID / CF_STREAM_SIGNING_KEY_PEM not set — "
+            "get_stream/get_audio_download cannot sign playback URLs for any "
+            "Stream-ingested rendition"
+        )
+    return "cloudflare"
+
+
 async def _check_payments() -> str:
     from app.core.config import get_settings
     from app.core.payments import MockProvider, get_provider
@@ -127,6 +151,7 @@ async def _run() -> int:
         _check("redis", _check_redis()),
         _check("storage", _check_storage()),
         _check("cdn", _check_cdn()),
+        _check("stream", _check_stream()),
         _check("payments", _check_payments()),
         _check("email", _check_email()),
     )

@@ -27,6 +27,11 @@ LIVE_ENV = {
     "s3_secret_access_key": "secret",
     "smtp_host": "smtp.example.com",
     "smtp_from_email": "no-reply@example.com",
+    "cf_account_id": "acct_x",
+    "cf_stream_api_token": "cfut_x",
+    "cf_stream_webhook_secret": "whsec_stream_x",
+    "cf_stream_signing_key_id": "key_x",
+    "cf_stream_signing_key_pem": "pem_x",
 }
 
 
@@ -41,7 +46,42 @@ def test_fully_configured_production_boots():
     s = _settings()
     assert s.is_production
     assert s.payments_are_live and s.storage_is_live and s.email_is_live
+    assert s.stream_is_live
     assert s.cdn_base_url is None
+
+
+def test_production_refuses_stub_stream():
+    """The stub Stream provider never reaches Cloudflare — sermon video would
+    silently never get ingested."""
+    with pytest.raises(ValueError, match="CF_ACCOUNT_ID"):
+        _settings(cf_account_id=None, cf_stream_api_token=None)
+
+
+def test_production_refuses_stream_without_webhook_secret():
+    """Stream live but no webhook secret means the webhook endpoint can never
+    verify an inbound event — same class of gap as the mock-payments check."""
+    with pytest.raises(ValueError, match="CF_STREAM_WEBHOOK_SECRET"):
+        _settings(cf_stream_webhook_secret=None)
+
+
+def test_production_refuses_stream_without_signing_key():
+    """Stream live but no signing key means get_stream/get_audio_download
+    can never sign a playback URL for a Stream-ingested rendition — the
+    dev/staging presigned-S3 fallback (media_service._resolve_variant_url)
+    is a convenience, not something production should depend on."""
+    with pytest.raises(ValueError, match="CF_STREAM_SIGNING_KEY_ID"):
+        _settings(cf_stream_signing_key_id=None, cf_stream_signing_key_pem=None)
+
+
+def test_production_refuses_transcode_enabled():
+    """transcode_enabled produces multiple MediaRef rows per sermon that are
+    never Stream-ingested (the ambiguous-ladder skip) and stay on the legacy
+    S3-presigned fallback forever -- a fallback that lost its quality-tier
+    gate when FREE_TIER_MAX_QUALITY was removed (W1.5) and has nothing
+    replacing it. Not an authorization-boundary break, but real enough that
+    production must not silently boot with it on."""
+    with pytest.raises(ValueError, match="TRANSCODE_ENABLED"):
+        _settings(transcode_enabled=True)
 
 
 def test_production_refuses_cdn_without_signing():

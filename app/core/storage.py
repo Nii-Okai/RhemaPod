@@ -37,6 +37,26 @@ class Storage(Protocol):
 
     def delete_object(self, bucket: str, key: str) -> None: ...
 
+    def copy_object(
+        self,
+        src_bucket: str,
+        src_key: str,
+        dest_bucket: str,
+        dest_key: str,
+        *,
+        storage_class: str | None = None,
+    ) -> None: ...
+
+    def object_storage_class(self, bucket: str, key: str) -> str | None:
+        """The object's storage class (e.g. 'STANDARD', 'DEEP_ARCHIVE'), or
+        None if the object does not exist. Callers that need to *prove* an
+        archival copy landed in the expected class must call this — never
+        infer it from copy_object() succeeding or from a bucket lifecycle
+        rule's mere existence (plan §A.2, W1.4: "a configured lifecycle rule
+        that never fires looks identical to a working one until you need the
+        tape")."""
+        ...
+
 
 class LocalStorage:
     """Stub backend. Records 'uploaded' keys in memory so object_exists() can
@@ -44,6 +64,7 @@ class LocalStorage:
 
     def __init__(self) -> None:
         self._objects: set[tuple[str, str]] = set()
+        self._storage_class: dict[tuple[str, str], str] = {}
 
     def presigned_upload_url(
         self, bucket: str, key: str, content_type: str, expires_in: int
@@ -68,6 +89,28 @@ class LocalStorage:
 
     def delete_object(self, bucket: str, key: str) -> None:
         self._objects.discard((bucket, key))
+        self._storage_class.pop((bucket, key), None)
+
+    def copy_object(
+        self,
+        src_bucket: str,
+        src_key: str,
+        dest_bucket: str,
+        dest_key: str,
+        *,
+        storage_class: str | None = None,
+    ) -> None:
+        if (src_bucket, src_key) not in self._objects:
+            raise StorageError(
+                f"Cannot copy: source object not found ({src_bucket}/{src_key})"
+            )
+        self._objects.add((dest_bucket, dest_key))
+        self._storage_class[(dest_bucket, dest_key)] = storage_class or "STANDARD"
+
+    def object_storage_class(self, bucket: str, key: str) -> str | None:
+        if (bucket, key) not in self._objects:
+            return None
+        return self._storage_class.get((bucket, key), "STANDARD")
 
 
 class S3Storage:
@@ -188,6 +231,67 @@ class S3Storage:
     def delete_object(self, bucket: str, key: str) -> None:
         self._client.delete_object(Bucket=bucket, Key=key)
 
+    def copy_object(
+        self,
+        src_bucket: str,
+        src_key: str,
+        dest_bucket: str,
+        dest_key: str,
+        *,
+        storage_class: str | None = None,
+    ) -> None:
+        """Managed copy (`Client.copy`, not the raw `copy_object` API call).
+
+        A raw `CopyObject` request is capped at 5 GiB source size; a raw
+        sermon master can legitimately sit right at `max_upload_bytes` (5 GB),
+        so a single-call copy has no safety margin. `Client.copy` is boto3's
+        managed transfer — it multipart-copies automatically above the
+        threshold, same idea as a multipart upload, so this works uniformly
+        regardless of master size. `StorageClass` is a documented
+        `ALLOWED_COPY_ARGS` key for this method.
+        """
+        from botocore.exceptions import ClientError
+
+        extra_args = {"StorageClass": storage_class} if storage_class else None
+        try:
+            self._client.copy(
+                CopySource={"Bucket": src_bucket, "Key": src_key},
+                Bucket=dest_bucket,
+                Key=dest_key,
+                ExtraArgs=extra_args,
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            log.error(
+                "s3_copy_object_failed",
+                src=f"{src_bucket}/{src_key}", dest=f"{dest_bucket}/{dest_key}",
+                code=code,
+            )
+            raise StorageError(
+                f"Could not copy object to archive (S3 error {code})."
+            ) from exc
+
+    def object_storage_class(self, bucket: str, key: str) -> str | None:
+        from botocore.exceptions import ClientError
+
+        try:
+            head = self._client.head_object(Bucket=bucket, Key=key)
+            # boto3/S3 omit the StorageClass field entirely for STANDARD —
+            # its presence is the signal, not its absence.
+            return head.get("StorageClass", "STANDARD")
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey") or status == 404:
+                return None
+            log.error(
+                "s3_head_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not read storage class (S3 error {code})."
+            ) from exc
+
 
 _backend: Storage | None = None
 
@@ -233,6 +337,16 @@ def media_key(sermon_id: uuid.UUID, kind: str, quality: str | None = None) -> st
     if quality:
         return f"sermons/{sermon_id}/{kind}/{quality}/index.m3u8"
     return f"sermons/{sermon_id}/{kind}/index.m3u8"
+
+
+def archive_key(sermon_id: uuid.UUID, raw_key: str) -> str:
+    """Key for the Deep Archive copy of a raw master, under /sermon_archives
+    — the archive destination confirmed in status.md ("W0.1 Glacier archive
+    location confirmed"), in the SAME raw bucket. Mirrors the raw key's own
+    filename so the two are trivially correlated by eye.
+    """
+    filename = raw_key.rsplit("/", 1)[-1]
+    return f"sermon_archives/{sermon_id}/{filename}"
 
 
 def thumbnail_key(kind: str, entity_id: uuid.UUID, filename: str) -> str:

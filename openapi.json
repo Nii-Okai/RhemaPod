@@ -576,6 +576,31 @@
         "title": "ApprovalLogItem",
         "type": "object"
       },
+      "AudioDownloadResponse": {
+        "description": "GET .../download/audio (W1.6) \u2014 a short-lived signed URL for the\naudio rendition only, for offline download. Deliberately minimal: no\n`type`/`variants` list like StreamResponse, since this endpoint can only\never answer with audio (L6, locked \u2014 never a video path).",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sermon_id",
+          "url",
+          "expires_in"
+        ],
+        "title": "AudioDownloadResponse",
+        "type": "object"
+      },
       "CategoryCreate": {
         "properties": {
           "name": {
@@ -1067,6 +1092,105 @@
           "count"
         ],
         "title": "NewListenersBucket",
+        "type": "object"
+      },
+      "NoteCreate": {
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "position_seconds": {
+            "minimum": 0.0,
+            "title": "Position Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "position_seconds",
+          "body"
+        ],
+        "title": "NoteCreate",
+        "type": "object"
+      },
+      "NotePublic": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "position_seconds": {
+            "title": "Position Seconds",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "sermon_id",
+          "position_seconds",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "NotePublic",
+        "type": "object"
+      },
+      "NoteUpdate": {
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "position_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Seconds"
+          }
+        },
+        "title": "NoteUpdate",
         "type": "object"
       },
       "OverviewStats": {
@@ -6059,6 +6183,136 @@
         ]
       }
     },
+    "/api/v1/me/notes": {
+      "get": {
+        "description": "Every note the caller has ever taken, across all sermons, most recent\nfirst.",
+        "operationId": "list_my_notes_api_v1_me_notes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotePublic"
+                  },
+                  "title": "Response List My Notes Api V1 Me Notes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Notes",
+        "tags": [
+          "notes"
+        ]
+      }
+    },
+    "/api/v1/notes/{note_id}": {
+      "delete": {
+        "description": "Ownership-only: same 404-not-403 rule as update_note.",
+        "operationId": "delete_note_api_v1_notes__note_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Note",
+        "tags": [
+          "notes"
+        ]
+      },
+      "patch": {
+        "description": "Ownership-only: a note that doesn't belong to the caller 404s, the\nsame as one that doesn't exist \u2014 no staff bypass, see notes_service.",
+        "operationId": "update_note_api_v1_notes__note_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Note",
+        "tags": [
+          "notes"
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "description": "Search published sermons. Every filter is optional \u2014 with no `q` this is\na filtered browse.",
@@ -7105,6 +7359,55 @@
         ]
       }
     },
+    "/api/v1/sermons/{sermon_id}/download/audio": {
+      "get": {
+        "description": "Short-lived signed URL for the audio rendition only \u2014 offline\ndownloads are audio-only in this app, by design (plan \u00a7A.6, L6). Same\nauthorization as get_stream; 409 if the sermon has no audio rendition.",
+        "operationId": "download_audio_api_v1_sermons__sermon_id__download_audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Audio",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/v1/sermons/{sermon_id}/media": {
       "delete": {
         "description": "Remove every rendition of one type, e.g. drop the audio version.",
@@ -7267,6 +7570,115 @@
         "summary": "Delete Media",
         "tags": [
           "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/notes": {
+      "get": {
+        "description": "The caller's own notes on one sermon. Strictly user-owned \u2014 this never\nreturns anyone else's notes, staff included.",
+        "operationId": "list_sermon_notes_api_v1_sermons__sermon_id__notes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotePublic"
+                  },
+                  "title": "Response List Sermon Notes Api V1 Sermons  Sermon Id  Notes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sermon Notes",
+        "tags": [
+          "notes"
+        ]
+      },
+      "post": {
+        "operationId": "create_sermon_note_api_v1_sermons__sermon_id__notes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Sermon Note",
+        "tags": [
+          "notes"
         ]
       }
     },

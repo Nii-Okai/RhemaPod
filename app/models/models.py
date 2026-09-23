@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -258,6 +258,17 @@ class MediaRef(Base):
     bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
     s3_key: Mapped[str] = mapped_column(String(512), nullable=False)
     hls_manifest_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Cloudflare Stream video uid this rendition was ingested into (plan
+    # §A.2, W1.1/W1.2/W1.3). Nullable: set once the ingest kicks off
+    # (app/services/media_service._start_stream_ingest), null for renditions
+    # that predate the Stream pipeline or that Stream does not ingest (audio
+    # — served straight from S3, W1.6). On MediaRef rather than Sermon
+    # because video and audio are separate Stream ingests here (separate
+    # UploadJobs, separate raw masters) — a MediaRef row is already "one
+    # playable rendition", which is exactly what one Stream asset is.
+    stream_uid: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -362,6 +373,18 @@ class UploadJob(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Stream-ingest bookkeeping (plan §A.2, W1.1) — deliberately separate from
+    # `status` above, which tracks the pre-existing transcode/passthrough
+    # pipeline and is untouched by any of this. `attempts` counts
+    # `_start_stream_ingest` kickoff attempts; `started_at` is set right
+    # before each kickoff; `finished_at` is set once the Stream ingest is
+    # fully resolved (ready-and-archived, or error-and-archived — see
+    # media_service._apply_stream_state). sweep_stream_jobs.py needs all
+    # three to tell "still working" from "kickoff never even got a uid" from
+    # "resolved" without guessing from timestamps alone.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -614,4 +637,63 @@ class PlaybackSession(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "sermon_id", name="uq_playback_user_sermon"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mobile: notes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SermonNote(Base):
+    """A member's timestamped note on a sermon they're watching/listening to.
+
+    Strictly user-owned: no sharing, no staff visibility, no admin read path.
+    Unlike every other content-read surface in this codebase, `notes_service`
+    grants no staff bypass — a note is a person's own study, not something
+    the review queue or an admin has any business reading. See
+    `app/services/notes_service.py` for the authorization rule this table
+    backs.
+
+    Unlike `PlaybackSession`, this is many-rows-per-(user, sermon) by design —
+    a listener takes several notes across one sermon — so there is no unique
+    constraint pairing the two foreign keys.
+    """
+
+    __tablename__ = "sermon_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sermon_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sermons.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Where in the sermon this note was taken. Clamped to the sermon's known
+    # duration (when there is one) by notes_service — see its docstring.
+    position_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        # GET /sermons/{id}/notes: WHERE user_id = :caller AND sermon_id = :id
+        # ORDER BY position_seconds.
+        Index(
+            "ix_sermon_notes_user_sermon_position",
+            "user_id", "sermon_id", "position_seconds",
+        ),
+        # GET /me/notes: WHERE user_id = :caller ORDER BY created_at DESC.
+        Index("ix_sermon_notes_user_created", "user_id", "created_at"),
     )
