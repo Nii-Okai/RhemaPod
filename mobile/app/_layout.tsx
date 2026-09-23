@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { AuthProvider, useAuthGuard } from '../lib/auth/AuthContext';
+import { QueryProvider } from '../lib/query/QueryProvider';
 
 function RootNavigator() {
   useAuthGuard();
@@ -15,8 +16,10 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <QueryProvider>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </QueryProvider>
   );
 }

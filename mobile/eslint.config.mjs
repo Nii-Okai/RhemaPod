@@ -48,6 +48,7 @@ const eslintConfig = defineConfig([
         RequestInit: "readonly",
         AbortController: "readonly",
         FormData: "readonly",
+        URLSearchParams: "readonly",
         process: "readonly",
       },
     },
