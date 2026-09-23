@@ -43,6 +43,45 @@ export function pickPlaybackVariant(
   return variants.find((v) => v.type === "video") ?? variants[0];
 }
 
+/**
+ * How a `<video>`/`<audio>` element needs to be driven for a given URL.
+ *
+ * `_resolve_variant_url` (`app/services/media_service.py`) has exactly two
+ * sources: a Cloudflare Stream signed playback URL — always
+ * `.../manifest/video.m3u8` (`app/core/stream.py::signed_playback_url`, both
+ * the stub and real providers) — or the pre-Stream presigned-S3 URL, which is
+ * never an HLS manifest. Sniffing the `.m3u8` extension is therefore a
+ * reliable discriminator without the backend adding an explicit field, and it
+ * mirrors the backend's own "Stream vs. S3-fallback, invisible to the caller"
+ * principle: the player picks the right strategy, the dialog doesn't have to
+ * know which kind of URL it got.
+ */
+export type PlaybackKind = "hls" | "progressive";
+
+export interface PlaybackSource {
+  type: StreamVariant["type"];
+  url: string;
+  kind: PlaybackKind;
+}
+
+function isHlsUrl(url: string): boolean {
+  const withoutQuery = url.split(/[?#]/, 1)[0];
+  return withoutQuery.toLowerCase().endsWith(".m3u8");
+}
+
+/** Resolve a `StreamVariant` into a `PlaybackSource` the player can consume
+ * without inspecting the URL itself. */
+export function resolvePlaybackSource(
+  variant: StreamVariant | null,
+): PlaybackSource | null {
+  if (!variant) return null;
+  return {
+    type: variant.type,
+    url: variant.url,
+    kind: isHlsUrl(variant.url) ? "hls" : "progressive",
+  };
+}
+
 export function useSermonStream(
   sermonId: string | undefined,
   enabled: boolean,
