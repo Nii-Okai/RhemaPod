@@ -230,3 +230,22 @@ set `CDN_BASE_URL`."
   testing that exact judgment). Cloudflare Stream folds transcode,
   delivery, and signed playback into one seam with one webhook and no
   keypair to manage.
+
+**Cost comparison** (architect's build-vs-buy analysis; baseline ~4 sermons/
+week, ~500 active users × 2h/month — figures existed only in the planning
+conversation, not previously written down anywhere durable, so recorded here):
+
+| | Self-hosted FFmpeg+`arq` | MediaConvert+S3+CloudFront | Cloudflare Stream |
+|---|---|---|---|
+| Year 1 (~/mo) | ~$110–135 | ~$126 | **~$92** |
+| Year 3 (~/mo) | ~$185 | ~$153 | ~$249 |
+
+Stream is cheapest through roughly year 2; the storage line (not delivery)
+is what ratchets upward after that, driven by catalogue depth, not audience
+size — a sermon archive is append-only by nature. Crossover with
+MediaConvert lands around month 20–24. The Glacier-archived masters (this
+ADR's non-severable condition) are what make that crossover a scheduled
+revisit rather than a trap: migrating off Stream later means re-transcoding
+from the masters and swapping the playback seam, not reconstructing lost
+content. Revisit trigger: Stream's storage cost passing ~$150/mo
+(≈30,000 stored minutes, ≈500 sermons, ≈2.5 years at the baseline rate).
