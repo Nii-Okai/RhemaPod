@@ -896,6 +896,28 @@ beyond W1.8's reviewer-preview fix · any CDN_BASE_URL enablement.
 
 # M. Amendments
 
-*(Empty. The plan is immutable once approved at M1. If reality diverges from it, the executor halts
-and the Conductor decides whether to amend — amendments are recorded here, in this file, with a date
-and a reason.)*
+### 2026-09-22 — W0.2 spike runs on simulators, not real hardware; GATE M11 gains a condition
+
+**Reason**: no real Android device was available at the time W0.2 was ready to run; Isaac elected to
+proceed on iOS Simulator + Android emulator via Expo rather than wait on hardware procurement.
+
+**What changes**:
+- W0.2 executes against simulators/emulators, not real iOS/Android hardware as originally specified.
+  Four of its five checks (Stream HLS playback, backgrounded/resumable downloads, the JSI crypto
+  round-trip, lock-screen/notification controls) are treated as genuine results from a simulator run —
+  worth noting explicitly that iOS Simulator has a materially weaker track record than real hardware
+  for background-audio-while-locked and Control Center integration, so a clean simulator result there
+  is a good sign, not full confidence.
+- **Item 5 (decrypt-to-first-audio latency, the datum P7 depends on) is explicitly NOT trusted from a
+  simulator.** A simulator runs on host CPU, not real mobile silicon, and P7 was designed to be
+  answered by measuring the *oldest target device* specifically — a simulator number is likely
+  artificially fast and could wrongly conclude no "Preparing…" state is needed. The simulator run
+  still produces a number and a provisional P7 call, but both are marked provisional pending real
+  hardware.
+- **New condition on GATE M11** (release readiness): a real-device confirmation pass — at minimum the
+  decrypt-latency measurement (item 5) re-run on real, ideally older/lower-end, iOS and Android
+  hardware — must happen and be recorded in `status.md` before M11 can be considered satisfied. If the
+  real-device latency contradicts the simulator-driven P7 call, the "Preparing…" state (or its absence)
+  must be revisited before submission, not shipped on the provisional call.
+- GATE M3 itself is still crossed by a clean simulator run on the other four checks plus a provisional
+  item 5 — it is not blocked waiting for real hardware. Only M11 gains the new condition.
