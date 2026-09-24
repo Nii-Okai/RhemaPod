@@ -385,7 +385,7 @@ async def test_owner_deletes_open_job_and_raw_object(client, engine):
     ticket = await _ticket(client, ed, sid)
 
     store = storage_module.get_storage()
-    raw_bucket = get_settings().s3_raw_bucket
+    raw_bucket = get_settings().object_store_raw_bucket
     assert store.object_exists(raw_bucket, ticket["raw_key"])
 
     r = await client.delete(f"/api/v1/uploads/{ticket['job_id']}", headers=ed)
@@ -612,7 +612,7 @@ async def test_oversized_thumbnail_is_rejected_and_deleted(client, engine, monke
     assert r.status_code == 413
     assert "10 MB limit" in r.json()["detail"]
     assert not store.object_exists(
-        get_settings().s3_media_bucket, ticket["thumbnail_key"]
+        get_settings().object_store_media_bucket, ticket["thumbnail_key"]
     )
 
 
@@ -653,15 +653,15 @@ def _settings(**overrides):
 
 
 def test_staging_rejects_cleartext_s3_endpoint_url():
-    with pytest.raises(ValueError, match="S3_ENDPOINT_URL"):
-        _settings(environment="staging", s3_endpoint_url="http://minio:9000")
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _settings(environment="staging", object_store_endpoint_url="http://minio:9000")
 
 
 def test_staging_allows_https_s3_endpoint_url():
     s = _settings(
-        environment="staging", s3_endpoint_url="https://s3.eu-north-1.example.com"
+        environment="staging", object_store_endpoint_url="https://s3.eu-north-1.example.com"
     )
-    assert s.s3_endpoint_url == "https://s3.eu-north-1.example.com"
+    assert s.object_store_endpoint_url == "https://s3.eu-north-1.example.com"
 
 
 def test_staging_rejects_compose_shim_s3_public_endpoint():
@@ -676,6 +676,6 @@ def test_staging_boots_without_object_storage_endpoints():
 
 
 def test_development_still_allows_cleartext_s3_endpoint_url():
-    s = _settings(environment="development", s3_endpoint_url="http://minio:9000")
-    assert s.s3_endpoint_url == "http://minio:9000"
+    s = _settings(environment="development", object_store_endpoint_url="http://minio:9000")
+    assert s.object_store_endpoint_url == "http://minio:9000"
     assert s.is_internet_reachable is False

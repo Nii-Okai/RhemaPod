@@ -166,7 +166,7 @@ async def create_upload_ticket(
     key = storage_module.raw_key(sermon.id, filename)
     store = storage_module.get_storage()
     url = store.presigned_upload_url(
-        settings.s3_raw_bucket, key, content_type, settings.upload_url_expire_seconds
+        settings.object_store_raw_bucket, key, content_type, settings.upload_url_expire_seconds
     )
 
     job = UploadJob(
@@ -215,7 +215,7 @@ async def confirm_upload(
 
     store = storage_module.get_storage()
     # Trust but verify: never mark an upload complete on the client's word alone.
-    if not store.object_exists(settings.s3_raw_bucket, job.raw_key):
+    if not store.object_exists(settings.object_store_raw_bucket, job.raw_key):
         raise ContentError(
             "No uploaded file found for this job — complete the PUT first",
             status_code=409,
@@ -226,11 +226,11 @@ async def confirm_upload(
     # and record the observed size (overriding the client's figure). Over the
     # cap: delete the object so a rejected upload leaves nothing behind, and
     # 413 exactly as the presign path would have.
-    observed_size = store.object_size(settings.s3_raw_bucket, job.raw_key)
+    observed_size = store.object_size(settings.object_store_raw_bucket, job.raw_key)
     if observed_size is not None:
         if observed_size > settings.max_upload_bytes:
             try:
-                store.delete_object(settings.s3_raw_bucket, job.raw_key)
+                store.delete_object(settings.object_store_raw_bucket, job.raw_key)
             except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
                 log.warning(
                     "oversize_upload_cleanup_failed",
@@ -341,14 +341,14 @@ async def _transcode(job: UploadJob) -> list[tuple[str | None, str, str]]:
     """
     if not settings.transcode_enabled:
         # One rendition: the original upload, in the raw bucket.
-        return [(None, settings.s3_raw_bucket, job.raw_key)]
+        return [(None, settings.object_store_raw_bucket, job.raw_key)]
 
     qualities = (
         VIDEO_QUALITIES if job.media_type == MediaType.VIDEO else AUDIO_QUALITIES
     )
     kind = job.media_type.value
     return [
-        (q, settings.s3_media_bucket, storage_module.media_key(job.sermon_id, kind, q))
+        (q, settings.object_store_media_bucket, storage_module.media_key(job.sermon_id, kind, q))
         for q in qualities
     ]
 
@@ -482,7 +482,7 @@ async def delete_upload_job(
     await db.commit()
 
     try:
-        storage_module.get_storage().delete_object(settings.s3_raw_bucket, raw_key)
+        storage_module.get_storage().delete_object(settings.object_store_raw_bucket, raw_key)
     except Exception:  # noqa: BLE001 - best-effort; row already deleted
         log.warning(
             "upload_job_raw_object_delete_failed",
@@ -536,7 +536,7 @@ def _resolve_variant_url(ref: MediaRef, *, expires_in: int) -> str:
     store = storage_module.get_storage()
     playback_key = ref.hls_manifest_key or ref.s3_key
     presigned = store.presigned_download_url(
-        ref.bucket or settings.s3_media_bucket, playback_key, expires_in
+        ref.bucket or settings.object_store_media_bucket, playback_key, expires_in
     )
     return storage_module.cdn_url_for(playback_key, presigned_fallback=presigned)
 
@@ -712,7 +712,7 @@ async def delete_media_ref(
     if ref is None:
         raise ContentError("Media not found for this sermon", status_code=404)
 
-    bucket = ref.bucket or settings.s3_media_bucket
+    bucket = ref.bucket or settings.object_store_media_bucket
     key = ref.s3_key
 
     await db.delete(ref)
@@ -756,7 +756,7 @@ async def delete_media_by_type(
             f"No {media_type.value} media on this sermon", status_code=404
         )
 
-    targets = [(r.bucket or settings.s3_media_bucket, r.s3_key) for r in refs]
+    targets = [(r.bucket or settings.object_store_media_bucket, r.s3_key) for r in refs]
     for ref in refs:
         await db.delete(ref)
     await db.commit()
@@ -878,7 +878,7 @@ async def _start_stream_ingest(db: AsyncSession, job: UploadJob) -> None:
 
     store = storage_module.get_storage()
     source_url = store.presigned_download_url(
-        settings.s3_raw_bucket, job.raw_key, settings.stream_ingest_url_expire_seconds
+        settings.object_store_raw_bucket, job.raw_key, settings.stream_ingest_url_expire_seconds
     )
 
     job.attempts += 1
@@ -956,9 +956,9 @@ async def _archive_raw_master(ref: MediaRef, job: UploadJob | None) -> None:
     dest_key = storage_module.archive_key(ref.sermon_id, job.raw_key)
     await asyncio.to_thread(
         store.copy_object,
-        settings.s3_raw_bucket, job.raw_key,
-        settings.s3_raw_bucket, dest_key,
-        storage_class=settings.s3_archive_storage_class,
+        settings.object_store_raw_bucket, job.raw_key,
+        settings.object_store_raw_bucket, dest_key,
+        storage_class=settings.archive_store_storage_class,
     )
     log.info(
         "raw_master_archived",

@@ -30,12 +30,12 @@ x-app-env: &app-env
   # container reaches MinIO at minio:9000; the browser's presigned URLs are
   # signed for S3_PUBLIC_ENDPOINT so it can PUT to a host it can resolve
   # (SigV4 signs Host, so the signing host must match). DEV-ONLY credentials.
-  S3_ENDPOINT_URL: http://minio:9000
+  OBJECT_STORE_ENDPOINT_URL: http://minio:9000
   S3_PUBLIC_ENDPOINT: http://localhost:9000
-  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
-  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-  S3_RAW_BUCKET: sermon-raw
-  S3_MEDIA_BUCKET: sermon-media
+  OBJECT_STORE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  OBJECT_STORE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  OBJECT_STORE_RAW_BUCKET: sermon-raw
+  OBJECT_STORE_MEDIA_BUCKET: sermon-media
 
 services:
   postgres:

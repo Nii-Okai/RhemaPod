@@ -74,7 +74,7 @@ def image_url(key: str | None) -> str | None:
 
     try:
         presigned = storage_module.get_storage().presigned_download_url(
-            settings.s3_media_bucket, key, settings.stream_url_expire_seconds
+            settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
         )
     except Exception:
         log.warning("announcement_image_url_failed", key=key)
@@ -373,7 +373,7 @@ async def create_image_ticket(
     ann = await _load_editable(db, announcement_id, actor)
     key = storage_module.thumbnail_key("announcements", ann.id, filename)
     url = storage_module.get_storage().presigned_upload_url(
-        settings.s3_media_bucket, key, content_type,
+        settings.object_store_media_bucket, key, content_type,
         settings.upload_url_expire_seconds,
     )
     return {
@@ -396,7 +396,7 @@ async def confirm_image(
     if not key.startswith(f"thumbnails/announcements/{ann.id}/"):
         raise ContentError("Image key does not belong to this announcement", 400)
 
-    if not storage_module.get_storage().object_exists(settings.s3_media_bucket, key):
+    if not storage_module.get_storage().object_exists(settings.object_store_media_bucket, key):
         raise ContentError(
             "No uploaded image found — complete the PUT first", status_code=409
         )

@@ -48,8 +48,8 @@ async def _check_storage() -> str:
             raise RuntimeError("stub storage backend active in production")
         return "local stub (development)"
     # Prove the credentials actually work, not just that they're present.
-    backend.presigned_download_url(s.s3_media_bucket, "preflight-probe", 60)
-    return f"s3: {s.s3_media_bucket}"
+    backend.presigned_download_url(s.object_store_media_bucket, "preflight-probe", 60)
+    return f"s3: {s.object_store_media_bucket}"
 
 
 async def _check_stream() -> str:

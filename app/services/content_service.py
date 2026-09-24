@@ -220,7 +220,7 @@ def _thumbnail_url(key: str | None) -> str | None:
 
     try:
         presigned = storage_module.get_storage().presigned_download_url(
-            settings.s3_media_bucket, key, settings.stream_url_expire_seconds
+            settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
         )
     except Exception:
         log.warning("thumbnail_url_failed", key=key)
@@ -1747,7 +1747,7 @@ async def create_thumbnail_ticket(
 
     key = storage_module.thumbnail_key(kind, entity.id, filename)
     url = storage_module.get_storage().presigned_upload_url(
-        settings.s3_media_bucket, key, content_type,
+        settings.object_store_media_bucket, key, content_type,
         settings.upload_url_expire_seconds,
     )
     return {
@@ -1785,7 +1785,7 @@ async def confirm_thumbnail(
         raise ContentError("Thumbnail key does not belong to this item", 400)
 
     store = storage_module.get_storage()
-    if not store.object_exists(settings.s3_media_bucket, key):
+    if not store.object_exists(settings.object_store_media_bucket, key):
         raise ContentError(
             "No uploaded image found — complete the PUT first", status_code=409
         )
@@ -1794,10 +1794,10 @@ async def confirm_thumbnail(
     # a multi-GB "image". Re-check the real object size, mirroring the Batch-2
     # media-confirm fix. `None` (stub backend / size unknowable) → proceed, as
     # the media path does; a concrete oversize → delete the object and 413.
-    size = store.object_size(settings.s3_media_bucket, key)
+    size = store.object_size(settings.object_store_media_bucket, key)
     if size is not None and size > settings.max_thumbnail_bytes:
         try:
-            store.delete_object(settings.s3_media_bucket, key)
+            store.delete_object(settings.object_store_media_bucket, key)
         except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
             log.warning("oversize_thumbnail_cleanup_failed", key=key)
         raise ContentError(

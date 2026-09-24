@@ -14,10 +14,10 @@ from app.core import storage as storage_module
 
 def _make_storage(monkeypatch, *, endpoint, public):
     s = storage_module.settings
-    monkeypatch.setattr(s, "s3_endpoint_url", endpoint)
+    monkeypatch.setattr(s, "object_store_endpoint_url", endpoint)
     monkeypatch.setattr(s, "s3_public_endpoint", public)
-    monkeypatch.setattr(s, "s3_access_key_id", "minioadmin")
-    monkeypatch.setattr(s, "s3_secret_access_key", "minioadmin")
+    monkeypatch.setattr(s, "object_store_access_key_id", "minioadmin")
+    monkeypatch.setattr(s, "object_store_secret_access_key", "minioadmin")
     return storage_module.S3Storage()
 
 

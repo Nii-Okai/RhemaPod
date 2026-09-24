@@ -612,7 +612,7 @@ def _bucket_for(key: str) -> str:
     from app.core.config import get_settings
 
     s = get_settings()
-    return s.s3_raw_bucket if key.startswith("raw/") else s.s3_media_bucket
+    return s.object_store_raw_bucket if key.startswith("raw/") else s.object_store_media_bucket
 
 
 async def test_delete_can_keep_stored_object(client, engine):

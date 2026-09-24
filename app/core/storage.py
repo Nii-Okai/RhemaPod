@@ -124,7 +124,7 @@ class S3Storage:
             ) from exc
 
         client_config = None
-        if settings.s3_endpoint_url:
+        if settings.object_store_endpoint_url:
             from botocore.config import Config as BotoConfig
 
             # A custom endpoint means MinIO / R2 / another S3-compatible store.
@@ -137,14 +137,14 @@ class S3Storage:
 
         common = dict(
             region_name=settings.s3_region,
-            aws_access_key_id=settings.s3_access_key_id,
-            aws_secret_access_key=settings.s3_secret_access_key,
+            aws_access_key_id=settings.object_store_access_key_id,
+            aws_secret_access_key=settings.object_store_secret_access_key,
             config=client_config,
         )
 
         # Client for this process's own reads/writes (object_exists, delete).
         self._client = boto3.client(
-            "s3", endpoint_url=settings.s3_endpoint_url, **common
+            "s3", endpoint_url=settings.object_store_endpoint_url, **common
         )
 
         # Client used ONLY to mint presigned URLs the BROWSER will follow. When
@@ -306,13 +306,13 @@ def get_storage() -> Storage:
     if _backend is None:
         if settings.storage_is_live:
             _backend = S3Storage()
-            log.info("storage_backend", backend="s3", bucket=settings.s3_media_bucket)
+            log.info("storage_backend", backend="s3", bucket=settings.object_store_media_bucket)
         elif settings.is_production:
             # Belt-and-braces: config preflight already blocks this, but never
             # let a stub serve production traffic even if that is bypassed.
             raise StorageError(
                 "Refusing to use the stub storage backend in production. "
-                "Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY."
+                "Set OBJECT_STORE_ACCESS_KEY_ID and OBJECT_STORE_SECRET_ACCESS_KEY."
             )
         else:
             _backend = LocalStorage()

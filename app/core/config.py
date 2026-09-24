@@ -49,11 +49,11 @@ def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
     """
     problems: list[str] = []
 
-    if settings.s3_endpoint_url and not settings.s3_endpoint_url.lower().startswith(
+    if settings.object_store_endpoint_url and not settings.object_store_endpoint_url.lower().startswith(
         "https://"
     ):
         problems.append(
-            "S3_ENDPOINT_URL must use https outside development — an http "
+            "OBJECT_STORE_ENDPOINT_URL must use https outside development — an http "
             "endpoint sends credentials and objects in cleartext to the "
             "object store. Unset it for real AWS S3."
         )
@@ -119,21 +119,21 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     # --- Media / storage (Phase 4) ---
     # S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
-    s3_endpoint_url: str | None = None          # None = real AWS S3
+    object_store_endpoint_url: str | None = None          # None = real AWS S3
     # Host the BROWSER uses to reach object storage, when it differs from the
-    # host THIS process uses (s3_endpoint_url). Presigned upload/download URLs
+    # host THIS process uses (object_store_endpoint_url). Presigned upload/download URLs
     # are signed for this host so the browser can follow them — SigV4 signs the
     # Host header, so a URL signed for the internal host is rejected when the
     # request arrives on the public one. This process still does its own reads
-    # and writes (object_exists, delete) via s3_endpoint_url. Dev/compose only:
+    # and writes (object_exists, delete) via object_store_endpoint_url. Dev/compose only:
     # the API container reaches MinIO at http://minio:9000, the browser needs
     # http://localhost:9000. Leave unset for real AWS S3 (one host for both).
     s3_public_endpoint: str | None = None
     s3_region: str = "eu-north-1"
-    s3_access_key_id: str | None = None
-    s3_secret_access_key: str | None = None
-    s3_raw_bucket: str = "sermon-raw"
-    s3_media_bucket: str = "sermon-media"
+    object_store_access_key_id: str | None = None
+    object_store_secret_access_key: str | None = None
+    object_store_raw_bucket: str = "sermon-raw"
+    object_store_media_bucket: str = "sermon-media"
     # How long a browser has to complete a direct upload.
     # A 2 GB file on a modest connection takes well over 15 minutes; too short
     # a window expires the URL mid-upload and loses the whole transfer.
@@ -219,7 +219,7 @@ class Settings(BaseSettings):
     # storage class. The archival code sets StorageClass explicitly on copy
     # regardless of the bucket's own lifecycle config — see
     # app/core/storage.py's copy_object() callers.
-    s3_archive_storage_class: str = "DEEP_ARCHIVE"
+    archive_store_storage_class: str = "DEEP_ARCHIVE"
 
     # --- Subscriptions / payments (Phase 5) ---
     # Leave stripe_secret_key blank to use the mock provider (no Stripe needed).
@@ -291,7 +291,7 @@ class Settings(BaseSettings):
     # Backend readiness — used by the production preflight below.
     @property
     def storage_is_live(self) -> bool:
-        return bool(self.s3_access_key_id and self.s3_secret_access_key)
+        return bool(self.object_store_access_key_id and self.object_store_secret_access_key)
 
     @property
     def payments_are_live(self) -> bool:
@@ -474,7 +474,7 @@ class Settings(BaseSettings):
             problems.append("STRIPE_PRICE_MONTHLY and STRIPE_PRICE_ANNUAL are required")
         if not self.storage_is_live:
             problems.append(
-                "S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required "
+                "OBJECT_STORE_ACCESS_KEY_ID and OBJECT_STORE_SECRET_ACCESS_KEY are required "
                 "(without them uploads silently go to an in-memory stub)"
             )
         if not self.email_is_live:

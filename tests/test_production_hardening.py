@@ -23,8 +23,8 @@ LIVE_ENV = {
     "stripe_webhook_secret": "whsec_x",
     "stripe_price_monthly": "price_m",
     "stripe_price_annual": "price_a",
-    "s3_access_key_id": "AKIA_X",
-    "s3_secret_access_key": "secret",
+    "object_store_access_key_id": "AKIA_X",
+    "object_store_secret_access_key": "secret",
     "smtp_host": "smtp.example.com",
     "smtp_from_email": "no-reply@example.com",
     "cf_account_id": "acct_x",
@@ -99,8 +99,8 @@ def test_production_refuses_mock_payments():
 
 
 def test_production_refuses_stub_storage():
-    with pytest.raises(ValueError, match="S3_ACCESS_KEY_ID"):
-        _settings(s3_access_key_id=None, s3_secret_access_key=None)
+    with pytest.raises(ValueError, match="OBJECT_STORE_ACCESS_KEY_ID"):
+        _settings(object_store_access_key_id=None, object_store_secret_access_key=None)
 
 
 def test_production_refuses_console_email():
@@ -172,20 +172,20 @@ def test_s3_public_endpoint_allows_http_for_the_compose_shim():
 
 # ── s3_endpoint_url must be https in production ──────────────────────────────
 def test_production_refuses_cleartext_s3_endpoint_url():
-    with pytest.raises(ValueError, match="S3_ENDPOINT_URL"):
-        _settings(s3_endpoint_url="http://minio:9000")
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _settings(object_store_endpoint_url="http://minio:9000")
 
 
 def test_production_allows_https_s3_endpoint_url():
-    s = _settings(s3_endpoint_url="https://s3.eu-north-1.example.com")
-    assert s.s3_endpoint_url == "https://s3.eu-north-1.example.com"
+    s = _settings(object_store_endpoint_url="https://s3.eu-north-1.example.com")
+    assert s.object_store_endpoint_url == "https://s3.eu-north-1.example.com"
 
 
 def test_dev_allows_cleartext_s3_endpoint_url():
     """Outside production the compose http endpoint is fine."""
     assert _dev_settings(
-        s3_endpoint_url="http://minio:9000"
-    ).s3_endpoint_url == "http://minio:9000"
+        object_store_endpoint_url="http://minio:9000"
+    ).object_store_endpoint_url == "http://minio:9000"
 
 
 def test_development_allows_stubs():
