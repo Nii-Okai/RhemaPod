@@ -1,6 +1,5 @@
 import ipaddress
 from functools import lru_cache
-from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,17 +29,9 @@ _PLACEHOLDER_SECRET_MARKERS = (
 )
 
 
-# Hosts that mark an S3_PUBLIC_ENDPOINT as a dev-only compose shim rather than
-# a real object-storage origin.
-_LOCAL_ENDPOINT_MARKERS = (
-    "localhost", "127.0.0.1", "0.0.0.0", "::1",
-    "minio:", "host.docker.internal", ".invalid",
-)
-
-
 def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
-    """The one home for "a cleartext / compose-shim object-storage endpoint is
-    forbidden". Returns a list of problem strings (empty = clean).
+    """The one home for "a cleartext object-storage endpoint is forbidden".
+    Returns a list of problem strings (empty = clean).
 
     Called by both preflights: `internet_reachable_preflight` (so it also fires
     for staging, which `production_preflight` early-returns past) and
@@ -57,15 +48,6 @@ def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
             "endpoint sends credentials and objects in cleartext to the "
             "object store. Unset it for real AWS S3."
         )
-    if settings.s3_public_endpoint:
-        low = settings.s3_public_endpoint.lower()
-        if low.startswith("http://") or any(m in low for m in _LOCAL_ENDPOINT_MARKERS):
-            problems.append(
-                "S3_PUBLIC_ENDPOINT must be a real https host, not a "
-                "localhost/compose value — it is a dev-only shim for signing "
-                "presigned URLs for a browser that cannot resolve the "
-                "internal storage host. Unset it outside development."
-            )
     return problems
 
 
@@ -118,18 +100,13 @@ class Settings(BaseSettings):
     # Base URL of the frontend that renders the set-password / reset page.
     frontend_base_url: str = "http://localhost:3000"
     # --- Media / storage (Phase 4) ---
-    # S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
-    object_store_endpoint_url: str | None = None          # None = real AWS S3
-    # Host the BROWSER uses to reach object storage, when it differs from the
-    # host THIS process uses (object_store_endpoint_url). Presigned upload/download URLs
-    # are signed for this host so the browser can follow them — SigV4 signs the
-    # Host header, so a URL signed for the internal host is rejected when the
-    # request arrives on the public one. This process still does its own reads
-    # and writes (object_exists, delete) via object_store_endpoint_url. Dev/compose only:
-    # the API container reaches MinIO at http://minio:9000, the browser needs
-    # http://localhost:9000. Leave unset for real AWS S3 (one host for both).
-    s3_public_endpoint: str | None = None
-    s3_region: str = "eu-north-1"
+    # Live object store: Cloudflare R2 (decision (a) — S3 now names the
+    # archive vendor only, see archive_store_* below). R2's account-scoped
+    # endpoint always needs to be set to go live; unset means the local stub
+    # (app/core/storage.py's LocalStorage). Region/addressing/checksum mode
+    # are fixed for R2 in get_storage() rather than configurable here — see
+    # plan §A.1.
+    object_store_endpoint_url: str | None = None
     object_store_access_key_id: str | None = None
     object_store_secret_access_key: str | None = None
     object_store_raw_bucket: str = "sermon-raw"
@@ -351,55 +328,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SECRET_KEY has too little entropy (fewer than 8 distinct "
                 "characters) — use a random value, not a repeated pattern"
-            )
-        return v
-
-    @field_validator("s3_public_endpoint")
-    @classmethod
-    def s3_public_endpoint_is_a_clean_origin(cls, v: str | None) -> str | None:
-        """Structural check on S3_PUBLIC_ENDPOINT, in EVERY environment.
-
-        It is only ever a ``scheme://host[:port]`` the browser will follow to
-        object storage — never carrying credentials, a path, a query, or a
-        fragment. ``http://`` is allowed only for a localhost / compose host
-        (the dev shim); anything else must be ``https://``. The production
-        preflight's denylist stays as a second layer.
-        """
-        if v is None:
-            return v
-
-        parts = urlsplit(v)
-        if parts.scheme not in ("http", "https"):
-            raise ValueError("S3_PUBLIC_ENDPOINT must be an http:// or https:// URL")
-        if not parts.hostname:
-            raise ValueError("S3_PUBLIC_ENDPOINT must include a host")
-        if parts.username or parts.password:
-            raise ValueError(
-                "S3_PUBLIC_ENDPOINT must not contain credentials (user:pass@)"
-            )
-        if parts.path not in ("", "/"):
-            raise ValueError(
-                "S3_PUBLIC_ENDPOINT must be scheme://host[:port] with no path"
-            )
-        if parts.query or parts.fragment:
-            raise ValueError(
-                "S3_PUBLIC_ENDPOINT must not contain a query or fragment"
-            )
-
-        host = parts.hostname.lower()
-        dev_hosts = {
-            "localhost", "127.0.0.1", "0.0.0.0", "::1",
-            "minio", "host.docker.internal",
-        }
-        is_dev_host = (
-            host in dev_hosts
-            or host.endswith(".localhost")
-            or host.endswith(".invalid")
-        )
-        if parts.scheme == "http" and not is_dev_host:
-            raise ValueError(
-                "S3_PUBLIC_ENDPOINT may only use http:// for a localhost/compose "
-                "host (the dev-only presign shim); use https:// for a real host"
             )
         return v
 

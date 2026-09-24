@@ -26,12 +26,13 @@ import app.core.redis as redis_module  # noqa: E402
 
 redis_module.get_redis = lambda: _fake  # type: ignore[assignment]
 
-# Force the local stub storage backend. Without this, a developer with real S3
-# credentials in .env would have the suite hit live AWS — slow, costly, and
-# dependent on IAM state.
+# Force both storage stubs (live R2 store + AWS archive store). Without this,
+# a developer with real credentials in .env would have the suite hit live
+# storage — slow, costly, and dependent on account state.
 import app.core.storage as storage_module  # noqa: E402
 
 storage_module.set_storage(storage_module.LocalStorage())
+storage_module.set_archive_store(storage_module.LocalArchiveStore())
 
 # Force the in-process mock payment provider for the suite.
 import app.core.payments as payments_module  # noqa: E402
@@ -50,6 +51,37 @@ from app.db.database import Base, get_db, get_read_db  # noqa: E402
 from main import app  # noqa: E402
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_object_storage_credentials():
+    """Belt-and-braces alongside the LocalStorage/LocalArchiveStore overrides
+    above: even though the suite forces both storage stubs, a real R2 or AWS
+    credential sitting in .env / the shell environment means local dev is
+    misconfigured, and any future code path that resets the storage
+    singletons and calls get_storage()/get_archive_store() without going
+    through the `client` fixture's per-test override could silently reach
+    live storage. Fail loudly instead of hoping the override is always in
+    place.
+
+    Archive credentials (ARCHIVE_STORE_ACCESS_KEY_ID/SECRET_ACCESS_KEY) are
+    not yet Settings fields (app/core/storage.py's get_archive_store() docstring
+    — they land in R1.3), so those two are checked directly against the
+    environment rather than via `settings`.
+    """
+    assert not storage_module.settings.object_store_access_key_id, (
+        "OBJECT_STORE_ACCESS_KEY_ID is set in the test environment — unset it "
+        "before running the suite so tests can never reach live R2."
+    )
+    assert not storage_module.settings.object_store_secret_access_key, (
+        "OBJECT_STORE_SECRET_ACCESS_KEY is set in the test environment — "
+        "unset it before running the suite so tests can never reach live R2."
+    )
+    for var in ("ARCHIVE_STORE_ACCESS_KEY_ID", "ARCHIVE_STORE_SECRET_ACCESS_KEY"):
+        assert not os.environ.get(var), (
+            f"{var} is set in the test environment — unset it before running "
+            "the suite so tests can never reach live AWS Deep Archive."
+        )
 
 
 @pytest_asyncio.fixture
@@ -81,6 +113,7 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     # an un-cleared bucket would leak rate-limit state across tests.
     _fake.fail = False  # a leaked failure-injection flag would cascade-fail the suite
     storage_module.set_storage(storage_module.LocalStorage())
+    storage_module.set_archive_store(storage_module.LocalArchiveStore())
     # Fresh mock payment provider per test — no seeded period-ends or counter
     # state bleeds between tests.
     payments_module.set_provider(payments_module.MockProvider())

@@ -123,53 +123,6 @@ def test_production_refuses_insecure_origin():
         _settings(allowed_origins=["http://app.example.com"])
 
 
-def test_production_refuses_localhost_s3_public_endpoint():
-    """S3_PUBLIC_ENDPOINT is a dev-only shim (rewrites the presigned-URL host so
-    a browser can reach a compose MinIO). It must not slip into production."""
-    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
-        _settings(s3_public_endpoint="http://localhost:9000")
-    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
-        _settings(s3_public_endpoint="http://minio:9000")
-
-
-def test_production_allows_a_real_s3_public_endpoint():
-    """A genuine https host is unusual but not unsafe — don't block it."""
-    s = _settings(s3_public_endpoint="https://cdn.example.com")
-    assert s.s3_public_endpoint == "https://cdn.example.com"
-
-
-# ── s3_public_endpoint structural validator (runs in every environment) ───────
-def test_s3_public_endpoint_rejects_userinfo():
-    with pytest.raises(ValueError, match="credentials"):
-        _dev_settings(s3_public_endpoint="https://user:pass@storage.example.com")
-
-
-def test_s3_public_endpoint_rejects_a_path():
-    with pytest.raises(ValueError, match="no path"):
-        _dev_settings(s3_public_endpoint="https://storage.example.com/attacker-path")
-
-
-def test_s3_public_endpoint_rejects_query_and_fragment():
-    with pytest.raises(ValueError, match="query or fragment"):
-        _dev_settings(s3_public_endpoint="https://storage.example.com?x=1")
-
-
-def test_s3_public_endpoint_rejects_http_for_a_real_host():
-    with pytest.raises(ValueError, match="http://"):
-        _dev_settings(s3_public_endpoint="http://storage.example.com")
-
-
-def test_s3_public_endpoint_allows_http_for_the_compose_shim():
-    """The dev shim — http://localhost:9000 / http://minio:9000 — is exactly
-    what compose sets, and must still validate outside production."""
-    assert _dev_settings(
-        s3_public_endpoint="http://localhost:9000"
-    ).s3_public_endpoint == "http://localhost:9000"
-    assert _dev_settings(
-        s3_public_endpoint="http://minio:9000"
-    ).s3_public_endpoint == "http://minio:9000"
-
-
 # ── s3_endpoint_url must be https in production ──────────────────────────────
 def test_production_refuses_cleartext_s3_endpoint_url():
     with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):

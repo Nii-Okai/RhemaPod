@@ -1,17 +1,34 @@
 """Object storage abstraction (S3-compatible).
 
-Two backends:
-  * S3Storage    — real AWS S3 / Cloudflare R2 / MinIO via boto3.
-  * LocalStorage — in-process stub used by tests and local dev with no cloud
-                   credentials. Generates deterministic fake URLs.
+Two seams, each with a live and a stub backend:
+  * Storage      — the live object store (Cloudflare R2). S3Storage is real
+                   boto3; LocalStorage is an in-process stub used by tests and
+                   local dev with no cloud credentials.
+  * ArchiveStore — the cold-tier archive (AWS S3 Deep Archive). S3ArchiveStore
+                   is real boto3; LocalArchiveStore is the in-process stub.
 
-The rest of the app depends only on the Storage protocol, so swapping backends
-never touches service or route code.
+Both live backends are built from an explicit `ObjectStoreConfig` via the one
+`_make_client()` factory, so client construction (addressing style, signature
+version, checksum behaviour) never drifts between the two. Neither backend
+class reads the `Settings` singleton itself — the `get_storage()` /
+`get_archive_store()` factories below are the only things that translate
+`Settings` into an `ObjectStoreConfig`. That split is what lets archive
+integration tests build a store straight from a `ObjectStoreConfig` pointed at
+a throwaway MinIO container, bypassing `Settings` entirely (plan §A.5).
+
+The rest of the app depends only on the Storage / ArchiveStore protocols, so
+swapping backends never touches service or route code.
 """
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import io
 import uuid
-from typing import Protocol
+import zlib
+from base64 import b64encode
+from struct import pack
+from typing import BinaryIO, Protocol
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -22,6 +39,110 @@ log = get_logger("storage")
 
 class StorageError(Exception):
     pass
+
+
+@dataclasses.dataclass(frozen=True)
+class ObjectStoreConfig:
+    """Everything a boto3 S3-compatible client needs, independent of
+    `Settings`. One instance describes one client: the live R2 store and the
+    archive store are each built from their own config, never from a shared
+    global."""
+
+    endpoint_url: str | None
+    region: str
+    access_key_id: str | None
+    secret_access_key: str | None
+    addressing_style: str  # "path" (R2, MinIO) or "auto" (real AWS S3)
+    checksum_mode: str | None  # "when_required", or None for boto3's default
+
+
+def _make_client(cfg: ObjectStoreConfig):
+    """The one boto3 S3 client factory. Every Storage/ArchiveStore backend
+    builds its client here so `request_checksum_calculation` /
+    `response_checksum_validation` / addressing / signing never drift between
+    call sites — see the R2 vs. archive client distinction in plan §A.1.
+    """
+    try:
+        import boto3
+    except ImportError as exc:  # pragma: no cover
+        raise StorageError(
+            "boto3 is required for S3-compatible storage. Install it or use "
+            "the local stub for development/tests."
+        ) from exc
+    from botocore.config import Config as BotoConfig
+
+    boto_config = BotoConfig(
+        s3={"addressing_style": cfg.addressing_style},
+        signature_version="s3v4",
+        request_checksum_calculation=cfg.checksum_mode,
+        response_checksum_validation=cfg.checksum_mode,
+    )
+    return boto3.client(
+        "s3",
+        endpoint_url=cfg.endpoint_url,
+        region_name=cfg.region,
+        aws_access_key_id=cfg.access_key_id,
+        aws_secret_access_key=cfg.secret_access_key,
+        config=boto_config,
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class ObjectHead:
+    """Metadata from a HEAD (or GET) against an object store, independent of
+    which backend served it."""
+
+    size: int
+    etag: str
+    storage_class: str | None
+    version_id: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class ArchiveReceipt:
+    """Proof an archive PUT landed, returned by `put_archive_object`.
+    `crc32` is base64-encoded, matching how S3 itself reports
+    `ChecksumCRC32` — so a receipt's value can be diffed directly against
+    what a later HEAD/GetObjectAttributes call reports."""
+
+    version_id: str | None
+    md5: str
+    sha256: str
+    crc32: str
+    size: int
+
+
+class _ChecksummingReader:
+    """Wraps a binary stream, updating MD5/SHA-256/CRC32 digests as bytes
+    pass through `read()` — lets `put_archive_object` compute all three in
+    the same pass the upload already makes over the source, instead of
+    buffering the whole object twice."""
+
+    def __init__(self, source: BinaryIO) -> None:
+        self._source = source
+        self._md5 = hashlib.md5()
+        self._sha256 = hashlib.sha256()
+        self._crc32 = 0
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._source.read(size)
+        if chunk:
+            self._md5.update(chunk)
+            self._sha256.update(chunk)
+            self._crc32 = zlib.crc32(chunk, self._crc32)
+        return chunk
+
+    @property
+    def md5_hex(self) -> str:
+        return self._md5.hexdigest()
+
+    @property
+    def sha256_hex(self) -> str:
+        return self._sha256.hexdigest()
+
+    @property
+    def crc32_b64(self) -> str:
+        return b64encode(pack(">I", self._crc32)).decode()
 
 
 class Storage(Protocol):
@@ -36,6 +157,14 @@ class Storage(Protocol):
     def object_size(self, bucket: str, key: str) -> int | None: ...
 
     def delete_object(self, bucket: str, key: str) -> None: ...
+
+    def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
+        """Open a readable stream on an object, alongside its HEAD metadata.
+        The archive copy path (R1.9) reads the raw master through this to
+        stream it into `ArchiveStore.put_archive_object` — cross-vendor
+        copies (R2 → AWS) can't use a server-side CopyObject, since that only
+        works within one account (plan §A.1, AM5)."""
+        ...
 
     def copy_object(
         self,
@@ -91,6 +220,25 @@ class LocalStorage:
         self._objects.discard((bucket, key))
         self._storage_class.pop((bucket, key), None)
 
+    def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
+        """Stub read. No real bytes ever reached this backend — like
+        `object_size`, `presigned_upload_url` only pretends a transfer
+        happened — so this hands back a small deterministic payload for any
+        key marked uploaded. Enough for the archive seam's checksum plumbing
+        to be exercised end-to-end in unit tests without real I/O; tests that
+        need to assert specific archived bytes should seed a real upload via
+        the S3ArchiveStore/LocalArchiveStore pair directly instead."""
+        if (bucket, key) not in self._objects:
+            raise StorageError(f"Cannot read: object not found ({bucket}/{key})")
+        payload = f"local-stub-content:{bucket}/{key}".encode()
+        head = ObjectHead(
+            size=len(payload),
+            etag=hashlib.md5(payload).hexdigest(),
+            storage_class=self._storage_class.get((bucket, key), "STANDARD"),
+            version_id=None,
+        )
+        return io.BytesIO(payload), head
+
     def copy_object(
         self,
         src_bucket: str,
@@ -114,65 +262,24 @@ class LocalStorage:
 
 
 class S3Storage:
-    def __init__(self) -> None:
-        try:
-            import boto3  # imported lazily so the stub path needs no boto3
-        except ImportError as exc:  # pragma: no cover
-            raise StorageError(
-                "boto3 is required for S3 storage. Install it or set "
-                "STORAGE_BACKEND=local for development."
-            ) from exc
+    """Live object store client (Cloudflare R2). Built entirely from the
+    `ObjectStoreConfig` passed in — never reads `Settings` itself; see the
+    module docstring."""
 
-        client_config = None
-        if settings.object_store_endpoint_url:
-            from botocore.config import Config as BotoConfig
-
-            # A custom endpoint means MinIO / R2 / another S3-compatible store.
-            # Force path-style addressing (bucket in the path, not the hostname)
-            # — MinIO does not serve virtual-host-style buckets without extra DNS
-            # setup — and pin SigV4.
-            client_config = BotoConfig(
-                s3={"addressing_style": "path"}, signature_version="s3v4"
-            )
-
-        common = dict(
-            region_name=settings.s3_region,
-            aws_access_key_id=settings.object_store_access_key_id,
-            aws_secret_access_key=settings.object_store_secret_access_key,
-            config=client_config,
-        )
-
-        # Client for this process's own reads/writes (object_exists, delete).
-        self._client = boto3.client(
-            "s3", endpoint_url=settings.object_store_endpoint_url, **common
-        )
-
-        # Client used ONLY to mint presigned URLs the BROWSER will follow. When
-        # the browser reaches storage on a different host than this process does
-        # (compose: browser → localhost:9000, API → minio:9000), the URL must be
-        # signed for the browser's host: SigV4 signs the Host header even for
-        # query-string auth, so a signature made for minio:9000 fails when the
-        # request lands with Host: localhost:9000. Presigning is offline HMAC, so
-        # pointing this client at a host THIS process cannot reach is harmless.
-        # Unset s3_public_endpoint (real AWS S3) → same client, no split.
-        if settings.s3_public_endpoint:
-            self._presign_client = boto3.client(
-                "s3", endpoint_url=settings.s3_public_endpoint, **common
-            )
-        else:
-            self._presign_client = self._client
+    def __init__(self, cfg: ObjectStoreConfig) -> None:
+        self._client = _make_client(cfg)
 
     def presigned_upload_url(
         self, bucket: str, key: str, content_type: str, expires_in: int
     ) -> str:
-        return self._presign_client.generate_presigned_url(
+        return self._client.generate_presigned_url(
             "put_object",
             Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
             ExpiresIn=expires_in,
         )
 
     def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
-        return self._presign_client.generate_presigned_url(
+        return self._client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=expires_in,
@@ -229,7 +336,51 @@ class S3Storage:
             ) from exc
 
     def delete_object(self, bucket: str, key: str) -> None:
-        self._client.delete_object(Bucket=bucket, Key=key)
+        """Delete an object. A 404/NoSuchKey means the end state is already
+        correct (nothing to delete), so it's success, not an error — a retry
+        of a delete that already landed must not fail. Anything else is an
+        infrastructure fault and is raised."""
+        from botocore.exceptions import ClientError
+
+        try:
+            self._client.delete_object(Bucket=bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey") or status == 404:
+                log.info("s3_delete_object_missing", bucket=bucket, key=key)
+                return
+            log.error(
+                "s3_delete_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not delete object (S3 error {code})."
+            ) from exc
+
+    def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = self._client.get_object(Bucket=bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            log.error(
+                "s3_get_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not open object for reading (S3 error {code})."
+            ) from exc
+
+        head = ObjectHead(
+            size=int(resp["ContentLength"]),
+            etag=resp.get("ETag", "").strip('"'),
+            storage_class=resp.get("StorageClass", "STANDARD"),
+            version_id=resp.get("VersionId"),
+        )
+        return resp["Body"], head
 
     def copy_object(
         self,
@@ -299,13 +450,24 @@ _backend: Storage | None = None
 def get_storage() -> Storage:
     """Return the active storage backend (singleton).
 
-    Uses S3 when credentials are configured, otherwise the local stub — so the
-    app boots and is fully testable with no cloud setup.
+    Uses R2 when credentials are configured, otherwise the local stub — so the
+    app boots and is fully testable with no cloud setup. The live store is
+    always Cloudflare R2 (decision (a): S3 now names the archive vendor only),
+    so `region`/`addressing_style`/`checksum_mode` are fixed here rather than
+    configurable — see plan §A.1.
     """
     global _backend
     if _backend is None:
         if settings.storage_is_live:
-            _backend = S3Storage()
+            cfg = ObjectStoreConfig(
+                endpoint_url=settings.object_store_endpoint_url,
+                region="auto",
+                access_key_id=settings.object_store_access_key_id,
+                secret_access_key=settings.object_store_secret_access_key,
+                addressing_style="path",
+                checksum_mode="when_required",
+            )
+            _backend = S3Storage(cfg)
             log.info("storage_backend", backend="s3", bucket=settings.object_store_media_bucket)
         elif settings.is_production:
             # Belt-and-braces: config preflight already blocks this, but never
@@ -324,6 +486,206 @@ def set_storage(backend: Storage | None) -> None:
     """Override the backend (used by tests)."""
     global _backend
     _backend = backend
+
+
+class ArchiveStore(Protocol):
+    """The cold-tier archive (AWS S3 Deep Archive). Deliberately a separate
+    protocol from `Storage`, not another method on it: the archive vendor
+    (AWS) and the live vendor (R2) are different accounts with different
+    credentials, and cross-vendor copy is a manual read-then-write (see
+    `Storage.open_read`), not a server-side `CopyObject`."""
+
+    def head(
+        self, bucket: str, key: str, version_id: str | None = None
+    ) -> ObjectHead | None: ...
+
+    def put_archive_object(
+        self,
+        bucket: str,
+        key: str,
+        source: BinaryIO,
+        *,
+        size: int,
+        storage_class: str,
+        metadata: dict[str, str],
+    ) -> ArchiveReceipt:
+        """Stream `source` into the archive, computing MD5/SHA-256/CRC32 as it
+        goes. The receipt carries the resulting `version_id`, which callers
+        pin future HEAD/restore calls to — never "the current version"."""
+        ...
+
+
+class LocalArchiveStore:
+    """Stub archive backend. Unlike `LocalStorage`, this stores real bytes:
+    the archive seam's whole point is proving a verified copy exists, so a
+    stub that can't be read back and checksummed can't exercise that."""
+
+    def __init__(self) -> None:
+        self._objects: dict[tuple[str, str], bytes] = {}
+        self._storage_class: dict[tuple[str, str], str] = {}
+        self._version_ids: dict[tuple[str, str], str] = {}
+        self._version_counter = 0
+
+    def head(
+        self, bucket: str, key: str, version_id: str | None = None
+    ) -> ObjectHead | None:
+        data = self._objects.get((bucket, key))
+        if data is None:
+            return None
+        stored_version = self._version_ids.get((bucket, key))
+        if version_id is not None and version_id != stored_version:
+            return None
+        return ObjectHead(
+            size=len(data),
+            etag=hashlib.md5(data).hexdigest(),
+            storage_class=self._storage_class.get((bucket, key)),
+            version_id=stored_version,
+        )
+
+    def put_archive_object(
+        self,
+        bucket: str,
+        key: str,
+        source: BinaryIO,
+        *,
+        size: int,
+        storage_class: str,
+        metadata: dict[str, str],
+    ) -> ArchiveReceipt:
+        reader = _ChecksummingReader(source)
+        data = reader.read()
+        self._objects[(bucket, key)] = data
+        self._storage_class[(bucket, key)] = storage_class
+        self._version_counter += 1
+        version_id = f"local-v{self._version_counter}"
+        self._version_ids[(bucket, key)] = version_id
+        return ArchiveReceipt(
+            version_id=version_id,
+            md5=reader.md5_hex,
+            sha256=reader.sha256_hex,
+            crc32=reader.crc32_b64,
+            size=len(data),
+        )
+
+
+class S3ArchiveStore:
+    """Real AWS S3 Deep Archive client. Built entirely from the
+    `ObjectStoreConfig` passed in — never reads `Settings` itself, so
+    archive_integration tests (plan §A.5, R1.8) can point this at a MinIO
+    stand-in with nothing more than a differently-built config."""
+
+    def __init__(self, cfg: ObjectStoreConfig) -> None:
+        self._client = _make_client(cfg)
+
+    def head(
+        self, bucket: str, key: str, version_id: str | None = None
+    ) -> ObjectHead | None:
+        from botocore.exceptions import ClientError
+
+        params: dict[str, str] = {"Bucket": bucket, "Key": key}
+        if version_id is not None:
+            params["VersionId"] = version_id
+        try:
+            resp = self._client.head_object(**params)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey") or status == 404:
+                return None
+            log.error(
+                "archive_head_object_failed",
+                bucket=bucket, key=key, code=code, status=status,
+            )
+            raise StorageError(
+                f"Could not head archive object (S3 error {code})."
+            ) from exc
+        return ObjectHead(
+            size=int(resp["ContentLength"]),
+            etag=resp.get("ETag", "").strip('"'),
+            storage_class=resp.get("StorageClass", "STANDARD"),
+            version_id=resp.get("VersionId"),
+        )
+
+    def put_archive_object(
+        self,
+        bucket: str,
+        key: str,
+        source: BinaryIO,
+        *,
+        size: int,
+        storage_class: str,
+        metadata: dict[str, str],
+    ) -> ArchiveReceipt:
+        """Managed upload (`Client.upload_fileobj`, boto3's multipart-aware
+        transfer manager — same rationale as `S3Storage.copy_object`: a raw
+        master can sit right at the 5 GB single-PUT ceiling). Resume, lease
+        fencing and the exact `StorageClass`/`ChecksumAlgorithm` call-shape
+        assertion belong to the archive_service/sweep_archives orchestration
+        layer (R1.9, plan AM5) built on top of this method, not to the seam
+        itself.
+        """
+        from botocore.exceptions import ClientError
+
+        reader = _ChecksummingReader(source)
+        extra_args = {
+            "StorageClass": storage_class,
+            "ChecksumAlgorithm": "CRC32",
+            "ChecksumType": "FULL_OBJECT",
+            "Metadata": metadata,
+        }
+        try:
+            self._client.upload_fileobj(reader, bucket, key, ExtraArgs=extra_args)
+            head = self._client.head_object(Bucket=bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            log.error(
+                "archive_put_object_failed", bucket=bucket, key=key, code=code,
+            )
+            raise StorageError(
+                f"Could not archive object (S3 error {code})."
+            ) from exc
+
+        return ArchiveReceipt(
+            version_id=head.get("VersionId"),
+            md5=reader.md5_hex,
+            sha256=reader.sha256_hex,
+            crc32=reader.crc32_b64,
+            size=size,
+        )
+
+
+_archive_backend: ArchiveStore | None = None
+
+
+def get_archive_store() -> ArchiveStore:
+    """Return the active archive backend (singleton).
+
+    Archive credentials (`ARCHIVE_STORE_ACCESS_KEY_ID` etc.) are not yet part
+    of `Settings` — decision (a) names them, but adding the fields is R1.3's
+    job, not this seam's. Until then this always returns the local stub;
+    `S3ArchiveStore` already exists and is unit-tested directly against an
+    `ObjectStoreConfig`, so wiring this factory to real settings once they
+    exist is a small follow-up, not a redesign.
+    """
+    global _archive_backend
+    if _archive_backend is None:
+        if settings.is_production:
+            # Belt-and-braces, same rationale as get_storage(): the
+            # production preflight is the primary control; this refuses to
+            # let a stub serve production traffic even if that's bypassed.
+            raise StorageError(
+                "Refusing to use the stub archive backend in production. "
+                "No live archive credentials are configured."
+            )
+        _archive_backend = LocalArchiveStore()
+        log.warning("archive_backend", backend="local_stub", live=False)
+    return _archive_backend
+
+
+def set_archive_store(backend: ArchiveStore | None) -> None:
+    """Override the archive backend (used by tests)."""
+    global _archive_backend
+    _archive_backend = backend
 
 
 def raw_key(sermon_id: uuid.UUID, filename: str) -> str:

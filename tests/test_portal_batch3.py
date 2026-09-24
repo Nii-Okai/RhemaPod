@@ -664,11 +664,6 @@ def test_staging_allows_https_s3_endpoint_url():
     assert s.object_store_endpoint_url == "https://s3.eu-north-1.example.com"
 
 
-def test_staging_rejects_compose_shim_s3_public_endpoint():
-    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
-        _settings(environment="staging", s3_public_endpoint="http://minio:9000")
-
-
 def test_staging_boots_without_object_storage_endpoints():
     s = _settings(environment="staging")
     assert s.environment == "staging"
