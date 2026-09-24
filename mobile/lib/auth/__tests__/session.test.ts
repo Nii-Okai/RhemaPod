@@ -111,7 +111,7 @@ describe('session single-flight refresh', () => {
     expect(mockedAuthClient.refresh).toHaveBeenCalledTimes(2);
   });
 
-  it('signs the session out and rejects every waiting caller when the shared refresh fails', async () => {
+  it('signs the session out and rejects every waiting caller on a genuine auth rejection (non-network ApiError)', async () => {
     mockedAuthClient.login.mockResolvedValueOnce({
       access_token: 'access-1',
       refresh_token: 'refresh-1',
@@ -129,6 +129,8 @@ describe('session single-flight refresh', () => {
 
     await Promise.resolve();
     await Promise.resolve();
+    // network defaults to false — a real 401 from the refresh endpoint itself,
+    // not a dropped connection.
     rejectRefresh!(new ApiError(401, 'Invalid or expired refresh token'));
 
     const results = await Promise.all(calls);
@@ -140,6 +142,44 @@ describe('session single-flight refresh', () => {
     expect(session.getAccessToken()).toBeNull();
     expect(session.getStatus()).toBe('signedOut');
     expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
+  });
+
+  it('leaves the persisted session untouched and rethrows on a network failure (does not sign out)', async () => {
+    mockedAuthClient.login.mockResolvedValueOnce({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 900,
+    });
+    await session.signIn('user@example.com', 'password123456');
+    mockedSecureStore.setItemAsync.mockClear();
+    mockedSecureStore.deleteItemAsync.mockClear();
+
+    let rejectRefresh: (err: Error) => void;
+    const pending = new Promise<{ access_token: string; refresh_token: string; expires_in: number }>((_, reject) => {
+      rejectRefresh = reject;
+    });
+    mockedAuthClient.refresh.mockReturnValueOnce(pending);
+
+    const calls = Array.from({ length: 3 }, () => session.refreshAccessToken().catch((err) => err as Error));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    // e.g. a subway/elevator wifi blip — the request never reached the
+    // server, so this says nothing about whether refresh-1 is still valid.
+    rejectRefresh!(new ApiError(0, 'Could not reach the server. Check your connection.', null, true));
+
+    const results = await Promise.all(calls);
+
+    expect(mockedAuthClient.refresh).toHaveBeenCalledTimes(1);
+    for (const result of results) {
+      expect(result).toBeInstanceOf(ApiError);
+      expect((result as ApiError).network).toBe(true);
+    }
+    // Session survives the network blip: access token, in-memory refresh
+    // token, and persisted refresh token are all untouched.
+    expect(session.getAccessToken()).toBe('access-1');
+    expect(session.getStatus()).toBe('signedIn');
+    expect(mockedSecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -208,5 +248,35 @@ describe('session bootstrap', () => {
 
     expect(status).toBe('signedOut');
     expect(session.getAccessToken()).toBeNull();
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
+  });
+
+  it('resolves signedIn without clearing the stored refresh token when the cold-start refresh fails on a network error', async () => {
+    await mockedSecureStore.setItemAsync('rhemapod.refreshToken', 'stored-refresh');
+    mockedAuthClient.refresh.mockRejectedValueOnce(
+      new ApiError(0, 'Could not reach the server. Check your connection.', null, true),
+    );
+
+    const status = await session.bootstrap();
+
+    // Optimistic: a wifi blip on app open must not force the user back
+    // through sign-in — the persisted refresh token is presumed still valid
+    // and untouched. There's no fresh access token yet; the first
+    // authenticated request will trigger client.ts's own 401-refresh-retry
+    // once connectivity returns.
+    expect(status).toBe('signedIn');
+    expect(session.getAccessToken()).toBeNull();
+    expect(mockedSecureStore.deleteItemAsync).not.toHaveBeenCalled();
+    expect(await mockedSecureStore.getItemAsync('rhemapod.refreshToken')).toBe('stored-refresh');
+  });
+
+  it('resolves signedOut (not stuck on loading) when SecureStore itself throws reading the stored token', async () => {
+    mockedSecureStore.getItemAsync.mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    const status = await session.bootstrap();
+
+    expect(status).toBe('signedOut');
+    expect(mockedAuthClient.refresh).not.toHaveBeenCalled();
+    expect(mockedSecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 });

@@ -61,9 +61,26 @@ async function clearSession(): Promise<void> {
  * usable session — a cold start never has an access token (it is never
  * persisted), so if a refresh token exists this performs one refresh to
  * obtain a fresh access token before the app can be considered signed in.
+ *
+ * Callers (`AuthContext.tsx`) invoke this fire-and-forget (`void
+ * session.bootstrap()`), so this must never reject and must never leave
+ * `status` stuck at `loading` — either of those hangs the app on the launch
+ * spinner with no recovery path.
  */
 export async function bootstrap(): Promise<AuthStatus> {
-  const stored = await secureStore.loadRefreshToken();
+  let stored: string | null;
+  try {
+    stored = await secureStore.loadRefreshToken();
+  } catch {
+    // SecureStore/Keychain itself failed to read (not a network condition —
+    // see the `refreshAccessToken()` catch below for that case). We don't
+    // know whether a refresh token exists, so nothing persisted is touched;
+    // fall through to signedOut so the UI can recover via a normal sign-in
+    // rather than hang on `loading` forever.
+    setStatus('signedOut');
+    return status;
+  }
+
   if (!stored) {
     setStatus('signedOut');
     return status;
@@ -71,9 +88,20 @@ export async function bootstrap(): Promise<AuthStatus> {
   refreshTokenCache = stored;
   try {
     await refreshAccessToken();
-  } catch {
-    // refreshAccessToken() already clears the session and sets signedOut on
-    // failure — nothing further to do here.
+  } catch (err) {
+    if (err instanceof ApiError && err.network) {
+      // The request never reached the server — the persisted refresh token
+      // is untouched (refreshAccessToken() itself left it alone on a network
+      // failure) and still presumed valid. Resolve signedIn optimistically
+      // rather than bouncing the user to sign-in on a wifi blip at app open;
+      // there's no access token yet, but the first authenticated request
+      // will hit `client.ts`'s own 401-triggered refresh-and-retry once
+      // connectivity returns (the existing reactive-refresh design).
+      setStatus('signedIn');
+    }
+    // Any other failure here is a genuine auth rejection, already handled by
+    // refreshAccessToken() itself (clearSession() + signedOut) — nothing
+    // further to do for that case.
   }
   return status;
 }
@@ -141,6 +169,14 @@ export function refreshAccessToken(): Promise<string> {
       setStatus('signedIn');
       return pair.access_token;
     } catch (err) {
+      if (err instanceof ApiError && err.network) {
+        // The refresh request never reached the server — this says nothing
+        // about whether the refresh token itself is still valid. Leave the
+        // persisted/in-memory session untouched and let the caller decide
+        // (retry, surface a "check your connection" state); only a genuine
+        // auth rejection below is grounds to sign the device out.
+        throw err;
+      }
       await clearSession();
       setStatus('signedOut');
       throw err;
