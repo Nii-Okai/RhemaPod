@@ -191,6 +191,21 @@ services:
       postgres:
         condition: service_healthy
 
+  # One-shot archive sweep (R2 storage). Started ONLY via its profile, never
+  # by `up`, and never by `--profile sweeps`:
+  #     docker compose --profile ops run --rm archive-sweep
+  # app/scripts/sweep_archives.py is added in R1.9; this stub exists only so
+  # `docker compose config` resolves the override's archive-sweep service.
+  archive-sweep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["ops"]
+    environment:
+      <<: *app-env
+    command: ["python", "-m", "app.scripts.sweep_archives"]
+    restart: "no"
+
   # One-shot migration runner. Started ONLY via its profile, never by `up`:
   #     docker compose run --rm migrate
   migrate:
