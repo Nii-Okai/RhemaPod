@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuthGuard } from '../lib/auth/AuthContext';
 import { QueryProvider } from '../lib/query/QueryProvider';
 
@@ -16,10 +17,12 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <QueryProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
-    </QueryProvider>
+    <SafeAreaProvider>
+      <QueryProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </QueryProvider>
+    </SafeAreaProvider>
   );
 }

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@expo-google-fonts/figtree": "^0.4.1",
+    "@expo/vector-icons": "~14.0.4",
     "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
     "@expo-google-fonts/newsreader": "^0.4.1",
     "@react-navigation/native": "^6.1.18",
