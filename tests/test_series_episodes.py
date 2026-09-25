@@ -54,6 +54,33 @@ async def publish_episode(client, ed, mgr, series_id, episode_number=1, title="E
     return sid
 
 
+async def publish_episode_with_null_number(client, ed, mgr, series_id, title):
+    """Publish an episode that keeps a genuinely NULL `episode_number`.
+
+    `POST /sermons` auto-assigns the next number whenever `episode_number`
+    is omitted and the sermon joins a series, so the only way to end up with
+    a real NULL is to explicitly clear it via PATCH while the sermon is
+    still a DRAFT (PATCH refuses edits once it's under review/approved/
+    published) — `update_sermon`'s auto-assign only fires when the field is
+    left unset or the sermon has never had a number, not when the editor
+    explicitly nulls an existing one.
+    """
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": title, "series_id": series_id},
+        headers=ed,
+    )).json()["id"]
+    resp = await client.patch(
+        f"/api/v1/sermons/{sid}", json={"episode_number": None}, headers=ed
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["episode_number"] is None
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+    return sid
+
+
 async def activate_subscription(client, engine, email):
     """Register + entitle a viewer via the webhook path, return auth headers."""
     await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
@@ -186,3 +213,33 @@ async def test_series_episodes_hides_gap_from_invisible_episode(client, engine):
     )).json()["items"]
     admin_by_title = {item["title"]: item["episode_number"] for item in admin}
     assert admin_by_title == {"One": 1, "Two (draft)": 2, "Three": 3}
+
+
+async def test_series_episodes_leaves_unnumbered_episode_null(client, engine):
+    """Conductor follow-up to W2.3 (should-fix from reviewer-gilfoyle): an
+    episode an editor never assigned a number to must not get one assigned
+    on its behalf by the renumbering. It stays `episode_number: null` on the
+    public read and does not consume a slot — visible real numbers 1, None,
+    4 read as 1, None, 2 (only the numbered items are folded into 1..N).
+    """
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Unnumbered Series"}, headers=ed
+    )).json()
+    await publish_episode(client, ed, mgr, series["id"], episode_number=1, title="One")
+    await publish_episode_with_null_number(client, ed, mgr, series["id"], title="Bonus")
+    await publish_episode(client, ed, mgr, series["id"], episode_number=4, title="Four")
+
+    public = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
+    # Order matches what the endpoint returns (real episode_number asc,
+    # nulls last) — assert on that, not an assumed order.
+    assert [e["title"] for e in public] == ["One", "Four", "Bonus"]
+    assert [e["episode_number"] for e in public] == [1, 2, None]
+
+    # Admin read and the DB are unchanged — real numbers verbatim.
+    admin = (await client.get(
+        f"/api/v1/sermons?series_id={series['id']}", headers=mgr
+    )).json()["items"]
+    admin_by_title = {item["title"]: item["episode_number"] for item in admin}
+    assert admin_by_title == {"One": 1, "Bonus": None, "Four": 4}
