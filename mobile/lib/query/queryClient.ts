@@ -58,6 +58,25 @@ export const queryKeys = {
     results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
+  // W4.1 — mirrors the `sermons`/`categories` shape above. `GET /me/continue-watching`
+  // takes no caller-supplied params today; kept as a `list()` (not a bare `all`) so a
+  // future param (e.g. a `limit` override) slots in without a call-site shape change.
+  continueWatching: {
+    all: ['continueWatching'] as const,
+    list: () => [...queryKeys.continueWatching.all, 'list'] as const,
+  },
+  series: {
+    all: ['series'] as const,
+    list: () => [...queryKeys.series.all, 'list'] as const,
+  },
+  // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
+  // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
+  // different resources that happen to share a path segment.
+  progress: {
+    all: ['progress'] as const,
+    details: () => [...queryKeys.progress.all, 'detail'] as const,
+    detail: (sermonId: string) => [...queryKeys.progress.details(), sermonId] as const,
+  },
 } as const;
 
 /**
