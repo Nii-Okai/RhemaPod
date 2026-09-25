@@ -4,10 +4,10 @@ import { AppText } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
-import type { SeriesListItem } from '../../../lib/query/hooks/useSeries';
+import type { SeriesPublic } from '../../../lib/query/hooks/useSeries';
 
 export interface SeriesCardProps {
-  series: SeriesListItem;
+  series: SeriesPublic;
   onPress: () => void;
 }
 

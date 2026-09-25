@@ -22,6 +22,12 @@ function RootNavigator() {
       <Stack.Screen name="speaker/[id]" />
       {/* W4.1 — minimal placeholder; W4.2 builds the real player and its own chrome. */}
       <Stack.Screen name="player/[id]" options={{ headerShown: false }} />
+      {/* W4.4 — series detail, another top-level stack route (plan L15):
+          identical on every platform, reached from Home's Series shelf
+          (W4.1), Browse, and the tablet Series rail tab. Distinct from the
+          tablet-only `(tabs)/series` rail tab (which lists series, not one
+          series' detail) — see `app/series/__tests__/routeCollision.test.ts`. */}
+      <Stack.Screen name="series/[id]" options={{ title: '' }} />
     </Stack>
   );
 }

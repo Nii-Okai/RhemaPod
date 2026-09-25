@@ -1,9 +1,9 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { SeriesCard } from '../SeriesCard';
-import type { SeriesListItem } from '../../../../lib/query/hooks/useSeries';
+import type { SeriesPublic } from '../../../../lib/query/hooks/useSeries';
 
-const series: SeriesListItem = {
+const series: SeriesPublic = {
   id: 'se1',
   title: 'Storms',
   description: null,
@@ -13,7 +13,7 @@ const series: SeriesListItem = {
   status: 'published',
   thumbnail_url: null,
   tier: 'free',
-} as SeriesListItem;
+} as SeriesPublic;
 
 describe('SeriesCard', () => {
   it('renders the title and pluralized episode count, and fires onPress', () => {

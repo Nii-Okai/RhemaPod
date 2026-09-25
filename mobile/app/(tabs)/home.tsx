@@ -7,7 +7,7 @@ import { spacing } from '../../theme/spacing';
 import { ApiError } from '../../lib/api/errors';
 import { useSermons } from '../../lib/query/hooks/useSermons';
 import { useContinueWatching } from '../../lib/query/hooks/useContinueWatching';
-import { useSeries } from '../../lib/query/hooks/useSeries';
+import { useSeriesList } from '../../lib/query/hooks/useSeries';
 import { pathnameFor, routeByKey } from '../../components/navigation/routes';
 import { AnnouncementsEntry } from './_home/AnnouncementsEntry';
 import { ContinueWatchingCard } from './_home/ContinueWatchingCard';
@@ -38,7 +38,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const sermons = useSermons();
   const continueWatching = useContinueWatching();
-  const series = useSeries();
+  const series = useSeriesList();
 
   const hero = sermons.data?.[0];
   const continueWatchingItems = continueWatching.data ?? [];

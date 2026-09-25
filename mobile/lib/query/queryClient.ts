@@ -58,16 +58,33 @@ export const queryKeys = {
     results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
-  // W4.1 — mirrors the `sermons`/`categories` shape above. `GET /me/continue-watching`
-  // takes no caller-supplied params today; kept as a `list()` (not a bare `all`) so a
-  // future param (e.g. a `limit` override) slots in without a call-site shape change.
-  continueWatching: {
-    all: ['continueWatching'] as const,
-    list: () => [...queryKeys.continueWatching.all, 'list'] as const,
-  },
+  // W4.4 — mirrors the `sermons` shape above per this factory's own doc comment.
   series: {
     all: ['series'] as const,
-    list: () => [...queryKeys.series.all, 'list'] as const,
+    lists: () => [...queryKeys.series.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.series.lists(), params] as const,
+    details: () => [...queryKeys.series.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.series.details(), id] as const,
+    episodes: (id: string) => [...queryKeys.series.detail(id), 'episodes'] as const,
+  },
+  announcements: {
+    all: ['announcements'] as const,
+    lists: () => [...queryKeys.announcements.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.announcements.lists(), params] as const,
+  },
+  /**
+   * The caller's own `/me/*` reads, folded into one domain rather than split across
+   * `me` and a standalone `continueWatching` (W4.1/W4.4 reconciliation — both are reads
+   * scoped to the authenticated caller and nothing else needs that scoping split out):
+   * `GET /me/continue-watching` (started-but-unfinished, capped at the endpoint's own
+   * default of 10 — W4.1's Home shelf) and `GET /me/history` (up to 100 rows,
+   * most-recent-first — W4.4's series-episode status derivation). Distinct endpoints,
+   * distinct semantics, same `/me/*` scoping.
+   */
+  me: {
+    all: ['me'] as const,
+    continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
+    history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are

@@ -17,7 +17,7 @@ export type ContinueWatchingItem = components['schemas']['ContinueWatchingItem']
  */
 export function useContinueWatching() {
   return useQuery({
-    queryKey: queryKeys.continueWatching.list(),
+    queryKey: queryKeys.me.continueWatching(),
     queryFn: ({ signal }) => api.get('/me/continue-watching', { init: { signal } }),
   });
 }
