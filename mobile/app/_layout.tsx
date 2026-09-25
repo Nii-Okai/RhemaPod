@@ -17,6 +17,12 @@ function RootNavigator() {
       <Stack.Screen name="sermon/[id]" options={{ title: '' }} />
       <Stack.Screen name="category/[id]" />
       <Stack.Screen name="speaker/[id]" />
+      {/* W4.4 — series detail, another top-level stack route (plan L15):
+          identical on every platform, reached from Home's Series shelf
+          (W4.1), Browse, and the tablet Series rail tab. Distinct from the
+          tablet-only `(tabs)/series` rail tab (which lists series, not one
+          series' detail) — see `app/series/__tests__/routeCollision.test.ts`. */}
+      <Stack.Screen name="series/[id]" options={{ title: '' }} />
     </Stack>
   );
 }

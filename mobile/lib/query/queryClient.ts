@@ -58,6 +58,25 @@ export const queryKeys = {
     results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
+  // W4.4 — mirrors the `sermons` shape above per this factory's own doc comment.
+  series: {
+    all: ['series'] as const,
+    lists: () => [...queryKeys.series.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.series.lists(), params] as const,
+    details: () => [...queryKeys.series.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.series.details(), id] as const,
+    episodes: (id: string) => [...queryKeys.series.detail(id), 'episodes'] as const,
+  },
+  announcements: {
+    all: ['announcements'] as const,
+    lists: () => [...queryKeys.announcements.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.announcements.lists(), params] as const,
+  },
+  /** The caller's own `/me/*` reads — currently just watch history (W4.4, series episode status). */
+  me: {
+    all: ['me'] as const,
+    history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
+  },
 } as const;
 
 /**
