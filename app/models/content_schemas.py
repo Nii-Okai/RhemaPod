@@ -222,6 +222,11 @@ class SermonListItem(BaseModel):
     category_name: str | None = None
     series_id: uuid.UUID | None
     series_title: str | None = None
+    # Verbatim `Sermon.episode_number` on every route except the public
+    # `GET /series/{id}/episodes` read, which renumbers this field to a
+    # contiguous 1..N display sequence (content_service.renumber_for_display)
+    # without touching the database column. Staff routes (`GET
+    # /sermons?series_id=`) always carry the real, editor-owned number.
     episode_number: int | None
     tier: ContentTier
     locked: bool

@@ -235,6 +235,39 @@ def to_list_item(
     )
 
 
+def renumber_for_display(items: list[SermonListItem]) -> list[SermonListItem]:
+    """Overwrite each numbered item's ``episode_number`` with a contiguous
+    1..N sequence, in the caller's existing order — display-layer only.
+
+    Per plan W2.3 (mobile L11): the public series-episodes read hides gaps
+    left by unpublished/deleted episodes ("episode 3, 4 not yet published" is
+    explicitly cut — see the plan) by renumbering on read instead. This never
+    touches ``Sermon.episode_number`` in the database; that column stays
+    editor-owned data, set by ``PUT /series/{id}/episode-order`` and read
+    verbatim by staff via ``GET /sermons?series_id=``. Only this function's
+    caller (the public ``GET /series/{id}/episodes``) sees the renumbered
+    value.
+
+    Callers must pass items already filtered to the visible set and ordered
+    by the real ``episode_number`` (nulls last) — this function renumbers by
+    position, it does not sort. An item whose real ``episode_number`` is
+    ``None`` stays ``None`` in the response and does not consume a slot in
+    the 1..N sequence: an editor who never assigned that episode a number
+    shouldn't have one assigned on its behalf. Only items that already carry
+    a real number are folded into the contiguous sequence, in their existing
+    order.
+    """
+    numbered_position = 0
+    result = []
+    for item in items:
+        if item.episode_number is None:
+            result.append(item)
+            continue
+        numbered_position += 1
+        result.append(item.model_copy(update={"episode_number": numbered_position}))
+    return result
+
+
 @dataclass
 class RefNames:
     """Speaker/category/series names for a batch of sermons, so a list view
