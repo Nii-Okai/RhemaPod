@@ -23,6 +23,7 @@ from app.services import auth_service, content_service
 from app.services.content_service import (
     ContentError,
     effective_tier,
+    renumber_for_display,
     sermon_visibility_clause,
     to_list_item,
 )
@@ -194,6 +195,12 @@ async def series_episodes(
     here). Also gated on `publish_at` — a scheduled episode doesn't appear here
     before its own catalog listing would show it.
     """
+    # W2.3 (plan L11): gaps from unpublished/deleted episodes are hidden by
+    # renumbering `episode_number` to a contiguous 1..N sequence on this
+    # response only — see `renumber_for_display`. `Sermon.episode_number`
+    # itself is untouched; kept out of the docstring above so it never
+    # becomes part of the OpenAPI description (openapi.json stays byte-for-
+    # byte identical — this is a value-only change, not a contract change).
     series = await db.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="Series not found")
@@ -212,10 +219,11 @@ async def series_episodes(
     # Redis round-trip per episode). is_entitled writes only to Redis, so the
     # read-only session is not violated.
     has_sub = await content_service._has_subscription(db, user)
-    return [
+    items = [
         to_list_item(s, effective_tier(s, series), has_sub)
         for s in rows
     ]
+    return renumber_for_display(items)
 
 
 @router.post(
