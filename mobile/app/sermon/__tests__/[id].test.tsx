@@ -223,11 +223,24 @@ describe('SermonDetailScreen — back control', () => {
 });
 
 describe('SermonDetailScreen — Android chrome', () => {
-  it('renders a solid top app bar back control on Android too', async () => {
+  it('renders the Android top app bar chrome, not the iOS floating chrome', async () => {
     mockedUsePlatformOS.mockReturnValue('android');
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByTestId, findByLabelText, queryByTestId } = renderDetail();
 
+    expect(await findByTestId('detail-header-android')).toBeTruthy();
     expect(await findByLabelText('Back')).toBeTruthy();
+    expect(queryByTestId('detail-header-ios')).toBeNull();
+  });
+});
+
+describe('SermonDetailScreen — iOS chrome', () => {
+  it('renders the iOS floating chrome, not the Android top app bar chrome', async () => {
+    mockDetailAndProgress(baseDetail);
+    const { findByTestId, findByLabelText, queryByTestId } = renderDetail();
+
+    expect(await findByTestId('detail-header-ios')).toBeTruthy();
+    expect(await findByLabelText('Back')).toBeTruthy();
+    expect(queryByTestId('detail-header-android')).toBeNull();
   });
 });

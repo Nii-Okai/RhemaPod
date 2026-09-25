@@ -24,14 +24,18 @@ export function DetailHeader({ onBack }: DetailHeaderProps) {
 
   if (os === 'android') {
     return (
-      <View style={[styles.androidBar, { paddingTop: insets.top }]}>
+      <View testID="detail-header-android" style={[styles.androidBar, { paddingTop: insets.top }]}>
         <IconButton icon="arrow-back" accessibilityLabel="Back" onPress={onBack} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.iosBar, { top: insets.top }]} pointerEvents="box-none">
+    <View
+      testID="detail-header-ios"
+      style={[styles.iosBar, { top: insets.top }]}
+      pointerEvents="box-none"
+    >
       <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={onBack} />
     </View>
   );

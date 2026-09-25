@@ -36,6 +36,10 @@ export default function SermonDetailScreen() {
 
   const goBack = () => router.back();
 
+  // TanStack v5: isLoading is isPending && isFetching, and a disabled query never
+  // fetches — so `progressQuery.isLoading` is `false`, not stuck `true`, once
+  // `enabled` above goes false. That's why gating on it here can't hang the screen
+  // for locked/no-media sermons that never enable the progress query at all.
   if (detailQuery.isLoading || (playable && progressQuery.isLoading)) {
     return (
       <View style={styles.screen}>
