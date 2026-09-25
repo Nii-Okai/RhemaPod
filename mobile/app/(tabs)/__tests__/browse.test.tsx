@@ -116,7 +116,7 @@ describe('BrowseScreen — Android chrome', () => {
     expect(getByLabelText('Search sermons, series, speakers')).toBeTruthy();
 
     fireEvent.press(getByLabelText('Search sermons, series, speakers'));
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/search');
+    expect(mockPush).toHaveBeenCalledWith('/search');
   });
 
   it('does not render the Android search bar on iOS', async () => {

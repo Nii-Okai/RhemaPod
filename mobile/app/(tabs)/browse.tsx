@@ -33,7 +33,7 @@ export default function BrowseScreen() {
       </AppText>
 
       {os === 'android' ? (
-        <AndroidSearchEntry onPress={() => router.push('/(tabs)/search')} />
+        <AndroidSearchEntry onPress={() => router.push('/search')} />
       ) : null}
 
       <View style={styles.section}>
