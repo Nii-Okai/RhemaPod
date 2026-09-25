@@ -50,6 +50,11 @@ const eslintConfig = defineConfig([
         FormData: "readonly",
         URLSearchParams: "readonly",
         process: "readonly",
+        // RN's JS runtime (JSC/Hermes) provides the timer functions globally too —
+        // same rationale as fetch/Headers/etc above. First real caller: the W4.3
+        // search-suggest debounce (lib/hooks/useDebouncedValue.ts).
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
       },
     },
     plugins: {
