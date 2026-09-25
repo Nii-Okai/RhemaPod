@@ -72,10 +72,27 @@ export const queryKeys = {
     lists: () => [...queryKeys.announcements.all, 'list'] as const,
     list: (params: Record<string, unknown> = {}) => [...queryKeys.announcements.lists(), params] as const,
   },
-  /** The caller's own `/me/*` reads — currently just watch history (W4.4, series episode status). */
+  /**
+   * The caller's own `/me/*` reads, folded into one domain rather than split across
+   * `me` and a standalone `continueWatching` (W4.1/W4.4 reconciliation — both are reads
+   * scoped to the authenticated caller and nothing else needs that scoping split out):
+   * `GET /me/continue-watching` (started-but-unfinished, capped at the endpoint's own
+   * default of 10 — W4.1's Home shelf) and `GET /me/history` (up to 100 rows,
+   * most-recent-first — W4.4's series-episode status derivation). Distinct endpoints,
+   * distinct semantics, same `/me/*` scoping.
+   */
   me: {
     all: ['me'] as const,
+    continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
     history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
+  },
+  // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
+  // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
+  // different resources that happen to share a path segment.
+  progress: {
+    all: ['progress'] as const,
+    details: () => [...queryKeys.progress.all, 'detail'] as const,
+    detail: (sermonId: string) => [...queryKeys.progress.details(), sermonId] as const,
   },
 } as const;
 

@@ -14,9 +14,14 @@ function RootNavigator() {
       {/* W4.3 — top-level stack routes outside the tab chrome (plan L15/§A.7):
           identical on every platform, reached from search results and the
           Browse category/speaker drill-down lists. */}
-      <Stack.Screen name="sermon/[id]" options={{ title: '' }} />
+      {/* W4.1 — sermon-detail owns its own header (design spec §8.1.1/§8.5, the
+          platform-swapped `DetailHeader`), so the native Stack header is fully
+          disabled here rather than just given an empty title. */}
+      <Stack.Screen name="sermon/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="category/[id]" />
       <Stack.Screen name="speaker/[id]" />
+      {/* W4.1 — minimal placeholder; W4.2 builds the real player and its own chrome. */}
+      <Stack.Screen name="player/[id]" options={{ headerShown: false }} />
       {/* W4.4 — series detail, another top-level stack route (plan L15):
           identical on every platform, reached from Home's Series shelf
           (W4.1), Browse, and the tablet Series rail tab. Distinct from the

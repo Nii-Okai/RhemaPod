@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { api } from '../../../api/typedClient';
+import { ApiError } from '../../../api/errors';
 import { useSeriesDetail, useSeriesEpisodes, useSeriesList } from '../useSeries';
 import { wrapWithQueryClient } from '../../testUtils';
 
@@ -19,6 +20,25 @@ describe('useSeriesList', () => {
     const { result } = renderHook(() => useSeriesList(), { wrapper: wrapWithQueryClient() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockedGet).toHaveBeenCalledWith('/series', expect.objectContaining({ init: expect.anything() }));
+  });
+
+  it('resolves with the series list the fetch boundary returns', async () => {
+    const series = [{ id: 'se1', title: 'Storms', episode_count: 4 }];
+    mockedGet.mockResolvedValue(series);
+
+    const { result } = renderHook(() => useSeriesList(), { wrapper: wrapWithQueryClient() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(series);
+  });
+
+  it('surfaces a fetch-boundary failure as an error state', async () => {
+    mockedGet.mockRejectedValue(new ApiError(500, 'Something went wrong. Try again.'));
+
+    const { result } = renderHook(() => useSeriesList(), { wrapper: wrapWithQueryClient() });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(ApiError);
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * `GET /series`, `GET /series/{id}`, `GET /series/{id}/episodes` (plan W4.4).
+ * `GET /series`, `GET /series/{id}`, `GET /series/{id}/episodes` (plan W4.1/W4.4).
  *
  * The episodes read is already renumbered contiguous 1..N server-side (plan
  * L11/W2.3, `content_service.renumber_for_display`) — this hook does no
@@ -15,7 +15,15 @@ import type { components } from '../../api/schema';
 export type SeriesPublic = components['schemas']['SeriesPublic'];
 export type SeriesEpisode = components['schemas']['SermonListItem'];
 
-/** Tablet rail's Series tab (P3) — flat list, each item already carries `episode_count`. */
+/**
+ * `GET /api/v1/series` — member-readable (no auth-role guard on the route; confirmed
+ * against `app/api/series.py`'s `list_series` — unlike its `POST`/`PATCH`/`DELETE`
+ * siblings, which are editor-gated). Drives both Home's "Series" shelf (design spec
+ * §3 Home: "with episode counts" — `episode_count` is already on `SeriesPublic`, no
+ * fan-out needed) and the tablet rail's Series tab (P3) — same flat list, two
+ * consumers. A series card navigates to `/series/[id]`, owned by W4.4 — this hook
+ * and its callers only push that route, they don't render its screen.
+ */
 export function useSeriesList() {
   return useQuery({
     queryKey: queryKeys.series.list(),
