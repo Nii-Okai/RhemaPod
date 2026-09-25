@@ -6,8 +6,12 @@ import type { SeriesEpisode } from '../../lib/query/hooks/useSeries';
 
 export interface EpisodeRowProps {
   episode: SeriesEpisode;
-  /** "watched" / "17:04 left" / "new" — see `lib/format/episodeStatus.ts`. */
-  status: string;
+  /**
+   * "watched" / "17:04 left" / "new" — see `lib/format/episodeStatus.ts`. `null`
+   * when the caller couldn't derive a status (the `/me/history` read failed) —
+   * render no status label at all rather than a fabricated "new".
+   */
+  status: string | null;
   onPress: () => void;
 }
 
@@ -45,9 +49,11 @@ export function EpisodeRow({ episode, status, onPress }: EpisodeRowProps) {
         <AppText variant="display.compact" numberOfLines={2}>
           {episode.title}
         </AppText>
-        <AppText variant="mono.meta" tone="tertiary" style={styles.meta}>
-          {status}
-        </AppText>
+        {status ? (
+          <AppText variant="mono.meta" tone="tertiary" style={styles.meta}>
+            {status}
+          </AppText>
+        ) : null}
       </View>
     </Pressable>
   );

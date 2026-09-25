@@ -24,7 +24,10 @@ import { buildHistoryMap, deriveEpisodeStatus } from '../../lib/format/episodeSt
  * (`episode_number: null`) renders with no number, never a placeholder
  * digit. Per-episode status ("watched" / "17:04 left" / "new") is derived
  * from one `GET /me/history` call, not a fetch per episode — see
- * `lib/format/episodeStatus.ts`.
+ * `lib/format/episodeStatus.ts`. If that call fails, episodes render with no
+ * status label at all rather than fabricating "new" for everything (a
+ * `/me/history` 500 must not read as "you haven't watched any of this");
+ * the primary series/episode content still renders and errors normally.
  */
 export default function SeriesDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -75,7 +78,7 @@ export default function SeriesDetailScreen() {
                   <EpisodeRow
                     key={episode.id}
                     episode={episode}
-                    status={deriveEpisodeStatus(episode, historyMap)}
+                    status={history.isError ? null : deriveEpisodeStatus(episode, historyMap)}
                     onPress={() => router.push({ pathname: '/sermon/[id]', params: { id: episode.id } })}
                   />
                 ))}

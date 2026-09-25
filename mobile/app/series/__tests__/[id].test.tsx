@@ -200,6 +200,34 @@ describe('SeriesDetailScreen — error', () => {
   });
 });
 
+describe('SeriesDetailScreen — history failure', () => {
+  it('renders episodes with no status label when /me/history fails, never "new"', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/series/{series_id}') return Promise.resolve(seriesDetail);
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      if (path === '/me/history') return Promise.reject(new Error('history down'));
+      throw new Error(`Unexpected path: ${path}`);
+    });
+
+    const { findByText, queryByText, findByLabelText } = renderScreen();
+
+    await findByText('Part One');
+    await findByText('Part Two');
+    await findByText('Bonus Q&A');
+
+    // No fabricated status of any kind — not "new" for the never-played episode,
+    // not "watched"/"...left" for ones the fixture data would otherwise support.
+    expect(queryByText('new')).toBeNull();
+    expect(queryByText('watched')).toBeNull();
+    expect(queryByText(/left$/)).toBeNull();
+
+    // Accessibility label drops the status segment entirely rather than
+    // fabricating one — the row is still announced by number/title.
+    expect(await findByLabelText('Episode 01, Part One')).toBeTruthy();
+    expect(await findByLabelText('Bonus Q&A')).toBeTruthy();
+  });
+});
+
 describe('SeriesDetailScreen — both chromes', () => {
   it.each(['ios', 'android'] as const)('renders correctly under Platform.OS=%s', async (os) => {
     Platform.OS = os;
