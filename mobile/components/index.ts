@@ -4,3 +4,6 @@ export * from './Card';
 export * from './Avatar';
 export * from './ProgressBar';
 export * from './QueryState';
+export * from './Tag';
+export * from './SkeletonBlock';
+export * from './IconButton';
