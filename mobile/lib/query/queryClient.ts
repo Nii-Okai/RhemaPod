@@ -34,6 +34,30 @@ export const queryKeys = {
     details: () => [...queryKeys.sermons.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.sermons.details(), id] as const,
   },
+  // W4.3 — mirrors the `sermons` shape above per this factory's own doc comment.
+  categories: {
+    all: ['categories'] as const,
+    lists: () => [...queryKeys.categories.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.categories.lists(), params] as const,
+  },
+  speakers: {
+    all: ['speakers'] as const,
+    lists: () => [...queryKeys.speakers.all, 'list'] as const,
+    list: (params: Record<string, unknown> = {}) => [...queryKeys.speakers.lists(), params] as const,
+  },
+  /**
+   * `/search` also serves as the filtered-browse endpoint (no `q`) for the
+   * category/speaker drill-down lists — `results(params)` covers both, keyed
+   * on whatever filter combination the caller passes so a text search and a
+   * `category_id` browse never collide in the cache.
+   */
+  search: {
+    all: ['search'] as const,
+    // `object`, not `Record<string, unknown>`: callers pass a named params interface
+    // (`SearchResultsParams`), which has no index signature of its own.
+    results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
+    suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
+  },
 } as const;
 
 /**

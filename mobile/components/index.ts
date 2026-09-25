@@ -3,3 +3,4 @@ export * from './Button';
 export * from './Card';
 export * from './Avatar';
 export * from './ProgressBar';
+export * from './QueryState';
