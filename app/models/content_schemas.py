@@ -599,7 +599,13 @@ class AnnouncementUpdate(BaseModel):
 
 
 class AnnouncementListItem(BaseModel):
-    """Card shape for the announcements list."""
+    """Card shape for the announcements list.
+
+    `publish_at` is the start of the announcement's display range (validated
+    against `expires_at`, the end, in `announcement_service.update`); the
+    mobile client formats the pair as "Mon DD – Mon DD", or "Mon DD → —" when
+    `expires_at` is null (open-ended).
+    """
 
     id: uuid.UUID
     title: str
@@ -608,11 +614,11 @@ class AnnouncementListItem(BaseModel):
     pinned: bool
     publish_at: datetime | None
     created_at: datetime
+    expires_at: datetime | None = None
 
 
 class AnnouncementDetail(AnnouncementListItem):
     body: str
-    expires_at: datetime | None
 
 
 class AnnouncementAdminItem(AnnouncementDetail):
