@@ -325,6 +325,107 @@ async def test_history(client, engine):
     )
     rows = (await client.get("/api/v1/me/history", headers=v)).json()
     assert len(rows) == 1
+    assert rows[0]["sermon_id"] == sid
+
+
+async def test_history_series_scope_is_per_user(client, engine):
+    """`series_id` scoping must not leak another caller's progress rows."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Shared Series"}, headers=ed
+    )).json()
+    sid = await publish(
+        client, ed, mgr, title="Ep1", series_id=series["id"], episode_number=1
+    )
+    a = await make_viewer(client, "a@example.com")
+    b = await make_viewer(client, "b@example.com")
+
+    await client.post(
+        f"/api/v1/sermons/{sid}/progress",
+        json={"position_seconds": 10, "watched_delta": 10}, headers=a,
+    )
+    rows_a = (await client.get(
+        f"/api/v1/me/history?series_id={series['id']}", headers=a
+    )).json()
+    rows_b = (await client.get(
+        f"/api/v1/me/history?series_id={series['id']}", headers=b
+    )).json()
+    assert len(rows_a) == 1 and rows_a[0]["sermon_id"] == sid
+    assert rows_b == []
+
+
+async def test_history_series_scope_exceeds_hundred_row_cap(client, engine):
+    """finding (decision 6): the app-wide `/me/history` cap is 100 rows, which
+    mislabels an old, already-watched early episode as "new" once a series has
+    more history than that. A `series_id`-scoped read must return every row
+    for that series, not just the first 100 — proven here with 105.
+
+    Sermons/progress are inserted directly via the ORM (bypassing the
+    create->submit->approve->publish HTTP workflow used elsewhere in this
+    file) purely for test speed; the assertions still exercise the real
+    `/me/history` endpoint end-to-end.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import PlaybackSession, Sermon, SermonStatus, User
+
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Long Series"}, headers=ed
+    )).json()
+    other_sid = await publish(client, ed, mgr, title="Standalone, different series")
+    v = await make_viewer(client)
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        editor = (await s.execute(
+            select(User).where(User.email == "e@example.com")
+        )).scalar_one()
+        viewer = (await s.execute(
+            select(User).where(User.email == "viewer@example.com")
+        )).scalar_one()
+        series_id = _uuid.UUID(series["id"])
+
+        sermon_ids = []
+        for i in range(105):
+            sermon = Sermon(
+                title=f"Episode {i}",
+                series_id=series_id,
+                episode_number=i + 1,
+                status=SermonStatus.PUBLISHED,
+                created_by=editor.id,
+            )
+            s.add(sermon)
+            await s.flush()
+            sermon_ids.append(sermon.id)
+        for sermon_id in sermon_ids:
+            s.add(PlaybackSession(
+                user_id=viewer.id, sermon_id=sermon_id, position_seconds=10
+            ))
+        # A watched row outside the series must not appear in the scoped read.
+        s.add(PlaybackSession(
+            user_id=viewer.id, sermon_id=_uuid.UUID(other_sid), position_seconds=5
+        ))
+        await s.commit()
+
+    rows = (await client.get(
+        f"/api/v1/me/history?series_id={series['id']}", headers=v
+    )).json()
+    assert len(rows) == 105
+    returned = {r["sermon_id"] for r in rows}
+    assert other_sid not in returned
+
+    # Unscoped read is unchanged: still capped at `limit`, up to the app-wide
+    # ceiling of 100 (default 50 — see `watch_history`'s `Query`).
+    unscoped = (await client.get(
+        "/api/v1/me/history?limit=100", headers=v
+    )).json()
+    assert len(unscoped) == 100
 
 
 # ── admin analytics ───────────────────────────────────────────────────────────
