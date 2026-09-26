@@ -813,7 +813,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Watch History */
+        /**
+         * Watch History
+         * @description Caller's own playback history, most-recently-played first.
+         *
+         *     With no `series_id`, the existing app-wide reading: capped at `limit`
+         *     (<=100). With `series_id`, every one of the caller's progress rows for
+         *     sermons in that series — `limit` is ignored, since the series screen
+         *     needs every episode's real status and a 100-row app-wide cap can hide an
+         *     old episode's completed watch behind the cap. See
+         *     `analytics_service.history` for the (much higher) safety ceiling that
+         *     still applies.
+         */
         get: operations["watch_history_api_v1_me_history_get"];
         put?: never;
         post?: never;
@@ -880,6 +891,11 @@ export interface paths {
          * Search
          * @description Search published sermons. Every filter is optional — with no `q` this is
          *     a filtered browse.
+         *
+         *     With a non-empty `q`, the response also groups in series and speaker
+         *     matches (small, fixed-limit, not paginated) for the mobile search
+         *     screen's three-way sermons/series/speakers layout. With no `q`, those
+         *     groups are empty — filtered-browse mode is sermons-only, unchanged.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -1793,6 +1809,11 @@ export interface components {
         /**
          * AnnouncementListItem
          * @description Card shape for the announcements list.
+         *
+         *     `publish_at` is the start of the announcement's display range (validated
+         *     against `expires_at`, the end, in `announcement_service.update`); the
+         *     mobile client formats the pair as "Mon DD – Mon DD", or "Mon DD → —" when
+         *     `expires_at` is null (open-ended).
          */
         AnnouncementListItem: {
             /**
@@ -1802,6 +1823,8 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * Format: uuid
@@ -2356,6 +2379,20 @@ export interface components {
             query: string;
             /** Results */
             results: components["schemas"]["SermonListItem"][];
+            /** Series */
+            series?: components["schemas"]["SeriesPublic"][];
+            /**
+             * Series Total
+             * @default 0
+             */
+            series_total: number;
+            /** Speakers */
+            speakers?: components["schemas"]["SpeakerPublic"][];
+            /**
+             * Speakers Total
+             * @default 0
+             */
+            speakers_total: number;
             /** Total */
             total: number;
         };
@@ -4461,6 +4498,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                series_id?: string | null;
             };
             header?: never;
             path?: never;
