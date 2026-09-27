@@ -5,16 +5,18 @@ import { colors } from '../../theme/colors';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import type { AnnouncementListItem } from '../../lib/query/hooks/useAnnouncements';
+import { formatAnnouncementDateRange } from '../../lib/format/announcementDateRange';
 
 export interface AnnouncementCardProps {
   announcement: AnnouncementListItem;
 }
 
 /**
- * Announcement card (design spec 1k): image, title, summary text, and — for
- * a pinned item — the wheat-notice treatment (`colors.status.wheat`, gold
- * dot + tinted card). P10: built inline here only, never promoted to a
- * shared "notice" component — one confirmed MVP use.
+ * Announcement card (design spec 1k): image, title, date range, summary
+ * text, and — for a pinned item — the wheat-notice treatment
+ * (`colors.status.wheat`, gold dot + tinted card). P10: built inline here
+ * only, never promoted to a shared "notice" component — one confirmed MVP
+ * use.
  *
  * `announcement.description` ("short subtitle for list cards" —
  * `Announcement.description`'s own column comment in `app/models/models.py`)
@@ -24,13 +26,14 @@ export interface AnnouncementCardProps {
  * "body" and "description", it's the only summary text the wire actually
  * has.
  *
- * No date range is rendered here — see `lib/format/announcementDateRange.ts`'s
- * docstring and this slice's `status.md` entry: the list contract has no
- * `expires_at` to format, and fanning out a per-row detail call to backfill
- * it is the fan-out pattern this plan says not to invent.
+ * The date range pairs `publish_at` (start) with `expires_at` (end, now
+ * additive on `AnnouncementListItem` — Decision 5) via
+ * `lib/format/announcementDateRange.ts`, rendering "Mon DD → —" for an
+ * open-ended announcement (`expires_at` null).
  */
 export function AnnouncementCard({ announcement }: AnnouncementCardProps) {
   const pinned = announcement.pinned;
+  const dateRange = formatAnnouncementDateRange(announcement.publish_at, announcement.expires_at);
 
   return (
     <View style={[styles.card, pinned ? styles.pinnedCard : styles.standardCard]} accessibilityRole="summary">
@@ -52,6 +55,9 @@ export function AnnouncementCard({ announcement }: AnnouncementCardProps) {
         ) : null}
         <AppText variant="display.compact" numberOfLines={2}>
           {announcement.title}
+        </AppText>
+        <AppText variant="ui.label" tone="secondary" style={styles.dateRange}>
+          {dateRange}
         </AppText>
         {announcement.description ? (
           <AppText variant="ui.body" tone="secondary" style={styles.summary}>
@@ -100,6 +106,9 @@ const styles = StyleSheet.create({
   },
   pinnedLabel: {
     textTransform: 'uppercase',
+  },
+  dateRange: {
+    marginTop: 0,
   },
   summary: {
     marginTop: 0,

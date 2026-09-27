@@ -23,18 +23,22 @@ import { buildHistoryMap, deriveEpisodeStatus } from '../../lib/format/episodeSt
  * renumbers, sorts, or hides a row itself; an unnumbered episode
  * (`episode_number: null`) renders with no number, never a placeholder
  * digit. Per-episode status ("watched" / "17:04 left" / "new") is derived
- * from one `GET /me/history` call, not a fetch per episode — see
- * `lib/format/episodeStatus.ts`. If that call fails, episodes render with no
- * status label at all rather than fabricating "new" for everything (a
- * `/me/history` 500 must not read as "you haven't watched any of this");
- * the primary series/episode content still renders and errors normally.
+ * from one `GET /me/history?series_id=<id>` call, not a fetch per episode —
+ * see `lib/format/episodeStatus.ts`. Scoped to this series (Decision 6)
+ * rather than the app-wide capped read, so status stays accurate
+ * regardless of episode count — an old watch on a long-running series no
+ * longer falls off a 100-row app-wide cap and misreads as "new". If that
+ * call fails, episodes render with no status label at all rather than
+ * fabricating "new" for everything (a `/me/history` 500 must not read as
+ * "you haven't watched any of this"); the primary series/episode content
+ * still renders and errors normally.
  */
 export default function SeriesDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const series = useSeriesDetail(id);
   const episodes = useSeriesEpisodes(id);
-  const history = useWatchHistory();
+  const history = useWatchHistory(id);
 
   const historyMap = useMemo(() => buildHistoryMap(history.data ?? []), [history.data]);
 

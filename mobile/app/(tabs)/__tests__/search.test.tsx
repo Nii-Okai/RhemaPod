@@ -66,6 +66,39 @@ const sermonResults = {
       locked: false,
     },
   ],
+  series: [],
+  series_total: 0,
+  speakers: [],
+  speakers_total: 0,
+};
+
+// Decision 4: grouped response with all three sections populated.
+const groupedResults = {
+  ...sermonResults,
+  results: [sermonResults.results[0]],
+  series: [
+    {
+      id: 'series-1',
+      title: 'Storm Stories',
+      description: null,
+      thumbnail_url: null,
+      episode_count: 6,
+      category_id: null,
+      category_name: null,
+      status: 'PUBLISHED',
+      tier: 'FREE',
+    },
+  ],
+  series_total: 1,
+  speakers: [
+    {
+      id: 'speaker-1',
+      name: 'Ada Nwosu',
+      bio: 'Teaching pastor.',
+      sermon_count: 12,
+    },
+  ],
+  speakers_total: 1,
 };
 
 beforeEach(() => {
@@ -163,11 +196,21 @@ describe('SearchScreen — populated (suggestions + grouped results)', () => {
 });
 
 describe('SearchScreen — no results', () => {
-  it('shows the no-results copy when the search comes back empty', async () => {
+  it('shows the no-results copy when every group (sermons/series/speakers) comes back empty', async () => {
     mockedGet.mockImplementation((path: string) =>
       path === '/search/suggest'
         ? Promise.resolve([])
-        : Promise.resolve({ query: 'xyzzy', total: 0, limit: 20, offset: 0, results: [] }),
+        : Promise.resolve({
+            query: 'xyzzy',
+            total: 0,
+            limit: 20,
+            offset: 0,
+            results: [],
+            series: [],
+            series_total: 0,
+            speakers: [],
+            speakers_total: 0,
+          }),
     );
 
     const { getByLabelText, findByText } = renderSearch();
@@ -176,7 +219,54 @@ describe('SearchScreen — no results', () => {
       jest.advanceTimersByTime(300);
     });
 
-    await findByText('No sermons match your search.');
+    await findByText('No results match your search.');
+  });
+});
+
+describe('SearchScreen — grouped results (Decision 4)', () => {
+  it('renders sermons, series, and speakers as three grouped sections and navigates from each', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(groupedResults),
+    );
+
+    const { getByLabelText, findByText, getByText } = renderSearch();
+    fireEvent.changeText(getByLabelText('Search'), 'storm');
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    await findByText('sermons · 1');
+    expect(getByText('series · 1')).toBeTruthy();
+    expect(getByText('speakers · 1')).toBeTruthy();
+
+    expect(getByText('Anchored in the Storm')).toBeTruthy();
+    expect(getByText('Storm Stories')).toBeTruthy();
+    expect(getByText('Ada Nwosu')).toBeTruthy();
+
+    fireEvent.press(getByText('Storm Stories'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/series/[id]', params: { id: 'series-1' } });
+
+    fireEvent.press(getByText('Ada Nwosu'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/speaker/[id]',
+      params: { id: 'speaker-1', name: 'Ada Nwosu', bio: 'Teaching pastor.' },
+    });
+  });
+
+  it('omits a group section entirely when that group has no matches', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(sermonResults),
+    );
+
+    const { getByLabelText, findByText, queryByText } = renderSearch();
+    fireEvent.changeText(getByLabelText('Search'), 'storm');
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    await findByText('sermons · 2');
+    expect(queryByText(/^series ·/)).toBeNull();
+    expect(queryByText(/^speakers ·/)).toBeNull();
   });
 });
 

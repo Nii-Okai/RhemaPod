@@ -134,11 +134,22 @@ describe('SeriesDetailScreen — populated', () => {
     expect(getByText('20:00 left')).toBeTruthy();
     expect(getByText('new')).toBeTruthy();
 
+    expect(mockedGet).toHaveBeenCalledTimes(3);
+    expect(mockedGet.mock.calls.filter(([path]) => path === '/me/history')).toHaveLength(1);
+  });
+
+  it('scopes the /me/history call to this series (Decision 6) instead of the app-wide capped read', async () => {
+    mockHappyPath();
+    const { findByText } = renderScreen();
+    await findByText('Part One');
+
+    // Scoped by series_id, not the app-wide `limit` — see useWatchHistory's
+    // scoped form, so an old watch on a long-running series can't misread
+    // as "new" once it falls off the 100-row app-wide cap.
     expect(mockedGet).toHaveBeenCalledWith(
       '/me/history',
-      expect.objectContaining({ params: { query: { limit: 100 } } }),
+      expect.objectContaining({ params: { query: { series_id: 's1' } } }),
     );
-    expect(mockedGet.mock.calls.filter(([path]) => path === '/me/history')).toHaveLength(1);
   });
 
   it('navigates to /sermon/[id] on episode tap', async () => {
