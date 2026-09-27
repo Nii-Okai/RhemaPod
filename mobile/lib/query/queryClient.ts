@@ -78,13 +78,15 @@ export const queryKeys = {
    * scoped to the authenticated caller and nothing else needs that scoping split out):
    * `GET /me/continue-watching` (started-but-unfinished, capped at the endpoint's own
    * default of 10 — W4.1's Home shelf) and `GET /me/history` (up to 100 rows,
-   * most-recent-first — W4.4's series-episode status derivation). Distinct endpoints,
-   * distinct semantics, same `/me/*` scoping.
+   * most-recent-first — W4.4's series-episode status derivation, or, scoped to a
+   * `series_id`, up to `SERIES_HISTORY_LIMIT` rows for that series alone — Decision 6).
+   * Distinct endpoints, distinct semantics, same `/me/*` scoping.
    */
   me: {
     all: ['me'] as const,
     continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
     history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
+    historyForSeries: (seriesId: string) => [...queryKeys.me.all, 'history', 'series', seriesId] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are

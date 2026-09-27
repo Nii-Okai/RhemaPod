@@ -24,4 +24,15 @@ describe('useWatchHistory', () => {
       expect.objectContaining({ params: { query: { limit: WATCH_HISTORY_LIMIT } } }),
     );
   });
+
+  it('Decision 6: calls GET /me/history scoped to series_id, not the app-wide limit, when a seriesId is given', async () => {
+    mockedGet.mockResolvedValue([]);
+    const { result } = renderHook(() => useWatchHistory('series-1'), { wrapper: wrapWithQueryClient() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedGet).toHaveBeenCalledTimes(1);
+    expect(mockedGet).toHaveBeenCalledWith(
+      '/me/history',
+      expect.objectContaining({ params: { query: { series_id: 'series-1' } } }),
+    );
+  });
 });

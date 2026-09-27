@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, LinkButton, QueryState } from '../../components';
 import { SermonResultRow } from '../../components/sermon/SermonResultRow';
+import { SpeakerListRow } from './_browse/SpeakerListRow';
+import { SeriesListCard } from './_series/SeriesListCard';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useDebouncedValue } from '../../lib/hooks/useDebouncedValue';
@@ -18,11 +20,14 @@ const DEBOUNCE_MS = 300;
  * W4.3 — an undebounced box would self-throttle against the per-user rate
  * limiter, L14).
  *
- * BACKEND GAP (see status.md): `/search` returns `SermonListItem[]` only —
- * no series or speaker entities — so this can only render a single
- * "sermons" result group, not the design's three-way sermon/series/speaker
- * grouping. That grouping needs a backend contract change this slice cannot
- * invent.
+ * Decision 4: `/search` now returns `series`/`speakers` alongside the
+ * sermon `results`, so this renders three grouped sections (sermons /
+ * series / speakers) instead of sermons-only. Each group's label shows the
+ * count of rows actually rendered here (not the backend's uncapped
+ * `series_total`/`speakers_total`) — same convention the sermons group
+ * label already used pre-Decision-4 (rendered count, not the paginated
+ * `total`). A group section is omitted entirely when it has no matches,
+ * rather than rendering an empty "series · 0" header.
  */
 export default function SearchScreen() {
   const router = useRouter();
@@ -36,8 +41,24 @@ export default function SearchScreen() {
 
   const suggestions = (suggest.data ?? []).filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
 
+  const sermons = results.data?.results ?? [];
+  const series = results.data?.series ?? [];
+  const speakers = results.data?.speakers ?? [];
+  const totalMatches = sermons.length + series.length + speakers.length;
+
   function goToSermon(id: string) {
     router.push({ pathname: '/sermon/[id]', params: { id } });
+  }
+
+  function goToSeries(id: string) {
+    router.push({ pathname: '/series/[id]', params: { id } });
+  }
+
+  function goToSpeaker(speaker: { id: string; name: string; bio: string | null }) {
+    router.push({
+      pathname: '/speaker/[id]',
+      params: { id: speaker.id, name: speaker.name, bio: speaker.bio ?? '' },
+    });
   }
 
   return (
@@ -85,18 +106,44 @@ export default function SearchScreen() {
                 isLoading={results.isLoading}
                 isError={results.isError}
                 error={results.error}
-                isEmpty={!results.isLoading && !results.isError && (results.data?.results.length ?? 0) === 0}
-                emptyTitle="No sermons match your search."
+                isEmpty={!results.isLoading && !results.isError && totalMatches === 0}
+                emptyTitle="No results match your search."
                 emptyDescription="Try a different title, speaker, or topic."
                 onRetry={() => results.refetch()}
                 loadingLabel="Searching"
               >
-                <AppText variant="mono.meta" tone="tertiary" style={styles.groupLabel}>
-                  sermons · {results.data?.results.length ?? 0}
-                </AppText>
-                {(results.data?.results ?? []).map((sermon) => (
-                  <SermonResultRow key={sermon.id} sermon={sermon} onPress={() => goToSermon(sermon.id)} />
-                ))}
+                {sermons.length > 0 ? (
+                  <View style={styles.group}>
+                    <AppText variant="mono.meta" tone="tertiary" style={styles.groupLabel}>
+                      sermons · {sermons.length}
+                    </AppText>
+                    {sermons.map((sermon) => (
+                      <SermonResultRow key={sermon.id} sermon={sermon} onPress={() => goToSermon(sermon.id)} />
+                    ))}
+                  </View>
+                ) : null}
+
+                {series.length > 0 ? (
+                  <View style={styles.group}>
+                    <AppText variant="mono.meta" tone="tertiary" style={styles.groupLabel}>
+                      series · {series.length}
+                    </AppText>
+                    {series.map((item) => (
+                      <SeriesListCard key={item.id} series={item} onPress={() => goToSeries(item.id)} />
+                    ))}
+                  </View>
+                ) : null}
+
+                {speakers.length > 0 ? (
+                  <View style={styles.group}>
+                    <AppText variant="mono.meta" tone="tertiary" style={styles.groupLabel}>
+                      speakers · {speakers.length}
+                    </AppText>
+                    {speakers.map((speaker) => (
+                      <SpeakerListRow key={speaker.id} speaker={speaker} onPress={() => goToSpeaker(speaker)} />
+                    ))}
+                  </View>
+                ) : null}
               </QueryState>
             </View>
           </>
@@ -145,6 +192,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   section: {
+    marginBottom: spacing.lg,
+  },
+  group: {
     marginBottom: spacing.lg,
   },
   groupLabel: {
