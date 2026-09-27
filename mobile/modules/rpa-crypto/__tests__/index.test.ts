@@ -105,6 +105,47 @@ describe('rpa-crypto JS wrapper', () => {
     await expect(readHeaderInfo('a')).rejects.toMatchObject({ code: 'E_RPA1_UNKNOWN' });
   });
 
+  /**
+   * Regression test for a real bug `reviewer-gilfoyle` found (traced through
+   * `node_modules/expo-modules-core/ios/Core/Functions/{Async,Concurrent}FunctionDefinition.swift`):
+   * the iOS native module's private `RpaError` type did not actually subclass
+   * `ExpoModulesCore.Exception` (it only conformed to `Error`/`CustomNSError`), and those
+   * catch blocks only recognize `catch let error as Exception` — a non-`Exception` throw
+   * falls through to the generic branch and gets wrapped in `UnexpectedException` instead,
+   * which does NOT forward the original `E_RPA1_*` code. `UnexpectedException` doesn't
+   * override `Exception.code`, so it falls back to `Exception`'s own default —
+   * `errorCodeFromString(name)` on the class name "UnexpectedException" — which strips the
+   * trailing "Exception", inserts underscores before capitals, and uppercases:
+   * `errorCodeFromString.swift`'s own documented transform, confirmed by reading that file
+   * directly, not guessed. That yields exactly `"ERR_UNEXPECTED"`.
+   *
+   * The bug is now fixed natively (`RpaError` subclasses `Exception` for real, mirroring
+   * `RpaException : CodedException` on Android) — this test doesn't exercise the fix
+   * itself (there is no Swift toolchain in this sandbox to compile and run it against),
+   * it proves the *wrapper* would have degraded safely even before that fix, and continues
+   * to after it, against any native rejection shaped like the real pre-fix bug: a real
+   * `code`, just the wrong one, never a thrown-away/ignored code and never an unhandled
+   * exception reaching app code.
+   */
+  it('degrades safely (never crashes, never silently claims the wrong RpaErrorCode) against the exact shape the pre-fix iOS bridge bug produced for every native throw ("ERR_UNEXPECTED", not the real E_RPA1_* code)', async () => {
+    const nativeUnexpectedExceptionShape = Object.assign(
+      new Error('This file was encrypted with a different install key (reinstall or key loss)'),
+      { code: 'ERR_UNEXPECTED' },
+    );
+    mockNative().decryptFile.mockRejectedValueOnce(nativeUnexpectedExceptionShape);
+
+    const rejection = await decryptFile('a', 'b', 'key').catch((err: unknown) => err);
+    expect(rejection).toBeInstanceOf(RpaCryptoError);
+    expect((rejection as RpaCryptoError).code).toBe('E_RPA1_UNKNOWN');
+    // Never silently reports the intended E_RPA1_KEY_MISMATCH when the bridge didn't
+    // actually deliver it — that would be worse than "unknown": a confidently wrong
+    // diagnosis (e.g. `downloadManager.ts` would treat this as generic corruption, not
+    // key loss, and tell the user to re-download rather than the specific "your key
+    // changed" message — still recoverable, never a crash, just the wrong message, which
+    // is exactly what the native-side fix corrects).
+    expect((rejection as RpaCryptoError).code).not.toBe('E_RPA1_KEY_MISMATCH');
+  });
+
   it('propagates a plain string thrown by native code without crashing the wrapper', async () => {
     mockNative().generateInstallKeyBase64.mockRejectedValueOnce('a raw string rejection');
     await expect(generateInstallKeyBase64()).rejects.toBeInstanceOf(RpaCryptoError);

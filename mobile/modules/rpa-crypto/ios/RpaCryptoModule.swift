@@ -67,16 +67,37 @@ private enum RpaConst {
   static let defaultChunkSize: UInt32 = 256 * 1024
 }
 
-/** Thrown as an `Exception` with a stable `code` the JS side switches on (see `modules/rpa-crypto/index.ts`). */
-private struct RpaError: Error, CustomNSError {
-  let code: String
-  let message: String
+/**
+ * A real `ExpoModulesCore.Exception` subclass with a stable `code` the JS side switches
+ * on (see `modules/rpa-crypto/index.ts`) — mirrors `android/.../RpaCryptoModule.kt`'s
+ * `RpaException : CodedException(...)` exactly, and for the same reason.
+ *
+ * The previous shape here (`Error, CustomNSError`) was a real, must-fix bug caught by
+ * `reviewer-gilfoyle`: `AsyncFunctionDefinition.swift`'s catch blocks only recognize
+ * `catch let error as Exception` — a plain `CustomNSError` conformance falls through to
+ * the generic `catch { callback(.failure(UnexpectedException(error))) }` branch instead,
+ * so on a real iPhone every one of this module's throws (including
+ * `E_RPA1_KEY_MISMATCH`) would have surfaced to JS as a generic, uncoded exception
+ * instead of the specific `RpaErrorCode` `lib/downloads/downloadManager.ts` switches on
+ * to degrade key-loss gracefully. `Exception` is a class (not a protocol) in this SDK
+ * version, so the fix is to subclass it — `GenericException`'s own shape in
+ * `node_modules/expo-modules-core/ios/Core/Exceptions/GenericException.swift` is the
+ * confirmed-correct pattern this mirrors (including forwarding `file`/`line`/`function`
+ * to `super.init`, so `Exception.origin` still points at this module's own throw site
+ * rather than `Exception.swift`'s default-argument definition site).
+ */
+private final class RpaError: Exception {
+  private let rpaCode: String
+  private let rpaMessage: String
 
-  static var errorDomain: String { "RpaCrypto" }
-  var errorCode: Int { 1 }
-  var errorUserInfo: [String: Any] {
-    ["code": code, "message": message, NSLocalizedDescriptionKey: message]
+  init(code: String, message: String, file: String = #fileID, line: UInt = #line, function: String = #function) {
+    self.rpaCode = code
+    self.rpaMessage = message
+    super.init(file: file, line: line, function: function)
   }
+
+  override var code: String { rpaCode }
+  override var reason: String { rpaMessage }
 }
 
 private struct RpaHeader {
