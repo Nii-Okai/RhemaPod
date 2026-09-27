@@ -25,6 +25,26 @@ const OPTIONS: SecureStore.SecureStoreOptions = {
 };
 
 /**
+ * Memoizes the in-flight generate-and-persist step only — never the read-only fast path
+ * above it — so two concurrent first-ever-download calls (both seeing no key yet) share
+ * exactly one `generateInstallKeyBase64` + `setItemAsync` instead of each generating its
+ * own key and racing on the write. `useDownloads.ts`'s `startupSweepPromise` is the same
+ * pattern for the same reason (one shared in-flight op, not per-caller work), one level
+ * up the stack. Cleared in `finally` (success or failure) so a later, non-concurrent call
+ * always re-reads SecureStore fresh rather than trusting a stale memoized value forever.
+ *
+ * Found by `reviewer-gilfoyle`: without this, two downloads started back-to-back on a
+ * fresh install could each generate a different key, both call `setItemAsync` with the
+ * same storage key, and whichever write lands second silently wins — orphaning the file
+ * encrypted under the first (now-unrecoverable, since `getOrCreateInstallKey` never
+ * returns it again) key. Narrow window (first-download-ever only; once a key is
+ * persisted, every later call short-circuits on the read above) but real, since this
+ * branch explicitly supports concurrent downloads (`useDownloads.ts`'s
+ * `resumeQueuedDownloads` has no concurrency cap).
+ */
+let pendingCreate: Promise<string> | null = null;
+
+/**
  * Returns the existing install key, or generates and persists a new one if none is
  * found. A "none found" result covers both "first ever download on this install" and
  * "the Keychain/Keystore entry is gone" (reinstall, user cleared app data, or the OS
@@ -37,9 +57,23 @@ export async function getOrCreateInstallKey(): Promise<string> {
   const existing = await SecureStore.getItemAsync(INSTALL_KEY_STORAGE_KEY, OPTIONS);
   if (existing) return existing;
 
-  const generated = await generateInstallKeyBase64();
-  await SecureStore.setItemAsync(INSTALL_KEY_STORAGE_KEY, generated, OPTIONS);
-  return generated;
+  if (!pendingCreate) {
+    pendingCreate = (async () => {
+      try {
+        const generated = await generateInstallKeyBase64();
+        await SecureStore.setItemAsync(INSTALL_KEY_STORAGE_KEY, generated, OPTIONS);
+        return generated;
+      } finally {
+        pendingCreate = null;
+      }
+    })();
+  }
+  return pendingCreate;
+}
+
+/** Test-only: clears the in-flight-create memo between tests. Never called by app code. */
+export function __resetPendingCreateForTests(): void {
+  pendingCreate = null;
 }
 
 /**
