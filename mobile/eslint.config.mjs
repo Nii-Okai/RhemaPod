@@ -55,6 +55,9 @@ const eslintConfig = defineConfig([
         // search-suggest debounce (lib/hooks/useDebouncedValue.ts).
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        // Same rationale, first real caller: W4.5's `useDownloads.ts` list-refresh poll.
+        setInterval: "readonly",
+        clearInterval: "readonly",
       },
     },
     plugins: {
