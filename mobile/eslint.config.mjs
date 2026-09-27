@@ -81,6 +81,19 @@ const eslintConfig = defineConfig([
       },
     },
   },
+  {
+    // Test-only helpers that deliberately live outside `__tests__/**` and don't match
+    // `*.test.*` (so Jest's own test-file glob never collects them as a test in their
+    // own right — see e.g. `lib/crypto/testSupport/rpa1ReferenceCodec.ts`'s docstring).
+    // They still only ever run under Jest's `testEnvironment: 'node'`, so they need the
+    // same Node globals (`Buffer`, `TextEncoder`, `node:crypto`, ...) as real test files.
+    files: ["**/testSupport/**/*.{js,ts,tsx}"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 ]);
 
 export default eslintConfig;
