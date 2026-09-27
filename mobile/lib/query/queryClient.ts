@@ -87,6 +87,22 @@ export const queryKeys = {
     continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
     history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
     historyForSeries: (seriesId: string) => [...queryKeys.me.all, 'history', 'series', seriesId] as const,
+    // `GET /auth/me` (W4.6) — a different path prefix than the rest of this domain's
+    // `/me/*` reads, but the same "the caller's own data" scoping, so it's folded in here
+    // rather than opening a new top-level domain for one endpoint.
+    profile: () => [...queryKeys.me.all, 'profile'] as const,
+  },
+  /**
+   * W4.6 — the two distinct note reads this app has: every note the caller owns
+   * (Profile & Settings' Library "Notes" row, and the tablet two-pane "Your notes"
+   * panel) vs. one sermon's own notes (the eventual W4.2 Player drawer). Mirrors the
+   * `sermons` shape's `all`-prefix convention, adapted since neither read takes the
+   * same shape of params as a generic paginated list.
+   */
+  notes: {
+    all: ['notes'] as const,
+    mine: () => [...queryKeys.notes.all, 'mine'] as const,
+    forSermon: (sermonId: string) => [...queryKeys.notes.all, 'sermon', sermonId] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
