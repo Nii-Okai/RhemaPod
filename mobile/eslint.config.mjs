@@ -55,6 +55,10 @@ const eslintConfig = defineConfig([
         // search-suggest debounce (lib/hooks/useDebouncedValue.ts).
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        // First real caller: W4.2's progress-flush interval and sleep-timer countdown
+        // (app/player/_player/useProgressFlush.ts, useSleepTimer.ts).
+        setInterval: "readonly",
+        clearInterval: "readonly",
       },
     },
     plugins: {
@@ -73,7 +77,11 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["**/__tests__/**/*.{js,ts,tsx}", "**/*.test.{js,ts,tsx}"],
+    // `__mocks__/**` (Jest manual mocks, not test files themselves) needs the same
+    // `jest` global as `__tests__/**` whenever a mock uses `jest.fn()` — first real
+    // caller: `__mocks__/expo-video.tsx` (W4.2). The pre-existing `@expo/vector-icons`
+    // mock never needed it, which is why this gap was invisible until now.
+    files: ["**/__tests__/**/*.{js,ts,tsx}", "**/*.test.{js,ts,tsx}", "**/__mocks__/**/*.{js,ts,tsx}"],
     languageOptions: {
       globals: {
         ...globals.node,
