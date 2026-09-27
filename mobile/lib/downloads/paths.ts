@@ -53,6 +53,18 @@ export function playbackTempFilePath(sermonId: string): string {
   return `${playbackTmpDir()}${sermonId}-${random}.pcm-tmp`;
 }
 
+/**
+ * The native module's own atomic-write companion path (`dstUri + '.part'`, see both
+ * `RpaCryptoModule.swift`/`.kt`'s `encryptFile`/`decryptFile`) — written first, then
+ * renamed to the real path on success. A process kill strictly between those two steps
+ * leaves this file behind, at this exact path, forever, unless something targets it
+ * explicitly. Every cleanup call site that deletes an encrypted or decrypted-playback
+ * path must delete this companion too, not just the final path.
+ */
+export function partFilePath(uri: string): string {
+  return `${uri}.part`;
+}
+
 export async function ensureDir(dir: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(dir);
   if (!info.exists) {
@@ -63,4 +75,19 @@ export async function ensureDir(dir: string): Promise<void> {
 /** Deletes a file if it exists; a no-op (never throws) if it doesn't — every cleanup call site wants this, not a `getInfoAsync` + `deleteAsync` pair repeated everywhere. */
 export async function deleteIfExists(uri: string): Promise<void> {
   await FileSystem.deleteAsync(uri, { idempotent: true });
+}
+
+/**
+ * Deletes every file directly inside `dir` (non-recursive — every directory this module
+ * manages is flat), tolerating a directory that doesn't exist yet. Used at startup to
+ * clear the entire playback-temp directory unconditionally — every file there is a
+ * single-playback-session artifact by construction (see `playbackTempFilePath`'s random
+ * name), so unlike the downloads/download-tmp directories (reconciled row-by-row against
+ * the DB in `startupSweep`), nothing here is ever worth keeping across an app restart.
+ */
+export async function clearDirectoryContents(dir: string): Promise<void> {
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) return;
+  const entries = await FileSystem.readDirectoryAsync(dir);
+  await Promise.all(entries.map((name) => FileSystem.deleteAsync(`${dir}${name}`, { idempotent: true })));
 }

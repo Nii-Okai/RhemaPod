@@ -44,12 +44,15 @@ export interface DownloadManagerDeps {
     encryptedFilePath: typeof paths.encryptedFilePath;
     tmpDownloadFilePath: typeof paths.tmpDownloadFilePath;
     playbackTempFilePath: typeof paths.playbackTempFilePath;
+    partFilePath: typeof paths.partFilePath;
     downloadsDir: typeof paths.downloadsDir;
     downloadTmpDir: typeof paths.downloadTmpDir;
     playbackTmpDir: typeof paths.playbackTmpDir;
   };
   ensureDir: (dir: string) => Promise<void>;
   deleteFile: (uri: string) => Promise<void>;
+  /** Deletes every file directly inside `dir` — see `paths.clearDirectoryContents`. */
+  clearDirectory: (dir: string) => Promise<void>;
   getFileSize: (uri: string) => Promise<number>;
   /** Fetches the signed audio URL for a sermon. Rejects with `ApiError` on any HTTP/network failure — this manager classifies that itself, callers don't need to. */
   fetchAudioUrl: (sermonId: string) => Promise<string>;
@@ -104,6 +107,7 @@ function defaultDeps(): DownloadManagerDeps {
     paths,
     ensureDir: paths.ensureDir,
     deleteFile: paths.deleteIfExists,
+    clearDirectory: paths.clearDirectoryContents,
     getFileSize: async (uri: string) => {
       const info = await FileSystem.getInfoAsync(uri, { size: true });
       return info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
@@ -220,6 +224,11 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: encryptResult.keyIdHex });
     } catch (err) {
       await deps.deleteFile(tmpPath);
+      // A kill strictly mid-native-encrypt leaves `encryptedPath + '.part'` behind (the
+      // native module's own atomic-write staging file) — never the final path itself
+      // (that only exists after a successful rename), but the `.part` companion is real
+      // and needs the same cleanup or it leaks forever.
+      await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
       const { reason, message } = classifyStartError(err);
       await deps.db.markFailed(sermonId, reason, message);
     }
@@ -241,12 +250,14 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
 
     await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
     await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
+    await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
     await deps.db.upsertQueued(sermonId, existing.title);
     await runDownload(sermonId);
   }
 
   async function deleteDownload(sermonId: string): Promise<void> {
     await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
+    await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
     await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
     await deps.db.deleteDownload(sermonId);
   }
@@ -279,18 +290,24 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   /**
    * Reconciles rows left in `queued`/`downloading` by a process that never got to finish
    * them (killed, crashed, force-quit mid-transfer) — called once at app start, before
-   * anything else touches the downloads table. Any partial plaintext or (in principle,
-   * defense-in-depth) partial encrypted file for these rows is deleted; the row is marked
-   * `failed`/`interrupted` with a Retry-able reason, never left silently "downloading"
-   * forever or, worse, treated as `ready`.
+   * anything else touches the downloads table. Any partial plaintext, partial encrypted
+   * file, or stray native `.part` staging file for these rows is deleted; the row is
+   * marked `failed`/`interrupted` with a Retry-able reason, never left silently
+   * "downloading" forever or, worse, treated as `ready`. Also unconditionally clears the
+   * entire playback-temp directory — every file there is a single-session artifact by
+   * construction (see `paths.playbackTempFilePath`), so a crash during a previous offline
+   * playback session can otherwise leave a plaintext file behind indefinitely.
    */
   async function startupSweep(): Promise<void> {
     const stale = await deps.db.listActiveDownloads();
     for (const record of stale) {
+      const encryptedPath = deps.paths.encryptedFilePath(record.sermonId);
       await deps.deleteFile(deps.paths.tmpDownloadFilePath(record.sermonId));
-      await deps.deleteFile(deps.paths.encryptedFilePath(record.sermonId));
+      await deps.deleteFile(encryptedPath);
+      await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
       await deps.db.markFailed(record.sermonId, 'interrupted', 'The download was interrupted. Tap Retry to try again.');
     }
+    await deps.clearDirectory(deps.paths.playbackTmpDir());
   }
 
   /**

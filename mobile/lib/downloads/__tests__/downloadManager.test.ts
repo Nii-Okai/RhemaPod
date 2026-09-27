@@ -129,6 +129,7 @@ function makeFakePaths(): DownloadManagerDeps['paths'] {
     encryptedFilePath: (id) => `file:///downloads/${id}.rpa1`,
     tmpDownloadFilePath: (id) => `file:///tmp/${id}.audio.tmp`,
     playbackTempFilePath: (id) => `file:///playback-tmp/${id}-token.pcm-tmp`,
+    partFilePath: (uri) => `${uri}.part`,
     downloadsDir: () => 'file:///downloads/',
     downloadTmpDir: () => 'file:///tmp/',
     playbackTmpDir: () => 'file:///playback-tmp/',
@@ -139,6 +140,7 @@ interface Harness {
   manager: ReturnType<typeof createDownloadManager>;
   rows: Map<string, DownloadRecord>;
   deletedFiles: string[];
+  clearedDirectories: string[];
   fetchAudioUrl: jest.Mock;
   downloadToFile: jest.Mock;
   encryptFile: jest.Mock;
@@ -151,6 +153,7 @@ interface Harness {
 function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
   const { api: fakeDb, rows } = makeFakeDb();
   const deletedFiles: string[] = [];
+  const clearedDirectories: string[] = [];
 
   const fetchAudioUrl = jest.fn(async () => 'https://cdn.example.com/signed/sermon-1.mp3');
   const downloadToFile = jest.fn(async (_url: string, _dest: string, onProgress: (p: number) => void) => {
@@ -170,6 +173,9 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
     deleteFile: jest.fn(async (uri: string) => {
       deletedFiles.push(uri);
     }),
+    clearDirectory: jest.fn(async (dir: string) => {
+      clearedDirectories.push(dir);
+    }),
     getFileSize: jest.fn(async () => 700_000),
     fetchAudioUrl,
     downloadToFile,
@@ -185,7 +191,19 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
   };
 
   const manager = createDownloadManager(deps);
-  return { manager, rows, deletedFiles, fetchAudioUrl, downloadToFile, encryptFile, decryptFile, readHeaderInfo, canStartDownload, getInstallKey };
+  return {
+    manager,
+    rows,
+    deletedFiles,
+    clearedDirectories,
+    fetchAudioUrl,
+    downloadToFile,
+    encryptFile,
+    decryptFile,
+    readHeaderInfo,
+    canStartDownload,
+    getInstallKey,
+  };
 }
 
 describe('downloadManager — happy path', () => {
@@ -291,7 +309,11 @@ describe('downloadManager — failure classification and retry', () => {
     await h.manager.retryDownload('sermon-1');
 
     expect(h.deletedFiles).toEqual(
-      expect.arrayContaining(['file:///tmp/sermon-1.audio.tmp', 'file:///downloads/sermon-1.rpa1']),
+      expect.arrayContaining([
+        'file:///tmp/sermon-1.audio.tmp',
+        'file:///downloads/sermon-1.rpa1',
+        'file:///downloads/sermon-1.rpa1.part',
+      ]),
     );
     expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
   });
@@ -332,8 +354,15 @@ describe('downloadManager — interrupted download (process-restart) recovery', 
 
     expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'failed', failureReason: 'interrupted' });
     expect(h.deletedFiles).toEqual(
-      expect.arrayContaining(['file:///tmp/sermon-1.audio.tmp', 'file:///downloads/sermon-1.rpa1']),
+      expect.arrayContaining([
+        'file:///tmp/sermon-1.audio.tmp',
+        'file:///downloads/sermon-1.rpa1',
+        'file:///downloads/sermon-1.rpa1.part',
+      ]),
     );
+    // Also unconditionally clears the playback-temp directory — a crash during a previous
+    // offline playback session could otherwise leave a plaintext file behind forever.
+    expect(h.clearedDirectories).toContain('file:///playback-tmp/');
 
     await h.manager.retryDownload('sermon-1');
     expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
@@ -447,7 +476,11 @@ describe('downloadManager — delete', () => {
     await h.manager.deleteDownload('sermon-1');
 
     expect(h.deletedFiles).toEqual(
-      expect.arrayContaining(['file:///downloads/sermon-1.rpa1', 'file:///tmp/sermon-1.audio.tmp']),
+      expect.arrayContaining([
+        'file:///downloads/sermon-1.rpa1',
+        'file:///downloads/sermon-1.rpa1.part',
+        'file:///tmp/sermon-1.audio.tmp',
+      ]),
     );
     expect(await h.manager.getDownload('sermon-1')).toBeNull();
   });
