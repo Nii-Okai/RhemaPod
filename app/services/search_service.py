@@ -17,6 +17,7 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.models.content_schemas import SeriesPublic, SpeakerPublic
 from app.models.models import (
     ContentTier,
     Sermon,
@@ -27,8 +28,13 @@ from app.models.models import (
 )
 from app.services.content_service import (
     _has_subscription,
+    _series_public_stmt,
+    _speaker_public_stmt,
     effective_tier,
+    series_to_public,
     sermon_visibility_clause,
+    speaker_to_public,
+    staff_sees_full_counts,
     to_list_item,
 )
 
@@ -36,43 +42,65 @@ log = get_logger("search")
 
 MAX_LIMIT = 50
 
+# Series/speaker matches shown alongside sermon results (three-way search
+# grouping). Small and fixed — these are a "jump to the series/speaker page"
+# shortcut, not a paginated list; `GET /series` and `GET /speakers` already
+# exist for browsing the full set. `*_total` (the true match count) rides
+# alongside so the client can offer "see all N" without a second round trip.
+GROUP_LIMIT = 5
+
 
 def _is_postgres(db: AsyncSession) -> bool:
     return db.bind.dialect.name == "postgresql"
 
 
-def _search_filter(db: AsyncSession, query: str):
-    """Build the text-match condition for the active dialect."""
-    if _is_postgres(db):
-        # Weighted: a title match should beat a description match.
-        vector = func.setweight(
-            func.to_tsvector("english", func.coalesce(Sermon.title, "")), "A"
-        ).op("||")(
-            func.setweight(
-                func.to_tsvector("english", func.coalesce(Sermon.description, "")), "B"
-            )
+def _weighted_vector(columns_weights: list[tuple]):
+    """A `setweight`-combined tsvector across one or more (column, weight)
+    pairs — weight "A" ranks above "B", etc. (Postgres only.)"""
+    vector = None
+    for column, weight in columns_weights:
+        term = func.setweight(
+            func.to_tsvector("english", func.coalesce(column, "")), weight
         )
+        vector = term if vector is None else vector.op("||")(term)
+    return vector
+
+
+def _text_search_filter(db: AsyncSession, columns_weights: list[tuple], query: str):
+    """Build the text-match condition for the active dialect, across one or
+    more weighted columns. Postgres: full-text (`to_tsvector`/`plainto_
+    tsquery`), so stemming applies and a higher-weighted column outranks a
+    lower one. SQLite (tests): `LIKE`, which has no stemming but exercises the
+    same filters — matching any of the given columns."""
+    if _is_postgres(db):
+        vector = _weighted_vector(columns_weights)
         return vector.op("@@")(func.plainto_tsquery("english", query))
 
     like = f"%{query.lower()}%"
-    return or_(
-        func.lower(Sermon.title).like(like),
-        func.lower(func.coalesce(Sermon.description, "")).like(like),
+    return or_(*(
+        func.lower(func.coalesce(column, "")).like(like)
+        for column, _ in columns_weights
+    ))
+
+
+def _text_rank(db: AsyncSession, columns_weights: list[tuple], query: str):
+    """`ts_rank` order (Postgres) for the same weighted columns, or `None` on
+    SQLite — callers fall back to a deterministic column order there."""
+    if not _is_postgres(db):
+        return None
+    vector = _weighted_vector(columns_weights)
+    return func.ts_rank(vector, func.plainto_tsquery("english", query)).desc()
+
+
+def _search_filter(db: AsyncSession, query: str):
+    return _text_search_filter(
+        db, [(Sermon.title, "A"), (Sermon.description, "B")], query
     )
 
 
 def _rank(db: AsyncSession, query: str):
-    if _is_postgres(db):
-        vector = func.setweight(
-            func.to_tsvector("english", func.coalesce(Sermon.title, "")), "A"
-        ).op("||")(
-            func.setweight(
-                func.to_tsvector("english", func.coalesce(Sermon.description, "")), "B"
-            )
-        )
-        return func.ts_rank(vector, func.plainto_tsquery("english", query)).desc()
-    
-    return Sermon.published_at.desc().nullslast()
+    rank = _text_rank(db, [(Sermon.title, "A"), (Sermon.description, "B")], query)
+    return rank if rank is not None else Sermon.published_at.desc().nullslast()
 
 
 async def search_sermons(
@@ -155,6 +183,75 @@ async def search_sermons(
         items.append(to_list_item(sermon, resolved, has_sub))
 
     log.info("search", query=query or "", results=len(items), total=total)
+    return items, total
+
+
+async def search_series(
+    db: AsyncSession, user: User | None, query: str, limit: int = GROUP_LIMIT
+) -> tuple[list[SeriesPublic], int]:
+    """Series whose title or description matches `query`, for the search
+    screen's "series" group. Visibility and DTO shape are exactly `GET
+    /series`'s (same `_series_public_stmt`/`series_to_public`, same
+    `staff_sees_full_counts` count scoping) — this does not reinvent them.
+
+    Returns (top `limit` matches ordered like sermon search, true match
+    count).
+    """
+    columns = [(Series.title, "A"), (Series.description, "B")]
+    condition = _text_search_filter(db, columns, query)
+    include_unpublished = staff_sees_full_counts(user)
+
+    total = (await db.execute(
+        select(func.count()).select_from(Series).where(condition)
+    )).scalar_one()
+
+    rank = _text_rank(db, columns, query)
+    order = rank if rank is not None else Series.title.asc()
+    rows = (await db.execute(
+        _series_public_stmt(include_unpublished).where(condition)
+        .order_by(order).limit(limit)
+    )).all()
+
+    items = [
+        SeriesPublic(
+            **series_to_public(series), episode_count=episode_count,
+            category_name=category_name,
+        )
+        for series, episode_count, category_name in rows
+    ]
+    return items, total
+
+
+async def search_speakers(
+    db: AsyncSession, user: User | None, query: str, limit: int = GROUP_LIMIT
+) -> tuple[list[SpeakerPublic], int]:
+    """Speakers whose name matches `query`, for the search screen's
+    "speakers" group. Visibility and DTO shape are exactly `GET /speakers`'s
+    (same `_speaker_public_stmt`/`speaker_to_public`, same
+    `staff_sees_full_counts` count scoping) — this does not reinvent them.
+
+    Returns (top `limit` matches ordered like sermon search, true match
+    count).
+    """
+    columns = [(Speaker.name, "A")]
+    condition = _text_search_filter(db, columns, query)
+    include_unpublished = staff_sees_full_counts(user)
+
+    total = (await db.execute(
+        select(func.count()).select_from(Speaker).where(condition)
+    )).scalar_one()
+
+    rank = _text_rank(db, columns, query)
+    order = rank if rank is not None else Speaker.name.asc()
+    rows = (await db.execute(
+        _speaker_public_stmt(include_unpublished).where(condition)
+        .order_by(order).limit(limit)
+    )).all()
+
+    items = [
+        SpeakerPublic(**speaker_to_public(speaker, sermon_count))
+        for speaker, sermon_count in rows
+    ]
     return items, total
 
 

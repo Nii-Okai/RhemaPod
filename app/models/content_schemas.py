@@ -599,7 +599,13 @@ class AnnouncementUpdate(BaseModel):
 
 
 class AnnouncementListItem(BaseModel):
-    """Card shape for the announcements list."""
+    """Card shape for the announcements list.
+
+    `publish_at` is the start of the announcement's display range (validated
+    against `expires_at`, the end, in `announcement_service.update`); the
+    mobile client formats the pair as "Mon DD – Mon DD", or "Mon DD → —" when
+    `expires_at` is null (open-ended).
+    """
 
     id: uuid.UUID
     title: str
@@ -608,10 +614,18 @@ class AnnouncementListItem(BaseModel):
     pinned: bool
     publish_at: datetime | None
     created_at: datetime
+    expires_at: datetime | None = None
 
 
 class AnnouncementDetail(AnnouncementListItem):
     body: str
+    # Redeclared without ListItem's default: unchanged from before this field
+    # existed on ListItem — still required here (and on AnnouncementAdminItem,
+    # which inherits it); only the list card gets the additive, defaulted
+    # field. Pydantic orders inherited fields by the base class's declaration
+    # position, so this now serialises ahead of `body` in the generated
+    # schema regardless of source order here — a harmless ordering-only
+    # diff in openapi.json (same fields, same requiredness, same types).
     expires_at: datetime | None
 
 
@@ -656,6 +670,16 @@ class SearchResults(BaseModel):
     limit: int
     offset: int
     results: list[SermonListItem]
+    # Grouped matches for a non-empty `q` — the mobile search screen draws
+    # sermons/series/speakers as three sections. Populated only when `q` is
+    # non-empty; with no `q` (filtered-browse mode) these stay empty, same as
+    # today. Capped at a small fixed limit each (not paginated) — `limit`/
+    # `offset` above keep applying to `results` (sermons) only. `*_total` is
+    # the true match count, uncapped, so the client can show "See all N".
+    series: list[SeriesPublic] = Field(default_factory=list)
+    series_total: int = 0
+    speakers: list[SpeakerPublic] = Field(default_factory=list)
+    speakers_total: int = 0
 
 
 class ProgressUpdate(BaseModel):

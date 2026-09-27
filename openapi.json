@@ -107,8 +107,8 @@
           "pinned",
           "publish_at",
           "created_at",
-          "body",
           "expires_at",
+          "body",
           "status",
           "is_visible",
           "created_by"
@@ -317,14 +317,14 @@
           "pinned",
           "publish_at",
           "created_at",
-          "body",
-          "expires_at"
+          "expires_at",
+          "body"
         ],
         "title": "AnnouncementDetail",
         "type": "object"
       },
       "AnnouncementListItem": {
-        "description": "Card shape for the announcements list.",
+        "description": "Card shape for the announcements list.\n\n`publish_at` is the start of the announcement's display range (validated\nagainst `expires_at`, the end, in `announcement_service.update`); the\nmobile client formats the pair as \"Mon DD \u2013 Mon DD\", or \"Mon DD \u2192 \u2014\" when\n`expires_at` is null (open-ended).",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -341,6 +341,18 @@
               }
             ],
             "title": "Description"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
           },
           "id": {
             "format": "uuid",
@@ -1841,6 +1853,30 @@
             },
             "title": "Results",
             "type": "array"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesPublic"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "series_total": {
+            "default": 0,
+            "title": "Series Total",
+            "type": "integer"
+          },
+          "speakers": {
+            "items": {
+              "$ref": "#/components/schemas/SpeakerPublic"
+            },
+            "title": "Speakers",
+            "type": "array"
+          },
+          "speakers_total": {
+            "default": 0,
+            "title": "Speakers Total",
+            "type": "integer"
           },
           "total": {
             "title": "Total",
@@ -6131,6 +6167,7 @@
     },
     "/api/v1/me/history": {
       "get": {
+        "description": "Caller's own playback history, most-recently-played first.\n\nWith no `series_id`, the existing app-wide reading: capped at `limit`\n(<=100). With `series_id`, every one of the caller's progress rows for\nsermons in that series \u2014 `limit` is ignored, since the series screen\nneeds every episode's real status and a 100-row app-wide cap can hide an\nold episode's completed watch behind the cap. See\n`analytics_service.history` for the (much higher) safety ceiling that\nstill applies.",
         "operationId": "watch_history_api_v1_me_history_get",
         "parameters": [
           {
@@ -6143,6 +6180,23 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "series_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Series Id"
             }
           }
         ],
@@ -6315,7 +6369,7 @@
     },
     "/api/v1/search": {
       "get": {
-        "description": "Search published sermons. Every filter is optional \u2014 with no `q` this is\na filtered browse.",
+        "description": "Search published sermons. Every filter is optional \u2014 with no `q` this is\na filtered browse.\n\nWith a non-empty `q`, the response also groups in series and speaker\nmatches (small, fixed-limit, not paginated) for the mobile search\nscreen's three-way sermons/series/speakers layout. With no `q`, those\ngroups are empty \u2014 filtered-browse mode is sermons-only, unchanged.",
         "operationId": "search_api_v1_search_get",
         "parameters": [
           {

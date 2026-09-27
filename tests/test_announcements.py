@@ -140,6 +140,30 @@ async def test_past_publish_at_is_visible(client, engine):
     assert len((await client.get("/api/v1/announcements")).json()) == 1
 
 
+async def test_list_item_carries_expires_at(client, engine):
+    """Mobile needs `expires_at` on the list card (not just the detail read) to
+    render the "Mon DD – Mon DD" / "Mon DD → —" date range without a follow-up
+    detail fetch per card."""
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    past_start = datetime.now(timezone.utc) - timedelta(hours=1)
+    future_end = datetime.now(timezone.utc) + timedelta(days=1)
+    await create_published(
+        client, engine, mgr, publish_at=iso(past_start), expires_at=iso(future_end)
+    )
+    rows = (await client.get("/api/v1/announcements")).json()
+    assert len(rows) == 1
+    assert rows[0]["expires_at"] is not None
+    assert rows[0]["publish_at"] is not None
+
+
+async def test_list_item_expires_at_null_when_open_ended(client, engine):
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    await create_published(client, engine, mgr)
+    rows = (await client.get("/api/v1/announcements")).json()
+    assert len(rows) == 1
+    assert rows[0]["expires_at"] is None
+
+
 async def test_expired_announcement_hidden(client, engine):
     mgr = await make_user(client, engine, "m@example.com", "manager")
     past_start = datetime.now(timezone.utc) - timedelta(days=2)

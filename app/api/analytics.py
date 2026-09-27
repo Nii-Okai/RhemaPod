@@ -81,10 +81,23 @@ async def continue_watching(
 
 @router.get("/me/history", response_model=list[ProgressPublic])
 async def watch_history(
-    user: CurrentUserDep, db: ReadDbDep, limit: int = Query(default=50, ge=1, le=100)
+    user: CurrentUserDep,
+    db: ReadDbDep,
+    limit: int = Query(default=50, ge=1, le=100),
+    series_id: uuid.UUID | None = None,
 ) -> list[ProgressPublic]:
+    """Caller's own playback history, most-recently-played first.
+
+    With no `series_id`, the existing app-wide reading: capped at `limit`
+    (<=100). With `series_id`, every one of the caller's progress rows for
+    sermons in that series — `limit` is ignored, since the series screen
+    needs every episode's real status and a 100-row app-wide cap can hide an
+    old episode's completed watch behind the cap. See
+    `analytics_service.history` for the (much higher) safety ceiling that
+    still applies.
+    """
     actor = await _actor(db, user)
-    rows = await analytics_service.history(db, actor, limit)
+    rows = await analytics_service.history(db, actor, limit, series_id=series_id)
     return [ProgressPublic.model_validate(r) for r in rows]
 
 

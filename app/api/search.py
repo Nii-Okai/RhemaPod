@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_optional_user
 from app.db.database import get_read_db
-from app.models.content_schemas import SearchResults
+from app.models.content_schemas import SearchResults, SeriesPublic, SpeakerPublic
 from app.models.models import ContentTier, User
 from app.services import search_service
 
@@ -31,13 +31,28 @@ async def search(
     offset: int = Query(default=0, ge=0),
 ) -> SearchResults:
     """Search published sermons. Every filter is optional — with no `q` this is
-    a filtered browse."""
+    a filtered browse.
+
+    With a non-empty `q`, the response also groups in series and speaker
+    matches (small, fixed-limit, not paginated) for the mobile search
+    screen's three-way sermons/series/speakers layout. With no `q`, those
+    groups are empty — filtered-browse mode is sermons-only, unchanged.
+    """
     items, total = await search_service.search_sermons(
         db, user, query=q, category_id=category_id, speaker_id=speaker_id,
         series_id=series_id, tier=tier, tag=tag, limit=limit, offset=offset,
     )
+    series: list[SeriesPublic] = []
+    series_total = 0
+    speakers: list[SpeakerPublic] = []
+    speakers_total = 0
+    if q:
+        series, series_total = await search_service.search_series(db, user, q)
+        speakers, speakers_total = await search_service.search_speakers(db, user, q)
     return SearchResults(
-        query=q or "", total=total, limit=limit, offset=offset, results=items
+        query=q or "", total=total, limit=limit, offset=offset, results=items,
+        series=series, series_total=series_total,
+        speakers=speakers, speakers_total=speakers_total,
     )
 
 

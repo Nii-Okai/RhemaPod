@@ -34,6 +34,15 @@ log = get_logger("analytics")
 # almost nobody reaches 100%, and counting only those would understate reach.
 COMPLETION_THRESHOLD = 0.9
 
+# Safety ceiling for a `series_id`-scoped history read (app-wide unscoped reads
+# use the caller's `limit`, capped at 100 — see `watch_history`). A series is
+# bounded in practice: episode reordering (content_service.reorder_series_
+# episodes) already refuses to operate past MAX_PAGE_SIZE (100) episodes, so
+# 500 is generous headroom for a scoped read rather than a real constraint —
+# it exists to keep one caller from forcing an unbounded scan, not to ever
+# actually bind a real series.
+SERIES_HISTORY_LIMIT = 500
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -229,13 +238,34 @@ async def continue_watching(
 
 
 async def history(
-    db: AsyncSession, user: User, limit: int = 50
+    db: AsyncSession,
+    user: User,
+    limit: int = 50,
+    series_id: uuid.UUID | None = None,
 ) -> list[PlaybackSession]:
+    """The caller's own playback history, most-recently-played first.
+
+    Unscoped (`series_id=None`): the existing app-wide "recent activity"
+    reading, capped at `limit` (<=100).
+
+    Scoped to a `series_id`: every one of the caller's progress rows for
+    sermons in that series — `limit` does not apply, since a 100-row app-wide
+    cap can mislabel an old, already-watched early episode as "new" once a
+    series has more than 100 episodes of history across all series. Bounded
+    instead by `SERIES_HISTORY_LIMIT`, a safety ceiling rather than a real
+    limit (see its docstring).
+    """
+    stmt = select(PlaybackSession).where(PlaybackSession.user_id == user.id)
+    if series_id is not None:
+        stmt = stmt.join(
+            Sermon, Sermon.id == PlaybackSession.sermon_id
+        ).where(Sermon.series_id == series_id)
+        row_limit = SERIES_HISTORY_LIMIT
+    else:
+        row_limit = max(1, min(limit, 100))
+
     rows = (await db.execute(
-        select(PlaybackSession)
-        .where(PlaybackSession.user_id == user.id)
-        .order_by(PlaybackSession.last_played_at.desc())
-        .limit(max(1, min(limit, 100)))
+        stmt.order_by(PlaybackSession.last_played_at.desc()).limit(row_limit)
     )).scalars().all()
     return list(rows)
 
