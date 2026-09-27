@@ -234,13 +234,25 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     }
   }
 
-  /** No-op if a download for this sermon already exists in any non-terminal-failure state (`ready`/`queued`/`downloading`) — only a fresh or previously-`failed` row actually starts a new attempt. */
+  /**
+   * No-op if a download for this sermon already exists in any non-terminal-failure state
+   * (`ready`/`queued`/`downloading`) — only a fresh or previously-`failed` row actually
+   * starts a new attempt. A previously-`failed` row goes through the exact same
+   * clean-slate restart as `retryDownload` (stale tmp/encrypted/`.part` files deleted
+   * first) — this function is the only other path (besides the Retry button) that can
+   * restart a failed download, and it must not skip that cleanup just because it took a
+   * different name.
+   */
   async function enqueueDownload(sermonId: string, title: string): Promise<void> {
     const existing = await deps.db.getDownload(sermonId);
-    if (existing && existing.state !== 'failed') return;
-
-    await deps.db.upsertQueued(sermonId, title);
-    await runDownload(sermonId);
+    if (!existing) {
+      await deps.db.upsertQueued(sermonId, title);
+      await runDownload(sermonId);
+      return;
+    }
+    if (existing.state === 'failed') {
+      await retryDownload(sermonId);
+    }
   }
 
   /** Always restarts from a clean slate — deletes any stale tmp/encrypted file first, so a corrupt or partial artifact from the failed attempt is never reused. */

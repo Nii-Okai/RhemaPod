@@ -244,6 +244,18 @@ describe('downloadManager — happy path', () => {
 
     expect(h.fetchAudioUrl).not.toHaveBeenCalled();
   });
+
+  it('re-enqueuing a previously-failed download restarts from the same clean slate as an explicit Retry (never reuses a stale/corrupt artifact)', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'sermon-1', 'failed', { failureReason: 'corrupt', failureMessage: 'damaged' });
+
+    await h.manager.enqueueDownload('sermon-1', 'A Great Sermon');
+
+    expect(h.deletedFiles).toEqual(
+      expect.arrayContaining(['file:///tmp/sermon-1.audio.tmp', 'file:///downloads/sermon-1.rpa1']),
+    );
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+  });
 });
 
 describe('downloadManager — failure classification and retry', () => {
