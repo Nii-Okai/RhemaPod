@@ -7,3 +7,4 @@ export * from './QueryState';
 export * from './Tag';
 export * from './SkeletonBlock';
 export * from './IconButton';
+export * from './Toggle';

@@ -28,6 +28,10 @@ function RootNavigator() {
           tablet-only `(tabs)/series` rail tab (which lists series, not one
           series' detail) — see `app/series/__tests__/routeCollision.test.ts`. */}
       <Stack.Screen name="series/[id]" options={{ title: '' }} />
+      {/* W4.6 — Profile & Settings' Library rows (design spec 1n, P8: no counts, plain
+          navigating rows). Each screen sets its own title via `Stack.Screen options`. */}
+      <Stack.Screen name="notes" />
+      <Stack.Screen name="history" />
     </Stack>
   );
 }
