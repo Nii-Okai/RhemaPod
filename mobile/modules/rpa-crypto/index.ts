@@ -1,7 +1,9 @@
 import NativeRpaCrypto from './src/RpaCryptoModule';
+import { RpaCryptoError } from './src/RpaCryptoError';
 import type { RpaDecryptResult, RpaEncryptResult, RpaErrorCode, RpaHeaderInfo } from './src/RpaCrypto.types';
 
 export type { RpaDecryptResult, RpaEncryptResult, RpaErrorCode, RpaHeaderInfo };
+export { RpaCryptoError };
 
 /** Plaintext bytes per chunk, matching `lib/crypto/rpa1Format.ts`'s `DEFAULT_CHUNK_SIZE`. Not imported from there directly — this module owns no dependency on the app's `lib/`, only the reverse. */
 export const DEFAULT_CHUNK_SIZE = 256 * 1024;
@@ -15,16 +17,6 @@ const KNOWN_CODES: readonly RpaErrorCode[] = [
   'E_RPA1_AUTH_FAILED',
   'E_RPA1_IO',
 ];
-
-export class RpaCryptoError extends Error {
-  readonly code: RpaErrorCode;
-
-  constructor(code: RpaErrorCode, message: string) {
-    super(message);
-    this.name = 'RpaCryptoError';
-    this.code = code;
-  }
-}
 
 /**
  * Normalizes any rejection from the native side into `RpaCryptoError`. Expo Modules
