@@ -5,7 +5,12 @@ import PlayerScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
 import { usePlatformOS } from '../../../components/navigation/platform';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
-import { __lastMockPlayer } from 'expo-video';
+// Imported from the mock file's own relative path (not the bare `'expo-video'`
+// specifier) purely so `tsc` — which doesn't know about Jest's manual-mock
+// substitution — can see this member really exists; Jest resolves both this path and
+// every `'expo-video'` import in the app code under test to the exact same file, so
+// `__lastMockPlayer` is the same live binding either way.
+import { __lastMockPlayer } from '../../../__mocks__/expo-video';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },

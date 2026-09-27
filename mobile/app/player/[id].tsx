@@ -223,13 +223,15 @@ function PlayerContent({
       if (initialPositionSeconds > 0) player.currentTime = initialPositionSeconds;
       player.play();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `player`/`initialPositionSeconds` are this component's own mount-time seeds, not reactive inputs; only `status` should re-run this.
+    // Deliberately `[status]` only — `player`/`initialPositionSeconds` are this
+    // component's own mount-time seeds, not reactive inputs. (No `react-hooks/
+    // exhaustive-deps` rule is installed in this project to suppress here.)
   }, [status]);
 
   const [speed, setSpeed] = useState<PlaybackSpeed>(defaultSpeed);
   useEffect(() => {
     player.playbackRate = speed;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only `speed` should re-apply; `player` is stable for this component's lifetime.
+    // Deliberately `[speed]` only — `player` is stable for this component's lifetime.
   }, [speed]);
 
   const cycleSpeed = () => {

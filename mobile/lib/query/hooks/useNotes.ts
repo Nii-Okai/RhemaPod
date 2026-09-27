@@ -66,8 +66,23 @@ export function useUpdateNote(sermonId: string) {
   const queryClient = useQueryClient();
 
   function patchCachedNote(noteId: string, patch: NoteUpdate) {
+    // `NoteUpdate`'s fields are optional-and-nullable (a PATCH contract: absent/`null`
+    // both mean "leave unchanged") — `note.id === noteId ? { ...note, ...patch } : note`
+    // doesn't typecheck against `NotePublic`'s required non-null fields for exactly that
+    // reason (a `null` patch value would otherwise null out a field `NotePublic` promises
+    // is always a real value). Falling back to the existing field on `null`/`undefined`
+    // keeps the merged object honestly `NotePublic`-shaped and matches this hook's only
+    // real call site anyway (the Player drawer's edit sheet only ever sends `{ body }`).
     const apply = (notes: NotePublic[] | undefined) =>
-      notes?.map((note) => (note.id === noteId ? { ...note, ...patch } : note));
+      notes?.map((note) =>
+        note.id === noteId
+          ? {
+              ...note,
+              body: patch.body ?? note.body,
+              position_seconds: patch.position_seconds ?? note.position_seconds,
+            }
+          : note,
+      );
     return {
       sermon: queryClient.getQueryData<NotePublic[]>(queryKeys.notes.forSermon(sermonId)),
       mine: queryClient.getQueryData<NotePublic[]>(queryKeys.notes.mine()),

@@ -94,7 +94,9 @@ export function useProgressFlush(
     // Stable identity across renders — every dependency it touches is a ref, so this
     // callback never needs to change and the periodic-flush effect below never has to
     // re-arm its interval just because the mutation object's own identity changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // (No `react-hooks/exhaustive-deps` lint rule is installed in this project to
+    // silence here — this project has no dependency on `eslint-plugin-react-hooks`
+    // today — so this is a plain note for a human reader, not a suppressed warning.)
   }, []);
 
   const reportCompleted = useCallback(() => {
@@ -153,7 +155,9 @@ export function useProgressFlush(
     return () => {
       if (isPlayingRef.current) flushNow();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only on unmount, not on every `flushNow` identity change (it's stable anyway, see above).
+    // Deliberately `[]` — only on unmount, not on every `flushNow` identity change (it's
+    // stable anyway, see above). Same note as the earlier callback: no
+    // `react-hooks/exhaustive-deps` rule is installed here to suppress.
   }, []);
 
   return { reportPosition, reportPlaying, reportCompleted, flushNow };

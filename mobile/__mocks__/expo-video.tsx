@@ -112,6 +112,14 @@ export interface MockVideoViewProps extends ViewProps {
   allowsFullscreen?: boolean;
 }
 
-export function VideoView({ player: _player, nativeControls: _nativeControls, contentFit: _contentFit, allowsFullscreen: _allowsFullscreen, ...rest }: MockVideoViewProps) {
-  return <View testID="video-view" {...rest} />;
+/**
+ * Deliberately doesn't destructure `player`/`nativeControls`/`contentFit`/
+ * `allowsFullscreen` by name — the real `VideoView` is a native view manager that
+ * consumes them internally; a bare mock `<View>` has nothing to do with them, and
+ * naming-then-discarding each one individually only invites unused-variable lint noise.
+ * Only `style` (the one prop a test could plausibly care about) is pulled out; nothing
+ * else is spread onto the underlying `View`.
+ */
+export function VideoView(props: MockVideoViewProps) {
+  return <View testID="video-view" style={props.style} />;
 }
