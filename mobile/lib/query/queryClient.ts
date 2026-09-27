@@ -112,6 +112,15 @@ export const queryKeys = {
     details: () => [...queryKeys.progress.all, 'detail'] as const,
     detail: (sermonId: string) => [...queryKeys.progress.details(), sermonId] as const,
   },
+  // W4.2 — `GET /sermons/{sermon_id}/stream`, the signed-playback-URL read. Short-lived
+  // by design (`expires_in`, ~6h server default) — kept out of `sermons` since it's a
+  // distinct resource (signed URLs, not sermon metadata) that happens to share a path
+  // segment, mirroring the `progress` domain's own reasoning above.
+  stream: {
+    all: ['stream'] as const,
+    details: () => [...queryKeys.stream.all, 'detail'] as const,
+    detail: (sermonId: string) => [...queryKeys.stream.details(), sermonId] as const,
+  },
 } as const;
 
 /**

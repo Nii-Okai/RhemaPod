@@ -41,8 +41,12 @@ export class MockVideoPlayer extends MockEventEmitter {
   playing = false;
   currentTime = 0;
   duration = 0;
-  status: 'idle' | 'loading' | 'readyToPlay' | 'error' = 'idle';
+  // Real `expo-video` players start `'loading'` the moment they're given a non-null
+  // source (which every call site in this app always does — `useVideoPlayer` is never
+  // called with `null` here) — not `'idle'`, which is reserved for a sourceless player.
+  status: 'idle' | 'loading' | 'readyToPlay' | 'error' = 'loading';
   playbackRate = 1;
+  bufferedPosition = 0;
   staysActiveInBackground = false;
   showNowPlayingNotification = false;
   timeUpdateEventInterval = 0;
@@ -77,6 +81,7 @@ export class MockVideoPlayer extends MockEventEmitter {
   /** Test helper: simulates a `timeUpdate` tick. */
   __simulateTimeUpdate(currentTime: number) {
     this.currentTime = currentTime;
+    this.bufferedPosition = currentTime;
     this.emit('timeUpdate', { currentTime, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: currentTime });
   }
 
