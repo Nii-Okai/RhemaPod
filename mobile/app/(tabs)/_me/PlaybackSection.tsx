@@ -12,6 +12,8 @@ export interface PlaybackSectionProps {
   onChangeSpeed: (speed: PlaybackSpeed) => void;
   onChangeAutoplay: (enabled: boolean) => void;
   disabled?: boolean;
+  /** Set by the caller when the last speed/autoplay change failed to persist — the toggle has already reverted, this is just the user-visible reason why. */
+  error?: string | null;
 }
 
 function speedLabel(speed: PlaybackSpeed): string {
@@ -29,6 +31,7 @@ export function PlaybackSection({
   onChangeSpeed,
   onChangeAutoplay,
   disabled = false,
+  error = null,
 }: PlaybackSectionProps) {
   return (
     <View style={styles.section}>
@@ -69,6 +72,12 @@ export function PlaybackSection({
           accessibilityLabel="Autoplay next in series"
         />
       </View>
+
+      {error ? (
+        <AppText variant="ui.badge" style={styles.errorText}>
+          {error}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -102,5 +111,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
+  },
+  errorText: {
+    color: colors.status.rose.text,
   },
 });

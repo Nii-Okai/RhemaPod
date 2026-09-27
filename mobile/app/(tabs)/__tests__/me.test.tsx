@@ -165,6 +165,32 @@ describe('MeScreen — phone layout', () => {
 
     expect(getByLabelText('Autoplay next in series').props.accessibilityState.checked).toBe(false);
   });
+
+  it('reverts the toggle and shows an error when the persistence write fails', async () => {
+    mockRoutes();
+    const { findByText, getByLabelText, queryByText } = renderMeScreen();
+    await findByText('Ada Nwosu');
+
+    jest.requireMock('expo-sqlite/kv-store').AsyncStorage.setItem.mockRejectedValueOnce(new Error('disk full'));
+
+    const toggle = getByLabelText('Autoplay next in series');
+    expect(toggle.props.accessibilityState.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.press(toggle);
+    });
+
+    // Reverted, not left on the optimistic (failed) value — and the failure is visible,
+    // not a silently-swallowed rejection (reviewer-gilfoyle W4.6 must-fix).
+    expect(getByLabelText('Autoplay next in series').props.accessibilityState.checked).toBe(true);
+    expect(await findByText("Couldn't save your playback settings. Try again.")).toBeTruthy();
+
+    // A subsequent successful change clears the error rather than leaving it stuck.
+    await act(async () => {
+      fireEvent.press(getByLabelText('Autoplay next in series'));
+    });
+    expect(queryByText("Couldn't save your playback settings. Try again.")).toBeNull();
+  });
 });
 
 describe('MeScreen — tablet two-pane', () => {

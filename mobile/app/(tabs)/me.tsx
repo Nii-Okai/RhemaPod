@@ -11,9 +11,12 @@ import { useMyNotes } from '../../lib/query/hooks/useNotes';
 import { useSermons } from '../../lib/query/hooks/useSermons';
 import { buildSermonTitleMap } from '../../lib/format/sermonTitleMap';
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
+import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { LibraryRow } from './_me/LibraryRow';
 import { PlaybackSection } from './_me/PlaybackSection';
 import { NotesPanel } from './_me/NotesPanel';
+
+const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
 
 /**
  * Profile & Settings (design spec 1n minus membership, plan W4.6). Cuts from the source
@@ -34,8 +37,19 @@ export default function MeScreen() {
   const notesQuery = useMyNotes();
   const sermonsQuery = useSermons();
   const { preferences, isSaving, setDefaultSpeed, setAutoplayNextInSeries } = usePlaybackPreferences();
+  const [playbackError, setPlaybackError] = React.useState<string | null>(null);
 
   const sermonTitles = buildSermonTitleMap(sermonsQuery.data ?? []);
+
+  const handleChangeSpeed = (speed: PlaybackSpeed) => {
+    setPlaybackError(null);
+    setDefaultSpeed(speed).catch(() => setPlaybackError(PLAYBACK_SAVE_ERROR));
+  };
+
+  const handleChangeAutoplay = (enabled: boolean) => {
+    setPlaybackError(null);
+    setAutoplayNextInSeries(enabled).catch(() => setPlaybackError(PLAYBACK_SAVE_ERROR));
+  };
 
   const settingsContent = (
     <>
@@ -64,9 +78,10 @@ export default function MeScreen() {
       <PlaybackSection
         defaultSpeed={preferences.defaultSpeed}
         autoplayNextInSeries={preferences.autoplayNextInSeries}
-        onChangeSpeed={(speed) => void setDefaultSpeed(speed)}
-        onChangeAutoplay={(enabled) => void setAutoplayNextInSeries(enabled)}
+        onChangeSpeed={handleChangeSpeed}
+        onChangeAutoplay={handleChangeAutoplay}
         disabled={isSaving}
+        error={playbackError}
       />
 
       <View style={styles.section}>

@@ -69,4 +69,27 @@ describe('PlaybackSection', () => {
     expect(onChangeSpeed).not.toHaveBeenCalled();
     expect(onChangeAutoplay).not.toHaveBeenCalled();
   });
+
+  it('renders no error text by default, and the given message when the caller passes one', () => {
+    const { queryByText, rerender } = render(
+      <PlaybackSection
+        defaultSpeed={1}
+        autoplayNextInSeries
+        onChangeSpeed={() => {}}
+        onChangeAutoplay={() => {}}
+      />,
+    );
+    expect(queryByText(/couldn't save/i)).toBeNull();
+
+    rerender(
+      <PlaybackSection
+        defaultSpeed={1}
+        autoplayNextInSeries
+        onChangeSpeed={() => {}}
+        onChangeAutoplay={() => {}}
+        error="Couldn't save your playback settings. Try again."
+      />,
+    );
+    expect(queryByText("Couldn't save your playback settings. Try again.")).toBeTruthy();
+  });
 });
