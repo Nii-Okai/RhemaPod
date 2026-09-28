@@ -27,7 +27,10 @@ export function IconNavItem({ route, active, onPress, orientation }: IconNavItem
       accessibilityState={{ selected: active }}
       accessibilityLabel={route.label}
       onPress={onPress}
-      style={orientation === 'bottom' ? styles.bottomItem : styles.railItem}
+      style={({ pressed }) => [
+        orientation === 'bottom' ? styles.bottomItem : styles.railItem,
+        pressed && styles.itemPressed,
+      ]}
     >
       <View style={[styles.pill, active && styles.pillActive]}>
         <Ionicons
@@ -53,6 +56,9 @@ const styles = StyleSheet.create({
   railItem: {
     alignItems: 'center',
     paddingVertical: spacing.md,
+  },
+  itemPressed: {
+    opacity: 0.7,
   },
   pill: {
     paddingHorizontal: spacing.lg,

@@ -45,7 +45,7 @@ export function TabletRail() {
         accessibilityLabel="Profile & settings"
         accessibilityState={{ selected: meActive }}
         onPress={() => router.push(meRoute.href)}
-        style={styles.avatarChip}
+        style={({ pressed }) => [styles.avatarChip, pressed && styles.avatarChipPressed]}
       >
         <Ionicons name="person" size={20} color={colors.accent.goldText} />
       </Pressable>
@@ -69,5 +69,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.chip.circle,
+  },
+  avatarChipPressed: {
+    opacity: 0.7,
   },
 });

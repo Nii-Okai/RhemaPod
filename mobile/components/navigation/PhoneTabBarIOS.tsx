@@ -26,9 +26,10 @@ export function PhoneTabBarIOS() {
           <Pressable
             key={route.key}
             accessibilityRole="button"
+            accessibilityLabel={route.label}
             accessibilityState={{ selected: active }}
             onPress={() => router.push(route.href)}
-            style={styles.item}
+            style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
           >
             <AppText variant="ui.label" tone={active ? 'gold' : 'tertiary'}>
               {route.label}
@@ -53,5 +54,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xs,
+  },
+  itemPressed: {
+    opacity: 0.7,
   },
 });
