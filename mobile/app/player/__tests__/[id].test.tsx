@@ -342,7 +342,7 @@ describe('PlayerScreen — download button', () => {
     expect(download).toHaveBeenCalledWith('sermon-1', 'Anchored in the Storm');
   });
 
-  it('shows queued and downloading states for the playing sermon', async () => {
+  it('shows a queued state for the playing sermon', async () => {
     mockReads();
     mockedUseDownloads.mockReturnValue({
       downloads: [],
@@ -358,6 +358,26 @@ describe('PlayerScreen — download button', () => {
 
     const { findByText } = renderPlayer();
     await findByText('Queued for download');
+  });
+
+  it('shows download progress for the playing sermon', async () => {
+    mockReads();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download: jest.fn(),
+      retry: jest.fn(),
+      remove: jest.fn(),
+      find: jest.fn((id: string) =>
+        id === 'sermon-1' ? record({ state: 'downloading', progress: 0.65 }) : undefined,
+      ),
+    });
+
+    const { findByText } = renderPlayer();
+    await findByText('Downloading… 65%');
   });
 
   it('shows a Downloaded state with a working delete, scoped to the playing sermon', async () => {
