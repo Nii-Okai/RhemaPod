@@ -75,3 +75,8 @@ tests/
 
 # ── admin portal (separate Node toolchain; never part of the API image) ──
 admin_portal/
+
+# ── mobile app (separate Node/Expo toolchain; never part of the API image).
+# Was missing until 2026-09-28 — node_modules/ + ios/Pods/ alone routinely
+# pushed the build context past 1GB on every backend image build. ──
+mobile/
