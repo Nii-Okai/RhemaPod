@@ -24,7 +24,11 @@ export function NoteListItem({ note, sermonTitle, onPress, onDelete }: NoteListI
   const timestamp = `${formatDuration(note.position_seconds)} →`;
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => [styles.row, pressed && onPress && styles.rowPressed]}
+    >
       <View style={styles.textBlock}>
         <View style={styles.metaRow}>
           <AppText variant="mono.tight" tone="gold">
@@ -53,6 +57,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   textBlock: {
     flex: 1,

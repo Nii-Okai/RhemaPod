@@ -56,7 +56,7 @@ export default function HistoryScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${title}, ${status}`}
               onPress={() => router.push({ pathname: '/sermon/[id]', params: { id: entry.sermon_id } })}
-              style={styles.row}
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
             >
               <View style={styles.textBlock}>
                 <AppText variant="display.compact" numberOfLines={2}>
@@ -85,6 +85,9 @@ const styles = StyleSheet.create({
   },
   row: {
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   textBlock: {
     gap: spacing.xs,
