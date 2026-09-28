@@ -19,15 +19,17 @@ export interface AnnouncementsEntryProps {
 export function AnnouncementsEntry({ onPress }: AnnouncementsEntryProps) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Announcements">
-      <Card style={styles.row}>
-        <View style={styles.textBlock}>
-          <AppText variant="ui.bodyLarge">Announcements</AppText>
-          <AppText variant="ui.body" tone="secondary">
-            What's happening at the church
-          </AppText>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-      </Card>
+      {({ pressed }) => (
+        <Card style={[styles.row, pressed && styles.rowPressed]}>
+          <View style={styles.textBlock}>
+            <AppText variant="ui.bodyLarge">Announcements</AppText>
+            <AppText variant="ui.body" tone="secondary">
+              What's happening at the church
+            </AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+        </Card>
+      )}
     </Pressable>
   );
 }
@@ -38,6 +40,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   textBlock: {
     flex: 1,

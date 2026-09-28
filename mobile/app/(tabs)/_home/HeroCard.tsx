@@ -32,7 +32,12 @@ export function HeroCard({ sermon, onPress }: HeroCardProps) {
   const label = meta ? `${sermon.title}, ${meta}` : sermon.title;
 
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.card}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+    >
       {sermon.thumbnail_url ? (
         <Image source={{ uri: sermon.thumbnail_url }} style={styles.art} resizeMode="cover" />
       ) : (
@@ -60,6 +65,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     overflow: 'hidden',
     backgroundColor: colors.surface.raised,
+  },
+  cardPressed: {
+    opacity: 0.7,
   },
   art: {
     width: '100%',

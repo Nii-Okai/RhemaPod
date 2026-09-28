@@ -29,7 +29,7 @@ export function SeriesCard({ series, onPress }: SeriesCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${series.title}, ${episodeLabel(series.episode_count)}`}
-      style={styles.card}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       {series.thumbnail_url ? (
         <Image source={{ uri: series.thumbnail_url }} style={styles.art} resizeMode="cover" />
@@ -54,6 +54,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.surface.raised,
+  },
+  cardPressed: {
+    opacity: 0.7,
   },
   art: {
     width: CARD_WIDTH,
