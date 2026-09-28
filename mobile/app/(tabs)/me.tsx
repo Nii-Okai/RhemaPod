@@ -100,7 +100,7 @@ export default function MeScreen() {
         accessibilityRole="button"
         accessibilityLabel="Sign out"
         onPress={() => void signOut()}
-        style={styles.signOutRow}
+        style={({ pressed }) => [styles.signOutRow, pressed && styles.signOutRowPressed]}
       >
         <AppText variant="ui.bodyLarge" style={styles.signOutText}>
           Sign out
@@ -168,6 +168,9 @@ const styles = StyleSheet.create({
   },
   signOutRow: {
     paddingVertical: spacing.md,
+  },
+  signOutRowPressed: {
+    opacity: 0.7,
   },
   signOutText: {
     color: colors.status.rose.text,

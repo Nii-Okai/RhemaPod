@@ -18,7 +18,12 @@ export interface LibraryRowProps {
  */
 export function LibraryRow({ label, onPress }: LibraryRowProps) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       <AppText variant="ui.bodyLarge">{label}</AppText>
       <View style={styles.chevron}>
         <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
@@ -33,6 +38,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   chevron: {
     marginLeft: spacing.sm,

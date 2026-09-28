@@ -53,7 +53,12 @@ export function PlaybackSection({
               accessibilityState={{ selected: active, disabled }}
               disabled={disabled}
               onPress={() => onChangeSpeed(speed)}
-              style={[styles.speedChip, active && styles.speedChipActive]}
+              style={({ pressed }) => [
+                styles.speedChip,
+                active && styles.speedChipActive,
+                pressed && styles.speedChipPressed,
+                disabled && styles.speedChipDisabled,
+              ]}
             >
               <AppText variant="ui.badge" tone={active ? 'gold' : 'secondary'}>
                 {speedLabel(speed)}
@@ -105,6 +110,12 @@ const styles = StyleSheet.create({
   },
   speedChipActive: {
     backgroundColor: colors.chip.square,
+  },
+  speedChipPressed: {
+    opacity: 0.7,
+  },
+  speedChipDisabled: {
+    opacity: 0.4,
   },
   toggleRow: {
     flexDirection: 'row',
