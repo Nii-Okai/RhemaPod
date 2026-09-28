@@ -1,0 +1,9 @@
+{
+  "name": "rpa-crypto",
+  "version": "1.0.0",
+  "description": "Local Expo native module for RPA1 chunked AES-256-GCM file encryption (offline downloads), using platform crypto (CryptoKit / javax.crypto) instead of a New Architecture-only third-party library.",
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "UNLICENSED",
+  "private": true
+}

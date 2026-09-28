@@ -5,9 +5,13 @@ Pod::Spec.new do |s|
   s.description    = 'A sample project description'
   s.author         = ''
   s.homepage       = 'https://docs.expo.dev/modules/'
+  # Matches the app's actual deployment target (mobile/ios/Podfile: platform :ios, '15.1').
+  # The scaffolded default (16.4) was never actually required — this file has no
+  # @available/#available-gated API; CryptoKit's AES.GCM has been available since iOS 13.
+  # A too-high podspec minimum doesn't error, it silently drops the pod from the build.
   s.platforms      = {
-    :ios => '16.4',
-    :tvos => '16.4'
+    :ios => '15.1',
+    :tvos => '15.1'
   }
   s.source         = { git: '' }
   s.static_framework = true
