@@ -23,7 +23,7 @@ export function AndroidSearchEntry({ onPress }: AndroidSearchEntryProps) {
       onPress={onPress}
       accessibilityRole="search"
       accessibilityLabel="Search sermons, series, speakers"
-      style={styles.bar}
+      style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
     >
       <Ionicons name="search" size={18} color={colors.text.tertiary} />
       <AppText variant="ui.body" tone="tertiary" style={styles.placeholder}>
@@ -43,6 +43,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     marginBottom: spacing.lg,
+  },
+  barPressed: {
+    opacity: 0.7,
   },
   placeholder: {
     flex: 1,

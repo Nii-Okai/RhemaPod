@@ -11,7 +11,12 @@ export interface SuggestionRowProps {
 /** Design spec 1j: "↗ storm" — tapping fills the search box with the suggestion text. */
 export function SuggestionRow({ suggestion, onPress }: SuggestionRowProps) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`Search for "${suggestion}"`} style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Search for "${suggestion}"`}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       <AppText variant="ui.body">{'↗'} {suggestion}</AppText>
     </Pressable>
   );
@@ -20,5 +25,8 @@ export function SuggestionRow({ suggestion, onPress }: SuggestionRowProps) {
 const styles = StyleSheet.create({
   row: {
     paddingVertical: spacing.sm,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
 });

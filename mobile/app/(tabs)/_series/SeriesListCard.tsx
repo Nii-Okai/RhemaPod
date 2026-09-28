@@ -26,7 +26,7 @@ export function SeriesListCard({ series, onPress }: SeriesListCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${series.title}, ${countLabel(series.episode_count)}`}
-      style={styles.pressable}
+      style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
     >
       <Card>
         <AppText variant="display.compact">{series.title}</AppText>
@@ -41,6 +41,9 @@ export function SeriesListCard({ series, onPress }: SeriesListCardProps) {
 const styles = StyleSheet.create({
   pressable: {
     marginBottom: spacing.md,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   meta: {
     marginTop: spacing.xs,
