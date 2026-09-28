@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { PixelRatio } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import SermonDetailScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
@@ -261,5 +262,37 @@ describe('SermonDetailScreen — iOS chrome', () => {
     expect(await findByTestId('detail-header-ios')).toBeTruthy();
     expect(await findByLabelText('Back')).toBeTruthy();
     expect(queryByTestId('detail-header-android')).toBeNull();
+  });
+});
+
+// Design spec §8.7 (W4.7 accessibility pass): "the title block... must not truncate or
+// clip at large accessibility text sizes — no fixed height on its container, allow wrap
+// past two lines." Real-device VoiceOver/Dynamic-Type verification isn't available in this
+// sandbox (flagged in status.md) — this proves the same thing at the render-tree level:
+// the title carries no `numberOfLines` cap, and its computed `lineHeight` actually grows
+// under the OS's largest accessibility text-size setting rather than staying fixed.
+describe('SermonDetailScreen — dynamic type (largest accessibility text size)', () => {
+  const ORIGINAL_FONT_SCALE = PixelRatio.getFontScale();
+
+  afterEach(() => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(ORIGINAL_FONT_SCALE);
+  });
+
+  it('never caps the title with numberOfLines, and grows its line-height under a large OS font scale', async () => {
+    // iOS's largest non-"larger accessibility" Dynamic Type step is ~3.11x (AX5); Android's
+    // largest standard font-scale setting is 2.0x — 3.11 exercises the larger of the two.
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(3.11);
+
+    mockDetailAndProgress(baseDetail);
+    const { findByText } = renderDetail();
+
+    const title = await findByText('Anchored in the Storm');
+    expect(title.props.numberOfLines).toBeUndefined();
+
+    const flatStyle = Array.isArray(title.props.style)
+      ? Object.assign({}, ...title.props.style.flat(Infinity).filter(Boolean))
+      : title.props.style;
+    // display.compact is fontSize 17, lineHeightRatio 1.2 — 17 * 1.2 * 3.11 ≈ 63.
+    expect(flatStyle.lineHeight).toBeGreaterThan(60);
   });
 });
