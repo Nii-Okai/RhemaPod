@@ -12,6 +12,7 @@ import { useStream, selectPlaybackVariant, type StreamVariant } from '../../lib/
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
 import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { isPlayable } from '../sermon/_detail/isPlayable';
+import { DownloadButton } from '../sermon/_detail/DownloadButton';
 import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
 import { TransportControls } from './_player/TransportControls';
@@ -29,13 +30,14 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * `staysActiveInBackground`, both platforms), buffering state, the Notes drawer, and
  * progress flush per L16.
  *
- * **Scope boundary, deliberately not built here:** the design spec's Player composition
- * also names a "download" and "share-clip" action pinned alongside transport controls.
- * Share-clip is cut whole (plan L5). Download is not cut, but it's W4.5's own slice
- * (offline audio downloads, `[HUMAN_GATE M9]`, its own JSI-crypto dependency and
- * device-matrix verification) — this screen doesn't grow a second, non-functional
- * download affordance ahead of that slice existing, same reasoning `PlaybackSection`'s own
- * docstring gives for cut toggles: a dead button is worse than no button.
+ * **Scope boundary:** the design spec's Player composition also names a "download" and
+ * "share-clip" action pinned alongside transport controls. Share-clip is cut whole (plan
+ * L5). Download (spec §3: "duplicates the Downloads-screen action — needs the same
+ * in-progress/queued/complete states threaded through both entry points") is wired here
+ * via `_detail/DownloadButton` — screen-agnostic against `useDownloads`, so this is
+ * composition, not a second implementation of the download state machine. Now that both
+ * W4.2 (this screen) and W4.5 (offline downloads) are real, the two entry points share one
+ * button and one state source, per spec.
  *
  * **Known gap, flagged not silently scoped down:** seeking is fixed-increment (±15s), not
  * drag-to-scrub — see `TransportControls`' own docstring for why (no draggable-slider
@@ -262,6 +264,13 @@ function PlayerContent({
         onCycleSpeed={cycleSpeed}
         onOpenSleepTimer={() => setSleepSheetOpen(true)}
       />
+      <View style={styles.downloadRow}>
+        <DownloadButton
+          sermonId={sermonId}
+          title={detail.title}
+          hasAudio={detail.media_refs.some((ref) => ref.type === 'audio')}
+        />
+      </View>
       <NotesDrawer sermonId={sermonId} getCurrentPositionSeconds={getCurrentPositionSeconds} />
       <SleepTimerSheet
         visible={sleepSheetOpen}
@@ -287,5 +296,9 @@ const styles = StyleSheet.create({
   },
   errorText: {
     textAlign: 'center',
+  },
+  downloadRow: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
   },
 });

@@ -15,8 +15,8 @@ export interface PlayerHeaderProps {
  * `DetailHeader` (design spec §8.1.1/§8.5 pattern, reused here rather than
  * re-invented): iOS floats transparent over the video surface, Android is a
  * solid M3 top app bar in normal flow. No overflow/menu icon (share-clip is
- * cut, L5; download lives in W4.5's own screen, not duplicated here yet —
- * see `[id].tsx`'s docstring for that scope boundary).
+ * cut, L5; download lives in its own row below the transport controls, not
+ * the header — see `[id].tsx`'s docstring).
  */
 export function PlayerHeader({ onBack }: PlayerHeaderProps) {
   const os = usePlatformOS();
