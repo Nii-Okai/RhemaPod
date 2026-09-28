@@ -38,7 +38,7 @@ export function SermonResultRow({ sermon, onPress }: SermonResultRowProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={meta ? `${sermon.title}, ${meta}` : sermon.title}
-      style={styles.row}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View style={styles.textBlock}>
         <AppText variant="display.compact" numberOfLines={2}>
@@ -57,6 +57,9 @@ export function SermonResultRow({ sermon, onPress }: SermonResultRowProps) {
 const styles = StyleSheet.create({
   row: {
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   textBlock: {
     gap: spacing.xs,

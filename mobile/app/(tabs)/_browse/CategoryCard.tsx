@@ -21,7 +21,7 @@ export function CategoryCard({ category, onPress }: CategoryCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${category.name}, ${countLabel(category.sermon_count)}`}
-      style={styles.pressable}
+      style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
     >
       <Card>
         <AppText variant="display.compact">{category.name}</AppText>
@@ -36,6 +36,9 @@ export function CategoryCard({ category, onPress }: CategoryCardProps) {
 const styles = StyleSheet.create({
   pressable: {
     marginBottom: spacing.md,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   meta: {
     marginTop: spacing.xs,

@@ -31,7 +31,12 @@ export function ContinueWatchingCard({ item, onPress }: ContinueWatchingCardProp
   const label = remaining ? `${item.title}, ${remaining}` : item.title;
 
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.card}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+    >
       {item.thumbnail_url ? (
         <Image source={{ uri: item.thumbnail_url }} style={styles.art} resizeMode="cover" />
       ) : (
@@ -57,6 +62,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.surface.raised,
+  },
+  cardPressed: {
+    opacity: 0.7,
   },
   art: {
     width: CARD_WIDTH,

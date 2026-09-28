@@ -25,7 +25,7 @@ export function SpeakerListRow({ speaker, onPress }: SpeakerListRowProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${speaker.name}, ${bio}, ${countLabel(speaker.sermon_count)}`}
-      style={styles.row}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <Avatar name={speaker.name} seed={speaker.id} size={40} />
       <View style={styles.textBlock}>
@@ -49,6 +49,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   textBlock: {
     flex: 1,

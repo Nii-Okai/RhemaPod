@@ -72,7 +72,12 @@ export function NotesDrawer({ sermonId, getCurrentPositionSeconds }: NotesDrawer
           </View>
         )}
         {os !== 'android' ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Add note" onPress={openCreate} style={styles.iosAddButton}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add note"
+            onPress={openCreate}
+            style={({ pressed }) => [styles.iosAddButton, pressed && styles.addButtonPressed]}
+          >
             <Ionicons name="add" size={18} color={colors.accent.goldText} />
             <AppText variant="ui.button" tone="gold">
               Note
@@ -107,7 +112,7 @@ export function NotesDrawer({ sermonId, getCurrentPositionSeconds }: NotesDrawer
           accessibilityRole="button"
           accessibilityLabel="Add note"
           onPress={openCreate}
-          style={styles.fab}
+          style={({ pressed }) => [styles.fab, pressed && styles.addButtonPressed]}
         >
           <Ionicons name="add" size={20} color={colors.primaryButton.text} />
           <AppText variant="ui.button" tone="inverse" style={styles.fabLabel}>
@@ -165,6 +170,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+  },
+  addButtonPressed: {
+    opacity: 0.7,
   },
   list: {
     flex: 1,

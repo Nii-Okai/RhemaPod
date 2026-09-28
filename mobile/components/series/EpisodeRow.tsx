@@ -38,7 +38,7 @@ export function EpisodeRow({ episode, status, onPress }: EpisodeRowProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibleParts.join(', ')}
-      style={styles.row}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       {number ? (
         <AppText variant="mono.tight" tone="gold" style={styles.number}>
@@ -65,6 +65,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.md,
     paddingVertical: spacing.md,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   number: {
     width: 24,

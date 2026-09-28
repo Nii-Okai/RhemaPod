@@ -25,4 +25,22 @@ describe('IconButton', () => {
     fireEvent.press(getByRole('button'));
     expect(onPress).not.toHaveBeenCalled();
   });
+
+  // Design spec §6: "no focus-visible, disabled, or pressed states are encoded anywhere in
+  // the source... mobile-developer needs to design-in-code standard states". `disabled`
+  // already blocked touches and set accessibilityState correctly, but had no matching
+  // visual dimming — a real gap this test pins down.
+  it('dims visually when disabled', () => {
+    const { getByRole } = render(<IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => {}} disabled />);
+    const button = getByRole('button');
+    const flatStyle = Array.isArray(button.props.style) ? Object.assign({}, ...button.props.style.flat(Infinity).filter(Boolean)) : button.props.style;
+    expect(flatStyle.opacity).toBe(0.4);
+  });
+
+  it('is not dimmed when enabled and not pressed', () => {
+    const { getByRole } = render(<IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => {}} />);
+    const button = getByRole('button');
+    const flatStyle = Array.isArray(button.props.style) ? Object.assign({}, ...button.props.style.flat(Infinity).filter(Boolean)) : button.props.style;
+    expect(flatStyle.opacity).toBeUndefined();
+  });
 });
