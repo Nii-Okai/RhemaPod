@@ -51,10 +51,11 @@ export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
+      style={disabled ? styles.linkDisabled : undefined}
       {...rest}
     >
       {({ pressed }) => (
-        <AppText variant="ui.button" tone={pressed ? 'goldHover' : 'gold'}>
+        <AppText variant="ui.button" tone={pressed && !disabled ? 'goldHover' : 'gold'}>
           {label}
         </AppText>
       )}
@@ -75,6 +76,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   disabled: {
+    opacity: 0.4,
+  },
+  linkDisabled: {
     opacity: 0.4,
   },
 });
