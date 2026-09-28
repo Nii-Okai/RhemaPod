@@ -83,6 +83,7 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete, isPlaying }: 
           progress={download.progress}
           accessibilityLabel={`Downloading ${download.title}, ${Math.round(download.progress * 100)} percent`}
           height={4}
+          animated
         />
       ) : null}
     </Card>

@@ -55,6 +55,7 @@ export function DownloadButton({ sermonId, title, hasAudio }: DownloadButtonProp
         <ProgressBar
           progress={record.progress}
           accessibilityLabel={`Downloading ${title}, ${Math.round(record.progress * 100)} percent`}
+          animated
         />
       </View>
     );
