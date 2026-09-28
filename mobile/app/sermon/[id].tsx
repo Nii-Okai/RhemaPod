@@ -7,6 +7,7 @@ import { spacing } from '../../theme/spacing';
 import { useSermonDetail } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
 import { resolveCta } from './_detail/cta';
+import { DownloadButton } from './_detail/DownloadButton';
 import { DetailError } from './_detail/ErrorState';
 import { DetailHeader } from './_detail/Header';
 import { isPlayable } from './_detail/isPlayable';
@@ -111,6 +112,13 @@ export default function SermonDetailScreen() {
             <AppText variant="ui.body" tone="tertiary">
               {cta.caption}
             </AppText>
+          ) : null}
+          {playable ? (
+            <DownloadButton
+              sermonId={detail.id}
+              title={detail.title}
+              hasAudio={detail.media_refs.some((ref) => ref.type === 'audio')}
+            />
           ) : null}
           {detail.description ? (
             <AppText variant="ui.body" tone="secondary">

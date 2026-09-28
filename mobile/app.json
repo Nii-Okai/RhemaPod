@@ -36,6 +36,12 @@
         {
           "supportsBackgroundPlayback": true
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
       ]
     ],
     "scheme": "rhemapod"

@@ -16,6 +16,25 @@ jest.mock('../../../components/navigation/platform', () => ({
 
 jest.mock('@expo/vector-icons');
 
+// Explicit factory (not a bare automock) — an automock still has to `require()` the real
+// module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
+// module resolution (unavailable under Jest). This screen's own download-affordance
+// coverage lives in `_detail/__tests__/DownloadButton.test.tsx`; here it's enough that
+// `useDownloads()` returns a harmless "nothing downloaded yet" shape.
+jest.mock('../../../lib/downloads/useDownloads', () => ({
+  useDownloads: jest.fn(() => ({
+    downloads: [],
+    isLoading: false,
+    wifiOnly: true,
+    isSavingWifiOnly: false,
+    setWifiOnly: jest.fn(),
+    download: jest.fn(),
+    retry: jest.fn(),
+    remove: jest.fn(),
+    find: jest.fn(() => undefined),
+  })),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
