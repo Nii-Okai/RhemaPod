@@ -11,6 +11,8 @@ import { createTestQueryClient } from '../../../lib/query/testUtils';
 // every `'expo-video'` import in the app code under test to the exact same file, so
 // `__lastMockPlayer` is the same live binding either way.
 import { __lastMockPlayer } from '../../../__mocks__/expo-video';
+import { useDownloads } from '../../../lib/downloads/useDownloads';
+import type { DownloadRecord } from '../../../lib/downloads/types';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
@@ -22,6 +24,16 @@ jest.mock('../../../components/navigation/platform', () => ({
 
 jest.mock('expo-video');
 jest.mock('@expo/vector-icons');
+
+// Explicit factory (not a bare automock) — an automock still has to `require()` the real
+// module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
+// module resolution (unavailable under Jest). `useDownloads` itself is a reconfigurable
+// `jest.fn()` (same pattern as `_detail/__tests__/DownloadButton.test.tsx`) so the
+// "download button" describe block below can drive each state (queued/downloading/ready/
+// failed) rather than only the harmless empty default other tests rely on.
+jest.mock('../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
+
+const mockedUseDownloads = useDownloads as jest.Mock;
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -59,7 +71,10 @@ const baseDetail = {
   tier: 'free',
   locked: false,
   tags: ['grief', 'hope'],
-  media_refs: [{ id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' }],
+  media_refs: [
+    { id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' },
+    { id: 'm2', type: 'audio', quality: 'aac', s3_key: 'z', hls_manifest_key: null },
+  ],
   published_at: '2026-09-04T12:00:00Z',
   status: 'published',
   created_at: '2026-09-01T00:00:00Z',
@@ -104,6 +119,18 @@ beforeEach(() => {
   mockedGet.mockReset();
   mockBack.mockClear();
   mockedUsePlatformOS.mockReturnValue('ios');
+  mockedUseDownloads.mockReset();
+  mockedUseDownloads.mockReturnValue({
+    downloads: [],
+    isLoading: false,
+    wifiOnly: true,
+    isSavingWifiOnly: false,
+    setWifiOnly: jest.fn(),
+    download: jest.fn(),
+    retry: jest.fn(),
+    remove: jest.fn(),
+    find: jest.fn(() => undefined),
+  });
 });
 
 describe('PlayerScreen — loading', () => {
@@ -271,5 +298,141 @@ describe('PlayerScreen — notes drawer is present', () => {
     mockReads({ notes: [] });
     const { findByText } = renderPlayer();
     await findByText('No notes yet');
+  });
+});
+
+describe('PlayerScreen — download button', () => {
+  // Same `DownloadButton` component sermon-detail wires (`_detail/DownloadButton.tsx`),
+  // composed here against the Player screen's own sermon identity (the route param /
+  // `detail.id` the rest of this screen already plays from) — this proves it's the
+  // *currently playing* sermon driving the button, not a second, independently-derived id.
+  function record(overrides: Partial<DownloadRecord> = {}): DownloadRecord {
+    return {
+      sermonId: 'sermon-1',
+      title: 'Anchored in the Storm',
+      state: 'ready',
+      progress: 1,
+      bytesTotal: 1000,
+      failureReason: null,
+      failureMessage: null,
+      keyIdHex: '00',
+      createdAt: 0,
+      updatedAt: 0,
+      ...overrides,
+    };
+  }
+
+  it('shows a Download control for the playing sermon when nothing is queued yet, and starts a download on press', async () => {
+    mockReads();
+    const download = jest.fn();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download,
+      retry: jest.fn(),
+      remove: jest.fn(),
+      find: jest.fn((id: string) => (id === 'sermon-1' ? undefined : record())),
+    });
+
+    const { findByText } = renderPlayer();
+    fireEvent.press(await findByText('Download for offline'));
+    expect(download).toHaveBeenCalledWith('sermon-1', 'Anchored in the Storm');
+  });
+
+  it('shows a queued state for the playing sermon', async () => {
+    mockReads();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download: jest.fn(),
+      retry: jest.fn(),
+      remove: jest.fn(),
+      find: jest.fn((id: string) => (id === 'sermon-1' ? record({ state: 'queued', progress: 0 }) : undefined)),
+    });
+
+    const { findByText } = renderPlayer();
+    await findByText('Queued for download');
+  });
+
+  it('shows download progress for the playing sermon', async () => {
+    mockReads();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download: jest.fn(),
+      retry: jest.fn(),
+      remove: jest.fn(),
+      find: jest.fn((id: string) =>
+        id === 'sermon-1' ? record({ state: 'downloading', progress: 0.65 }) : undefined,
+      ),
+    });
+
+    const { findByText } = renderPlayer();
+    await findByText('Downloading… 65%');
+  });
+
+  it('shows a Downloaded state with a working delete, scoped to the playing sermon', async () => {
+    mockReads();
+    const remove = jest.fn();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download: jest.fn(),
+      retry: jest.fn(),
+      remove,
+      find: jest.fn((id: string) => (id === 'sermon-1' ? record({ state: 'ready' }) : undefined)),
+    });
+
+    const { findByText, getByLabelText } = renderPlayer();
+    await findByText('Downloaded for offline');
+    fireEvent.press(getByLabelText('Delete downloaded Anchored in the Storm'));
+    expect(remove).toHaveBeenCalledWith('sermon-1');
+  });
+
+  it('shows the real failure reason with a working Retry for the playing sermon', async () => {
+    mockReads();
+    const retry = jest.fn();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly: jest.fn(),
+      download: jest.fn(),
+      retry,
+      remove: jest.fn(),
+      find: jest.fn((id: string) =>
+        id === 'sermon-1'
+          ? record({
+              state: 'failed',
+              failureReason: 'no_audio',
+              failureMessage: "This sermon doesn't have an audio version available to download.",
+            })
+          : undefined,
+      ),
+    });
+
+    const { findByText } = renderPlayer();
+    await findByText("This sermon doesn't have an audio version available to download.");
+    fireEvent.press(await findByText('Retry'));
+    expect(retry).toHaveBeenCalledWith('sermon-1');
+  });
+
+  it('renders no download affordance when the playing sermon has no audio rendition', async () => {
+    mockReads({ detail: { ...baseDetail, media_refs: [baseDetail.media_refs[0]] } });
+    const { queryByText } = renderPlayer();
+    await waitFor(() => expect(queryByText('Download for offline')).toBeNull());
   });
 });
