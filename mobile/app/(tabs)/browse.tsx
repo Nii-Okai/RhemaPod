@@ -1,40 +1,62 @@
-import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AppText, QueryState } from '../../components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { AppText, QueryState, SpeakerListRow } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
-import { usePlatformOS } from '../../components/navigation/platform';
 import { useCategories } from '../../lib/query/hooks/useCategories';
 import { useSpeakers } from '../../lib/query/hooks/useSpeakers';
-import { AndroidSearchEntry } from './_browse/AndroidSearchEntry';
+import { BrowseSearchEntry } from './_browse/BrowseSearchEntry';
 import { CategoryCard } from './_browse/CategoryCard';
-import { SpeakerListRow } from './_browse/SpeakerListRow';
+
+const GRID_COLUMNS = 2;
+// Isaac's ask, session 2026-10-02: more breathing room between category tiles.
+const GRID_GAP = spacing.lg;
+const GRID_PADDING = spacing.lg;
+// Prime Video reference (Isaac's ask, session 2026-10-02): a short grid with a "See
+// more" toggle underneath, not every category laid out at once.
+const COLLAPSED_CATEGORY_COUNT = 6;
 
 /**
  * Design spec 1i/2d: flat categories and speakers — "the two axes people
- * actually browse by: topic and voice" (plan W4.3). Android additionally
- * gets the M3 search-bar entry point at the top (L3: both chromes ship in
- * this slice, not iOS first then a later Android pass).
+ * actually browse by: topic and voice" (plan W4.3).
  *
- * Each `CategoryPublic`/`SpeakerPublic` already carries its `sermon_count`
- * computed server-side — this screen never fans out a per-row count request.
+ * Browse is also the sole search entry point as of Isaac's ask, session 2026-10-02 (Prime
+ * Video reference screenshots): the dedicated Search tab is gone, so `BrowseSearchEntry`
+ * now renders unconditionally (it used to be Android-only, iOS reaching Search purely
+ * via its own tab bar item) and pushes `/search` — a top-level stack route, not a tab.
+ *
+ * Each `CategoryPublic`/`SpeakerPublic` already carries its `sermon_count` computed
+ * server-side — this screen never fans out a per-row count request.
  */
 export default function BrowseScreen() {
   const router = useRouter();
-  const os = usePlatformOS();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const categories = useCategories();
   const speakers = useSpeakers();
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
+  const allCategories = categories.data ?? [];
+  const hasMoreCategories = allCategories.length > COLLAPSED_CATEGORY_COUNT;
+  const visibleCategories =
+    showAllCategories || !hasMoreCategories ? allCategories : allCategories.slice(0, COLLAPSED_CATEGORY_COUNT);
+  const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}
+    >
       <AppText variant="display.section" style={styles.heading}>
         Browse
       </AppText>
 
-      {os === 'android' ? (
-        <AndroidSearchEntry onPress={() => router.push('/search')} />
-      ) : null}
+      <View style={styles.searchEntry}>
+        <BrowseSearchEntry onPress={() => router.push('/search')} />
+      </View>
 
       <View style={styles.section}>
         <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
@@ -44,24 +66,42 @@ export default function BrowseScreen() {
           isLoading={categories.isLoading}
           isError={categories.isError}
           error={categories.error}
-          isEmpty={!categories.isLoading && !categories.isError && (categories.data?.length ?? 0) === 0}
+          isEmpty={!categories.isLoading && !categories.isError && allCategories.length === 0}
           emptyTitle="No categories yet"
           emptyDescription="Check back once the catalogue has categories."
           onRetry={() => categories.refetch()}
           loadingLabel="Loading categories"
         >
-          {(categories.data ?? []).map((category) => (
-            <CategoryCard
-              key={category.id}
-              category={category}
-              onPress={() =>
-                router.push({
-                  pathname: '/category/[id]',
-                  params: { id: category.id, name: category.name },
-                })
-              }
-            />
-          ))}
+          <View style={styles.grid}>
+            {visibleCategories.map((category) => (
+              <CategoryCard
+                key={category.id}
+                category={category}
+                width={cardWidth}
+                onPress={() =>
+                  router.push({
+                    pathname: '/category/[id]',
+                    params: { id: category.id, name: category.name },
+                  })
+                }
+              />
+            ))}
+          </View>
+          {hasMoreCategories ? (
+            <Pressable
+              onPress={() => setShowAllCategories((current) => !current)}
+              accessibilityRole="button"
+              accessibilityLabel={showAllCategories ? 'See fewer categories' : 'See more categories'}
+              style={({ pressed }) => [styles.seeMore, pressed && styles.seeMorePressed]}
+            >
+              <AppText variant="ui.bodyLarge">{showAllCategories ? 'See less' : 'See more'}</AppText>
+              <Ionicons
+                name={showAllCategories ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.text.primary}
+              />
+            </Pressable>
+          ) : null}
         </QueryState>
       </View>
 
@@ -111,11 +151,29 @@ const styles = StyleSheet.create({
   heading: {
     marginBottom: spacing.lg,
   },
+  searchEntry: {
+    marginBottom: spacing.lg,
+  },
   section: {
     marginBottom: spacing.xxl,
   },
   sectionLabel: {
     textTransform: 'uppercase',
     marginBottom: spacing.md,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
+  },
+  seeMore: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+  },
+  seeMorePressed: {
+    opacity: 0.7,
   },
 });

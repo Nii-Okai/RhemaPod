@@ -243,3 +243,41 @@ async def test_series_episodes_leaves_unnumbered_episode_null(client, engine):
     )).json()["items"]
     admin_by_title = {item["title"]: item["episode_number"] for item in admin}
     assert admin_by_title == {"One": 1, "Bonus": None, "Four": 4}
+async def test_series_episodes_resolves_speaker_category_and_series_names(client, engine):
+    """Isaac's report, session 2026-09-30: "speaker name is not showing on episode
+    items" — the route called `to_list_item` with no `names` argument at all, so it
+    silently fell back to an all-empty `RefNames()` and every episode's
+    `speaker_name`/`category_name`/`series_title` came back `None` regardless of
+    what was actually assigned."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    speaker = (await client.post(
+        "/api/v1/speakers", json={"name": "Pastor Grace"}, headers=ed
+    )).json()
+    category = (await client.post(
+        "/api/v1/categories", json={"name": "Faith", "slug": "faith"}, headers=ed
+    )).json()
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Anchored", "category_id": category["id"]}, headers=ed,
+    )).json()
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={
+            "title": "Part One",
+            "series_id": series["id"],
+            "episode_number": 1,
+            "speaker_id": speaker["id"],
+            "category_id": category["id"],
+        },
+        headers=ed,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+
+    episodes = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
+
+    assert len(episodes) == 1
+    assert episodes[0]["speaker_name"] == "Pastor Grace"
+    assert episodes[0]["category_name"] == "Faith"
+    assert episodes[0]["series_title"] == "Anchored"

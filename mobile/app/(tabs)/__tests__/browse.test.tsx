@@ -3,18 +3,17 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import BrowseScreen from '../browse';
 import { api } from '../../../lib/api/typedClient';
-import { usePlatformOS } from '../../../components/navigation/platform';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
-jest.mock('../../../components/navigation/platform', () => ({
-  usePlatformOS: jest.fn(() => 'ios'),
-}));
-
 jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -22,7 +21,6 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
-const mockedUsePlatformOS = usePlatformOS as jest.Mock;
 
 const categories = [
   { id: 'c1', name: 'Teaching', slug: 'teaching', sermon_count: 54 },
@@ -45,7 +43,6 @@ function renderBrowse() {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
-  mockedUsePlatformOS.mockReturnValue('ios');
 });
 
 describe('BrowseScreen — populated', () => {
@@ -54,10 +51,11 @@ describe('BrowseScreen — populated', () => {
       path === '/categories' ? Promise.resolve(categories) : Promise.resolve(speakers),
     );
 
-    const { getByText, findByText } = renderBrowse();
+    const { getByText, findByText, queryByText } = renderBrowse();
 
     await findByText('Teaching');
-    expect(getByText('54 sermons')).toBeTruthy();
+    // Visible counts dropped (Isaac's ask, session 2026-10-02) — still reach VoiceOver.
+    expect(queryByText('54 sermons')).toBeNull();
     expect(getByText('Pastor Ada Nwosu')).toBeTruthy();
     expect(getByText('No bio yet')).toBeTruthy();
 
@@ -106,9 +104,8 @@ describe('BrowseScreen — error', () => {
   });
 });
 
-describe('BrowseScreen — Android chrome', () => {
-  it('shows the M3 search-bar entry point on Android and hides it on iOS', async () => {
-    mockedUsePlatformOS.mockReturnValue('android');
+describe('BrowseScreen — search entry', () => {
+  it('shows the search entry point on every platform and pushes /search on press', async () => {
     mockedGet.mockResolvedValue([]);
 
     const { getByLabelText, findByText } = renderBrowse();
@@ -118,11 +115,42 @@ describe('BrowseScreen — Android chrome', () => {
     fireEvent.press(getByLabelText('Search sermons, series, speakers'));
     expect(mockPush).toHaveBeenCalledWith('/search');
   });
+});
 
-  it('does not render the Android search bar on iOS', async () => {
-    mockedGet.mockResolvedValue([]);
-    const { queryByLabelText, findByText } = renderBrowse();
-    await findByText('No categories yet');
-    expect(queryByLabelText('Search sermons, series, speakers')).toBeNull();
+describe('BrowseScreen — categories "See more"', () => {
+  const manyCategories = Array.from({ length: 8 }, (_, i) => ({
+    id: `c${i + 1}`,
+    name: `Category ${i + 1}`,
+    slug: `category-${i + 1}`,
+    sermon_count: i + 1,
+  }));
+
+  it('collapses to the first six categories with a "See more" toggle, expanding on press', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/categories' ? Promise.resolve(manyCategories) : Promise.resolve([]),
+    );
+
+    const { getByText, queryByText, findByText } = renderBrowse();
+    await findByText('Category 1');
+
+    expect(queryByText('Category 7')).toBeNull();
+    expect(getByText('See more')).toBeTruthy();
+
+    fireEvent.press(getByText('See more'));
+
+    expect(getByText('Category 7')).toBeTruthy();
+    expect(getByText('Category 8')).toBeTruthy();
+    expect(getByText('See less')).toBeTruthy();
+  });
+
+  it('does not render the toggle when there are six or fewer categories', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/categories' ? Promise.resolve(categories) : Promise.resolve([]),
+    );
+
+    const { queryByText, findByText } = renderBrowse();
+    await findByText('Teaching');
+
+    expect(queryByText('See more')).toBeNull();
   });
 });

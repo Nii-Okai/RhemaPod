@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -31,6 +31,7 @@ from app.services.content_service import (
     _series_public_stmt,
     _speaker_public_stmt,
     effective_tier,
+    load_ref_names,
     series_to_public,
     sermon_visibility_clause,
     speaker_to_public,
@@ -56,11 +57,21 @@ def _is_postgres(db: AsyncSession) -> bool:
 
 def _weighted_vector(columns_weights: list[tuple]):
     """A `setweight`-combined tsvector across one or more (column, weight)
-    pairs — weight "A" ranks above "B", etc. (Postgres only.)"""
+    pairs — weight "A" ranks above "B", etc. (Postgres only.)
+
+    `setweight`'s second argument is Postgres's internal `"char"` type, which a
+    plain SQL string literal ('A') coerces to but a bound `varchar` parameter
+    does not — SQLAlchemy binds a Python str as `varchar` by default, which
+    500s with "function setweight(tsvector, character varying) does not
+    exist". `literal_column` inlines it as a raw SQL literal instead of a
+    bind parameter, sidestepping that entirely. `weight` here is always one
+    of this module's own single-char constants ("A"/"B"), never caller/user
+    input, so inlining it is safe.
+    """
     vector = None
     for column, weight in columns_weights:
         term = func.setweight(
-            func.to_tsvector("english", func.coalesce(column, "")), weight
+            func.to_tsvector("english", func.coalesce(column, "")), literal_column(f"'{weight}'")
         )
         vector = term if vector is None else vector.op("||")(term)
     return vector
@@ -177,10 +188,11 @@ async def search_sermons(
         series_map = {s.id: s for s in series_rows}
 
     has_sub = await _has_subscription(db, user)
+    names = await load_ref_names(db, rows)
     items = []
     for sermon in rows:
         resolved = effective_tier(sermon, series_map.get(sermon.series_id))
-        items.append(to_list_item(sermon, resolved, has_sub))
+        items.append(to_list_item(sermon, resolved, has_sub, names))
 
     log.info("search", query=query or "", results=len(items), total=total)
     return items, total

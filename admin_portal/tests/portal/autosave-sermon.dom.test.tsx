@@ -197,7 +197,10 @@ describe("useAutosaveSermon — edit during the in-flight create POST", () => {
     await waitFor(() => expect(patchedIds).toEqual(["new-7"]));
 
     expect(postBody).toHaveBeenCalledTimes(1);
-    expect(postBody).toHaveBeenCalledWith({ title: "Fresh" });
+    expect(postBody).toHaveBeenCalledWith({
+      title: "Fresh",
+      is_prophets_catalog: false,
+    });
     // the coalesced follow-up carried the mid-flight edit, against the new id
     expect(patchBodies).toEqual([{ description: "added mid-flight" }]);
     expect(patchedIds).not.toContain("undefined");

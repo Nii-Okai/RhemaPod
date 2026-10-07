@@ -2556,6 +2556,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_prophets_catalog": {
+            "default": false,
+            "title": "Is Prophets Catalog",
+            "type": "boolean"
+          },
           "locked": {
             "title": "Locked",
             "type": "boolean"
@@ -2937,6 +2942,11 @@
             ],
             "description": "Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.",
             "title": "Episode Number"
+          },
+          "is_prophets_catalog": {
+            "default": false,
+            "title": "Is Prophets Catalog",
+            "type": "boolean"
           },
           "series_id": {
             "anyOf": [
@@ -3402,6 +3412,17 @@
               }
             ],
             "title": "Episode Number"
+          },
+          "is_prophets_catalog": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Prophets Catalog"
           },
           "series_id": {
             "anyOf": [
@@ -4360,6 +4381,188 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerseAdminItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "translation": {
+            "title": "Translation",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "reference",
+          "text",
+          "translation",
+          "is_active",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VerseAdminItem",
+        "type": "object"
+      },
+      "VerseCreate": {
+        "properties": {
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "reference": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "translation": {
+            "default": "kjv",
+            "maxLength": 20,
+            "title": "Translation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "text"
+        ],
+        "title": "VerseCreate",
+        "type": "object"
+      },
+      "VersePublic": {
+        "description": "What `GET /verses/today` returns \u2014 no `is_active`/`created_by`/timestamps,\nsame split Announcements draws between its public and staff shapes.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "translation": {
+            "title": "Translation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reference",
+          "text",
+          "translation"
+        ],
+        "title": "VersePublic",
+        "type": "object"
+      },
+      "VerseUpdate": {
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "translation": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation"
+          }
+        },
+        "title": "VerseUpdate",
         "type": "object"
       }
     },
@@ -6667,6 +6870,226 @@
         ]
       }
     },
+    "/api/v1/catalog/sermons/hero": {
+      "get": {
+        "description": "Home's hero carousel \u2014 up to 3 newest-published sermons, capped to one per\nseries. Public, like every other `/catalog` read. Registered ahead of\n`/sermons/{sermon_id}` so \"hero\" is never captured as a sermon-id path parameter.",
+        "operationId": "hero_sermons_api_v1_catalog_sermons_hero_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SermonListItem"
+                  },
+                  "title": "Response Hero Sermons Api V1 Catalog Sermons Hero Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Hero Sermons",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/sermons/new-releases": {
+      "get": {
+        "description": "Newest-published sermons (Home's \"New Releases\" shelf) \u2014 same ordering as the\nhero, capped to shelf size, NOT capped to one-per-series (see\n`list_new_release_sermons`'s own docstring). Public, like every other `/catalog`\nread. Registered ahead of `/sermons/{sermon_id}` so \"new-releases\" is never\ncaptured as a sermon-id path parameter.",
+        "operationId": "new_release_sermons_api_v1_catalog_sermons_new_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SermonListItem"
+                  },
+                  "title": "Response New Release Sermons Api V1 Catalog Sermons New Releases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Release Sermons",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/sermons/prophets-catalog": {
+      "get": {
+        "description": "Sermons an editor has manually flagged as part of the \"Prophet's Catalog\"\n(Home's shelf of the same name) via the admin editor's switch. Public, like\nevery other `/catalog` read. Registered ahead of `/sermons/{sermon_id}` so\n\"prophets-catalog\" is never captured as a sermon-id path parameter.",
+        "operationId": "prophets_catalog_sermons_api_v1_catalog_sermons_prophets_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SermonListItem"
+                  },
+                  "title": "Response Prophets Catalog Sermons Api V1 Catalog Sermons Prophets Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prophets Catalog Sermons",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/sermons/trending": {
+      "get": {
+        "description": "Most-played published sermons over the last 30 days (Home's \"Trending\"\nshelf) \u2014 public, like every other `/catalog` read; no sign-in required to\nsee what's trending. Registered ahead of `/sermons/{sermon_id}` below so\n\"trending\" is never captured as a sermon-id path parameter.",
+        "operationId": "trending_sermons_api_v1_catalog_sermons_trending_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SermonListItem"
+                  },
+                  "title": "Response Trending Sermons Api V1 Catalog Sermons Trending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trending Sermons",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/sermons/{sermon_id}": {
       "get": {
         "operationId": "get_sermon_api_v1_catalog_sermons__sermon_id__get",
@@ -7219,7 +7642,7 @@
     },
     "/api/v1/me/history": {
       "get": {
-        "description": "Caller's own playback history, most-recently-played first.\n\nWith no `series_id`, the existing app-wide reading: capped at `limit`\n(<=100). With `series_id`, every one of the caller's progress rows for\nsermons in that series \u2014 `limit` is ignored, since the series screen\nneeds every episode's real status and a 100-row app-wide cap can hide an\nold episode's completed watch behind the cap. See\n`analytics_service.history` for the (much higher) safety ceiling that\nstill applies.",
+        "description": "Unscoped: the caller's `limit`-capped history. `?series_id=<id>` (Decision\n6, `app/series/[id].tsx`'s per-episode status): every progress row for that\nseries instead, `limit` ignored \u2014 see `analytics_service.history`'s own\ndocstring for why.",
         "operationId": "watch_history_api_v1_me_history_get",
         "parameters": [
           {
@@ -7284,6 +7707,61 @@
           }
         ],
         "summary": "Watch History",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/me/recommended": {
+      "get": {
+        "description": "Home's \"Recommended for you\" shelf \u2014 category/speaker affinity derived\nfrom the caller's own playback history (falls back to Trending when that\nhistory has nothing to work with; see\n`content_service.list_recommended_sermons`'s own docstring).",
+        "operationId": "recommended_for_you_api_v1_me_recommended_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SermonListItem"
+                  },
+                  "title": "Response Recommended For You Api V1 Me Recommended Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recommended For You",
         "tags": [
           "analytics"
         ]
@@ -9982,6 +10460,200 @@
         "summary": "Change Role",
         "tags": [
           "admin auth"
+        ]
+      }
+    },
+    "/api/v1/verses": {
+      "post": {
+        "operationId": "create_verse_api_v1_verses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerseAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Verse",
+        "tags": [
+          "verses"
+        ]
+      }
+    },
+    "/api/v1/verses/admin/all": {
+      "get": {
+        "operationId": "list_verses_api_v1_verses_admin_all_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VerseAdminItem"
+                  },
+                  "title": "Response List Verses Api V1 Verses Admin All Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Verses",
+        "tags": [
+          "verses"
+        ]
+      }
+    },
+    "/api/v1/verses/today": {
+      "get": {
+        "operationId": "verse_of_the_day_api_v1_verses_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verse Of The Day",
+        "tags": [
+          "verses"
+        ]
+      }
+    },
+    "/api/v1/verses/{verse_id}": {
+      "delete": {
+        "operationId": "delete_verse_api_v1_verses__verse_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "verse_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Verse Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Verse",
+        "tags": [
+          "verses"
+        ]
+      },
+      "patch": {
+        "operationId": "update_verse_api_v1_verses__verse_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "verse_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Verse Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerseAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Verse",
+        "tags": [
+          "verses"
         ]
       }
     },

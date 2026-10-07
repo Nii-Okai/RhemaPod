@@ -26,7 +26,7 @@ from app.models.models import (
     SubscriptionStatus,
     User,
 )
-from app.services.content_service import ContentError, effective_tier, to_list_item
+from app.services.content_service import ContentError, effective_tier, load_ref_names, to_list_item
 
 log = get_logger("analytics")
 
@@ -217,11 +217,12 @@ async def continue_watching(
         )).scalars().all()
         series_map = {s.id: s for s in found}
 
+    names = await load_ref_names(db, [sermon for _, sermon in rows])
     items = []
     for session, sermon in rows:
         base = to_list_item(
             sermon, effective_tier(sermon, series_map.get(sermon.series_id)),
-            has_subscription,
+            has_subscription, names,
         )
         percent = None
         if sermon.duration_seconds:
@@ -235,6 +236,15 @@ async def continue_watching(
             "last_played_at": session.last_played_at,
         })
     return items
+
+
+# Safety ceiling for the `series_id`-scoped read below — deliberately much
+# higher than the unscoped read's 100-row cap (mobile's own docstring,
+# useWatchHistory.ts: "the backend ignores `limit` once `series_id` is set,
+# bounded instead by its own much higher ... safety ceiling"). No realistic
+# series has anywhere near this many episodes; this exists to bound the
+# query, not to actually get hit.
+SERIES_HISTORY_LIMIT = 500
 
 
 async def history(

@@ -2,19 +2,24 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import SearchScreen from '../search';
-import { api } from '../../../lib/api/typedClient';
-import { createTestQueryClient } from '../../../lib/query/testUtils';
+import { api } from '../../lib/api/typedClient';
+import { createTestQueryClient } from '../../lib/query/testUtils';
 
-jest.mock('../../../lib/api/typedClient', () => ({
+jest.mock('../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
 }));
 
 jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 const mockedGet = api.get as jest.Mock;
 
@@ -104,6 +109,7 @@ const groupedResults = {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
+  mockBack.mockClear();
   jest.useFakeTimers();
 });
 
@@ -117,6 +123,17 @@ describe('SearchScreen — empty query', () => {
 
     expect(getByText('Search the library')).toBeTruthy();
     expect(mockedGet).not.toHaveBeenCalled();
+  });
+
+  it('fires router.back() on the back chevron', () => {
+    const { getByLabelText } = renderSearch();
+    fireEvent.press(getByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('autofocuses the search field so the user can type immediately', () => {
+    const { getByLabelText } = renderSearch();
+    expect(getByLabelText('Search').props.autoFocus).toBe(true);
   });
 });
 
@@ -157,14 +174,31 @@ describe('SearchScreen — populated (suggestions + grouped results)', () => {
       jest.advanceTimersByTime(300);
     });
 
-    await findByText('sermons · 2');
-    expect(getByText('Anchored in the Storm')).toBeTruthy();
-    expect(getByText('42:18 · Ada Nwosu')).toBeTruthy();
+    await findByText('Anchored in the Storm');
+    // Duration/speaker dropped from the visible row (Isaac's ask, session 2026-10-02 —
+    // flat list matching the reference) but still reach VoiceOver.
+    expect(getByLabelText('Anchored in the Storm, 42:18 · Ada Nwosu')).toBeTruthy();
     // The query itself is filtered out of its own suggestion list.
     expect(getByText(/storms of life/)).toBeTruthy();
 
     fireEvent.press(getByText('Anchored in the Storm'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } });
+  });
+
+  it('drops a suggestion that exactly matches a result title, instead of showing it twice', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/search/suggest'
+        ? Promise.resolve(['Anchored in the Storm'])
+        : Promise.resolve({ ...sermonResults, results: [sermonResults.results[0]] }),
+    );
+
+    const { getByLabelText, getAllByText } = renderSearch();
+    fireEvent.changeText(getByLabelText('Search'), 'anchored');
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    await waitFor(() => expect(getAllByText('Anchored in the Storm')).toHaveLength(1));
   });
 
   it('filling the box from a suggestion re-triggers the debounced search', async () => {
@@ -224,24 +258,25 @@ describe('SearchScreen — no results', () => {
 });
 
 describe('SearchScreen — grouped results (Decision 4)', () => {
-  it('renders sermons, series, and speakers as three grouped sections and navigates from each', async () => {
+  it('renders sermons, series, and speakers with no group headings, and navigates from each', async () => {
     mockedGet.mockImplementation((path: string) =>
       path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(groupedResults),
     );
 
-    const { getByLabelText, findByText, getByText } = renderSearch();
+    const { getByLabelText, findByText, getByText, queryByText } = renderSearch();
     fireEvent.changeText(getByLabelText('Search'), 'storm');
     act(() => {
       jest.advanceTimersByTime(300);
     });
 
-    await findByText('sermons · 1');
-    expect(getByText('series · 1')).toBeTruthy();
-    expect(getByText('speakers · 1')).toBeTruthy();
-
-    expect(getByText('Anchored in the Storm')).toBeTruthy();
+    await findByText('Anchored in the Storm');
     expect(getByText('Storm Stories')).toBeTruthy();
     expect(getByText('Ada Nwosu')).toBeTruthy();
+    // No "sermons · N" / "series · N" / "speakers · N" heading above any group (Isaac's
+    // ask, session 2026-10-02 — "only show search results without headings").
+    expect(queryByText(/^sermons ·/)).toBeNull();
+    expect(queryByText(/^series ·/)).toBeNull();
+    expect(queryByText(/^speakers ·/)).toBeNull();
 
     fireEvent.press(getByText('Storm Stories'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/series/[id]', params: { id: 'series-1' } });
@@ -253,7 +288,7 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
     });
   });
 
-  it('omits a group section entirely when that group has no matches', async () => {
+  it('a group with no matches contributes no rows (and never did show an empty heading)', async () => {
     mockedGet.mockImplementation((path: string) =>
       path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(sermonResults),
     );
@@ -264,7 +299,7 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
       jest.advanceTimersByTime(300);
     });
 
-    await findByText('sermons · 2');
+    await findByText('Anchored in the Storm');
     expect(queryByText(/^series ·/)).toBeNull();
     expect(queryByText(/^speakers ·/)).toBeNull();
   });

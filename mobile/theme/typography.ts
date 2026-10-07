@@ -21,7 +21,7 @@ export const fontFamily = {
 } as const;
 
 export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact';
-export type UiVariant = 'bodyLarge' | 'body' | 'label' | 'button' | 'badge' | 'avatarInitials';
+export type UiVariant = 'bodyLarge' | 'body' | 'label' | 'button' | 'badge' | 'avatarInitials' | 'actionLabel';
 export type MonoVariant = 'meta' | 'tight';
 
 interface TypeStyle {
@@ -51,6 +51,10 @@ export const uiScale: Record<UiVariant, TypeStyle> = {
   button: { fontFamily: fontFamily.uiSemiBold, fontSize: 14, lineHeightRatio: 1.2 },
   badge: { fontFamily: fontFamily.uiSemiBold, fontSize: 12, lineHeightRatio: 1.2 },
   avatarInitials: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1 },
+  /** Small bold label under an icon — `ActionButton`'s own label (My List/Like/Share/
+      Download), Isaac's ask, session 2026-10-01: smaller than `body`, bold rather than
+      `label`'s semibold. */
+  actionLabel: { fontFamily: fontFamily.uiBold, fontSize: 11, lineHeightRatio: 1.2 },
 };
 
 /** Mono scale (IBM Plex Mono, 400 weight only) — numeric/temporal data exclusively. */

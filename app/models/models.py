@@ -218,6 +218,12 @@ class Sermon(Base):
 
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Editorial curation flag for Home's "Prophet's Catalog" shelf — set manually
+    # per sermon via a switch on the editor page, not derived from any other field.
+    is_prophets_catalog: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -863,4 +869,48 @@ class UserBlock(Base):
     __table_args__ = (
         UniqueConstraint("blocker_id", "blocked_id", name="uq_user_blocks_pair"),
         CheckConstraint("blocker_id <> blocked_id", name="ck_user_blocks_no_self"),
+    )
+
+
+# Precomputed, not called inline inside `Verse` — the `text` *column* below would
+# otherwise shadow the module-level `text()` SQL-literal function for the rest of that
+# class body (a real bug, caught by the SQLite test suite: "'MappedColumn' object is
+# not callable" on the line after `text` is declared).
+_VERSE_TRANSLATION_DEFAULT = text("'kjv'")
+_VERSE_ACTIVE_DEFAULT = text("true")
+
+
+class Verse(Base):
+    """A scripture verse in Home's "verse of the day" rotation (mobile `VerseStrip`).
+
+    No editorial workflow, unlike `Announcement` — plain admin-managed rows, picked at
+    read time by a daily-seeded shuffle (`verse_service.get_verse_of_the_day`), not a
+    per-row publish schedule. `text` is sourced from bible-api.com (KJV, public domain)
+    by the operational script `app.scripts.seed_verses`, not typed by hand.
+    """
+
+    __tablename__ = "verses"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    translation: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="kjv", server_default=_VERSE_TRANSLATION_DEFAULT
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default=_VERSE_ACTIVE_DEFAULT
+    )
+    # Nullable, unlike every other content model's created_by — most rows here come
+    # from the operational seed script, not a staff member in the admin portal, so
+    # there is often no real human creator to attribute.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

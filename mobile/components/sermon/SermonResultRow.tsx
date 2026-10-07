@@ -23,12 +23,12 @@ function metaLine(sermon: SermonListItem): string {
 }
 
 /**
- * One sermon row — shared by the Search tab's results (search.tsx) and the
- * Browse category/speaker drill-down lists (app/category/[id].tsx,
- * app/speaker/[id].tsx): identical composition, three call sites, per design
- * spec 1j ("Anchored in the Storm 42:18 · Ada Nwosu"). Title is `display.
- * compact` per theme/typography.ts's rule that list titles are Newsreader,
- * not Figtree.
+ * One sermon row — per design spec 1j ("Anchored in the Storm 42:18 · Ada
+ * Nwosu"). Title is `display.compact` per theme/typography.ts's rule that
+ * list titles are Newsreader, not Figtree. Down to its one remaining call
+ * site, `app/speaker/[id].tsx` — `app/category/[id].tsx` moved to a
+ * `SermonCard` grid and `app/search.tsx` moved to the flat `SearchRow` list
+ * (both Isaac's asks, session 2026-10-02).
  */
 export function SermonResultRow({ sermon, onPress }: SermonResultRowProps) {
   const meta = metaLine(sermon);

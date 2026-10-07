@@ -1,6 +1,14 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinkButton, PrimaryButton } from '../Button';
+
+jest.mock('@expo/vector-icons');
+
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (Array.isArray(style)) return Object.assign({}, ...style.map(flattenStyle));
+  return (style as Record<string, unknown>) || {};
+}
 
 describe('PrimaryButton', () => {
   it('fires onPress when enabled', () => {
@@ -19,6 +27,26 @@ describe('PrimaryButton', () => {
     fireEvent.press(getByRole('button'));
 
     expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('is content-sized (no explicit width) by default', () => {
+    const { getByRole } = render(<PrimaryButton label="Sign in" onPress={jest.fn()} />);
+    expect(flattenStyle(getByRole('button').props.style).width).toBeUndefined();
+  });
+
+  it('stretches to 100% width when fullWidth is set', () => {
+    const { getByRole } = render(<PrimaryButton label="Play" onPress={jest.fn()} fullWidth />);
+    expect(flattenStyle(getByRole('button').props.style).width).toBe('100%');
+  });
+
+  it('renders a leading icon when one is given', () => {
+    const { UNSAFE_getByType } = render(<PrimaryButton label="Play" onPress={jest.fn()} icon="play" />);
+    expect(UNSAFE_getByType(Ionicons).props.name).toBe('play');
+  });
+
+  it('renders no icon by default', () => {
+    const { UNSAFE_queryAllByType } = render(<PrimaryButton label="Sign in" onPress={jest.fn()} />);
+    expect(UNSAFE_queryAllByType(Ionicons)).toHaveLength(0);
   });
 });
 

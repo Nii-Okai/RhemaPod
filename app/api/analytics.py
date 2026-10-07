@@ -13,6 +13,7 @@ from app.models.content_schemas import (
     OverviewStats,
     ProgressPublic,
     ProgressUpdate,
+    SermonListItem,
     TopSermonStat,
 )
 from app.models.models import User, UserRole
@@ -79,6 +80,18 @@ async def continue_watching(
     return [ContinueWatchingItem(**r) for r in rows]
 
 
+@router.get("/me/recommended", response_model=list[SermonListItem])
+async def recommended_for_you(
+    user: CurrentUserDep, db: ReadDbDep, limit: int = Query(default=10, ge=1, le=50)
+) -> list[SermonListItem]:
+    """Home's "Recommended for you" shelf — category/speaker affinity derived
+    from the caller's own playback history (falls back to Trending when that
+    history has nothing to work with; see
+    `content_service.list_recommended_sermons`'s own docstring)."""
+    actor = await _actor(db, user)
+    return await content_service.list_recommended_sermons(db, actor, limit)
+
+
 @router.get("/me/history", response_model=list[ProgressPublic])
 async def watch_history(
     user: CurrentUserDep,
@@ -86,16 +99,10 @@ async def watch_history(
     limit: int = Query(default=50, ge=1, le=100),
     series_id: uuid.UUID | None = None,
 ) -> list[ProgressPublic]:
-    """Caller's own playback history, most-recently-played first.
-
-    With no `series_id`, the existing app-wide reading: capped at `limit`
-    (<=100). With `series_id`, every one of the caller's progress rows for
-    sermons in that series — `limit` is ignored, since the series screen
-    needs every episode's real status and a 100-row app-wide cap can hide an
-    old episode's completed watch behind the cap. See
-    `analytics_service.history` for the (much higher) safety ceiling that
-    still applies.
-    """
+    """Unscoped: the caller's `limit`-capped history. `?series_id=<id>` (Decision
+    6, `app/series/[id].tsx`'s per-episode status): every progress row for that
+    series instead, `limit` ignored — see `analytics_service.history`'s own
+    docstring for why."""
     actor = await _actor(db, user)
     rows = await analytics_service.history(db, actor, limit, series_id=series_id)
     return [ProgressPublic.model_validate(r) for r in rows]

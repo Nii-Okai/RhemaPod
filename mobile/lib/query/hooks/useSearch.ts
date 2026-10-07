@@ -1,14 +1,15 @@
 /**
  * `/search` doubles as the filtered-browse endpoint (its own docstring: "Every filter is
  * optional — with no `q` this is a filtered browse") — `useSearchResults` is the one hook
- * behind both the Search tab's query results and the category/speaker drill-down lists
+ * behind both Search's query results and the category/speaker drill-down lists
  * (`app/category/[id].tsx`, `app/speaker/[id].tsx`), keyed on whatever params the caller
  * passes so a text search and a `category_id` browse never collide in the cache.
  *
  * `useSearchSuggest` is deliberately driven by an already-debounced `query` — see
- * `lib/hooks/useDebouncedValue.ts` and its call site in `app/(tabs)/search.tsx` — never
- * the raw per-keystroke input, or this would self-throttle against the per-user rate
- * limiter (plan L14/W4.3).
+ * `lib/hooks/useDebouncedValue.ts` and its call site in `app/search.tsx` (a top-level
+ * stack route since Isaac's ask, session 2026-10-02 — Browse absorbed the dedicated
+ * Search tab, pushing here instead of switching tabs) — never the raw per-keystroke
+ * input, or this would self-throttle against the per-user rate limiter (plan L14/W4.3).
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/typedClient';

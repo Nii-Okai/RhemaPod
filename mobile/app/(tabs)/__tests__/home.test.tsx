@@ -11,6 +11,10 @@ jest.mock('../../../lib/api/typedClient', () => ({
 
 jest.mock('@expo/vector-icons');
 
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -18,19 +22,41 @@ jest.mock('expo-router', () => ({
 
 const mockedGet = api.get as jest.Mock;
 
-const sermons = [
+const heroItems = [
   { id: 's1', title: 'Anchored in the Storm', duration_seconds: 1862, speaker_name: 'Ada Nwosu', thumbnail_url: null },
   { id: 's2', title: 'Older Sermon', duration_seconds: 900, speaker_name: 'Ada Nwosu', thumbnail_url: null },
 ];
 const continueWatchingItems = [
   { id: 's3', title: 'Half-finished', duration_seconds: 1200, position_seconds: 400, thumbnail_url: null },
 ];
+const recommendedItems = [{ id: 's4', title: 'Recommended Sermon', thumbnail_url: null }];
+const trendingItems = [{ id: 's5', title: 'Trending Sermon', thumbnail_url: null }];
 const seriesItems = [{ id: 'se1', title: 'Storms', episode_count: 4, thumbnail_url: null }];
+const newReleaseItems = [
+  { id: 's6', title: 'New Release Sermon', speaker_name: 'Ada Nwosu', thumbnail_url: null },
+];
+const prophetsCatalogItems = [
+  { id: 's7', title: "Prophet's Catalog Sermon", speaker_name: 'Ada Nwosu', thumbnail_url: null },
+];
 
-function mockRoutes(overrides: Partial<{ sermons: unknown; continueWatching: unknown; series: unknown }> = {}) {
+function mockRoutes(
+  overrides: Partial<{
+    hero: unknown;
+    continueWatching: unknown;
+    recommended: unknown;
+    trending: unknown;
+    series: unknown;
+    newReleases: unknown;
+    prophetsCatalog: unknown;
+  }> = {},
+) {
   mockedGet.mockImplementation((path: string) => {
-    if (path === '/catalog/sermons') return Promise.resolve(overrides.sermons ?? sermons);
+    if (path === '/catalog/sermons/hero') return Promise.resolve(overrides.hero ?? heroItems);
     if (path === '/me/continue-watching') return Promise.resolve(overrides.continueWatching ?? continueWatchingItems);
+    if (path === '/me/recommended') return Promise.resolve(overrides.recommended ?? recommendedItems);
+    if (path === '/catalog/sermons/trending') return Promise.resolve(overrides.trending ?? trendingItems);
+    if (path === '/catalog/sermons/new-releases') return Promise.resolve(overrides.newReleases ?? newReleaseItems);
+    if (path === '/catalog/sermons/prophets-catalog') return Promise.resolve(overrides.prophetsCatalog ?? prophetsCatalogItems);
     if (path === '/series') return Promise.resolve(overrides.series ?? seriesItems);
     throw new Error(`unexpected path: ${path}`);
   });
@@ -51,46 +77,118 @@ beforeEach(() => {
 });
 
 describe('HomeScreen — populated', () => {
-  it('renders the hero (first sermon, P5), continue-watching shelf, series shelf, and the announcements entry', async () => {
+  it('renders the hero carousel (all items the endpoint returns, already capped/ordered server-side), continue-watching shelf, and series shelf', async () => {
     mockRoutes();
-    const { getByText, findByText } = renderHome();
+    const { getAllByText, getByText, findByLabelText } = renderHome();
 
-    await findByText('Anchored in the Storm');
-    expect(getByText('New this week')).toBeTruthy();
-    // P5: hero is the *first* item, not the whole list.
-    expect(() => getByText('Older Sermon')).toThrow();
+    // No separate hero title or meta line renders (the art carries the title; duration is
+    // already in the Watch label) — the Watch button is each hero card's own unique,
+    // reliable "rendered" signal. Both fixture items render — `useHeroSermons` trusts
+    // the backend (`content_service.list_hero_sermons`) to have already capped/ordered
+    // the set; the screen itself doesn't re-slice it.
+    await findByLabelText('Watch, 31:02');
+    await findByLabelText('Watch, 15:00');
+    expect(getAllByText('New this week')).toHaveLength(2);
+    expect(await findByLabelText('Featured sermons, 1 of 2')).toBeTruthy();
 
     expect(getByText('Half-finished')).toBeTruthy();
     expect(getByText('Storms')).toBeTruthy();
-    expect(getByText('Announcements')).toBeTruthy();
   });
 
-  it('navigates to the sermon detail route when the hero is pressed', async () => {
+  it('navigates to the sermon detail route when the hero Watch CTA is pressed', async () => {
     mockRoutes();
     const { findByLabelText } = renderHome();
 
-    const hero = await findByLabelText('Anchored in the Storm, 31:02 · Ada Nwosu');
-    fireEvent.press(hero);
+    const watchButton = await findByLabelText('Watch, 31:02');
+    fireEvent.press(watchButton);
 
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's1' } });
   });
 
-  it('navigates to the announcements route (P2) when the entry point is pressed', async () => {
+  it('navigates to the announcements route (P2) when the top bar bell is pressed', async () => {
     mockRoutes();
     const { findByLabelText } = renderHome();
 
-    fireEvent.press(await findByLabelText('Announcements'));
+    fireEvent.press(await findByLabelText('Notifications'));
 
     expect(mockPush).toHaveBeenCalledWith('/announcements');
+  });
+
+  it('navigates to the full series list when the Series section\'s arrow is pressed', async () => {
+    mockRoutes();
+    const { findByLabelText } = renderHome();
+
+    fireEvent.press(await findByLabelText('See all series'));
+
+    expect(mockPush).toHaveBeenCalledWith('/series');
+  });
+
+  it('renders the recommended and trending shelves as image-only cards and navigates on press', async () => {
+    mockRoutes();
+    const { findByLabelText } = renderHome();
+
+    fireEvent.press(await findByLabelText('Recommended Sermon'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's4' } });
+
+    fireEvent.press(await findByLabelText('Trending Sermon'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's5' } });
+  });
+
+  it('renders the new releases and prophet\'s catalog shelves as titled cards and navigates on press', async () => {
+    mockRoutes();
+    const { findByText, findByLabelText } = renderHome();
+
+    fireEvent.press(await findByText('New Release Sermon'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's6' } });
+
+    // Prophet's Catalog's top pick also renders as a full-bleed spotlight (see below), so
+    // the shelf's own card — not the spotlight — needs its distinct accessibility label to
+    // disambiguate: both show the same title text on screen.
+    fireEvent.press(await findByLabelText("Prophet's Catalog Sermon, Ada Nwosu"));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's7' } });
+  });
+
+  it('features Prophet\'s Catalog\'s top pick as a spotlight card and navigates on press', async () => {
+    mockRoutes();
+    const { findByLabelText } = renderHome();
+
+    fireEvent.press(await findByLabelText("Prophet's Catalog Sermon, Prophet's Pick"));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's7' } });
+  });
+});
+
+describe('HomeScreen — recommended/trending omitted when empty', () => {
+  it('does not render either shelf when both resolve empty', async () => {
+    mockRoutes({ recommended: [], trending: [] });
+    const { findByLabelText, queryByText, queryByLabelText } = renderHome();
+
+    await findByLabelText('Watch, 31:02');
+    expect(queryByText('recommended for you')).toBeNull();
+    expect(queryByText('trending')).toBeNull();
+    expect(queryByLabelText('Recommended Sermon')).toBeNull();
+    expect(queryByLabelText('Trending Sermon')).toBeNull();
+  });
+});
+
+describe('HomeScreen — new releases/prophet\'s catalog omitted when empty', () => {
+  it('does not render either shelf when both resolve empty', async () => {
+    mockRoutes({ newReleases: [], prophetsCatalog: [] });
+    const { findByLabelText, queryByText } = renderHome();
+
+    await findByLabelText('Watch, 31:02');
+    expect(queryByText('new releases')).toBeNull();
+    expect(queryByText("prophet’s catalog")).toBeNull();
+    expect(queryByText('New Release Sermon')).toBeNull();
+    expect(queryByText("Prophet's Catalog Sermon")).toBeNull();
   });
 });
 
 describe('HomeScreen — continue watching omitted when empty', () => {
   it('does not render a "continue watching" section when the list is empty', async () => {
     mockRoutes({ continueWatching: [] });
-    const { findByText, queryByText } = renderHome();
+    const { findByLabelText, queryByText } = renderHome();
 
-    await findByText('Anchored in the Storm');
+    await findByLabelText('Watch, 31:02');
     expect(queryByText('continue watching')).toBeNull();
     expect(queryByText('Half-finished')).toBeNull();
   });
@@ -98,7 +196,15 @@ describe('HomeScreen — continue watching omitted when empty', () => {
 
 describe('HomeScreen — empty', () => {
   it('shows a fallback when there are no sermons or series yet', async () => {
-    mockRoutes({ sermons: [], continueWatching: [], series: [] });
+    mockRoutes({
+      hero: [],
+      continueWatching: [],
+      recommended: [],
+      trending: [],
+      newReleases: [],
+      prophetsCatalog: [],
+      series: [],
+    });
     const { findByText } = renderHome();
 
     await findByText('No sermons yet');
@@ -119,26 +225,34 @@ describe('HomeScreen — loading', () => {
 describe('HomeScreen — error', () => {
   it('shows an error state with a working retry for a failed section', async () => {
     mockedGet.mockImplementation((path: string) => {
-      if (path === '/catalog/sermons') return Promise.reject(new Error('network down'));
+      if (path === '/catalog/sermons/hero') return Promise.reject(new Error('network down'));
       if (path === '/me/continue-watching') return Promise.resolve([]);
+      if (path === '/me/recommended') return Promise.resolve([]);
+      if (path === '/catalog/sermons/trending') return Promise.resolve([]);
+      if (path === '/catalog/sermons/new-releases') return Promise.resolve([]);
+      if (path === '/catalog/sermons/prophets-catalog') return Promise.resolve([]);
       if (path === '/series') return Promise.resolve(seriesItems);
       throw new Error(`unexpected path: ${path}`);
     });
 
-    const { findAllByText, findByText, getAllByText } = renderHome();
+    const { findAllByText, findByText, findByLabelText, getAllByText } = renderHome();
 
     await findAllByText('Something went wrong. Try again.');
     await findByText('Storms');
 
     mockedGet.mockImplementation((path: string) => {
-      if (path === '/catalog/sermons') return Promise.resolve(sermons);
+      if (path === '/catalog/sermons/hero') return Promise.resolve(heroItems);
       if (path === '/me/continue-watching') return Promise.resolve([]);
+      if (path === '/me/recommended') return Promise.resolve([]);
+      if (path === '/catalog/sermons/trending') return Promise.resolve([]);
+      if (path === '/catalog/sermons/new-releases') return Promise.resolve([]);
+      if (path === '/catalog/sermons/prophets-catalog') return Promise.resolve([]);
       if (path === '/series') return Promise.resolve(seriesItems);
       throw new Error(`unexpected path: ${path}`);
     });
     fireEvent.press(getAllByText('Retry')[0]);
 
-    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/catalog/sermons', expect.anything()));
-    await findByText('Anchored in the Storm');
+    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/catalog/sermons/hero', expect.anything()));
+    await findByLabelText('Watch, 31:02');
   });
 });

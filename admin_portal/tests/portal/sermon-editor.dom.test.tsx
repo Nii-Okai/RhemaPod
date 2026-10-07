@@ -73,6 +73,7 @@ function detail(over: Partial<SermonAdminDetail> = {}): SermonAdminDetail {
     tier_override: null,
     locked: false,
     status: "draft",
+    is_prophets_catalog: false,
     tags: [],
     media_refs: [],
     published_at: null,
@@ -244,6 +245,36 @@ describe("SermonEditor — Access radios ↔ tier", () => {
     );
 
     await vi.waitFor(() => expect(bodies).toEqual([{ tier: "paid" }]));
+  });
+});
+
+/* --- Details card ↔ Prophet's Catalog ----------------------------------- */
+
+describe("SermonEditor — Prophet's Catalog switch", () => {
+  it("reflects the sermon's current is_prophets_catalog value", async () => {
+    backend({ sermon: detail({ is_prophets_catalog: true }) });
+    renderEditor();
+
+    expect(
+      await screen.findByRole("switch", { name: "Prophet’s Catalog" }),
+    ).toBeChecked();
+  });
+
+  it("toggling it on sends PATCH { is_prophets_catalog: true } on the wire", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    backend({
+      sermon: detail({ is_prophets_catalog: false }),
+      onPatch: (b) => bodies.push(b),
+    });
+    renderEditor();
+
+    await userEvent.click(
+      await screen.findByRole("switch", { name: "Prophet’s Catalog" }),
+    );
+
+    await vi.waitFor(() =>
+      expect(bodies).toEqual([{ is_prophets_catalog: true }]),
+    );
   });
 });
 

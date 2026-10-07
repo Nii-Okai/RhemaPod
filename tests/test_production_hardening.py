@@ -23,8 +23,15 @@ LIVE_ENV = {
     "stripe_webhook_secret": "whsec_x",
     "stripe_price_monthly": "price_m",
     "stripe_price_annual": "price_a",
+    "object_store_endpoint_url": "https://acct123.r2.cloudflarestorage.com",
     "object_store_access_key_id": "AKIA_X",
     "object_store_secret_access_key": "secret",
+    "object_store_raw_bucket": "sermon-raw-prod",
+    "object_store_media_bucket": "sermon-media-prod",
+    "archive_store_access_key_id": "AKIAARCHIVE_X",
+    "archive_store_secret_access_key": "archive-secret",
+    "archive_store_region": "eu-north-1",
+    "archive_store_bucket": "sermon-archive-prod",
     "smtp_host": "smtp.example.com",
     "smtp_from_email": "no-reply@example.com",
     "cf_account_id": "acct_x",
@@ -47,6 +54,7 @@ def test_fully_configured_production_boots():
     assert s.is_production
     assert s.payments_are_live and s.storage_is_live and s.email_is_live
     assert s.stream_is_live
+    assert s.archive_is_live
     assert s.cdn_base_url is None
 
 
@@ -123,22 +131,23 @@ def test_production_refuses_insecure_origin():
         _settings(allowed_origins=["http://app.example.com"])
 
 
-# ── s3_endpoint_url must be https in production ──────────────────────────────
+# ── object_store_endpoint_url must be https in EVERY environment (§A.2.2) ─────
 def test_production_refuses_cleartext_s3_endpoint_url():
     with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
         _settings(object_store_endpoint_url="http://minio:9000")
 
 
 def test_production_allows_https_s3_endpoint_url():
-    s = _settings(object_store_endpoint_url="https://s3.eu-north-1.example.com")
-    assert s.object_store_endpoint_url == "https://s3.eu-north-1.example.com"
+    s = _settings(object_store_endpoint_url="https://acct123.r2.cloudflarestorage.com")
+    assert s.object_store_endpoint_url == "https://acct123.r2.cloudflarestorage.com"
 
 
-def test_dev_allows_cleartext_s3_endpoint_url():
-    """Outside production the compose http endpoint is fine."""
-    assert _dev_settings(
-        object_store_endpoint_url="http://minio:9000"
-    ).object_store_endpoint_url == "http://minio:9000"
+def test_dev_also_refuses_cleartext_object_store_endpoint_url():
+    """Local dev now points at a real R2 bucket (decision L3), not a
+    compose-shim MinIO endpoint — there is no environment left where http
+    is legitimate, so this must fail exactly like production."""
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _dev_settings(object_store_endpoint_url="http://minio:9000")
 
 
 def test_development_allows_stubs():

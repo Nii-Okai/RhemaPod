@@ -3,6 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { HeroCard } from '../HeroCard';
 import type { SermonListItem } from '../../../../lib/query/hooks/useSermons';
 
+jest.mock('@expo/vector-icons');
+
 const sermon: SermonListItem = {
   id: 's1',
   title: 'Anchored in the Storm',
@@ -21,22 +23,27 @@ const sermon: SermonListItem = {
 } as SermonListItem;
 
 describe('HeroCard', () => {
-  it('renders the title and meta line, and fires onPress on the whole card', () => {
+  it('renders the eyebrow (no separate title or meta line — the art carries the title, and duration already shows in the Watch label), and fires onPress from the Watch CTA', () => {
     const onPress = jest.fn();
-    const { getByText, getByLabelText } = render(<HeroCard sermon={sermon} onPress={onPress} />);
+    const { getByText, queryByText, getByLabelText } = render(<HeroCard sermon={sermon} onPress={onPress} />);
 
-    expect(getByText('Anchored in the Storm')).toBeTruthy();
+    expect(queryByText('Anchored in the Storm')).toBeNull();
+    expect(queryByText('31:02 · Ada Nwosu')).toBeNull();
     expect(getByText('New this week')).toBeTruthy();
-    expect(getByText('31:02 · Ada Nwosu')).toBeTruthy();
 
-    fireEvent.press(getByLabelText('Anchored in the Storm, 31:02 · Ada Nwosu'));
+    fireEvent.press(getByLabelText('Watch, 31:02'));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('omits the meta segment for a missing speaker without rendering a bare separator', () => {
-    const { queryByText } = render(<HeroCard sermon={{ ...sermon, speaker_name: null }} onPress={jest.fn()} />);
+  it('toggles the My List button label and state on press', () => {
+    const { getByLabelText } = render(<HeroCard sermon={sermon} onPress={jest.fn()} />);
 
-    expect(queryByText('31:02 · Ada Nwosu')).toBeNull();
-    expect(queryByText(/^·/)).toBeNull();
+    const addButton = getByLabelText('Add to My List');
+    expect(addButton.props.accessibilityState).toEqual({ selected: false });
+
+    fireEvent.press(addButton);
+
+    const removeButton = getByLabelText('Remove from My List');
+    expect(removeButton.props.accessibilityState).toEqual({ selected: true });
   });
 });

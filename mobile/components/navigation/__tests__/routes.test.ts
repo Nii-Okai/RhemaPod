@@ -31,17 +31,22 @@ describe('NAV_ROUTES — the single route tree (plan L15/§A.7)', () => {
 });
 
 describe('PHONE_NAV_KEYS — iOS + Android phone bar (P1)', () => {
-  it('is the same five destinations, labeled "Downloads" everywhere, never "Saved"', () => {
-    expect(PHONE_NAV_KEYS).toEqual(['home', 'browse', 'search', 'downloads', 'me']);
+  it('is the same four destinations, labeled "Downloads" everywhere, never "Saved"', () => {
+    expect(PHONE_NAV_KEYS).toEqual(['home', 'browse', 'downloads', 'me']);
     expect(routeByKey('downloads').label).toBe('Downloads');
     expect(NAV_ROUTES.some((route) => route.label === 'Saved')).toBe(false);
   });
+
+  it('has no dedicated Search destination — Browse absorbed it as a pushed screen', () => {
+    const keys: string[] = NAV_ROUTES.map((route) => route.key);
+    expect(keys).not.toContain('search');
+  });
 });
 
-describe('TABLET_RAIL_KEYS — the six-destination rail (P3)', () => {
+describe('TABLET_RAIL_KEYS — the five-destination rail (P3)', () => {
   it('adds series and announcements, which have no phone equivalent by design', () => {
     expect(TABLET_RAIL_KEYS).toEqual(
-      expect.arrayContaining(['home', 'series', 'browse', 'search', 'downloads', 'announcements']),
+      expect.arrayContaining(['home', 'series', 'browse', 'downloads', 'announcements']),
     );
     expect(PHONE_NAV_KEYS).not.toContain('series');
     expect(PHONE_NAV_KEYS).not.toContain('announcements');

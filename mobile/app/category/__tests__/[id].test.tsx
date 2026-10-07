@@ -9,12 +9,18 @@ jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
+jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 let mockParams: Record<string, string | undefined> = { id: 'c1', name: 'Teaching' };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
   useLocalSearchParams: () => mockParams,
-  Stack: { Screen: () => null },
 }));
 
 const mockedGet = api.get as jest.Mock;
@@ -48,10 +54,20 @@ const sermon = {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
+  mockBack.mockClear();
   mockParams = { id: 'c1', name: 'Teaching' };
 });
 
 describe('CategoryDrillDownScreen', () => {
+  it('shows the category name as a centered header title and fires router.back() on the chevron', async () => {
+    mockedGet.mockResolvedValue({ query: '', total: 0, limit: 20, offset: 0, results: [] });
+    const { findByText, getByLabelText } = renderScreen();
+
+    await findByText('Teaching');
+    fireEvent.press(getByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
   it('filters /search by category_id with no q, and navigates to /sermon/[id] on tap', async () => {
     mockedGet.mockResolvedValue({ query: '', total: 1, limit: 20, offset: 0, results: [sermon] });
 

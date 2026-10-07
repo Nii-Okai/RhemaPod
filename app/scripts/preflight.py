@@ -37,9 +37,73 @@ async def _check_redis() -> str:
     return "reachable"
 
 
+async def _r2_probe(client, bucket: str) -> str:
+    """`HeadBucket`, falling back to a scoped `ListObjectsV2` when the token
+    is object-scoped and `HeadBucket` comes back 403 (plan §A.2.5 — R2.2
+    records which one the real dev token needs). boto3 is synchronous, so
+    the actual network call runs in a thread.
+    """
+    from botocore.exceptions import ClientError
+
+    def _probe() -> str:
+        try:
+            client.head_bucket(Bucket=bucket)
+            return "head_bucket"
+        except ClientError as exc:
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = exc.response.get("Error", {}).get("Code", "")
+            if status == 403 or code in ("403", "AccessDenied"):
+                client.list_objects_v2(Bucket=bucket, MaxKeys=1)
+                return "list_objects_v2 (head_bucket refused with 403)"
+            raise
+
+    return await asyncio.to_thread(_probe)
+
+
+async def _archive_probe(client, bucket: str) -> str:
+    """`HeadBucket` -> `GetBucketVersioning` == Enabled -> an
+    abort-incomplete-multipart-upload lifecycle rule is present ->
+    `GetObjectLockConfiguration` has a GOVERNANCE default retention (plan
+    §A.2.5). Each stage only runs once the previous one has passed, and a
+    failure names the stage it failed at rather than a bare boto3 error.
+    """
+    def _probe() -> str:
+        client.head_bucket(Bucket=bucket)
+
+        versioning = client.get_bucket_versioning(Bucket=bucket)
+        status = versioning.get("Status")
+        if status != "Enabled":
+            raise RuntimeError(
+                f"bucket versioning is {status!r}, must be 'Enabled'"
+            )
+
+        lifecycle = client.get_bucket_lifecycle_configuration(Bucket=bucket)
+        rules = lifecycle.get("Rules", [])
+        if not any("AbortIncompleteMultipartUpload" in rule for rule in rules):
+            raise RuntimeError(
+                "no abort-incomplete-multipart-upload lifecycle rule found"
+            )
+
+        lock = client.get_object_lock_configuration(Bucket=bucket)
+        default_retention = (
+            lock.get("ObjectLockConfiguration", {})
+            .get("Rule", {})
+            .get("DefaultRetention", {})
+        )
+        mode = default_retention.get("Mode")
+        if mode != "GOVERNANCE":
+            raise RuntimeError(
+                f"object lock default retention mode is {mode!r}, must be "
+                "'GOVERNANCE'"
+            )
+        return "head_bucket + versioning + lifecycle + object-lock all ok"
+
+    return await asyncio.to_thread(_probe)
+
+
 async def _check_storage() -> str:
     from app.core.config import get_settings
-    from app.core.storage import LocalStorage, get_storage
+    from app.core.storage import LocalStorage, S3Storage, get_storage
 
     s = get_settings()
     backend = get_storage()
@@ -47,9 +111,28 @@ async def _check_storage() -> str:
         if s.is_production:
             raise RuntimeError("stub storage backend active in production")
         return "local stub (development)"
-    # Prove the credentials actually work, not just that they're present.
-    backend.presigned_download_url(s.object_store_media_bucket, "preflight-probe", 60)
-    return f"s3: {s.object_store_media_bucket}"
+    assert isinstance(backend, S3Storage)
+    # Prove the credentials actually work against the real R2 endpoint, not
+    # just that they're present — a presigned URL alone never touches the
+    # network (it's local signing), so it can't catch a bad key or a wrong
+    # bucket the way HeadBucket can.
+    probe = await _r2_probe(backend._client, s.object_store_media_bucket)
+    return f"r2: {s.object_store_media_bucket} ({probe})"
+
+
+async def _check_archive() -> str:
+    from app.core.config import get_settings
+    from app.core.storage import LocalArchiveStore, S3ArchiveStore, get_archive_store
+
+    s = get_settings()
+    backend = get_archive_store()
+    if isinstance(backend, LocalArchiveStore):
+        if s.is_production:
+            raise RuntimeError("stub archive backend active in production")
+        return "local stub (development)"
+    assert isinstance(backend, S3ArchiveStore)
+    probe = await _archive_probe(backend._client, s.archive_store_bucket)
+    return f"aws: {s.archive_store_bucket} ({probe})"
 
 
 async def _check_stream() -> str:
@@ -150,6 +233,7 @@ async def _run() -> int:
         _check("migrations", _check_migrations()),
         _check("redis", _check_redis()),
         _check("storage", _check_storage()),
+        _check("archive", _check_archive()),
         _check("cdn", _check_cdn()),
         _check("stream", _check_stream()),
         _check("payments", _check_payments()),

@@ -65,9 +65,9 @@ def _no_real_object_storage_credentials():
     place.
 
     Archive credentials (ARCHIVE_STORE_ACCESS_KEY_ID/SECRET_ACCESS_KEY) are
-    not yet Settings fields (app/core/storage.py's get_archive_store() docstring
-    — they land in R1.3), so those two are checked directly against the
-    environment rather than via `settings`.
+    now Settings fields (R1.3), so both live-store and archive-store
+    credentials are checked the same way, via `settings` — not via
+    `os.environ` directly.
     """
     assert not storage_module.settings.object_store_access_key_id, (
         "OBJECT_STORE_ACCESS_KEY_ID is set in the test environment — unset it "
@@ -77,11 +77,16 @@ def _no_real_object_storage_credentials():
         "OBJECT_STORE_SECRET_ACCESS_KEY is set in the test environment — "
         "unset it before running the suite so tests can never reach live R2."
     )
-    for var in ("ARCHIVE_STORE_ACCESS_KEY_ID", "ARCHIVE_STORE_SECRET_ACCESS_KEY"):
-        assert not os.environ.get(var), (
-            f"{var} is set in the test environment — unset it before running "
-            "the suite so tests can never reach live AWS Deep Archive."
-        )
+    assert not storage_module.settings.archive_store_access_key_id, (
+        "ARCHIVE_STORE_ACCESS_KEY_ID is set in the test environment — unset "
+        "it before running the suite so tests can never reach live AWS Deep "
+        "Archive."
+    )
+    assert not storage_module.settings.archive_store_secret_access_key, (
+        "ARCHIVE_STORE_SECRET_ACCESS_KEY is set in the test environment — "
+        "unset it before running the suite so tests can never reach live AWS "
+        "Deep Archive."
+    )
 
 
 @pytest_asyncio.fixture
@@ -103,6 +108,66 @@ async def engine():
         await conn.run_sync(Base.metadata.create_all)
     yield eng
     await eng.dispose()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def pg_engine():
+    """Real Postgres, via Testcontainers — for tests exercising dialect-specific SQL
+    (full-text search's `tsvector`/`setweight`) that the SQLite `engine` fixture above
+    can't actually prove correct: SQLite takes a completely different LIKE-based code
+    path (`search_service._is_postgres`), so a bug in the real Postgres branch (as
+    happened — `setweight`'s weight argument bound as `varchar` 500s against real
+    Postgres, session 2026-09-30) is invisible to the SQLite suite no matter how much of
+    it passes. Session-scoped: one container for the whole run, not one per test — a
+    real Postgres container takes real seconds to start, and `_truncate_all` below gives
+    each test a clean slate far more cheaply than a fresh container would.
+    """
+    from testcontainers.postgres import PostgresContainer
+
+    with PostgresContainer("postgres:17", driver="psycopg") as pg:
+        eng = create_async_engine(pg.get_connection_url())
+        async with eng.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield eng
+        await eng.dispose()
+
+
+async def _truncate_all(engine) -> None:
+    from sqlalchemy import text
+
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(text(f'TRUNCATE TABLE "{table.name}" RESTART IDENTITY CASCADE'))
+
+
+@pytest_asyncio.fixture
+async def pg_client(pg_engine) -> AsyncGenerator[AsyncClient, None]:
+    """`client`'s exact setup/teardown, against `pg_engine` instead of the SQLite
+    `engine` — same dependency-override + fake-service-reset pattern, just a real
+    Postgres session underneath. Use this (not `client`) for any test whose whole point
+    is proving something true against the real database dialect, not just against
+    *a* database."""
+    await _truncate_all(pg_engine)
+    _fake.store.clear()
+    _fake.hashes.clear()
+    _fake.buckets.clear()
+    _fake.fail = False
+    storage_module.set_storage(storage_module.LocalStorage())
+    storage_module.set_archive_store(storage_module.LocalArchiveStore())
+    payments_module.set_provider(payments_module.MockProvider())
+    stream_module.set_provider(stream_module.LocalStream())
+    TestSession = async_sessionmaker(pg_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def override_get_db():
+        async with TestSession() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_read_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture

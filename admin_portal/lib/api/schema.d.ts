@@ -832,6 +832,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/sermons/hero": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hero Sermons
+         * @description Home's hero carousel — up to 3 newest-published sermons, capped to one per
+         *     series. Public, like every other `/catalog` read. Registered ahead of
+         *     `/sermons/{sermon_id}` so "hero" is never captured as a sermon-id path parameter.
+         */
+        get: operations["hero_sermons_api_v1_catalog_sermons_hero_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/new-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * New Release Sermons
+         * @description Newest-published sermons (Home's "New Releases" shelf) — same ordering as the
+         *     hero, capped to shelf size, NOT capped to one-per-series (see
+         *     `list_new_release_sermons`'s own docstring). Public, like every other `/catalog`
+         *     read. Registered ahead of `/sermons/{sermon_id}` so "new-releases" is never
+         *     captured as a sermon-id path parameter.
+         */
+        get: operations["new_release_sermons_api_v1_catalog_sermons_new_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/prophets-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prophets Catalog Sermons
+         * @description Sermons an editor has manually flagged as part of the "Prophet's Catalog"
+         *     (Home's shelf of the same name) via the admin editor's switch. Public, like
+         *     every other `/catalog` read. Registered ahead of `/sermons/{sermon_id}` so
+         *     "prophets-catalog" is never captured as a sermon-id path parameter.
+         */
+        get: operations["prophets_catalog_sermons_api_v1_catalog_sermons_prophets_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/trending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trending Sermons
+         * @description Most-played published sermons over the last 30 days (Home's "Trending"
+         *     shelf) — public, like every other `/catalog` read; no sign-in required to
+         *     see what's trending. Registered ahead of `/sermons/{sermon_id}` below so
+         *     "trending" is never captured as a sermon-id path parameter.
+         */
+        get: operations["trending_sermons_api_v1_catalog_sermons_trending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/sermons/{sermon_id}": {
         parameters: {
             query?: never;
@@ -1017,17 +1109,35 @@ export interface paths {
         };
         /**
          * Watch History
-         * @description Caller's own playback history, most-recently-played first.
-         *
-         *     With no `series_id`, the existing app-wide reading: capped at `limit`
-         *     (<=100). With `series_id`, every one of the caller's progress rows for
-         *     sermons in that series — `limit` is ignored, since the series screen
-         *     needs every episode's real status and a 100-row app-wide cap can hide an
-         *     old episode's completed watch behind the cap. See
-         *     `analytics_service.history` for the (much higher) safety ceiling that
-         *     still applies.
+         * @description Unscoped: the caller's `limit`-capped history. `?series_id=<id>` (Decision
+         *     6, `app/series/[id].tsx`'s per-episode status): every progress row for that
+         *     series instead, `limit` ignored — see `analytics_service.history`'s own
+         *     docstring for why.
          */
         get: operations["watch_history_api_v1_me_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/recommended": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recommended For You
+         * @description Home's "Recommended for you" shelf — category/speaker affinity derived
+         *     from the caller's own playback history (falls back to Trending when that
+         *     history has nothing to work with; see
+         *     `content_service.list_recommended_sermons`'s own docstring).
+         */
+        get: operations["recommended_for_you_api_v1_me_recommended_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1798,6 +1908,75 @@ export interface paths {
         head?: never;
         /** Change Role */
         patch: operations["change_role_api_v1_users__user_id__role_patch"];
+        trace?: never;
+    };
+    "/api/v1/verses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Verse */
+        post: operations["create_verse_api_v1_verses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/admin/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Verses */
+        get: operations["list_verses_api_v1_verses_admin_all_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Verse Of The Day */
+        get: operations["verse_of_the_day_api_v1_verses_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/{verse_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Verse */
+        delete: operations["delete_verse_api_v1_verses__verse_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Verse */
+        patch: operations["update_verse_api_v1_verses__verse_id__patch"];
         trace?: never;
     };
     "/health/live": {
@@ -2824,6 +3003,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Prophets Catalog
+             * @default false
+             */
+            is_prophets_catalog: boolean;
             /** Locked */
             locked: boolean;
             /** Media Refs */
@@ -2915,6 +3099,11 @@ export interface components {
              * @description Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.
              */
             episode_number?: number | null;
+            /**
+             * Is Prophets Catalog
+             * @default false
+             */
+            is_prophets_catalog: boolean;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -3026,6 +3215,8 @@ export interface components {
             description?: string | null;
             /** Episode Number */
             episode_number?: number | null;
+            /** Is Prophets Catalog */
+            is_prophets_catalog?: boolean | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -3428,6 +3619,77 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerseAdminItem */
+        VerseAdminItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** VerseCreate */
+        VerseCreate: {
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /**
+             * Translation
+             * @default kjv
+             */
+            translation: string;
+        };
+        /**
+         * VersePublic
+         * @description What `GET /verses/today` returns — no `is_active`/`created_by`/timestamps,
+         *     same split Announcements draws between its public and staff shapes.
+         */
+        VersePublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+        };
+        /** VerseUpdate */
+        VerseUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Translation */
+            translation?: string | null;
         };
     };
     responses: never;
@@ -4839,6 +5101,130 @@ export interface operations {
             };
         };
     };
+    hero_sermons_api_v1_catalog_sermons_hero_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_release_sermons_api_v1_catalog_sermons_new_releases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prophets_catalog_sermons_api_v1_catalog_sermons_prophets_catalog_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trending_sermons_api_v1_catalog_sermons_trending_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sermon_api_v1_catalog_sermons__sermon_id__get: {
         parameters: {
             query?: never;
@@ -5228,6 +5614,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgressPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recommended_for_you_api_v1_me_recommended_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
                 };
             };
             /** @description Validation Error */
@@ -6762,6 +7179,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_verse_api_v1_verses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_verses_api_v1_verses_admin_all_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"][];
+                };
+            };
+        };
+    };
+    verse_of_the_day_api_v1_verses_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersePublic"];
+                };
+            };
+        };
+    };
+    delete_verse_api_v1_verses__verse_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verse_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_verse_api_v1_verses__verse_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verse_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerseUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"];
                 };
             };
             /** @description Validation Error */

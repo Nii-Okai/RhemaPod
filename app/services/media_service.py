@@ -159,7 +159,7 @@ async def create_upload_ticket(
     if size_bytes is not None and size_bytes > settings.max_upload_bytes:
         raise ContentError(
             f"File exceeds the maximum upload size of "
-            f"{settings.max_upload_bytes // (1024 ** 3)} GB",
+            f"{settings.max_upload_bytes // 1_000_000_000} GB",
             status_code=413,
         )
 
@@ -238,7 +238,7 @@ async def confirm_upload(
                 )
             raise ContentError(
                 f"File exceeds the maximum upload size of "
-                f"{settings.max_upload_bytes // (1024 ** 3)} GB",
+                f"{settings.max_upload_bytes // 1_000_000_000} GB",
                 status_code=413,
             )
         job.size_bytes = observed_size

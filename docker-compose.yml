@@ -1,10 +1,19 @@
 name: fastapi-sermon
 
-# Local dev / integration stack: api + postgres + redis + minio.
-# MinIO backs the browser-direct presigned-upload pipeline (the in-process
-# LocalStorage stub fakes both the URL and the object, so it cannot exercise it)
-# — see ADR 0001 §4, superseded 2026-09 (W8). Stripe is still the in-process
-# MockProvider.
+# Local dev / integration stack: api + postgres + redis.
+# Live object storage is a real Cloudflare R2 bucket (decision L3 — MinIO is
+# no longer good enough: it can't reproduce Stream pulling from a
+# localhost-only URL, which is the bug that motivated the R2 migration in
+# the first place; see ADR 0001 §4, superseded 2026-09, and plan
+# plans/plan-r2-storage.md). Credentials are per-developer and never live in
+# this file — see docker-compose.override.yml (gitignored). Stripe is still
+# the in-process MockProvider.
+#
+# The `minio-data` volume below is intentionally still declared even though
+# no service uses it: it holds the pre-cutover dev media the R2 migration's
+# one-time copy step (plan R3.3) still needs to read, through a temporary
+# MinIO container. Do not run `docker compose down -v` before that step is
+# logged in status.md (plan P5) — it would delete that volume's data.
 #
 # Migrations are NOT run on `up`. Run them once, as an explicit operator step:
 #     docker compose run --rm migrate
@@ -16,6 +25,11 @@ name: fastapi-sermon
 # supply it before `up` (export it, or `cp .env.docker.example .env` and fill it
 # in; compose auto-loads .env for ${VAR} substitution). `docker compose up`
 # fails loudly until it is set. Everything here is DEV-ONLY, not a real secret.
+#
+# Object storage credentials (OBJECT_STORE_*/ARCHIVE_STORE_*) are
+# deliberately NOT here: they come from docker-compose.override.yml
+# (gitignored), added per service (api, sweeps, archive-sweep) once R2/AWS
+# are provisioned (plan R2.1/R2.3) — see that file's own header comment.
 x-app-env: &app-env
   ENVIRONMENT: development
   # Required, no default. app/core/config.py rejects placeholder / low-entropy
@@ -24,18 +38,6 @@ x-app-env: &app-env
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — cp .env.docker.example .env and generate one}
   DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sermon:sermon@postgres:5432/sermon}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-  # Object storage — the compose MinIO. Setting the access keys flips
-  # settings.storage_is_live true, so get_storage() returns the real S3Storage
-  # and the browser-direct presigned PUT is exercised end to end. The API
-  # container reaches MinIO at minio:9000; the browser's presigned URLs are
-  # signed for S3_PUBLIC_ENDPOINT so it can PUT to a host it can resolve
-  # (SigV4 signs Host, so the signing host must match). DEV-ONLY credentials.
-  OBJECT_STORE_ENDPOINT_URL: http://minio:9000
-  S3_PUBLIC_ENDPOINT: http://localhost:9000
-  OBJECT_STORE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
-  OBJECT_STORE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-  OBJECT_STORE_RAW_BUCKET: sermon-raw
-  OBJECT_STORE_MEDIA_BUCKET: sermon-media
 
 services:
   postgres:
@@ -66,58 +68,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # S3-compatible object storage for the media upload pipeline. Console on 9001.
-  minio:
-    # Pinned like the rest of the stack. This is the exact release the upload
-    # pipeline was verified against end-to-end (GATE 3 Batch 2).
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      # Browser uploads PUT cross-origin from the portal's dev origin. MinIO's
-      # server-wide CORS allow-list is the clean, version-stable way to permit
-      # it (per-bucket `mc cors` support varies by mc release).
-      #
-      # DEV-ONLY wildcard. A single fixed origin (`http://localhost:3000`) breaks
-      # the moment the portal is opened on any other dev host — `127.0.0.1:3000`,
-      # a LAN IP — because MinIO then returns no `Access-Control-Allow-*` and the
-      # browser blocks the presigned PUT ("connection dropped or was blocked").
-      # Production does NOT use this: it points at a real S3 bucket whose CORS
-      # rule is scoped to the deployed portal origin — see DEPLOYMENT.md §7.
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
-    ports:
-      # Loopback only. 9000 = S3 API (matches S3_PUBLIC_ENDPOINT), 9001 = console.
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-    volumes:
-      - minio-data:/data
-    # No healthcheck: recent minio/minio images ship no `curl` (the old probe
-    # was perpetually unhealthy), and nothing blocks on minio's health anyway —
-    # `createbuckets` runs its own `until mc alias set` retry loop and `api`
-    # gates on `createbuckets: service_completed_successfully`.
-
-  # One-shot: create the raw + media buckets, then exit. Idempotent.
-  createbuckets:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_started
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    entrypoint:
-      - /bin/sh
-      - -c
-      - >
-        until mc alias set local http://minio:9000
-        "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
-          echo 'waiting for minio...'; sleep 1;
-        done;
-        mc mb --ignore-existing local/sermon-raw;
-        mc mb --ignore-existing local/sermon-media;
-        echo 'buckets ready';
-
   api:
     build:
       context: .
@@ -133,8 +83,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      createbuckets:
-        condition: service_completed_successfully
     healthcheck:
       # Mirrors the image HEALTHCHECK (liveness — checks nothing external).
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4).status == 200 else 1)"]

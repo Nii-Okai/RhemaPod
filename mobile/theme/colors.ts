@@ -68,6 +68,33 @@ export const status = {
 } as const;
 
 /**
+ * Translucent chip surfaces for controls drawn over photographic art (hero eyebrow
+ * badge, secondary circular button) — `surface.app` and `text.primary` at low alpha
+ * rather than a solid fill, so they hold up over any thumbnail's color/brightness.
+ */
+export const overlay = {
+  chipFill: 'rgba(13, 17, 26, 0.55)',
+  chipBorder: 'rgba(238, 241, 246, 0.22)',
+} as const;
+
+/**
+ * Right-edge fade mask for a clipped single-line title (`FadeTitle`) — a "fade to the
+ * card's own background" instead of an ellipsis. No gradient-library dependency — flat
+ * bands of `surface.raised` (#131926 → rgb(19,25,38), the shelf cards' own bg) at
+ * increasing alpha, stacked left-to-right, eased (not linear) so the bands don't read as
+ * visible steps.
+ */
+export const fade = {
+  layers: [
+    'rgba(19, 25, 38, 0)',
+    'rgba(19, 25, 38, 0.3)',
+    'rgba(19, 25, 38, 0.65)',
+    'rgba(19, 25, 38, 0.88)',
+    'rgba(19, 25, 38, 1)',
+  ],
+} as const;
+
+/**
  * Primary button surface — the only filled non-gold primary action (white pill). Note:
  * `primaryButton.text` and `surface.sunken` share the same hex (#101520) but are kept as
  * separate tokens on purpose — same value, two unrelated roles, per the spec's own
@@ -92,6 +119,8 @@ export const colors = {
   chip,
   text,
   accent,
+  overlay,
+  fade,
   status,
   primaryButton,
   avatarPalette,

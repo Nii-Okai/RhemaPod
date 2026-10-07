@@ -84,6 +84,7 @@ const EMPTY_FORM: SermonFormValues = {
   episode_number: null,
   tier: null,
   tags: [],
+  is_prophets_catalog: false,
 };
 
 /** The locked-fields banner's title, by status — kept distinct so "in
@@ -126,6 +127,7 @@ function fromDetail(detail: SermonAdminDetail): SermonFormValues {
     // (`detail.tier` is the resolved effective tier — for display only.)
     tier: detail.tier_override ?? null,
     tags: detail.tags,
+    is_prophets_catalog: detail.is_prophets_catalog,
   };
 }
 

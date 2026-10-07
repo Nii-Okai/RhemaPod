@@ -181,6 +181,7 @@ class SermonCreate(BaseModel):
     )
     tier: ContentTier | None = None  # None = inherit from series / free
     tags: list[str] = Field(default_factory=list, max_length=30)
+    is_prophets_catalog: bool = False
     # publish_at is intentionally NOT settable here. Only a manager/admin may
     # gate a sermon's public visibility, and only via the publish review
     # action (`PublishRequest` below) — never at creation, for any role. See
@@ -196,6 +197,7 @@ class SermonUpdate(BaseModel):
     episode_number: int | None = Field(default=None, ge=0)
     tier: ContentTier | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
+    is_prophets_catalog: bool | None = None
     # publish_at is intentionally NOT editable here. Only a manager/admin may
     # gate a sermon's public visibility, and only via the publish review
     # action (`PublishRequest` below) — never through the general editor,
@@ -282,6 +284,7 @@ class SermonAdminDetail(SermonDetail):
     # Raw `Sermon.tier` column: None = inherit from series / free default.
     tier_override: ContentTier | None = None
     updated_at: datetime | None
+    is_prophets_catalog: bool = False
 
 
 # ── Approval workflow ─────────────────────────────────────────────────────────
@@ -746,6 +749,47 @@ class NewListenersBucket(BaseModel):
 
     week_start: date
     count: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Notes retired (Isaac's ask, session 2026-10-02): replaced by sermon comments.
+# NoteCreate/NoteUpdate/NotePublic deliberately not carried forward from
+# feat/r2-storage during the merge — bringing them back would contradict the
+# whole point of the comments feature (ADR-0012 "Retire Notes").
+# ═══════════════════════════════════════════════════════════════════════════════
+# Verses (Home's "verse of the day" — see app/scripts/seed_verses.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+class VerseCreate(BaseModel):
+    reference: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1)
+    translation: str = Field(default="kjv", max_length=20)
+    is_active: bool = True
+
+
+class VerseUpdate(BaseModel):
+    reference: str | None = Field(default=None, min_length=1, max_length=100)
+    text: str | None = Field(default=None, min_length=1)
+    translation: str | None = Field(default=None, max_length=20)
+    is_active: bool | None = None
+
+
+class VersePublic(BaseModel):
+    """What `GET /verses/today` returns — no `is_active`/`created_by`/timestamps,
+    same split Announcements draws between its public and staff shapes."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    reference: str
+    text: str
+    translation: str
+
+
+class VerseAdminItem(VersePublic):
+    is_active: bool
+    created_by: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime | None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

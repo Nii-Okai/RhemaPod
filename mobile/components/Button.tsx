@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
@@ -8,13 +9,20 @@ import { AppText } from './Text';
 export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'children'> {
   label: string;
   loading?: boolean;
+  /** Leading glyph — series detail's Play CTA (Isaac's ask, session 2026-09-30,
+      Netflix's own Play button) is this prop's first user. */
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
+  /** Stretches to fill its container instead of sizing to the label — series detail's
+      Play button (same ask) is this prop's first user; every existing call site keeps
+      the original content-sized pill by leaving this at its default. */
+  fullWidth?: boolean;
 }
 
 /**
  * The white-pill primary action (spec §4/§1.1) — the only filled non-gold primary
  * button. Gold is reserved for accents/links/progress, never a general primary action.
  */
-export function PrimaryButton({ label, loading = false, disabled, ...rest }: PrimaryButtonProps) {
+export function PrimaryButton({ label, loading = false, disabled, icon, fullWidth = false, ...rest }: PrimaryButtonProps) {
   const isDisabled = Boolean(disabled) || loading;
 
   return (
@@ -22,15 +30,23 @@ export function PrimaryButton({ label, loading = false, disabled, ...rest }: Pri
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
-      style={({ pressed }) => [styles.primaryBase, pressed && styles.primaryPressed, isDisabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.primaryBase,
+        fullWidth && styles.fullWidth,
+        pressed && styles.primaryPressed,
+        isDisabled && styles.disabled,
+      ]}
       {...rest}
     >
       {loading ? (
         <ActivityIndicator color={colors.primaryButton.text} />
       ) : (
-        <AppText variant="ui.button" tone="inverse">
-          {label}
-        </AppText>
+        <View style={styles.contentRow}>
+          {icon ? <Ionicons name={icon} size={18} color={colors.primaryButton.text} /> : null}
+          <AppText variant="ui.button" tone="inverse">
+            {label}
+          </AppText>
+        </View>
       )}
     </Pressable>
   );
@@ -71,6 +87,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fullWidth: {
+    width: '100%',
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   primaryPressed: {
     opacity: 0.85,

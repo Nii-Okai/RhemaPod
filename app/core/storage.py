@@ -660,16 +660,29 @@ _archive_backend: ArchiveStore | None = None
 def get_archive_store() -> ArchiveStore:
     """Return the active archive backend (singleton).
 
-    Archive credentials (`ARCHIVE_STORE_ACCESS_KEY_ID` etc.) are not yet part
-    of `Settings` — decision (a) names them, but adding the fields is R1.3's
-    job, not this seam's. Until then this always returns the local stub;
-    `S3ArchiveStore` already exists and is unit-tested directly against an
-    `ObjectStoreConfig`, so wiring this factory to real settings once they
-    exist is a small follow-up, not a redesign.
+    Real AWS S3 when archive credentials are configured (`settings.
+    archive_is_live` — access key, secret and region all set; see
+    app/core/config.py), otherwise the local stub — mirrors `get_storage()`'s
+    shape. Unlike the R2 live store, the archive client keeps boto3's
+    default checksum behaviour rather than `when_required` (plan §A.1: an
+    Object Lock bucket requires a checksum on PUT/UploadPart) and has no
+    custom endpoint — `endpoint_url=None` lets boto3 resolve AWS's real
+    per-region S3 endpoint.
     """
     global _archive_backend
     if _archive_backend is None:
-        if settings.is_production:
+        if settings.archive_is_live:
+            cfg = ObjectStoreConfig(
+                endpoint_url=None,
+                region=settings.archive_store_region,
+                access_key_id=settings.archive_store_access_key_id,
+                secret_access_key=settings.archive_store_secret_access_key,
+                addressing_style="auto",
+                checksum_mode=None,
+            )
+            _archive_backend = S3ArchiveStore(cfg)
+            log.info("archive_backend", backend="s3", bucket=settings.archive_store_bucket)
+        elif settings.is_production:
             # Belt-and-braces, same rationale as get_storage(): the
             # production preflight is the primary control; this refuses to
             # let a stub serve production traffic even if that's bypassed.
@@ -677,8 +690,9 @@ def get_archive_store() -> ArchiveStore:
                 "Refusing to use the stub archive backend in production. "
                 "No live archive credentials are configured."
             )
-        _archive_backend = LocalArchiveStore()
-        log.warning("archive_backend", backend="local_stub", live=False)
+        else:
+            _archive_backend = LocalArchiveStore()
+            log.warning("archive_backend", backend="local_stub", live=False)
     return _archive_backend
 
 

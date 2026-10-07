@@ -30,13 +30,14 @@ beforeEach(() => {
 });
 
 describe('PhoneTabBarIOS', () => {
-  it('shows the five P1-resolved, text-only labels and navigates on press', () => {
+  it('shows the four P1-resolved, text-only labels and navigates on press', () => {
     const { getByText, queryByText } = render(<PhoneTabBarIOS />);
 
-    for (const label of ['Home', 'Browse', 'Search', 'Downloads', 'Me']) {
+    for (const label of ['Home', 'Browse', 'Downloads', 'Me']) {
       expect(getByText(label)).toBeTruthy();
     }
     expect(queryByText('Saved')).toBeNull();
+    expect(queryByText('Search')).toBeNull();
 
     fireEvent.press(getByText('Browse'));
     expect(push).toHaveBeenCalledWith('/(tabs)/browse');
@@ -52,15 +53,15 @@ describe('PhoneTabBarIOS', () => {
 });
 
 describe('PhoneTabBarAndroid', () => {
-  it('shows the same five destinations as iOS and navigates on press', () => {
+  it('shows the same four destinations as iOS and navigates on press', () => {
     const { getByText } = render(<PhoneTabBarAndroid />);
 
-    for (const label of ['Home', 'Browse', 'Search', 'Downloads', 'Me']) {
+    for (const label of ['Home', 'Browse', 'Downloads', 'Me']) {
       expect(getByText(label)).toBeTruthy();
     }
 
-    fireEvent.press(getByText('Search'));
-    expect(push).toHaveBeenCalledWith('/(tabs)/search');
+    fireEvent.press(getByText('Downloads'));
+    expect(push).toHaveBeenCalledWith('/(tabs)/downloads');
   });
 });
 
@@ -68,7 +69,7 @@ describe('TabletRail', () => {
   it('shows Series and Announcements (P3), omits a dedicated Me item, and navigates on press', () => {
     const { getByText, queryByText, getByLabelText } = render(<TabletRail />);
 
-    for (const label of ['Home', 'Series', 'Browse', 'Search', 'Downloads', 'Announcements']) {
+    for (const label of ['Home', 'Series', 'Browse', 'Downloads', 'Announcements']) {
       expect(getByText(label)).toBeTruthy();
     }
     expect(queryByText('Me')).toBeNull();

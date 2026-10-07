@@ -1,18 +1,34 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Platform } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
 import SeriesScreen from '../series';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
+
+function setWindowWidth(width: number) {
+  act(() => {
+    Dimensions.set({
+      window: { width, height: 800, scale: 2, fontScale: 1 },
+      screen: { width, height: 800, scale: 2, fontScale: 1 },
+    });
+  });
+}
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
+jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
 }));
 
 const mockedGet = api.get as jest.Mock;
@@ -34,7 +50,9 @@ function renderScreen() {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
+  mockBack.mockClear();
   Platform.OS = 'ios';
+  setWindowWidth(375);
 });
 
 describe('SeriesScreen (tablet rail, P3) — populated', () => {
@@ -87,5 +105,25 @@ describe('SeriesScreen — both chromes', () => {
     mockedGet.mockResolvedValue(seriesList);
     const { findByText } = renderScreen();
     await findByText('Anchored');
+  });
+});
+
+describe('SeriesScreen — back header (phone only, W4.1 Home "see all series" link)', () => {
+  it('shows a back button on phone width and navigates back on press', async () => {
+    setWindowWidth(375);
+    mockedGet.mockResolvedValue(seriesList);
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the back button on tablet width — the persistent rail is the way back there', async () => {
+    setWindowWidth(900);
+    mockedGet.mockResolvedValue(seriesList);
+    const { findByText, queryByLabelText } = renderScreen();
+
+    await findByText('Anchored');
+    expect(queryByLabelText('Back')).toBeNull();
   });
 });

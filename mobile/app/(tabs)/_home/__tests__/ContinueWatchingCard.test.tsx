@@ -42,4 +42,19 @@ describe('ContinueWatchingCard', () => {
 
     expect(getByText('0:00 left')).toBeTruthy();
   });
+
+  it('shows a progress bar reflecting percent_complete straight off the API response', () => {
+    const { getByLabelText } = render(<ContinueWatchingCard item={item} onPress={jest.fn()} />);
+
+    const bar = getByLabelText('33 percent watched');
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 33 });
+  });
+
+  it('omits the progress bar when percent_complete is null (duration unknown)', () => {
+    const { queryByLabelText } = render(
+      <ContinueWatchingCard item={{ ...item, percent_complete: null }} onPress={jest.fn()} />,
+    );
+
+    expect(queryByLabelText(/percent watched/)).toBeNull();
+  });
 });

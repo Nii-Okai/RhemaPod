@@ -161,6 +161,37 @@ async def test_free_sermon_not_locked(client, engine):
     assert item["locked"] is False
 
 
+# ── category_name resolution (regression: `to_list_item` called with no
+# `names`, so category_name/speaker_name/series_title always came back None
+# regardless of actual data — same bug class as the `/series/{id}/episodes`
+# fix, found in three more places: catalog list, catalog detail, /search) ──
+async def test_catalog_list_and_detail_resolve_category_name(client, engine):
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+
+    category = (await client.post(
+        "/api/v1/categories", json={"name": "Teaching", "slug": "teaching"}, headers=editor,
+    )).json()
+
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": "Anchored", "category_id": category["id"]},
+        headers=editor,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert listing[0]["category_name"] == "Teaching"
+
+    detail = (await client.get(f"/api/v1/catalog/sermons/{sid}")).json()
+    assert detail["category_name"] == "Teaching"
+
+    search_results = (await client.get("/api/v1/search", params={"category_id": category["id"]})).json()
+    assert search_results["results"][0]["category_name"] == "Teaching"
+
+
 # ── tier inheritance from series ──────────────────────────────────────────────
 async def test_episode_inherits_series_tier(client, engine):
     editor = await make_user(client, engine, "editor@example.com", "editor")

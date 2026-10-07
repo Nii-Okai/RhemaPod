@@ -6,7 +6,7 @@ what to gate. Playback itself is enforced by the streaming endpoint.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_optional_user
@@ -25,6 +25,50 @@ OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 @router.get("/sermons", response_model=list[SermonListItem])
 async def list_sermons(db: ReadDbDep, user: OptionalUser) -> list[SermonListItem]:
     return await content_service.list_published_sermons(db, user)
+
+
+@router.get("/sermons/trending", response_model=list[SermonListItem])
+async def trending_sermons(
+    db: ReadDbDep, user: OptionalUser, limit: int = Query(default=10, ge=1, le=50)
+) -> list[SermonListItem]:
+    """Most-played published sermons over the last 30 days (Home's "Trending"
+    shelf) — public, like every other `/catalog` read; no sign-in required to
+    see what's trending. Registered ahead of `/sermons/{sermon_id}` below so
+    "trending" is never captured as a sermon-id path parameter."""
+    return await content_service.list_trending_sermons(db, user, limit)
+
+
+@router.get("/sermons/hero", response_model=list[SermonListItem])
+async def hero_sermons(
+    db: ReadDbDep, user: OptionalUser, limit: int = Query(default=3, ge=1, le=10)
+) -> list[SermonListItem]:
+    """Home's hero carousel — up to 3 newest-published sermons, capped to one per
+    series. Public, like every other `/catalog` read. Registered ahead of
+    `/sermons/{sermon_id}` so "hero" is never captured as a sermon-id path parameter."""
+    return await content_service.list_hero_sermons(db, user, limit)
+
+
+@router.get("/sermons/new-releases", response_model=list[SermonListItem])
+async def new_release_sermons(
+    db: ReadDbDep, user: OptionalUser, limit: int = Query(default=10, ge=1, le=50)
+) -> list[SermonListItem]:
+    """Newest-published sermons (Home's "New Releases" shelf) — same ordering as the
+    hero, capped to shelf size, NOT capped to one-per-series (see
+    `list_new_release_sermons`'s own docstring). Public, like every other `/catalog`
+    read. Registered ahead of `/sermons/{sermon_id}` so "new-releases" is never
+    captured as a sermon-id path parameter."""
+    return await content_service.list_new_release_sermons(db, user, limit)
+
+
+@router.get("/sermons/prophets-catalog", response_model=list[SermonListItem])
+async def prophets_catalog_sermons(
+    db: ReadDbDep, user: OptionalUser, limit: int = Query(default=10, ge=1, le=50)
+) -> list[SermonListItem]:
+    """Sermons an editor has manually flagged as part of the "Prophet's Catalog"
+    (Home's shelf of the same name) via the admin editor's switch. Public, like
+    every other `/catalog` read. Registered ahead of `/sermons/{sermon_id}` so
+    "prophets-catalog" is never captured as a sermon-id path parameter."""
+    return await content_service.list_prophets_catalog_sermons(db, user, limit)
 
 
 @router.get("/sermons/{sermon_id}", response_model=SermonDetail)

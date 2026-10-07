@@ -23,6 +23,7 @@ from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
 from app.api.speakers import router as speakers_router
 from app.api.subscriptions import router as subscriptions_router
+from app.api.verses import router as verses_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, correlation_id, get_logger
 from app.core.middleware import (
@@ -199,6 +200,7 @@ for _router in (
     admin_subscriptions_router,
     announcement_approvals_router,
     sermon_approval_router,
+    verses_router,
 ):
     app.include_router(_router, prefix=API_PREFIX)
 

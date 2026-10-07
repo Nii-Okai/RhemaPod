@@ -1,5 +1,7 @@
 import ipaddress
+import os
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,10 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # disables the preflight below and exposes /docs.
 KNOWN_ENVIRONMENTS = {"development", "test", "staging", "production"}
 
-# Environments a browser — or an attacker — can reach directly. A subset of the
-# production preflight (cleartext object-storage endpoints) must also hold here:
-# staging routinely runs with real S3 credentials on a public hostname, so an
-# http:// endpoint there leaks exactly as it would in production.
+# Environments a browser — or an attacker — can reach directly: staging
+# routinely runs with real credentials on a public hostname, so this exists
+# for any future check that must fire for staging as well as production.
 INTERNET_REACHABLE_ENVIRONMENTS = {"staging", "production"}
 
 # Substrings that mark a SECRET_KEY as a placeholder rather than a real secret.
@@ -29,26 +30,20 @@ _PLACEHOLDER_SECRET_MARKERS = (
 )
 
 
-def _forbid_cleartext_object_storage(settings: "Settings") -> list[str]:
-    """The one home for "a cleartext object-storage endpoint is forbidden".
-    Returns a list of problem strings (empty = clean).
+# Bucket-name substrings that mark a dev/staging bucket. A production config
+# pointing at one of these is almost certainly a copy-paste of the dev
+# override rather than the real prod bucket (plan §A.2.4).
+_NON_PRODUCTION_BUCKET_MARKERS = ("-dev", "-staging")
 
-    Called by both preflights: `internet_reachable_preflight` (so it also fires
-    for staging, which `production_preflight` early-returns past) and
-    `production_preflight` (so a prod boot fails on it directly, not only via
-    the second validator).
-    """
-    problems: list[str] = []
 
-    if settings.object_store_endpoint_url and not settings.object_store_endpoint_url.lower().startswith(
-        "https://"
-    ):
-        problems.append(
-            "OBJECT_STORE_ENDPOINT_URL must use https outside development — an http "
-            "endpoint sends credentials and objects in cleartext to the "
-            "object store. Unset it for real AWS S3."
-        )
-    return problems
+def _r2_endpoint_host_is_valid(endpoint_url: str) -> bool:
+    """True if `endpoint_url`'s host is a Cloudflare R2 account endpoint —
+    either the standard form or the EU-jurisdiction form (decision (e)),
+    e.g. `<account>.r2.cloudflarestorage.com` or
+    `<account>.eu.r2.cloudflarestorage.com`. Used only by the production
+    preflight (plan §A.2.4); dev/staging may point at any https endpoint."""
+    host = urlsplit(endpoint_url).netloc.lower()
+    return host.endswith(".r2.cloudflarestorage.com")
 
 
 class Settings(BaseSettings):
@@ -109,8 +104,12 @@ class Settings(BaseSettings):
     object_store_endpoint_url: str | None = None
     object_store_access_key_id: str | None = None
     object_store_secret_access_key: str | None = None
-    object_store_raw_bucket: str = "sermon-raw"
-    object_store_media_bucket: str = "sermon-media"
+    # "-dev" defaults (plan §A.2.1) so a production deploy that forgets to
+    # override the bucket names fails the "-dev"/"-staging" bucket-name
+    # refusal below instead of silently writing real sermon media into a
+    # bucket named for development.
+    object_store_raw_bucket: str = "sermon-raw-dev"
+    object_store_media_bucket: str = "sermon-media-dev"
     # How long a browser has to complete a direct upload.
     # A 2 GB file on a modest connection takes well over 15 minutes; too short
     # a window expires the URL mid-upload and loses the whole transfer.
@@ -136,7 +135,11 @@ class Settings(BaseSettings):
     # staging, the preflight script) — see app/core/storage.py's
     # cdn_url_for(), which is where real signing belongs once it exists.
     cdn_base_url: str | None = None
-    max_upload_bytes: int = 5 * 1024 * 1024 * 1024   # 5 GB
+    # Decimal 5 GB (P1), not 5 GiB — below R2's single-PUT cap of
+    # 5,363,466,240 bytes, and it keeps the portal's "5 GB" copy literally
+    # true. See media_service.py's 413 message, which formats this the same
+    # decimal way.
+    max_upload_bytes: int = 5_000_000_000
     # Run transcodes inline (dev/test) instead of via a background worker.
     transcode_inline: bool = True
     # False = passthrough: serve the uploaded file directly, no FFmpeg needed.
@@ -190,13 +193,34 @@ class Settings(BaseSettings):
     # line) and unescapes it — see normalize_signing_key_pem below.
     cf_stream_signing_key_pem: str | None = None
 
-    # --- Glacier archival of raw masters (plan §A.2, L8 — not skippable) ---
-    # Destination is /sermon_archives in the SAME raw bucket (status.md "W0.1
-    # Glacier archive location confirmed"), already provisioned at this
-    # storage class. The archival code sets StorageClass explicitly on copy
-    # regardless of the bucket's own lifecycle config — see
-    # app/core/storage.py's copy_object() callers.
+    # --- Cold-tier archive: AWS S3 Deep Archive (plan L2, §A.2.1) ---
+    # A genuine cross-vendor move, not a same-account storage-class change:
+    # copy R2 -> AWS, verify, then (once ARCHIVE_DELETE_SOURCE is on) delete
+    # the R2 copy. Unset access_key_id/secret_access_key means the local
+    # stub (app/core/storage.py's LocalArchiveStore) — see archive_is_live
+    # below and get_archive_store()'s wiring to these fields.
+    archive_store_bucket: str | None = None
+    # No fixed default, unlike object_store_endpoint_url's R2 "auto" region
+    # (P4) — this is a real AWS region the archive bucket was created in and
+    # varies per deployment.
+    archive_store_region: str | None = None
+    archive_store_access_key_id: str | None = None
+    archive_store_secret_access_key: str | None = None
     archive_store_storage_class: str = "DEEP_ARCHIVE"
+    # Whether the sweep is allowed to delete the R2 source copy once a
+    # verified archive copy exists. Refused outright unless BOTH stores are
+    # live — see archive_delete_requires_live_stores below (plan §A.2.2);
+    # `sweep_archives` (R1.9) re-checks this in code as a second line of
+    # defense.
+    archive_delete_source: bool = False
+    # Floor of 1 day: 0 would let a source be deleted the instant it's
+    # archived, with no window to catch a bad copy before the R2 original is
+    # gone.
+    archive_source_retention_days: int = Field(default=14, ge=1)
+    # How long a sweep's claim on a media_archives row is honoured before
+    # another sweep run is allowed to take it over (plan §A.3.2's fencing
+    # lease).
+    archive_lease_minutes: int = 120
 
     # --- Subscriptions / payments (Phase 5) ---
     # Leave stripe_secret_key blank to use the mock provider (no Stripe needed).
@@ -271,6 +295,20 @@ class Settings(BaseSettings):
         return bool(self.object_store_access_key_id and self.object_store_secret_access_key)
 
     @property
+    def archive_is_live(self) -> bool:
+        """Region is required here (unlike storage_is_live's live store,
+        whose region is hardcoded "auto" — P4): a real AWS client built with
+        no region either fails to construct or silently resolves to
+        whatever boto3's default-region chain finds, which is exactly the
+        kind of "wrong bucket, wrong region" surprise get_archive_store()'s
+        stub-in-dev / refuse-in-production behaviour exists to avoid."""
+        return bool(
+            self.archive_store_access_key_id
+            and self.archive_store_secret_access_key
+            and self.archive_store_region
+        )
+
+    @property
     def payments_are_live(self) -> bool:
         return bool(self.stripe_secret_key and self.stripe_webhook_secret)
 
@@ -328,6 +366,33 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SECRET_KEY has too little entropy (fewer than 8 distinct "
                 "characters) — use a random value, not a repeated pattern"
+            )
+        return v
+
+    @field_validator("object_store_endpoint_url")
+    @classmethod
+    def object_store_endpoint_is_https(cls, v: str | None) -> str | None:
+        """OBJECT_STORE_ENDPOINT_URL must be https in EVERY environment (plan
+        §A.2.2), not just staging/production. Local dev now points at a real
+        Cloudflare R2 bucket (decision L3) instead of a compose-shim MinIO
+        endpoint, so there is no legitimate http case left to allow — an
+        http endpoint sends credentials and objects in cleartext.
+        """
+        if v is not None and not v.lower().startswith("https://"):
+            raise ValueError(
+                "OBJECT_STORE_ENDPOINT_URL must use https in every "
+                "environment, including development — local dev points at "
+                "a real R2 bucket now, not a compose MinIO endpoint."
+            )
+        return v
+
+    @field_validator("archive_store_storage_class")
+    @classmethod
+    def archive_storage_class_is_known(cls, v: str) -> str:
+        allowed = ("DEEP_ARCHIVE", "GLACIER")
+        if v not in allowed:
+            raise ValueError(
+                f"ARCHIVE_STORE_STORAGE_CLASS must be one of {allowed}, got {v!r}"
             )
         return v
 
@@ -405,6 +470,57 @@ class Settings(BaseSettings):
                 "OBJECT_STORE_ACCESS_KEY_ID and OBJECT_STORE_SECRET_ACCESS_KEY are required "
                 "(without them uploads silently go to an in-memory stub)"
             )
+        elif not self.object_store_endpoint_url:
+            problems.append(
+                "OBJECT_STORE_ENDPOINT_URL is required once storage credentials "
+                "are live — the live store is Cloudflare R2 only (decision (a)), "
+                "and an unset endpoint would leave boto3 to default to real "
+                "AWS S3, the wrong vendor entirely"
+            )
+        elif not _r2_endpoint_host_is_valid(self.object_store_endpoint_url):
+            problems.append(
+                "OBJECT_STORE_ENDPOINT_URL host must be "
+                "*.r2.cloudflarestorage.com, got "
+                f"{urlsplit(self.object_store_endpoint_url).netloc!r}"
+            )
+        if not self.archive_is_live:
+            problems.append(
+                "ARCHIVE_STORE_ACCESS_KEY_ID, ARCHIVE_STORE_SECRET_ACCESS_KEY "
+                "and ARCHIVE_STORE_REGION are all required (without them "
+                "get_archive_store() stays on the in-process stub and no "
+                "sermon master ever reaches the cold-archive tier)"
+            )
+        elif not self.archive_store_bucket:
+            problems.append(
+                "ARCHIVE_STORE_BUCKET is required once archive credentials "
+                "are live — sweep_archives has nowhere to copy to without it"
+            )
+        if self.archive_store_storage_class != "DEEP_ARCHIVE":
+            problems.append(
+                "ARCHIVE_STORE_STORAGE_CLASS must be DEEP_ARCHIVE in "
+                "production (GLACIER is a legal config value but not the "
+                "one this plan's Object Lock / retention design was built "
+                f"against) — got {self.archive_store_storage_class!r}"
+            )
+        for field_name, bucket in (
+            ("OBJECT_STORE_RAW_BUCKET", self.object_store_raw_bucket),
+            ("OBJECT_STORE_MEDIA_BUCKET", self.object_store_media_bucket),
+            ("ARCHIVE_STORE_BUCKET", self.archive_store_bucket),
+        ):
+            if bucket and any(marker in bucket for marker in _NON_PRODUCTION_BUCKET_MARKERS):
+                problems.append(
+                    f"{field_name} ({bucket!r}) looks like a dev/staging "
+                    "bucket name — production must point at its own bucket, "
+                    "never one named \"-dev\" or \"-staging\""
+                )
+        if (
+            self.object_store_raw_bucket
+            and self.object_store_raw_bucket == self.object_store_media_bucket
+        ):
+            problems.append(
+                "OBJECT_STORE_RAW_BUCKET and OBJECT_STORE_MEDIA_BUCKET must "
+                "not be the same bucket"
+            )
         if not self.email_is_live:
             problems.append(
                 "SMTP_HOST and SMTP_FROM_EMAIL are required "
@@ -448,11 +564,10 @@ class Settings(BaseSettings):
             problems.append("ALLOWED_ORIGINS must use https in production")
         if self.frontend_base_url.startswith("http://"):
             problems.append("FRONTEND_BASE_URL must use https in production")
-        # Cleartext / compose-shim object-storage endpoints: the rule and its
-        # message text live in `_forbid_cleartext_object_storage`.
-        # `internet_reachable_preflight` runs the same helper so the check also
-        # fires for staging (which this validator early-returns past).
-        problems.extend(_forbid_cleartext_object_storage(self))
+        # Cleartext object-storage endpoints are refused by the
+        # object_store_endpoint_is_https field validator above, which runs
+        # in EVERY environment (plan §A.2.2) — Settings construction never
+        # reaches this far with one set, so there is nothing to repeat here.
         if not self.database_url.startswith(("postgresql+psycopg://", "postgresql://")):
             problems.append("DATABASE_URL must point at PostgreSQL")
         # trusted_proxies format / breadth is validated in every environment by
@@ -465,9 +580,12 @@ class Settings(BaseSettings):
                 "presigned S3 URL for exactly this reason, so enabling it today "
                 "only adds a config footgun with no CDN benefit — a bare CDN URL "
                 "built from an object key carries no access control, and object "
-                "keys are deterministic and public (see media_key()). Remove "
-                "CDN_BASE_URL until real CDN signing is implemented, or extend "
-                "this check alongside cdn_url_for() once it is."
+                "keys are deterministic and public (see media_key()). This "
+                "includes a *.r2.dev URL: R2.1 leaves every bucket's public "
+                "R2.dev subdomain disabled, so one would be just as unsigned "
+                "and just as wrong here. Remove CDN_BASE_URL until real CDN "
+                "signing is implemented, or extend this check alongside "
+                "cdn_url_for() once it is."
             )
 
         if problems:
@@ -477,26 +595,52 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def internet_reachable_preflight(self) -> "Settings":
-        """Cleartext object-storage checks that must hold for staging as well as
-        production.
+    def no_legacy_s3_env_vars(self) -> "Settings":
+        """A lingering `S3_*` environment variable is almost always a
+        leftover from before decision (a)'s object_store_*/archive_store_*
+        rename (plan §A.2.2). pydantic-settings silently ignores env vars
+        that match no field name, so a developer's shell or a deploy
+        manifest that still exports (say) S3_ENDPOINT_URL would have it
+        silently do nothing rather than fail loudly — exactly the kind of
+        drift that leaves someone debugging "why is this using the stub"
+        with a stale variable sitting right there. Runs in EVERY
+        environment, not just production; this validator itself is meant to
+        be removed one release cycle after the rename fully lands.
 
-        ``production_preflight`` above early-returns for every non-production
-        environment, so on a staging box with real S3 keys an ``http://``
-        ``S3_ENDPOINT_URL`` (or a compose-shim ``S3_PUBLIC_ENDPOINT``) would
-        otherwise sail through. Message text mirrors the old production-only
-        wording so existing error-matching keeps working. Runs for production
-        too — it is a second layer there, not a replacement.
+        Checks the process environment only, not `.env` — deployed
+        environments (where this matters most) inject real environment
+        variables and have no `.env` file at all (see `model_config`
+        above), so this is a complete check there. A stray `S3_*` line
+        sitting only in a developer's gitignored `.env` is a lower-stakes
+        miss this validator does not catch.
         """
-        if not self.is_internet_reachable:
-            return self
-
-        problems = _forbid_cleartext_object_storage(self)
-
-        if problems:
+        legacy = sorted(k for k in os.environ if k.startswith("S3_"))
+        if legacy:
             raise ValueError(
-                "Environment preflight failed (staging/production):\n  - "
-                + "\n  - ".join(problems)
+                "Legacy S3_* environment variable(s) still set: "
+                f"{', '.join(legacy)} — rename to the OBJECT_STORE_*/"
+                "ARCHIVE_STORE_* equivalents (decision (a)). "
+                "pydantic-settings silently ignores unmatched env vars, so "
+                "these do nothing today and must be removed, not renamed "
+                "in place."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def archive_delete_requires_live_stores(self) -> "Settings":
+        """ARCHIVE_DELETE_SOURCE=true is refused unless BOTH the live store
+        and the archive store are live — in EVERY environment, not only
+        production (plan §A.2.2). Deleting a raw master from R2 on the word
+        of a stub archive means the "verified copy" that deletion is
+        supposed to depend on was never actually written anywhere.
+        `sweep_archives` (plan §A.3.2/A.3.4) re-checks this in code as a
+        second line of defense, independent of this validator.
+        """
+        if self.archive_delete_source and not (self.storage_is_live and self.archive_is_live):
+            raise ValueError(
+                "ARCHIVE_DELETE_SOURCE is true but the live store and/or "
+                "the archive store is still a stub — refusing to enable "
+                "source deletion without both being real, live credentials."
             )
         return self
 

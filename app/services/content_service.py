@@ -11,9 +11,10 @@ Design notes
 """
 from __future__ import annotations
 
+import random
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import case, func, literal_column, nullslast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,7 @@ from app.models.models import (
     ApprovalLog,
     Category,
     ContentTier,
+    PlaybackSession,
     Sermon,
     Speaker,
     SermonStatus,
@@ -359,11 +361,12 @@ async def list_published_sermons(
         )
         rows = (await db.execute(stmt)).scalars().all()
         series_map = await _series_map(db, rows)
+        names = await load_ref_names(db, rows)
         out = []
         for s in rows:
             tier = effective_tier(s, series_map.get(s.series_id))
             # Cache the tier-resolved shape without the user-specific lock.
-            item = to_list_item(s, tier, has_subscription=True)
+            item = to_list_item(s, tier, has_subscription=True, names=names)
             d = item.model_dump(mode="json")
             d["tier"] = tier.value
             out.append(d)
@@ -378,6 +381,251 @@ async def list_published_sermons(
         d = {**d, "locked": (tier == ContentTier.PAID and not has_sub)}
         items.append(SermonListItem.model_validate(d))
     return items
+
+
+TRENDING_WINDOW_DAYS = 30
+
+
+async def list_trending_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Published, publicly-visible sermons ranked by total `play_count` across
+    all viewers' sessions in the last 30 days, most-played first (Isaac's
+    call: a 30-day window, matching the shape of the admin dashboard's
+    existing `plays_last_7_days` stat but wider).
+
+    Deliberately uncached, unlike `list_published_sermons` — that function
+    caches the *entire* catalog because it's identical for everyone and
+    expensive to rebuild per request; this is a rolling-window aggregate over
+    a catalog this app's actual scale (tens, not millions, of sermons) makes
+    cheap to just query directly. Caching a moving 30-day window adds
+    invalidation complexity (when does yesterday's data age out of the cache
+    key?) for a query that isn't actually slow — not a case for it yet.
+    """
+    has_sub = await _has_subscription(db, user)
+    since = datetime.now(timezone.utc) - timedelta(days=TRENDING_WINDOW_DAYS)
+    capped_limit = max(1, min(limit, 50))
+
+    stmt = (
+        select(Sermon, func.coalesce(func.sum(PlaybackSession.play_count), 0).label("plays"))
+        .join(PlaybackSession, PlaybackSession.sermon_id == Sermon.id)
+        .where(*sermon_visibility_clause(), PlaybackSession.last_played_at >= since)
+        .group_by(Sermon.id)
+        .order_by(func.coalesce(func.sum(PlaybackSession.play_count), 0).desc())
+        .limit(_over_fetch(capped_limit))
+    )
+    rows = (await db.execute(stmt)).all()
+    sermons = _cap_one_per_series([row[0] for row in rows], capped_limit)
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+
+    return [
+        to_list_item(sermon, effective_tier(sermon, series_map.get(sermon.series_id)), has_sub, names)
+        for sermon in sermons
+    ]
+
+
+async def list_recommended_sermons(
+    db: AsyncSession, user: User, limit: int = 10
+) -> list[SermonListItem]:
+    """Published sermons in the categories/speakers the user has actually
+    watched (any `PlaybackSession` row, finished or not), excluding sermons
+    they've already played, newest-published first.
+
+    No collaborative-filtering or content-similarity model — this derives
+    entirely from `PlaybackSession`, which already exists; it needed no new
+    tracking to build (Isaac's call). Falls back to `list_trending_sermons`
+    whenever personalization has nothing to work with: a user with zero
+    playback history, or one whose entire history has no category/speaker on
+    it, or a category/speaker match that happens to return nothing (e.g.
+    they've already watched everything currently published in their own
+    lanes). An empty "Recommended for you" shelf is a worse experience than a
+    non-personalized-but-populated one.
+    """
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 50))
+
+    watched = (await db.execute(
+        select(Sermon.category_id, Sermon.speaker_id, PlaybackSession.sermon_id)
+        .join(Sermon, Sermon.id == PlaybackSession.sermon_id)
+        .where(PlaybackSession.user_id == user.id)
+    )).all()
+    watched_sermon_ids = {row[2] for row in watched}
+
+    if not watched:
+        return await _trending_excluding(db, user, watched_sermon_ids, limit)
+
+    category_ids = {row[0] for row in watched if row[0] is not None}
+    speaker_ids = {row[1] for row in watched if row[1] is not None}
+
+    if not category_ids and not speaker_ids:
+        return await _trending_excluding(db, user, watched_sermon_ids, limit)
+
+    stmt = (
+        select(Sermon)
+        .where(
+            *sermon_visibility_clause(),
+            Sermon.id.notin_(watched_sermon_ids),
+            or_(Sermon.category_id.in_(category_ids), Sermon.speaker_id.in_(speaker_ids)),
+        )
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(_over_fetch(capped_limit))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    if not sermons:
+        return await _trending_excluding(db, user, watched_sermon_ids, limit)
+
+    sermons = _cap_one_per_series(sermons, capped_limit)
+    sermons = _daily_shuffle(sermons, salt=f"recommended:{user.id}")
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(sermon, effective_tier(sermon, series_map.get(sermon.series_id)), has_sub, names)
+        for sermon in sermons
+    ]
+
+
+def _over_fetch(limit: int) -> int:
+    """How many rows to pull at the SQL layer before `_cap_one_per_series` thins them out
+    — capping can drop rows (multiple episodes of one series collapse to one), so fetching
+    exactly `limit` rows up front could under-fill a shelf in a series-heavy catalog.
+    Generous but bounded: 4x the requested limit, floored at 20, capped at 100."""
+    return min(max(limit * 4, 20), 100)
+
+
+def _cap_one_per_series(sermons: list[Sermon], limit: int) -> list[Sermon]:
+    """At most one sermon per series, order preserved — otherwise a discovery shelf
+    (Trending, Recommended, Prophet's Catalog, the hero) can show 2-3 episodes of the
+    same series back to back, which reads as the shelf being short on real content
+    rather than varied. Standalone sermons (`series_id is None`) are never deduped
+    against each other. New Releases is deliberately exempt (Isaac's call, session
+    2026-09-30) — multiple fresh episodes of the same series *are* the point there.
+    Callers over-fetch via `_over_fetch` first since capping can drop rows."""
+    seen_series: set[uuid.UUID] = set()
+    out: list[Sermon] = []
+    for sermon in sermons:
+        if sermon.series_id is not None:
+            if sermon.series_id in seen_series:
+                continue
+            seen_series.add(sermon.series_id)
+        out.append(sermon)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _daily_shuffle(items: list[Sermon], salt: str) -> list[Sermon]:
+    """Seeded shuffle, stable for the whole day (changes the next). Home's shelves with no
+    intrinsic ordering signal (Prophet's Catalog; Recommended's own affinity matches, which
+    the DB otherwise ties by `published_at desc` — the same tiebreak New Releases uses for
+    its actual, meaningful ordering) were landing in the exact same order as New Releases
+    whenever their candidate sets overlapped, reading as duplicated shelves rather than
+    distinct ones (Isaac's call, session 2026-09-30). Plain `ORDER BY RANDOM()` would
+    reshuffle on every single refetch — visibly jittering mid-scroll — so the seed is
+    date-based (stable within a day) rather than per-request, and salted per shelf/user so
+    two shelves — or two different users' Prophet's Catalog — don't coincidentally land on
+    the same permutation."""
+    seed = f"{date.today().isoformat()}:{salt}"
+    shuffled = list(items)
+    random.Random(seed).shuffle(shuffled)
+    return shuffled
+
+
+async def _trending_excluding(
+    db: AsyncSession, user: User, exclude_ids: set[uuid.UUID], limit: int
+) -> list[SermonListItem]:
+    """`list_trending_sermons`, minus whatever the caller has already watched — every
+    `list_recommended_sermons` fallback path routes through this rather than the bare
+    trending list, so falling back to a non-personalized signal still never recommends
+    something the user has literally already seen. Over-fetches before excluding so a
+    fallback with matches to drop still returns up to `limit` results, not fewer."""
+    candidates = await list_trending_sermons(db, user, limit + len(exclude_ids))
+    return [item for item in candidates if item.id not in exclude_ids][:limit]
+
+
+async def list_new_release_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Home's "New Releases" shelf — the same newest-published-first ordering
+    `list_hero_sermons` uses, just capped to shelf size via its own query rather than
+    slicing the full catalog list client-side — matches `list_trending_sermons`/
+    `list_recommended_sermons`'s own pattern. Unlike the hero and every other
+    discovery shelf, this one is NOT capped to one-per-series (`_cap_one_per_series`)
+    — multiple fresh episodes of the same series showing up here together is exactly
+    the point of a "new releases" shelf, not noise to collapse."""
+    has_sub = await _has_subscription(db, user)
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(max(1, min(limit, 50)))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
+
+
+async def list_hero_sermons(
+    db: AsyncSession, user: User | None, limit: int = 3
+) -> list[SermonListItem]:
+    """Home's hero carousel — newest-published first (P5's original single-item rule,
+    extended to Isaac's ask for a 3-item rotating hero, session 2026-09-30), capped to
+    one sermon per series (`_cap_one_per_series`) so the carousel doesn't spend two of
+    its three slots on back-to-back episodes of the same series. A dedicated query
+    rather than reusing `list_published_sermons` — that function is cached whole-catalog
+    and used elsewhere (general browse) where every episode SHOULD appear; capping it
+    here would change that contract for every other caller too."""
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 10))
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(_over_fetch(capped_limit))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(sermons, capped_limit)
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
+
+
+async def list_prophets_catalog_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Home's "Prophet's Catalog" shelf — sermons an editor has manually flagged via
+    the admin editor's "Prophet's Catalog" switch (`Sermon.is_prophets_catalog`).
+    Purely editorial curation with no inherent order of its own, so the candidate pool
+    is capped by recency (same as everywhere else) but *displayed* in a daily-shuffled
+    order (`_daily_shuffle`) rather than strict `published_at desc` — otherwise this
+    shelf reads as a duplicate of New Releases whenever the two sets overlap. Also capped
+    to one sermon per series (`_cap_one_per_series`) for the same reason New Releases is
+    exempt from that cap — multiple fresh episodes belong on New Releases, not repeated
+    here too."""
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 50))
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause(), Sermon.is_prophets_catalog.is_(True))
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(_over_fetch(capped_limit))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(sermons, capped_limit)
+    sermons = _daily_shuffle(sermons, salt=f"prophets:{user.id if user else 'anon'}")
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
 
 
 async def _series_map(db: AsyncSession, sermons: list[Sermon]) -> dict[uuid.UUID, Series]:
@@ -454,8 +702,9 @@ async def _assemble_sermon_detail(
         series = await db.get(Series, sermon.series_id)
     tier = effective_tier(sermon, series)
     has_sub = await _has_subscription(db, user)
+    names = await load_ref_names(db, [sermon])
 
-    base = to_list_item(sermon, tier, has_sub)
+    base = to_list_item(sermon, tier, has_sub, names)
     return SermonDetail(
         **base.model_dump(),
         status=sermon.status,
@@ -525,6 +774,7 @@ async def get_sermon_for_staff(
         **detail.model_dump(),
         updated_at=sermon.updated_at,
         tier_override=sermon.tier,
+        is_prophets_catalog=sermon.is_prophets_catalog,
     )
 
 
@@ -547,6 +797,7 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
         series_id=data.series_id,
         episode_number=episode_number,
         tier=data.tier,
+        is_prophets_catalog=data.is_prophets_catalog,
         status=SermonStatus.DRAFT,
         created_by=creator.id,
     )

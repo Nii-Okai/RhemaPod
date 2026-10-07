@@ -670,7 +670,15 @@ def test_staging_boots_without_object_storage_endpoints():
     assert s.is_internet_reachable is True
 
 
-def test_development_still_allows_cleartext_s3_endpoint_url():
-    s = _settings(environment="development", object_store_endpoint_url="http://minio:9000")
-    assert s.object_store_endpoint_url == "http://minio:9000"
+def test_development_also_rejects_cleartext_s3_endpoint_url():
+    """object_store_endpoint_is_https (app/core/config.py) runs in every
+    environment (plan §A.2.2) — dev no longer gets a pass, since dev now
+    points at a real R2 bucket (decision L3) instead of a compose MinIO
+    endpoint."""
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _settings(environment="development", object_store_endpoint_url="http://minio:9000")
+
+
+def test_development_is_not_internet_reachable():
+    s = _settings(environment="development")
     assert s.is_internet_reachable is False

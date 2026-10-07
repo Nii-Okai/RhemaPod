@@ -1,82 +1,185 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../Text';
+import { colors } from '../../theme/colors';
+import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
+import { scaledLineHeight } from '../../theme/typography';
+import { formatDuration } from '../../lib/format/duration';
+import { EpisodeDownloadButton } from './EpisodeDownloadButton';
 import type { SeriesEpisode } from '../../lib/query/hooks/useSeries';
 
 export interface EpisodeRowProps {
   episode: SeriesEpisode;
-  /**
-   * "watched" / "17:04 left" / "new" — see `lib/format/episodeStatus.ts`. `null`
-   * when the caller couldn't derive a status (the `/me/history` read failed) —
-   * render no status label at all rather than a fabricated "new".
-   */
-  status: string | null;
   onPress: () => void;
 }
 
+const THUMBNAIL_WIDTH = 100;
+const TITLE_FONT_SIZE = 14;
+
+function normalize(text: string): string {
+  return text.trim().toLowerCase();
+}
+
 /**
- * One series-episode row (design spec 1h): mono episode number, title, and
- * a mono status meta line — the design spec's own "mono meta line
- * (duration, status)" convention (§4), the same one `SermonResultRow`
- * already applies to duration + speaker.
+ * One series-episode row (design spec 1h, reworked per Isaac's ask, session
+ * 2026-09-30): thumbnail (a centered play-button glyph and a duration badge in its
+ * bottom-right corner, both overlaid and purely visual — the whole row is already one
+ * tap target, same reasoning as `HeroCard`'s own non-interactive play circle), title,
+ * a speaker-name meta line — and, at the row's far end, its own `EpisodeDownloadButton`.
  *
- * `episode.episode_number` is rendered exactly as the server sends it on
- * `GET /series/{id}/episodes` (already contiguous 1..N, gaps hidden
- * server-side per plan L11/W2.3) — this component never renumbers, and an
- * unnumbered episode (`episode_number: null`) renders with no number at
- * all, never "00" or any placeholder digit.
+ * No episode-number badge renders (Isaac's ask, same session) — episode order is
+ * already conveyed by list position. The number is still folded into
+ * `accessibilityLabel` when present, though: a screen-reader user loses the visual
+ * ordering cue sighted users get for free from row position, so it's worth more to
+ * them than it is to a sighted viewer, not less (same reasoning `ImageOnlyCard` already
+ * applies to its own hidden title).
+ *
+ * The meta line shows the episode's speaker (`episode.speaker_name`) — duration moved
+ * to the thumbnail's own corner badge instead, so nothing renders it twice. No status
+ * ("watched"/"new") or speaker fallback renders here: `/me/history` is still fetched by
+ * the screen (the Play/Resume CTA still needs it), this row never displays it, and an
+ * episode with no speaker on file just gets no meta line rather than a fabricated one.
+ *
+ * Only one title-looking line renders. The synopsis line ("episode details", Isaac's
+ * own words for it, session 2026-09-30) reuses `episode.description` — but this
+ * content's descriptions currently duplicate their own episode's title verbatim (a
+ * content-import artifact, confirmed against the live API, not a permanent rule),
+ * which read as the title rendering twice. Suppressing an exact (trimmed,
+ * case-insensitive) match fixes that without disabling the synopsis line for an
+ * episode that actually has a distinct one.
+ *
+ * Title and speaker are left-aligned against the thumbnail, matching the Netflix
+ * reference (Isaac's ask, session 2026-09-30 — an earlier round had centered them,
+ * reverted this round). The thumbnail is narrower and the title smaller too (an
+ * earlier ask, same session), both "slightly" per the literal instruction — see
+ * `THUMBNAIL_WIDTH`/`TITLE_FONT_SIZE`.
  */
-export function EpisodeRow({ episode, status, onPress }: EpisodeRowProps) {
+export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
   const number = episode.episode_number !== null ? String(episode.episode_number).padStart(2, '0') : null;
-  const accessibleParts = [number ? `Episode ${number}` : null, episode.title, status].filter(
+  const duration = formatDuration(episode.duration_seconds);
+  const showSynopsis = Boolean(episode.description) && normalize(episode.description as string) !== normalize(episode.title);
+
+  const accessibleParts = [number ? `Episode ${number}` : null, episode.title, episode.speaker_name].filter(
     (part): part is string => Boolean(part),
   );
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibleParts.join(', ')}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      {number ? (
-        <AppText variant="mono.tight" tone="gold" style={styles.number}>
-          {number}
-        </AppText>
-      ) : null}
-      <View style={styles.textBlock}>
-        <AppText variant="display.compact" numberOfLines={2}>
-          {episode.title}
-        </AppText>
-        {status ? (
-          <AppText variant="mono.meta" tone="tertiary" style={styles.meta}>
-            {status}
+    <View style={styles.row}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibleParts.join(', ')}
+        style={({ pressed }) => [styles.pressableArea, pressed && styles.rowPressed]}
+      >
+        <View style={styles.artWrap}>
+          {episode.thumbnail_url ? (
+            <Image source={{ uri: episode.thumbnail_url }} style={styles.thumbnail} resizeMode="cover" />
+          ) : (
+            <View style={styles.thumbnailFallback} />
+          )}
+          <View style={styles.playButtonWrap} pointerEvents="none">
+            <View style={styles.playButton}>
+              <Ionicons name="play" size={14} color={colors.text.primary} />
+            </View>
+          </View>
+          <View style={styles.durationBadge} pointerEvents="none">
+            <AppText variant="mono.tight" tone="primary" style={styles.durationText}>
+              {duration}
+            </AppText>
+          </View>
+        </View>
+        <View style={styles.textBlock}>
+          <AppText variant="display.compact" numberOfLines={2} style={styles.title}>
+            {episode.title}
           </AppText>
-        ) : null}
-      </View>
-    </Pressable>
+          {episode.speaker_name ? (
+            <AppText variant="ui.label" tone="tertiary" style={styles.meta}>
+              {episode.speaker_name}
+            </AppText>
+          ) : null}
+          {showSynopsis ? (
+            <AppText variant="ui.body" tone="secondary" numberOfLines={2} style={styles.synopsis}>
+              {episode.description}
+            </AppText>
+          ) : null}
+        </View>
+      </Pressable>
+      <EpisodeDownloadButton episodeId={episode.id} episodeTitle={episode.title} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    alignItems: 'center',
     paddingVertical: spacing.md,
+  },
+  pressableArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
   },
   rowPressed: {
     opacity: 0.7,
   },
-  number: {
-    width: 24,
+  artWrap: {
+    width: THUMBNAIL_WIDTH,
+  },
+  thumbnail: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.sm,
+  },
+  thumbnailFallback: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface.sunken,
+  },
+  playButtonWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: colors.overlay.chipFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.overlay.chipBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  durationBadge: {
+    position: 'absolute',
+    right: spacing.xs,
+    bottom: spacing.xs,
+    backgroundColor: colors.overlay.chipFill,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  durationText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   textBlock: {
     flex: 1,
     gap: spacing.xs,
   },
+  title: {
+    fontSize: TITLE_FONT_SIZE,
+    lineHeight: scaledLineHeight(TITLE_FONT_SIZE, 1.2),
+  },
   meta: {
     marginTop: 0,
+  },
+  synopsis: {
+    marginTop: spacing.xs,
   },
 });

@@ -337,3 +337,57 @@ async def test_grouped_series_capped_at_group_limit(client, engine):
     body = (await client.get("/api/v1/search?q=grace")).json()
     assert body["series_total"] == 7
     assert len(body["series"]) == 5
+# ── series/speakers groups (Decision 4) ─────────────────────────────────────────
+async def test_search_includes_matching_series(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    await client.post("/api/v1/series", json={"title": "Walking in Grace"}, headers=ed)
+    await client.post("/api/v1/series", json={"title": "Unrelated"}, headers=ed)
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    titles = [s["title"] for s in body["series"]]
+    assert titles == ["Walking in Grace"]
+    assert body["series_total"] == 1
+
+
+async def test_search_includes_matching_speakers(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    await client.post("/api/v1/speakers", json={"name": "Grace Adeyemi"}, headers=ed)
+    await client.post("/api/v1/speakers", json={"name": "Unrelated Name"}, headers=ed)
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    names = [s["name"] for s in body["speakers"]]
+    assert names == ["Grace Adeyemi"]
+    assert body["speakers_total"] == 1
+
+
+async def test_search_series_and_speakers_omitted_when_query_empty(client, engine):
+    """Decision 4 groups only apply to a real query — the filter-only browse
+    mode (no `q`) doesn't try to name-match series/speakers against nothing."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    await client.post("/api/v1/series", json={"title": "Some Series"}, headers=ed)
+
+    body = (await client.get("/api/v1/search")).json()
+    assert body["series"] == [] and body["speakers"] == []
+    assert body["series_total"] == 0 and body["speakers_total"] == 0
+
+
+async def test_search_series_group_capped_at_side_result_limit(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    for i in range(8):
+        await client.post(
+            "/api/v1/series", json={"title": f"Grace Series {i}"}, headers=ed
+        )
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    assert len(body["series"]) == 5  # SIDE_RESULT_LIMIT
+    assert body["series_total"] == 8
+
+
+async def test_search_sermon_results_unaffected_by_series_speakers_addition(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    await publish(client, ed, mgr, title="Grace Abounding")
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    assert body["total"] == 1
+    assert body["results"][0]["title"] == "Grace Abounding"

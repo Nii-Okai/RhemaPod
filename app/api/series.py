@@ -23,6 +23,7 @@ from app.services import auth_service, content_service
 from app.services.content_service import (
     ContentError,
     effective_tier,
+    load_ref_names,
     renumber_for_display,
     sermon_visibility_clause,
     to_list_item,
@@ -219,8 +220,16 @@ async def series_episodes(
     # Redis round-trip per episode). is_entitled writes only to Redis, so the
     # read-only session is not violated.
     has_sub = await content_service._has_subscription(db, user)
+    # Bug fix (Isaac's report, session 2026-09-30: "speaker name is not showing on
+    # episode items"): this route never resolved speaker/category/series names onto
+    # the returned `SermonListItem`s — `to_list_item` was called with no `names` arg,
+    # so it silently fell back to an all-empty `RefNames()` regardless of whether the
+    # episode actually had a speaker assigned. `series_title` was affected too (every
+    # episode's own `series_title` came back `None`, even though it's obviously this
+    # series).
+    names = await load_ref_names(db, rows)
     items = [
-        to_list_item(s, effective_tier(s, series), has_sub)
+        to_list_item(s, effective_tier(s, series), has_sub, names)
         for s in rows
     ]
     return renumber_for_display(items)

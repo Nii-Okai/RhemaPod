@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText } from '../../../components';
+import { Ionicons } from '@expo/vector-icons';
+import { AppText, PressableScale } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -10,51 +11,90 @@ import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
 export interface HeroCardProps {
   sermon: SermonListItem;
   onPress: () => void;
-}
-
-/** "31:02 · Ada Nwosu" — omits the speaker segment if the card has none. */
-function metaLine(sermon: SermonListItem): string {
-  const parts = [formatDuration(sermon.duration_seconds), sermon.speaker_name].filter(
-    (part): part is string => Boolean(part),
-  );
-  return parts.join(' · ');
+  /** Extra top offset for the eyebrow chip, on top of its own `spacing.md` — clears
+      the overlaid, scroll-fading `HomeTopBar` (Isaac's ask, session 2026-09-30) when
+      the hero renders underneath it. Defaults to 0 for any other caller. */
+  topInset?: number;
 }
 
 /**
  * Home's hero (design spec §3 Home: "full-bleed art, 'New this week' sermon"; plan P5: the
  * hero IS `GET /catalog/sermons`'s first item — server-ordered newest-published-first, no
- * client-side pin). Whole card is the tap target, matching `SermonResultRow`'s
- * whole-row-pressable convention rather than adding a separate CTA the base spec never
- * draws for this screen (unlike the W4.0-addendum detail screen, §8.1.6, which does).
+ * client-side pin).
+ *
+ * Structurally split into an art region and a footer, not one continuous overlay surface.
+ * Isaac's later reference (a church media app's own hero) overlays its title/meta directly
+ * on the art too — but that art was custom-designed with a reserved, uncluttered gradient
+ * area at the bottom specifically for that overlay. Our actual sermon thumbnails are flat
+ * title-card graphics with baked-in text running edge-to-edge (verified against the real
+ * "Understanding the Prophetic" thumbnail in testing) — there's no safe area to overlay free
+ * text onto without covering something. So the only things that sit on the art are
+ * self-contained, opaque-background controls that can survive any thumbnail: the eyebrow
+ * chip, the play button, and — pulled up on a negative margin to straddle the art's bottom
+ * edge — the Watch/My List row. That row reads as part of the hero rather than a
+ * disconnected row bolted on below it, while still not being flush against the card's own
+ * bottom edge (its own bottom padding keeps the gap). No meta line or separate title renders
+ * anywhere — duration is already in the Watch label, and the art already carries the title.
+ *
+ * The outer tap target is `accessible={false}` — with three real buttons (the play circle,
+ * Watch, My List) now present, wrapping the whole card in its own `accessibilityRole=
+ * "button"` would make VoiceOver/TalkBack announce one opaque "button" over three more, all
+ * describing overlapping actions. Sighted users still get "tap anywhere to open," but the
+ * accessible surface is the explicit controls, not the whole card.
  */
-export function HeroCard({ sermon, onPress }: HeroCardProps) {
-  const meta = metaLine(sermon);
-  const label = meta ? `${sermon.title}, ${meta}` : sermon.title;
+export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
+  const [saved, setSaved] = useState(false);
+  const duration = formatDuration(sermon.duration_seconds);
+  const watchLabel = duration ? `Watch, ${duration}` : 'Watch';
 
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      accessible={false}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      {sermon.thumbnail_url ? (
-        <Image source={{ uri: sermon.thumbnail_url }} style={styles.art} resizeMode="cover" />
-      ) : (
-        <View style={styles.artFallback} />
-      )}
-      <View style={styles.body}>
-        <AppText variant="ui.label" tone="tertiary" style={styles.eyebrow}>
-          New this week
-        </AppText>
-        <AppText variant="display.hero" numberOfLines={2}>
-          {sermon.title}
-        </AppText>
-        {meta ? (
-          <AppText variant="mono.meta" tone="tertiary" style={styles.meta}>
-            {meta}
+      <View style={styles.artWrap}>
+        {sermon.thumbnail_url ? (
+          <Image source={{ uri: sermon.thumbnail_url }} style={styles.art} resizeMode="cover" />
+        ) : (
+          <View style={styles.artFallback} />
+        )}
+
+        <View style={[styles.eyebrowChip, { top: spacing.md + topInset }]} pointerEvents="none">
+          <AppText variant="ui.label" tone="primary">
+            New this week
           </AppText>
-        ) : null}
+        </View>
+
+        <View style={styles.playButtonWrap} pointerEvents="none">
+          <View style={styles.playButton}>
+            <Ionicons name="play" size={26} color={colors.text.primary} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.ctaRow}>
+        <PressableScale
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={watchLabel}
+          style={styles.watchPill}
+        >
+          <Ionicons name="play" size={15} color={colors.primaryButton.text} />
+          <AppText variant="ui.button" tone="inverse">
+            Watch{duration ? ` · ${duration}` : ''}
+          </AppText>
+        </PressableScale>
+
+        <PressableScale
+          onPress={() => setSaved((current) => !current)}
+          accessibilityRole="button"
+          accessibilityLabel={saved ? 'Remove from My List' : 'Add to My List'}
+          accessibilityState={{ selected: saved }}
+          style={styles.savedCircle}
+        >
+          <Ionicons name={saved ? 'checkmark' : 'add'} size={20} color={colors.text.primary} />
+        </PressableScale>
       </View>
     </Pressable>
   );
@@ -62,30 +102,78 @@ export function HeroCard({ sermon, onPress }: HeroCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.xl,
+    borderRadius: radius.sm,
     overflow: 'hidden',
     backgroundColor: colors.surface.raised,
   },
-  cardPressed: {
-    opacity: 0.7,
+  pressed: {
+    opacity: 0.9,
+  },
+  artWrap: {
+    aspectRatio: 4 / 3,
   },
   art: {
-    width: '100%',
-    aspectRatio: 16 / 9,
+    ...StyleSheet.absoluteFillObject,
   },
   artFallback: {
-    width: '100%',
-    aspectRatio: 16 / 9,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.surface.sunken,
   },
-  body: {
-    padding: spacing.lg,
-    gap: spacing.xs,
+  eyebrowChip: {
+    position: 'absolute',
+    left: spacing.md,
+    backgroundColor: colors.overlay.chipFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.overlay.chipBorder,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  eyebrow: {
-    textTransform: 'uppercase',
+  playButtonWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  meta: {
-    marginTop: spacing.xs,
+  playButton: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    backgroundColor: colors.overlay.chipFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.overlay.chipBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    // Pulls the row up to straddle the art's bottom edge — opaque pills, so (unlike free
+    // text) they're safe to overlay on the art and read as part of the hero rather than a
+    // disconnected row bolted on below it. `paddingBottom` above is what keeps the row from
+    // reading as pinned to the card's own bottom edge.
+    marginTop: -22,
+  },
+  watchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryButton.bg,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  savedCircle: {
+    width: 44,
+    height: 44,
+    marginLeft: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.overlay.chipFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.overlay.chipBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
