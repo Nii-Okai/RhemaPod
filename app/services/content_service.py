@@ -150,6 +150,25 @@ def display_name(full_name: str | None) -> str | None:
     return None
 
 
+def public_display_name(full_name: str | None) -> str | None:
+    """The name a comment shows to other viewers: first token of `full_name`,
+    a space, and the first character of the last token plus a period
+    ("Nii Kwame Okai" -> "Nii O."). A single token is returned as-is. Blank or
+    None -> None (callers refuse to post before reaching this).
+
+    Never reads email, and computed at read time so a rename applies to
+    existing comments. `display_name()` above is a different, unchanged
+    contract (full name for staff-facing DTOs)."""
+    if not full_name:
+        return None
+    tokens = full_name.split()
+    if not tokens:
+        return None
+    if len(tokens) == 1:
+        return tokens[0]
+    return f"{tokens[0]} {tokens[-1][0]}."
+
+
 # ── Tier & locked resolution ──────────────────────────────────────────────────
 def effective_tier(sermon: Sermon, series: Series | None) -> ContentTier:
     if sermon.tier is not None:

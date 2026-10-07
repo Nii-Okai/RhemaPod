@@ -613,6 +613,51 @@
         "title": "AudioDownloadResponse",
         "type": "object"
       },
+      "BlockCreated": {
+        "description": "Result of blocking by comment id. `id` is null only when there was\nnothing to block (the caller's own comment, or a block removed\nconcurrently).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "title": "BlockCreated",
+        "type": "object"
+      },
+      "BlockPublic": {
+        "description": "`id` is the block row's own id, never the blocked user's.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "created_at"
+        ],
+        "title": "BlockPublic",
+        "type": "object"
+      },
       "CategoryCreate": {
         "properties": {
           "name": {
@@ -745,6 +790,347 @@
         ],
         "title": "CheckoutResponse",
         "type": "object"
+      },
+      "CommentAdmin": {
+        "description": "Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who\nhid it (the moderator's id is not shown to EDITORs).",
+        "properties": {
+          "author_display_name": {
+            "title": "Author Display Name",
+            "type": "string"
+          },
+          "author_email": {
+            "title": "Author Email",
+            "type": "string"
+          },
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hidden_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden At"
+          },
+          "hidden_auto": {
+            "title": "Hidden Auto",
+            "type": "boolean"
+          },
+          "hidden_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden By Id"
+          },
+          "hidden_label": {
+            "anyOf": [
+              {
+                "enum": [
+                  "under_review",
+                  "removed_by_moderator"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Label"
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_mine": {
+            "title": "Is Mine",
+            "type": "boolean"
+          },
+          "report_count": {
+            "title": "Report Count",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "sermon_title": {
+            "title": "Sermon Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommentStatus"
+          }
+        },
+        "required": [
+          "id",
+          "sermon_id",
+          "author_display_name",
+          "body",
+          "created_at",
+          "is_mine",
+          "status",
+          "hidden_auto",
+          "report_count",
+          "sermon_title",
+          "author_id",
+          "author_email"
+        ],
+        "title": "CommentAdmin",
+        "type": "object"
+      },
+      "CommentAdminForEditor": {
+        "description": "Moderation-queue row as an EDITOR sees it. A separate schema (not a\nnullable field) so the author's email and id are absent from the payload,\nper Isaac's C1 decision 3.",
+        "properties": {
+          "author_display_name": {
+            "title": "Author Display Name",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hidden_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden At"
+          },
+          "hidden_auto": {
+            "title": "Hidden Auto",
+            "type": "boolean"
+          },
+          "hidden_label": {
+            "anyOf": [
+              {
+                "enum": [
+                  "under_review",
+                  "removed_by_moderator"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Label"
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_mine": {
+            "title": "Is Mine",
+            "type": "boolean"
+          },
+          "report_count": {
+            "title": "Report Count",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "sermon_title": {
+            "title": "Sermon Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommentStatus"
+          }
+        },
+        "required": [
+          "id",
+          "sermon_id",
+          "author_display_name",
+          "body",
+          "created_at",
+          "is_mine",
+          "status",
+          "hidden_auto",
+          "report_count",
+          "sermon_title"
+        ],
+        "title": "CommentAdminForEditor",
+        "type": "object"
+      },
+      "CommentCreate": {
+        "additionalProperties": false,
+        "description": "Only `body` is accepted. `sermon_id` comes from the URL path and the\nauthor from the token; any other key is a 422.\n\nLength, URL and blocklist rules are enforced in the service, after the\nrate-limit budget is charged, so a rejected attempt still costs budget\n(plan pin A6).",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "CommentCreate",
+        "type": "object"
+      },
+      "CommentPublic": {
+        "description": "What a viewer sees. Deliberately carries no user id, email or role:\nthe author is only ever \"First L.\"; `is_mine` marks the caller's own rows.\n`status` and `hidden_label` are meaningful only when `is_mine`.",
+        "properties": {
+          "author_display_name": {
+            "title": "Author Display Name",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hidden_label": {
+            "anyOf": [
+              {
+                "enum": [
+                  "under_review",
+                  "removed_by_moderator"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Label"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_mine": {
+            "title": "Is Mine",
+            "type": "boolean"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommentStatus"
+          }
+        },
+        "required": [
+          "id",
+          "sermon_id",
+          "author_display_name",
+          "body",
+          "created_at",
+          "is_mine",
+          "status"
+        ],
+        "title": "CommentPublic",
+        "type": "object"
+      },
+      "CommentReportCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CommentReportReason"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CommentReportCreate",
+        "type": "object"
+      },
+      "CommentReportReason": {
+        "enum": [
+          "spam",
+          "harassment",
+          "hate",
+          "sexual",
+          "self_harm",
+          "other"
+        ],
+        "title": "CommentReportReason",
+        "type": "string"
+      },
+      "CommentStatus": {
+        "enum": [
+          "VISIBLE",
+          "HIDDEN"
+        ],
+        "title": "CommentStatus",
+        "type": "string"
       },
       "ContentTier": {
         "enum": [
@@ -1086,6 +1472,21 @@
         "title": "MessageResponse",
         "type": "object"
       },
+      "ModerationReason": {
+        "additionalProperties": false,
+        "description": "Request body for hide, hard delete and dismiss-reports. The reason is required, trimmed,\nnormalised like any user text, and capped at 300 characters. It is stored\nin the moderation log and is never written to application logs.",
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ModerationReason",
+        "type": "object"
+      },
       "NewListenersBucket": {
         "description": "One week in the \"New listeners\" series (plan \u00a7A.2, M1).\n\n`week_start` is the Monday (UTC) that opens the bucket; `count` is the\nnumber of distinct registered accounts whose *earliest* play across all\nsermons fell in that week. Reach, not engagement \u2014 the word \"plays\" does\nnot belong on this series.",
         "properties": {
@@ -1104,105 +1505,6 @@
           "count"
         ],
         "title": "NewListenersBucket",
-        "type": "object"
-      },
-      "NoteCreate": {
-        "properties": {
-          "body": {
-            "minLength": 1,
-            "title": "Body",
-            "type": "string"
-          },
-          "position_seconds": {
-            "minimum": 0.0,
-            "title": "Position Seconds",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "position_seconds",
-          "body"
-        ],
-        "title": "NoteCreate",
-        "type": "object"
-      },
-      "NotePublic": {
-        "properties": {
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "position_seconds": {
-            "title": "Position Seconds",
-            "type": "integer"
-          },
-          "sermon_id": {
-            "format": "uuid",
-            "title": "Sermon Id",
-            "type": "string"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          }
-        },
-        "required": [
-          "id",
-          "sermon_id",
-          "position_seconds",
-          "body",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "NotePublic",
-        "type": "object"
-      },
-      "NoteUpdate": {
-        "properties": {
-          "body": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Body"
-          },
-          "position_seconds": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Position Seconds"
-          }
-        },
-        "title": "NoteUpdate",
         "type": "object"
       },
       "OverviewStats": {
@@ -1282,6 +1584,99 @@
           "offset"
         ],
         "title": "Page[AnnouncementAdminItem]",
+        "type": "object"
+      },
+      "Page_CommentAdminForEditor_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentAdminForEditor"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CommentAdminForEditor]",
+        "type": "object"
+      },
+      "Page_CommentAdmin_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentAdmin"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CommentAdmin]",
+        "type": "object"
+      },
+      "Page_CommentPublic_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentPublic"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CommentPublic]",
         "type": "object"
       },
       "Page_ReviewQueueItem_": {
@@ -1419,6 +1814,21 @@
           "portal_url"
         ],
         "title": "PortalResponse",
+        "type": "object"
+      },
+      "ProfileUpdate": {
+        "additionalProperties": false,
+        "description": "Self-edit of the caller's profile. `full_name` only: role, email and\nactivation are never self-editable (extra keys are a 422). Normalisation\nand the URL/blocklist checks live in the service.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "full_name"
+        ],
+        "title": "ProfileUpdate",
         "type": "object"
       },
       "ProgressPublic": {
@@ -3825,6 +4235,18 @@
             ],
             "title": "Activated At"
           },
+          "comments_terms_accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments Terms Accepted At"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4062,6 +4484,361 @@
         "summary": "Top Sermons",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/comments": {
+      "get": {
+        "description": "The moderation queue. An editor sees only comments on their own sermons\n(ADR-0004) and the rows carry no author email or id.",
+        "operationId": "list_admin_comments_api_v1_admin_comments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sermon_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sermon Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CommentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reported_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Reported Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Auto-hidden, or visible with at least one report since the last restore. `limit=1` and the returned `total` give the nav badge count.",
+            "in": "query",
+            "name": "needs_review",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Auto-hidden, or visible with at least one report since the last restore. `limit=1` and the returned `total` give the nav badge count.",
+              "title": "Needs Review",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "recent",
+              "enum": [
+                "recent",
+                "most_reported"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Page_CommentAdmin_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Page_CommentAdminForEditor_"
+                    }
+                  ],
+                  "title": "Response List Admin Comments Api V1 Admin Comments Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Admin Comments",
+        "tags": [
+          "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{comment_id}": {
+      "delete": {
+        "description": "Admin only. The reason travels in a JSON body.",
+        "operationId": "hard_delete_comment_api_v1_admin_comments__comment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationReason"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Hard Delete Comment",
+        "tags": [
+          "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{comment_id}/dismiss-reports": {
+      "post": {
+        "operationId": "dismiss_reports_api_v1_admin_comments__comment_id__dismiss_reports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationReason"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Reports",
+        "tags": [
+          "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{comment_id}/hide": {
+      "post": {
+        "operationId": "hide_comment_api_v1_admin_comments__comment_id__hide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationReason"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Hide Comment",
+        "tags": [
+          "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{comment_id}/restore": {
+      "post": {
+        "operationId": "restore_comment_api_v1_admin_comments__comment_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Comment",
+        "tags": [
+          "admin-comments"
         ]
       }
     },
@@ -5659,6 +6436,51 @@
         "tags": [
           "auth"
         ]
+      },
+      "patch": {
+        "description": "Self-edit of `full_name`, the only self-editable field. It is shown to\nother viewers as \"First L.\" on comments, so it goes through the same\nnormalisation, URL, contact and blocklist rules as a comment body, plus\nreserved titles. Limited to 5 changes per hour per user (429 + Retry-After);\na rejected name returns one generic message.",
+        "operationId": "update_me_api_v1_auth_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Me",
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/refresh": {
@@ -6110,6 +6932,236 @@
         ]
       }
     },
+    "/api/v1/comments/{comment_id}": {
+      "delete": {
+        "operationId": "delete_own_comment_api_v1_comments__comment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Own Comment",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/comments/{comment_id}/block": {
+      "post": {
+        "operationId": "block_comment_author_api_v1_comments__comment_id__block_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Block Comment Author",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/comments/{comment_id}/report": {
+      "post": {
+        "operationId": "report_comment_api_v1_comments__comment_id__report_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Comment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentReportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report Comment",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/me/blocks": {
+      "get": {
+        "operationId": "list_my_blocks_api_v1_me_blocks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BlockPublic"
+                  },
+                  "title": "Response List My Blocks Api V1 Me Blocks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Blocks",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/me/blocks/{block_id}": {
+      "delete": {
+        "operationId": "delete_my_block_api_v1_me_blocks__block_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Block Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete My Block",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/me/comments-terms": {
+      "post": {
+        "operationId": "accept_comments_terms_api_v1_me_comments_terms_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept Comments Terms",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
     "/api/v1/me/continue-watching": {
       "get": {
         "description": "Started but unfinished sermons, most recent first.",
@@ -6234,136 +7286,6 @@
         "summary": "Watch History",
         "tags": [
           "analytics"
-        ]
-      }
-    },
-    "/api/v1/me/notes": {
-      "get": {
-        "description": "Every note the caller has ever taken, across all sermons, most recent\nfirst.",
-        "operationId": "list_my_notes_api_v1_me_notes_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/NotePublic"
-                  },
-                  "title": "Response List My Notes Api V1 Me Notes Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List My Notes",
-        "tags": [
-          "notes"
-        ]
-      }
-    },
-    "/api/v1/notes/{note_id}": {
-      "delete": {
-        "description": "Ownership-only: same 404-not-403 rule as update_note.",
-        "operationId": "delete_note_api_v1_notes__note_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "note_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Note Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Delete Note",
-        "tags": [
-          "notes"
-        ]
-      },
-      "patch": {
-        "description": "Ownership-only: a note that doesn't belong to the caller 404s, the\nsame as one that doesn't exist \u2014 no staff bypass, see notes_service.",
-        "operationId": "update_note_api_v1_notes__note_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "note_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Note Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NoteUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotePublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Update Note",
-        "tags": [
-          "notes"
         ]
       }
     },
@@ -7413,6 +8335,133 @@
         ]
       }
     },
+    "/api/v1/sermons/{sermon_id}/comments": {
+      "get": {
+        "operationId": "list_sermon_comments_api_v1_sermons__sermon_id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CommentPublic_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sermon Comments",
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "post_sermon_comment_api_v1_sermons__sermon_id__comments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Sermon Comment",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
     "/api/v1/sermons/{sermon_id}/download/audio": {
       "get": {
         "description": "Short-lived signed URL for the audio rendition only \u2014 offline\ndownloads are audio-only in this app, by design (plan \u00a7A.6, L6). Same\nauthorization as get_stream; 409 if the sermon has no audio rendition.",
@@ -7624,115 +8673,6 @@
         "summary": "Delete Media",
         "tags": [
           "media"
-        ]
-      }
-    },
-    "/api/v1/sermons/{sermon_id}/notes": {
-      "get": {
-        "description": "The caller's own notes on one sermon. Strictly user-owned \u2014 this never\nreturns anyone else's notes, staff included.",
-        "operationId": "list_sermon_notes_api_v1_sermons__sermon_id__notes_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sermon_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Sermon Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/NotePublic"
-                  },
-                  "title": "Response List Sermon Notes Api V1 Sermons  Sermon Id  Notes Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Sermon Notes",
-        "tags": [
-          "notes"
-        ]
-      },
-      "post": {
-        "operationId": "create_sermon_note_api_v1_sermons__sermon_id__notes_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sermon_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Sermon Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NoteCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotePublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Sermon Note",
-        "tags": [
-          "notes"
         ]
       }
     },

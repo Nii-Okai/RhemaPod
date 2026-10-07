@@ -24,6 +24,7 @@ dev = [
     "httpx>=0.27",
     "pytest>=9.1.1",
     "pytest-asyncio>=0.24",
+    "testcontainers>=4.15.0",
 ]
 
 [tool.pytest.ini_options]
@@ -33,3 +34,15 @@ testpaths = ["tests"]
 [tool.ruff]
 # admin_portal/ is a separate Node/TypeScript project — keep Python tooling out.
 extend-exclude = ["admin_portal"]
+
+[tool.ruff.lint.per-file-ignores]
+# Comments suites import their pytest fixtures from tests/comments_pg.py (Isaac's
+# ruling); using a fixture as a test parameter then looks like a redefinition.
+"tests/comments_pg.py" = ["F811"]
+"tests/test_admin_comments.py" = ["F811"]
+"tests/test_comment_moderation.py" = ["F811"]
+"tests/test_comment_query_plans.py" = ["F811"]
+"tests/test_comments.py" = ["F811"]
+"tests/test_comments_pg_fixtures.py" = ["F811"]
+"tests/test_migrations_comments.py" = ["F811"]
+"tests/test_purge_comment_snapshots.py" = ["F811"]

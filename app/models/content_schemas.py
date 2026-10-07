@@ -1,9 +1,17 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.models import ContentTier, MediaType, SermonStatus
+from app.core.text_safety import normalise_text, raw_length_exceeded
+from app.models.models import (
+    CommentReportReason,
+    CommentStatus,
+    ContentTier,
+    MediaType,
+    SermonStatus,
+)
 from app.models.models import MediaType as _MediaType  # noqa: E402
 from app.models.models import UploadStatus as _UploadStatus  # noqa: E402
 
@@ -741,30 +749,6 @@ class NewListenersBucket(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Notes
-# ═══════════════════════════════════════════════════════════════════════════════
-class NoteCreate(BaseModel):
-    position_seconds: int = Field(ge=0)
-    body: str = Field(min_length=1)
-
-
-class NoteUpdate(BaseModel):
-    position_seconds: int | None = Field(default=None, ge=0)
-    body: str | None = Field(default=None, min_length=1)
-
-
-class NotePublic(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    sermon_id: uuid.UUID
-    position_seconds: int
-    body: str
-    created_at: datetime
-    updated_at: datetime | None
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # Pagination
 # ═══════════════════════════════════════════════════════════════════════════════
 from typing import Generic, TypeVar  # noqa: E402
@@ -780,3 +764,131 @@ class Page(BaseModel, Generic[_T]):
     total: int
     limit: int
     offset: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sermon comments (viewer side)
+# ═══════════════════════════════════════════════════════════════════════════════
+COMMENT_BODY_MAX = 1000
+COMMENT_DETAIL_MAX = 500
+
+
+class CommentCreate(BaseModel):
+    """Only `body` is accepted. `sermon_id` comes from the URL path and the
+    author from the token; any other key is a 422.
+
+    Length, URL and blocklist rules are enforced in the service, after the
+    rate-limit budget is charged, so a rejected attempt still costs budget
+    (plan pin A6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str
+
+
+class CommentReportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: CommentReportReason
+    detail: str | None = None
+
+    @field_validator("detail")
+    @classmethod
+    def _clean_detail(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if raw_length_exceeded(v, COMMENT_DETAIL_MAX):
+            raise ValueError(f"Detail must be at most {COMMENT_DETAIL_MAX} characters")
+        cleaned = normalise_text(v)
+        if len(cleaned) > COMMENT_DETAIL_MAX:
+            raise ValueError(f"Detail must be at most {COMMENT_DETAIL_MAX} characters")
+        return cleaned or None
+
+
+class CommentPublic(BaseModel):
+    """What a viewer sees. Deliberately carries no user id, email or role:
+    the author is only ever "First L."; `is_mine` marks the caller's own rows.
+    `status` and `hidden_label` are meaningful only when `is_mine`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sermon_id: uuid.UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    is_mine: bool
+    status: CommentStatus
+    hidden_label: Literal["under_review", "removed_by_moderator"] | None = None
+
+
+class BlockPublic(BaseModel):
+    """`id` is the block row's own id, never the blocked user's."""
+
+    id: uuid.UUID
+    display_name: str
+    created_at: datetime
+
+
+class BlockCreated(BaseModel):
+    """Result of blocking by comment id. `id` is null only when there was
+    nothing to block (the caller's own comment, or a block removed
+    concurrently)."""
+
+    id: uuid.UUID | None = None
+
+
+# ── Moderation (admin side) ──────────────────────────────────────────────────
+MODERATION_REASON_MAX = 300  # C2 deviation 4: the DB column is uncapped text
+
+
+def _clean_moderation_reason(v: str) -> str:
+    """Shared reason validation: raw-length check first (M-1, so a huge payload is
+    rejected before normalisation), then normalise, then the post-normalisation
+    cap. Returns the cleaned text, which may be empty."""
+    if raw_length_exceeded(v, MODERATION_REASON_MAX):
+        raise ValueError(f"Reason must be at most {MODERATION_REASON_MAX} characters")
+    cleaned = normalise_text(v)
+    if len(cleaned) > MODERATION_REASON_MAX:
+        raise ValueError(f"Reason must be at most {MODERATION_REASON_MAX} characters")
+    return cleaned
+
+
+class ModerationReason(BaseModel):
+    """Request body for hide, hard delete and dismiss-reports. The reason is required, trimmed,
+    normalised like any user text, and capped at 300 characters. It is stored
+    in the moderation log and is never written to application logs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _clean_reason(cls, v: str) -> str:
+        cleaned = _clean_moderation_reason(v)
+        if not cleaned:
+            raise ValueError("A reason is required")
+        return cleaned
+
+
+class CommentAdminForEditor(CommentPublic):
+    """Moderation-queue row as an EDITOR sees it. A separate schema (not a
+    nullable field) so the author's email and id are absent from the payload,
+    per Isaac's C1 decision 3."""
+
+    status: CommentStatus
+    hidden_at: datetime | None = None
+    hidden_reason: str | None = None
+    hidden_auto: bool
+    report_count: int
+    sermon_title: str
+
+
+class CommentAdmin(CommentAdminForEditor):
+    """Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who
+    hid it (the moderator's id is not shown to EDITORs)."""
+
+    hidden_by_id: uuid.UUID | None = None
+    author_id: uuid.UUID
+    author_email: str

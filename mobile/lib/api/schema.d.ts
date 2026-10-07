@@ -63,6 +63,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admin Comments
+         * @description The moderation queue. An editor sees only comments on their own sermons
+         *     (ADR-0004) and the rows carry no author email or id.
+         */
+        get: operations["list_admin_comments_api_v1_admin_comments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Hard Delete Comment
+         * @description Admin only. The reason travels in a JSON body.
+         */
+        delete: operations["hard_delete_comment_api_v1_admin_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/dismiss-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Reports */
+        post: operations["dismiss_reports_api_v1_admin_comments__comment_id__dismiss_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide Comment */
+        post: operations["hide_comment_api_v1_admin_comments__comment_id__hide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Comment */
+        post: operations["restore_comment_api_v1_admin_comments__comment_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/subscriptions": {
         parameters: {
             query?: never;
@@ -637,7 +729,15 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Me
+         * @description Self-edit of `full_name`, the only self-editable field. It is shown to
+         *     other viewers as "First L." on comments, so it goes through the same
+         *     normalisation, URL, contact and blocklist rules as a comment body, plus
+         *     reserved titles. Limited to 5 changes per hour per user (429 + Retry-After);
+         *     a rejected name returns one generic message.
+         */
+        patch: operations["update_me_api_v1_auth_me_patch"];
         trace?: never;
     };
     "/api/v1/auth/refresh": {
@@ -786,6 +886,108 @@ export interface paths {
         patch: operations["update_category_api_v1_categories__category_id__patch"];
         trace?: never;
     };
+    "/api/v1/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Own Comment */
+        delete: operations["delete_own_comment_api_v1_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comments/{comment_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block Comment Author */
+        post: operations["block_comment_author_api_v1_comments__comment_id__block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comments/{comment_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Comment */
+        post: operations["report_comment_api_v1_comments__comment_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Blocks */
+        get: operations["list_my_blocks_api_v1_me_blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete My Block */
+        delete: operations["delete_my_block_api_v1_me_blocks__block_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/comments-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Comments Terms */
+        post: operations["accept_comments_terms_api_v1_me_comments_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/continue-watching": {
         parameters: {
             query?: never;
@@ -832,52 +1034,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/me/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List My Notes
-         * @description Every note the caller has ever taken, across all sermons, most recent
-         *     first.
-         */
-        get: operations["list_my_notes_api_v1_me_notes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notes/{note_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Note
-         * @description Ownership-only: same 404-not-403 rule as update_note.
-         */
-        delete: operations["delete_note_api_v1_notes__note_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Note
-         * @description Ownership-only: a note that doesn't belong to the caller 404s, the
-         *     same as one that doesn't exist — no staff bypass, see notes_service.
-         */
-        patch: operations["update_note_api_v1_notes__note_id__patch"];
         trace?: never;
     };
     "/api/v1/search": {
@@ -1116,6 +1272,24 @@ export interface paths {
         patch: operations["update_sermon_api_v1_sermons__sermon_id__patch"];
         trace?: never;
     };
+    "/api/v1/sermons/{sermon_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sermon Comments */
+        get: operations["list_sermon_comments_api_v1_sermons__sermon_id__comments_get"];
+        put?: never;
+        /** Post Sermon Comment */
+        post: operations["post_sermon_comment_api_v1_sermons__sermon_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}/download/audio": {
         parameters: {
             query?: never;
@@ -1177,28 +1351,6 @@ export interface paths {
          * @description Detach one rendition. The sermon must not be published.
          */
         delete: operations["delete_media_api_v1_sermons__sermon_id__media__media_ref_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sermons/{sermon_id}/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Sermon Notes
-         * @description The caller's own notes on one sermon. Strictly user-owned — this never
-         *     returns anyone else's notes, staff included.
-         */
-        get: operations["list_sermon_notes_api_v1_sermons__sermon_id__notes_get"];
-        put?: never;
-        /** Create Sermon Note */
-        post: operations["create_sermon_note_api_v1_sermons__sermon_id__notes_post"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1912,6 +2064,34 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * BlockCreated
+         * @description Result of blocking by comment id. `id` is null only when there was
+         *     nothing to block (the caller's own comment, or a block removed
+         *     concurrently).
+         */
+        BlockCreated: {
+            /** Id */
+            id?: string | null;
+        };
+        /**
+         * BlockPublic
+         * @description `id` is the block row's own id, never the blocked user's.
+         */
+        BlockPublic: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
         /** CategoryCreate */
         CategoryCreate: {
             /** Name */
@@ -1959,6 +2139,159 @@ export interface components {
             /** Session Id */
             session_id: string;
         };
+        /**
+         * CommentAdmin
+         * @description Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who
+         *     hid it (the moderator's id is not shown to EDITORs).
+         */
+        CommentAdmin: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Author Email */
+            author_email: string;
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden At */
+            hidden_at?: string | null;
+            /** Hidden Auto */
+            hidden_auto: boolean;
+            /** Hidden By Id */
+            hidden_by_id?: string | null;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /** Hidden Reason */
+            hidden_reason?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Report Count */
+            report_count: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Sermon Title */
+            sermon_title: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /**
+         * CommentAdminForEditor
+         * @description Moderation-queue row as an EDITOR sees it. A separate schema (not a
+         *     nullable field) so the author's email and id are absent from the payload,
+         *     per Isaac's C1 decision 3.
+         */
+        CommentAdminForEditor: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden At */
+            hidden_at?: string | null;
+            /** Hidden Auto */
+            hidden_auto: boolean;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /** Hidden Reason */
+            hidden_reason?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Report Count */
+            report_count: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Sermon Title */
+            sermon_title: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /**
+         * CommentCreate
+         * @description Only `body` is accepted. `sermon_id` comes from the URL path and the
+         *     author from the token; any other key is a 422.
+         *
+         *     Length, URL and blocklist rules are enforced in the service, after the
+         *     rate-limit budget is charged, so a rejected attempt still costs budget
+         *     (plan pin A6).
+         */
+        CommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /**
+         * CommentPublic
+         * @description What a viewer sees. Deliberately carries no user id, email or role:
+         *     the author is only ever "First L."; `is_mine` marks the caller's own rows.
+         *     `status` and `hidden_label` are meaningful only when `is_mine`.
+         */
+        CommentPublic: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /** CommentReportCreate */
+        CommentReportCreate: {
+            /** Detail */
+            detail?: string | null;
+            reason: components["schemas"]["CommentReportReason"];
+        };
+        /**
+         * CommentReportReason
+         * @enum {string}
+         */
+        CommentReportReason: "spam" | "harassment" | "hate" | "sexual" | "self_harm" | "other";
+        /**
+         * CommentStatus
+         * @enum {string}
+         */
+        CommentStatus: "VISIBLE" | "HIDDEN";
         /**
          * ContentTier
          * @enum {string}
@@ -2088,6 +2421,16 @@ export interface components {
             message: string;
         };
         /**
+         * ModerationReason
+         * @description Request body for hide, hard delete and dismiss-reports. The reason is required, trimmed,
+         *     normalised like any user text, and capped at 300 characters. It is stored
+         *     in the moderation log and is never written to application logs.
+         */
+        ModerationReason: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * NewListenersBucket
          * @description One week in the "New listeners" series (plan §A.2, M1).
          *
@@ -2104,44 +2447,6 @@ export interface components {
              * Format: date
              */
             week_start: string;
-        };
-        /** NoteCreate */
-        NoteCreate: {
-            /** Body */
-            body: string;
-            /** Position Seconds */
-            position_seconds: number;
-        };
-        /** NotePublic */
-        NotePublic: {
-            /** Body */
-            body: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Position Seconds */
-            position_seconds: number;
-            /**
-             * Sermon Id
-             * Format: uuid
-             */
-            sermon_id: string;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /** NoteUpdate */
-        NoteUpdate: {
-            /** Body */
-            body?: string | null;
-            /** Position Seconds */
-            position_seconds?: number | null;
         };
         /** OverviewStats */
         OverviewStats: {
@@ -2166,6 +2471,39 @@ export interface components {
         Page_AnnouncementAdminItem_: {
             /** Items */
             items: components["schemas"]["AnnouncementAdminItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentAdminForEditor] */
+        Page_CommentAdminForEditor_: {
+            /** Items */
+            items: components["schemas"]["CommentAdminForEditor"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentAdmin] */
+        Page_CommentAdmin_: {
+            /** Items */
+            items: components["schemas"]["CommentAdmin"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentPublic] */
+        Page_CommentPublic_: {
+            /** Items */
+            items: components["schemas"]["CommentPublic"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -2221,6 +2559,16 @@ export interface components {
         PortalResponse: {
             /** Portal Url */
             portal_url: string;
+        };
+        /**
+         * ProfileUpdate
+         * @description Self-edit of the caller's profile. `full_name` only: role, email and
+         *     activation are never self-editable (extra keys are a 422). Normalisation
+         *     and the URL/blocklist checks live in the service.
+         */
+        ProfileUpdate: {
+            /** Full Name */
+            full_name: string;
         };
         /** ProgressPublic */
         ProgressPublic: {
@@ -3030,6 +3378,8 @@ export interface components {
         UserPublic: {
             /** Activated At */
             activated_at?: string | null;
+            /** Comments Terms Accepted At */
+            comments_terms_accepted_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3146,6 +3496,178 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopSermonStat"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_comments_api_v1_admin_comments_get: {
+        parameters: {
+            query?: {
+                sermon_id?: string | null;
+                status?: components["schemas"]["CommentStatus"] | null;
+                reported_only?: boolean;
+                /** @description Auto-hidden, or visible with at least one report since the last restore. `limit=1` and the returned `total` give the nav badge count. */
+                needs_review?: boolean;
+                sort?: "recent" | "most_reported";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CommentAdmin_"] | components["schemas"]["Page_CommentAdminForEditor_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hard_delete_comment_api_v1_admin_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_reports_api_v1_admin_comments__comment_id__dismiss_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_comment_api_v1_admin_comments__comment_id__hide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_comment_api_v1_admin_comments__comment_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
                 };
             };
             /** @description Validation Error */
@@ -4145,6 +4667,39 @@ export interface operations {
             };
         };
     };
+    update_me_api_v1_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
@@ -4463,6 +5018,166 @@ export interface operations {
             };
         };
     };
+    delete_own_comment_api_v1_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_comment_author_api_v1_comments__comment_id__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_comment_api_v1_comments__comment_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_blocks_api_v1_me_blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockPublic"][];
+                };
+            };
+        };
+    };
+    delete_my_block_api_v1_me_blocks__block_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_comments_terms_api_v1_me_comments_terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     continue_watching_api_v1_me_continue_watching_get: {
         parameters: {
             query?: {
@@ -4513,90 +5228,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgressPublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_my_notes_api_v1_me_notes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"][];
-                };
-            };
-        };
-    };
-    delete_note_api_v1_notes__note_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                note_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_note_api_v1_notes__note_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                note_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NoteUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"];
                 };
             };
             /** @description Validation Error */
@@ -5132,6 +5763,75 @@ export interface operations {
             };
         };
     };
+    list_sermon_comments_api_v1_sermons__sermon_id__comments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CommentPublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_sermon_comment_api_v1_sermons__sermon_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_audio_api_v1_sermons__sermon_id__download_audio_get: {
         parameters: {
             query?: never;
@@ -5246,72 +5946,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_sermon_notes_api_v1_sermons__sermon_id__notes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sermon_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_sermon_note_api_v1_sermons__sermon_id__notes_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sermon_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NoteCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"];
-                };
             };
             /** @description Validation Error */
             422: {

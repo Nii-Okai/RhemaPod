@@ -43,7 +43,7 @@ describe('LinkButton', () => {
 
   // Real gap this pins down: `disabled` already blocked touches and set
   // accessibilityState correctly, but had no matching visual dimming at all — a disabled
-  // Cancel (e.g. NoteComposer while a save is in flight) looked identical to an enabled one.
+  // Cancel (e.g. while a save is in flight) looked identical to an enabled one.
   it('dims visually when disabled', () => {
     const { getByRole } = render(<LinkButton label="Cancel" onPress={() => {}} disabled />);
     const button = getByRole('button');

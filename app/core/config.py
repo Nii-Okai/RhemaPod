@@ -239,6 +239,11 @@ class Settings(BaseSettings):
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
 
+    # Sermon comments: auto-hide once this many DISTINCT reporters have
+    # reported a comment (counted since the last moderator restore; plan
+    # §A.5). Read at call time, so it is tunable without a redeploy of code.
+    comments_auto_hide_threshold: int = Field(default=3, ge=1)
+
     # Max failed logins per IP+email window (enforced via Redis)
     login_rate_limit: int = 10
     login_rate_window_seconds: int = 60

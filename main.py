@@ -8,15 +8,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.sermon_approval import router as sermon_approval_router
 from app.api.admin_auth import router as admin_router
+from app.api.admin_comments import router as admin_comments_router
 from app.api.admin_subscriptions import router as admin_subscriptions_router
 from app.api.announcements import router as announcements_router
 from app.api.announcement_approval import router as announcement_approvals_router
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
+from app.api.comments import router as comments_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
-from app.api.notes import router as notes_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
@@ -187,13 +188,14 @@ for _router in (
     series_router,
     sermons_router,
     catalog_router,
+    comments_router,
     media_router,
     announcements_router,
     subscriptions_router,
     search_router,
     analytics_router,
-    notes_router,
     admin_router,
+    admin_comments_router,
     admin_subscriptions_router,
     announcement_approvals_router,
     sermon_approval_router,

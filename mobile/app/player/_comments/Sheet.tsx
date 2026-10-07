@@ -1,0 +1,67 @@
+import React from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from '../../../theme/colors';
+import { radius } from '../../../theme/radius';
+import { spacing } from '../../../theme/spacing';
+
+export interface SheetProps {
+  visible: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+/**
+ * Bottom-sheet chrome shared by the report, terms and name sheets (design spec §2.4): a
+ * slide-up `Modal`, a `surface.app` scrim at 0.6 (the `SleepTimerSheet` precedent, no rgba
+ * literal), a `surface.raised` body with `radius.xl` top corners, safe-area bottom padding,
+ * and a scroll region so a tall sheet (large text sizes) never clips. Tapping the scrim or
+ * the system back closes it.
+ */
+export function Sheet({ visible, onClose, children }: SheetProps) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={onClose}
+        >
+          <View style={styles.scrim} />
+        </Pressable>
+        <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]} accessibilityViewIsModal>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.surface.app,
+    opacity: 0.6,
+  },
+  sheet: {
+    maxHeight: '85%',
+    backgroundColor: colors.surface.raised,
+    borderColor: colors.border.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  content: {
+    gap: spacing.md,
+  },
+});

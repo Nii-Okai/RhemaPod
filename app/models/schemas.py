@@ -90,7 +90,19 @@ class UserPublic(BaseModel):
     # first set its own password otherwise. Lets the portal (resend-invite) tell a
     # pending account from an active one without a second call.
     activated_at: datetime | None = None
+    # NULL until the viewer accepts the comments Terms (gates the first post).
+    comments_terms_accepted_at: datetime | None = None
     created_at: datetime
+
+
+class ProfileUpdate(BaseModel):
+    """Self-edit of the caller's profile. `full_name` only: role, email and
+    activation are never self-editable (extra keys are a 422). Normalisation
+    and the URL/blocklist checks live in the service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str
 
 
 class TokenPair(BaseModel):

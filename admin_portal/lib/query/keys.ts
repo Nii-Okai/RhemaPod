@@ -46,6 +46,11 @@ export type SubscriptionListParams = NonNullable<
   operations["list_subscriptions_api_v1_admin_subscriptions_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/admin/comments` (S12). */
+export type AdminCommentListParams = NonNullable<
+  operations["list_admin_comments_api_v1_admin_comments_get"]["parameters"]["query"]
+>;
+
 export const queryKeys = {
   sermons: {
     all: () => ["sermons"] as const,
@@ -163,6 +168,17 @@ export const queryKeys = {
     list: (params: SubscriptionListParams = {}) =>
       [...queryKeys.subscriptions.lists(), params] as const,
     counts: () => [...queryKeys.subscriptions.all(), "counts"] as const,
+  },
+  /** Comments moderation queue (S12). `all()` is the coarse handle every
+      moderation mutation invalidates: it prefix-matches the paged lists and
+      the per-sermon editor-card counts. */
+  comments: {
+    all: () => ["comments"] as const,
+    lists: () => [...queryKeys.comments.all(), "list"] as const,
+    list: (params: AdminCommentListParams = {}) =>
+      [...queryKeys.comments.lists(), params] as const,
+    sermonCounts: (sermonId: string) =>
+      [...queryKeys.comments.all(), "sermon-counts", sermonId] as const,
   },
   session: {
     all: () => ["session"] as const,

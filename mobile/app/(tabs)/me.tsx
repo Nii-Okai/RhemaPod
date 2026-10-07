@@ -1,20 +1,19 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppText, Avatar } from '../../components';
-import { useDeviceClass } from '../../components/navigation';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { useCurrentUser } from '../../lib/query/hooks/useProfile';
-import { useMyNotes } from '../../lib/query/hooks/useNotes';
-import { useSermons } from '../../lib/query/hooks/useSermons';
-import { buildSermonTitleMap } from '../../lib/format/sermonTitleMap';
+import { previewDisplayName } from '../../lib/format/displayName';
+import { CONTACT_EMAIL, isComplianceContentPending } from '../../lib/content/commentsCompliance';
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
 import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { LibraryRow } from './_me/LibraryRow';
 import { PlaybackSection } from './_me/PlaybackSection';
-import { NotesPanel } from './_me/NotesPanel';
+import { NamePrompt } from '../player/_comments/NamePrompt';
+import { TermsSheet } from '../player/_comments/TermsSheet';
 
 const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
 
@@ -24,22 +23,28 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  * (L5 — push is cut entirely, "a dead toggle is worse than no toggle"), no Library
  * counts (P8 — "24"/"96" would need an unbuilt paginated-count contract).
  *
- * Tablet (>=768pt, `useDeviceClass`): two-pane per design spec 1o's rail-nav-plus-panel
- * shape, scoped here to what this screen actually owns — see `_me/NotesPanel.tsx`'s own
- * docstring for the explicit boundary against 1o's (unbuilt, W4.2) docked video pane.
+ * Sermon comments (plan S13, design spec comments-and-player §3) add: a name row that
+ * edits `full_name` (shown to other viewers as "First L." on comments), a Blocked users
+ * row, and a "Help and safety" section with the published contact address and the comment
+ * guidelines. One column on every device width: the tablet two-pane existed only to dock
+ * the Notes panel, which is gone with Notes.
  */
 export default function MeScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
-  const deviceClass = useDeviceClass();
 
   const profileQuery = useCurrentUser();
-  const notesQuery = useMyNotes();
-  const sermonsQuery = useSermons();
   const { preferences, isSaving, setDefaultSpeed, setAutoplayNextInSeries } = usePlaybackPreferences();
   const [playbackError, setPlaybackError] = React.useState<string | null>(null);
 
-  const sermonTitles = buildSermonTitleMap(sermonsQuery.data ?? []);
+  const [nameSheetOpen, setNameSheetOpen] = React.useState(false);
+  const [guidelinesOpen, setGuidelinesOpen] = React.useState(false);
+  const [nameUpdated, setNameUpdated] = React.useState(false);
+
+  const profile = profileQuery.data;
+  const currentName = (profile?.full_name ?? '').trim();
+  const publicName = previewDisplayName(currentName);
+  const contactPending = isComplianceContentPending(CONTACT_EMAIL);
 
   const handleChangeSpeed = (speed: PlaybackSpeed) => {
     setPlaybackError(null);
@@ -51,8 +56,8 @@ export default function MeScreen() {
     setAutoplayNextInSeries(enabled).catch(() => setPlaybackError(PLAYBACK_SAVE_ERROR));
   };
 
-  const settingsContent = (
-    <>
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="me-layout">
       <View style={styles.header}>
         {profileQuery.isLoading ? (
           <AppText variant="ui.body" tone="secondary">
@@ -75,6 +80,29 @@ export default function MeScreen() {
         )}
       </View>
 
+      {profile ? (
+        <View style={styles.section}>
+          <LibraryRow
+            label="Name"
+            detail={currentName || 'Add your name'}
+            onPress={() => {
+              setNameUpdated(false);
+              setNameSheetOpen(true);
+            }}
+          />
+          {nameUpdated ? (
+            <AppText variant="ui.badge" tone="secondary" accessibilityLiveRegion="polite">
+              Name updated.
+            </AppText>
+          ) : null}
+          {publicName ? (
+            <AppText variant="ui.badge" tone="tertiary">
+              {`Shown as '${publicName}' on comments.`}
+            </AppText>
+          ) : null}
+        </View>
+      ) : null}
+
       <PlaybackSection
         defaultSpeed={preferences.defaultSpeed}
         autoplayNextInSeries={preferences.autoplayNextInSeries}
@@ -88,12 +116,29 @@ export default function MeScreen() {
         <AppText variant="ui.label" tone="tertiary" style={styles.sectionHeading}>
           Library
         </AppText>
-        <LibraryRow label="Notes" onPress={() => router.push('/notes')} />
+        <LibraryRow label="Blocked users" onPress={() => router.push('/blocked-users')} />
         <LibraryRow label="History" onPress={() => router.push('/history')} />
       </View>
 
       <View style={styles.section}>
         <LibraryRow label="Announcements" onPress={() => router.push('/(tabs)/announcements')} />
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="ui.label" tone="tertiary" style={styles.sectionHeading}>
+          Help and safety
+        </AppText>
+        <LibraryRow
+          label="Contact us"
+          detail={CONTACT_EMAIL}
+          accessibilityLabel={`Contact us at ${CONTACT_EMAIL}`}
+          hideChevron
+          onPress={() => {
+            // A placeholder (Isaac's input I1 not yet supplied) must never become a mailto: link.
+            if (!contactPending) void Linking.openURL(`mailto:${CONTACT_EMAIL}`);
+          }}
+        />
+        <LibraryRow label="Comment guidelines" onPress={() => setGuidelinesOpen(true)} />
       </View>
 
       <Pressable
@@ -106,29 +151,19 @@ export default function MeScreen() {
           Sign out
         </AppText>
       </Pressable>
-    </>
-  );
 
-  if (deviceClass === 'tablet') {
-    return (
-      <View style={styles.tabletLayout} testID="me-tablet-layout">
-        <ScrollView style={styles.tabletLeftPane} contentContainerStyle={styles.content}>
-          {settingsContent}
-        </ScrollView>
-        <NotesPanel
-          notes={notesQuery.data ?? []}
-          sermonTitles={sermonTitles}
-          isLoading={notesQuery.isLoading}
-          isError={notesQuery.isError}
-          onSeeAll={() => router.push('/notes')}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="me-phone-layout">
-      {settingsContent}
+      <NamePrompt
+        visible={nameSheetOpen}
+        initialName={currentName}
+        title="Your name"
+        saveLabel="Save"
+        onClose={() => setNameSheetOpen(false)}
+        onSaved={() => {
+          setNameSheetOpen(false);
+          setNameUpdated(true);
+        }}
+      />
+      <TermsSheet visible={guidelinesOpen} readOnly onClose={() => setGuidelinesOpen(false)} />
     </ScrollView>
   );
 }
@@ -137,14 +172,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
-  },
-  tabletLayout: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: colors.surface.app,
-  },
-  tabletLeftPane: {
-    flex: 1,
   },
   content: {
     padding: spacing.lg,

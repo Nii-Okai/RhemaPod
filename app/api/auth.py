@@ -16,6 +16,7 @@ from app.models.schemas import (
     ForgotPasswordRequest,
     LogoutRequest,
     MessageResponse,
+    ProfileUpdate,
     RefreshRequest,
     ResetPasswordRequest,
     TokenPair,
@@ -23,8 +24,9 @@ from app.models.schemas import (
     UserPublic,
     UserRegister,
 )
-from app.services import auth_service
+from app.services import auth_service, comments_service
 from app.services.auth_service import AuthError
+from app.services.content_service import ContentError
 
 settings = get_settings()
 log = get_logger("auth_api")
@@ -183,4 +185,25 @@ async def read_me(user: CurrentUserDep, db: DbDep) -> UserPublic:
     record = await auth_service.get_user_by_id(db, user.id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return UserPublic.model_validate(record)
+
+
+@router.patch("/me", response_model=UserPublic)
+async def update_me(data: ProfileUpdate, user: CurrentUserDep, db: DbDep) -> UserPublic:
+    """Self-edit of `full_name`, the only self-editable field. It is shown to
+    other viewers as "First L." on comments, so it goes through the same
+    normalisation, URL, contact and blocklist rules as a comment body, plus
+    reserved titles. Limited to 5 changes per hour per user (429 + Retry-After);
+    a rejected name returns one generic message."""
+    record = await auth_service.get_user_by_id(db, user.id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        record = await comments_service.update_full_name(db, record, data.full_name)
+    except ContentError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.message,
+            headers=exc.headers or None,
+        )
     return UserPublic.model_validate(record)

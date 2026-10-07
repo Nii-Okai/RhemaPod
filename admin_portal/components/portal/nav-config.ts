@@ -16,12 +16,12 @@
    ========================================================================== */
 
 /** Which live count (if any) a nav item shows on its trailing edge. */
-export type NavCountKey = "sermons" | "series" | "reviewQueue";
+export type NavCountKey = "sermons" | "series" | "reviewQueue" | "comments";
 
 export interface NavItem {
   label: string;
   href: string;
-  /** Trailing count source. `reviewQueue` renders as the clay-600 pill. */
+  /** Trailing count source. `reviewQueue` and `comments` render as the clay-600 pill. */
   count?: NavCountKey;
   /** Hidden from an Editor — manager/admin only (same role check as
       `roleSeesCommunity`). Cosmetic, like the group-level filter below: the
@@ -64,6 +64,9 @@ const WORKFLOW: NavGroup = {
       count: "reviewQueue",
       managerOnly: true,
     },
+    // Visible to every staff role: an Editor gets a read view of comments on
+    // their own sermons (server-scoped), so this is NOT `managerOnly`.
+    { label: "Comments", href: "/comments", count: "comments" },
     { label: "Announcements", href: "/announcements" },
   ],
 };

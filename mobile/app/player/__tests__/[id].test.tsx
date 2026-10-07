@@ -10,7 +10,8 @@ import { createTestQueryClient } from '../../../lib/query/testUtils';
 // substitution — can see this member really exists; Jest resolves both this path and
 // every `'expo-video'` import in the app code under test to the exact same file, so
 // `__lastMockPlayer` is the same live binding either way.
-import { __lastMockPlayer } from '../../../__mocks__/expo-video';
+import { __enterFullscreen, __exitFullscreen, __lastMockPlayer } from '../../../__mocks__/expo-video';
+import { useIsOnline } from '../../../lib/hooks/useIsOnline';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
 import type { DownloadRecord } from '../../../lib/downloads/types';
 
@@ -24,6 +25,11 @@ jest.mock('../../../components/navigation/platform', () => ({
 
 jest.mock('expo-video');
 jest.mock('@expo/vector-icons');
+
+// The comments panel reads connectivity through this one hook; mocking it (rather than
+// `expo-network`, which has no native module under Jest) lets a test flip the device offline.
+jest.mock('../../../lib/hooks/useIsOnline', () => ({ useIsOnline: jest.fn(() => true) }));
+const mockedUseIsOnline = useIsOnline as jest.Mock;
 
 // Explicit factory (not a bare automock) — an automock still has to `require()` the real
 // module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
@@ -80,6 +86,17 @@ const baseDetail = {
   created_at: '2026-09-01T00:00:00Z',
 };
 
+const profile = {
+  id: 'user-1',
+  email: 'ada@example.com',
+  full_name: 'Ada Nwosu',
+  role: 'member',
+  is_active: true,
+  created_at: '2024-01-01T00:00:00Z',
+  activated_at: '2024-01-02T00:00:00Z',
+  comments_terms_accepted_at: '2026-10-01T00:00:00Z',
+};
+
 const baseStream = {
   sermon_id: 'sermon-1',
   expires_in: 21600,
@@ -90,18 +107,21 @@ function mockReads({
   detail = baseDetail,
   progress = null,
   stream = baseStream,
-  notes = [],
+  comments = [],
 }: {
   detail?: unknown;
   progress?: unknown;
   stream?: unknown;
-  notes?: unknown[];
+  comments?: unknown[];
 } = {}) {
   mockedGet.mockImplementation((path: string) => {
     if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(detail);
     if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(progress);
     if (path === '/sermons/{sermon_id}/stream') return Promise.resolve(stream);
-    if (path === '/sermons/{sermon_id}/notes') return Promise.resolve(notes);
+    if (path === '/sermons/{sermon_id}/comments') {
+      return Promise.resolve({ items: comments, total: comments.length, limit: 25, offset: 0 });
+    }
+    if (path === '/auth/me') return Promise.resolve(profile);
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -118,6 +138,9 @@ function renderPlayer() {
 beforeEach(() => {
   mockedGet.mockReset();
   mockBack.mockClear();
+  mockedUseIsOnline.mockReturnValue(true);
+  __enterFullscreen.mockClear();
+  __exitFullscreen.mockClear();
   mockedUsePlatformOS.mockReturnValue('ios');
   mockedUseDownloads.mockReset();
   mockedUseDownloads.mockReturnValue({
@@ -287,17 +310,155 @@ describe('PlayerScreen — speed control', () => {
 describe('PlayerScreen — back control', () => {
   it('fires router.back() from the header', async () => {
     mockReads();
-    const { findByLabelText } = renderPlayer();
-    fireEvent.press(await findByLabelText('Back'));
+    const { findByTestId, getByLabelText } = renderPlayer();
+    // Wait for the resolved screen: the loading state has its own (soon unmounted) header.
+    await findByTestId('video-view');
+    fireEvent.press(getByLabelText('Back'));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('PlayerScreen — notes drawer is present', () => {
-  it('renders the empty-notes state alongside the player', async () => {
-    mockReads({ notes: [] });
+describe('PlayerScreen — header', () => {
+  it('shows the sermon title beside the back control', async () => {
+    mockReads();
     const { findByText } = renderPlayer();
-    await findByText('No notes yet');
+    expect(await findByText('Anchored in the Storm')).toBeTruthy();
+  });
+});
+
+describe('PlayerScreen — 10 second skip', () => {
+  it('rewinds and skips forward by 10 seconds from the overlay', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    fireEvent.press(getByLabelText('Skip forward 10 seconds'));
+    expect(player.seekBy).toHaveBeenLastCalledWith(10);
+    fireEvent.press(getByLabelText('Rewind 10 seconds'));
+    expect(player.seekBy).toHaveBeenLastCalledWith(-10);
+  });
+
+  it('seeks by 10 from the seek bar\'s accessibility actions too', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862); // the seek bar is inert until a duration is known
+    });
+
+    fireEvent(getByLabelText('Seek'), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
+    expect(player.seekBy).toHaveBeenLastCalledWith(10);
+  });
+});
+
+describe('PlayerScreen — overlay', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('auto-hides 3s after playback starts and comes back on a tap of the video', async () => {
+    jest.useFakeTimers();
+    mockReads();
+    const { findByTestId, getByLabelText, queryByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+    expect(getByLabelText('Hide playback controls')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(3100); // the 3s auto-hide fires, the fade-out starts
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(300); // the fade-out finishes and the controls unmount
+    });
+    expect(getByLabelText('Show playback controls')).toBeTruthy();
+    expect(queryByLabelText('Skip forward 10 seconds')).toBeNull();
+
+    fireEvent.press(getByLabelText('Show playback controls'));
+    expect(getByLabelText('Hide playback controls')).toBeTruthy();
+  });
+
+  it('does not auto-hide while paused', async () => {
+    jest.useFakeTimers();
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+    fireEvent.press(getByLabelText('Pause'));
+
+    await act(async () => {
+      jest.advanceTimersByTime(10000);
+    });
+    expect(getByLabelText('Hide playback controls')).toBeTruthy();
+    expect(getByLabelText('Play')).toBeTruthy();
+  });
+});
+
+describe('PlayerScreen — fullscreen', () => {
+  it('asks the video view for native fullscreen', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    await act(async () => {
+      fireEvent.press(getByLabelText('Enter full screen'));
+    });
+    expect(__enterFullscreen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PlayerScreen — comments', () => {
+  it('renders the comments panel beside the player', async () => {
+    mockReads({
+      comments: [
+        {
+          id: 'c1',
+          sermon_id: 'sermon-1',
+          author_display_name: 'Pat Q.',
+          body: 'Blessed by this.',
+          created_at: '2026-10-01T00:00:00Z',
+          is_mine: false,
+          status: 'VISIBLE',
+          hidden_label: null,
+        },
+      ],
+    });
+    const { findByText, getByTestId } = renderPlayer();
+    expect(await findByText('Blessed by this.')).toBeTruthy();
+    expect(await findByText('1 comment')).toBeTruthy();
+    expect(getByTestId('video-view')).toBeTruthy();
+  });
+
+  it('shows "Comments unavailable offline" and never blocks playback', async () => {
+    mockedUseIsOnline.mockReturnValue(false);
+    mockReads();
+    const { findByTestId, findByText, getByLabelText, queryByText } = renderPlayer();
+
+    expect(await findByText('Comments unavailable offline')).toBeTruthy();
+    expect(queryByText('Write a comment')).toBeNull();
+    expect(mockedGet).not.toHaveBeenCalledWith('/sermons/{sermon_id}/comments', expect.anything());
+
+    // Playback is untouched: the video mounts, starts when ready, and the controls work.
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+    fireEvent.press(getByLabelText('Pause'));
+    expect(player.pause).toHaveBeenCalledTimes(1);
   });
 });
 

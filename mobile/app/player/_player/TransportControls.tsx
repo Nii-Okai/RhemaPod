@@ -1,92 +1,162 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AppText, IconButton, ProgressBar } from '../../../components';
+import { AppText } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatDuration } from '../../../lib/format/duration';
 import { formatPlaybackSpeed } from './cyclePlaybackSpeed';
+import { PlayerSeekBar } from './PlayerSeekBar';
 import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
 
-const SEEK_SECONDS = 15;
+/** One skip step, in seconds — the rewind/forward buttons and the seek bar's a11y step. */
+export const SEEK_SECONDS = 10;
 
-export interface TransportControlsProps {
+export interface PlaybackOverlayControlsProps {
   isPlaying: boolean;
+  isBuffering: boolean;
+  /** The sermon finished: the play control becomes Replay. */
+  isEnded: boolean;
+  onTogglePlay: () => void;
+  onReplay: () => void;
+  onSeekBy: (seconds: number) => void;
+}
+
+interface CircleButtonProps {
+  size: number;
+  iconSize: number;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  busy?: boolean;
+}
+
+/**
+ * Circular overlay control (design spec §1.2). The translucent disc is a sibling backing
+ * layer rather than a parent opacity, so the icon never inherits the fade.
+ */
+function CircleButton({ size, iconSize, icon, label, onPress, busy = false }: CircleButtonProps) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}>
+      {({ pressed }) => (
+        <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
+          <View
+            style={[styles.circleBacking, { borderRadius: size / 2 }, pressed && styles.circleBackingPressed]}
+          />
+          {busy ? (
+            <ActivityIndicator color={colors.accent.goldText} />
+          ) : (
+            <Ionicons name={icon} size={iconSize} color={colors.text.primary} />
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+/** Rewind 10 / play-pause / forward 10, centred over the video (design spec §1.2). */
+export function PlaybackOverlayControls({
+  isPlaying,
+  isBuffering,
+  isEnded,
+  onTogglePlay,
+  onReplay,
+  onSeekBy,
+}: PlaybackOverlayControlsProps) {
+  return (
+    <View style={styles.overlayRow}>
+      <CircleButton
+        size={56}
+        iconSize={28}
+        icon="play-back-outline"
+        label={`Rewind ${SEEK_SECONDS} seconds`}
+        onPress={() => onSeekBy(-SEEK_SECONDS)}
+      />
+      {isEnded ? (
+        <CircleButton size={72} iconSize={40} icon="reload" label="Replay" onPress={onReplay} />
+      ) : (
+        <CircleButton
+          size={72}
+          iconSize={40}
+          icon={isPlaying ? 'pause' : 'play'}
+          label={isBuffering ? 'Buffering' : isPlaying ? 'Pause' : 'Play'}
+          busy={isBuffering}
+          onPress={onTogglePlay}
+        />
+      )}
+      <CircleButton
+        size={56}
+        iconSize={28}
+        icon="play-forward-outline"
+        label={`Skip forward ${SEEK_SECONDS} seconds`}
+        onPress={() => onSeekBy(SEEK_SECONDS)}
+      />
+    </View>
+  );
+}
+
+export interface PlayerBottomBarProps {
   currentTimeSeconds: number;
   /** `null` before the player has resolved a duration (still loading). */
   durationSeconds: number | null;
   playbackSpeed: PlaybackSpeed;
   /** `null` when no sleep timer is armed. */
   sleepRemainingSeconds: number | null;
-  onTogglePlay: () => void;
+  isFullscreen: boolean;
+  onSeekTo: (seconds: number) => void;
   onSeekBy: (seconds: number) => void;
+  onScrubStart: () => void;
+  onScrubEnd: () => void;
   onCycleSpeed: () => void;
   onOpenSleepTimer: () => void;
+  onToggleFullscreen: () => void;
 }
 
 /**
- * Player screen's transport row (design spec §3 Player: "transport controls, speed,
- * sleep timer"). Seeking is fixed-increment (±15s) rather than drag-to-scrub — this app's
- * design system has no draggable-slider primitive yet (`ProgressBar` is a read-only
- * `accessibilityRole="progressbar"` indicator, shared with the Downloads-screen progress
- * row, spec §4), and building one is a new interaction primitive with no second concrete
- * use case today, not something this slice should invent unprompted. Flagged, not silently
- * scoped down: `status.md` records this as the one missing manual-scrub gesture.
+ * The always-visible bar under the video (design spec §1.3): scrubbable seek, elapsed /
+ * total, speed pill, sleep moon, native-fullscreen toggle. It sits below the video, not over
+ * it, so the seek bar stays reachable when the overlay is hidden. Row 2 wraps rather than
+ * overflowing at large Dynamic Type.
  */
-export function TransportControls({
-  isPlaying,
+export function PlayerBottomBar({
   currentTimeSeconds,
   durationSeconds,
   playbackSpeed,
   sleepRemainingSeconds,
-  onTogglePlay,
+  isFullscreen,
+  onSeekTo,
   onSeekBy,
+  onScrubStart,
+  onScrubEnd,
   onCycleSpeed,
   onOpenSleepTimer,
-}: TransportControlsProps) {
-  const progress = durationSeconds && durationSeconds > 0 ? currentTimeSeconds / durationSeconds : 0;
+  onToggleFullscreen,
+}: PlayerBottomBarProps) {
   const timeLabel = `${formatDuration(currentTimeSeconds)} of ${formatDuration(durationSeconds)}`;
 
   return (
-    <View style={styles.wrap}>
-      <ProgressBar progress={progress} accessibilityLabel={timeLabel} />
-      <View style={styles.timeRow}>
-        <AppText variant="mono.meta" tone="tertiary">
-          {formatDuration(currentTimeSeconds)}
+    <View style={styles.bar}>
+      <PlayerSeekBar
+        currentTimeSeconds={currentTimeSeconds}
+        durationSeconds={durationSeconds}
+        onSeek={onSeekTo}
+        onAdjust={onSeekBy}
+        adjustStepSeconds={SEEK_SECONDS}
+        onScrubStart={onScrubStart}
+        onScrubEnd={onScrubEnd}
+      />
+      <View style={styles.row}>
+        <AppText variant="mono.tight" tone="secondary" accessibilityLabel={timeLabel} style={styles.time}>
+          {`${formatDuration(currentTimeSeconds)} / ${formatDuration(durationSeconds)}`}
         </AppText>
-        <AppText variant="mono.meta" tone="tertiary">
-          {formatDuration(durationSeconds)}
-        </AppText>
-      </View>
 
-      <View style={styles.primaryRow}>
-        <IconButton
-          icon="play-back-outline"
-          size={28}
-          accessibilityLabel={`Rewind ${SEEK_SECONDS} seconds`}
-          onPress={() => onSeekBy(-SEEK_SECONDS)}
-        />
-        <IconButton
-          icon={isPlaying ? 'pause' : 'play'}
-          size={40}
-          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-          onPress={onTogglePlay}
-        />
-        <IconButton
-          icon="play-forward-outline"
-          size={28}
-          accessibilityLabel={`Skip forward ${SEEK_SECONDS} seconds`}
-          onPress={() => onSeekBy(SEEK_SECONDS)}
-        />
-      </View>
-
-      <View style={styles.secondaryRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Playback speed, ${formatPlaybackSpeed(playbackSpeed)}`}
           onPress={onCycleSpeed}
-          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+          hitSlop={spacing.sm}
+          style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
         >
           <AppText variant="ui.badge" tone="secondary">
             {formatPlaybackSpeed(playbackSpeed)}
@@ -101,18 +171,29 @@ export function TransportControls({
               : 'Sleep timer, off'
           }
           onPress={onOpenSleepTimer}
-          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+          hitSlop={spacing.sm}
+          style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
         >
           <Ionicons
             name={sleepRemainingSeconds !== null ? 'moon' : 'moon-outline'}
-            size={16}
+            size={18}
             color={sleepRemainingSeconds !== null ? colors.accent.goldText : colors.text.secondary}
           />
           {sleepRemainingSeconds !== null ? (
-            <AppText variant="ui.badge" tone="gold" style={styles.chipLabel}>
+            <AppText variant="ui.badge" tone="gold">
               {formatDuration(sleepRemainingSeconds)}
             </AppText>
           ) : null}
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+          onPress={onToggleFullscreen}
+          hitSlop={spacing.sm}
+          style={({ pressed }) => [styles.fullscreen, pressed && styles.pressed]}
+        >
+          <Ionicons name={isFullscreen ? 'contract' : 'expand'} size={22} color={colors.text.primary} />
         </Pressable>
       </View>
     </View>
@@ -120,41 +201,58 @@ export function TransportControls({
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  primaryRow: {
+  overlayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xxl,
+  },
+  circle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.card,
+  },
+  circleBacking: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.surface.app,
+    opacity: 0.6,
+  },
+  circleBackingPressed: {
+    opacity: 0.8,
+  },
+  bar: {
+    backgroundColor: colors.surface.app,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
-  secondaryRow: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-    paddingBottom: spacing.sm,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    rowGap: spacing.sm,
+    columnGap: spacing.sm,
+  },
+  time: {
+    flexGrow: 1,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    minHeight: 32,
     backgroundColor: colors.track.default,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  chipPressed: {
-    opacity: 0.7,
+  fullscreen: {
+    minHeight: 32,
+    minWidth: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipLabel: {
-    marginLeft: 2,
+  pressed: {
+    opacity: 0.7,
   },
 });

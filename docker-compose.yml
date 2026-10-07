@@ -173,6 +173,24 @@ services:
       redis:
         condition: service_healthy
 
+  # One-shot comment-snapshot purge (sermon comments). Started ONLY via its
+  # profile, never by `up`, and never by `--profile sweeps`:
+  #     docker compose --profile ops run --rm comment-snapshot-purge
+  # Nulls moderation-log body snapshots older than 90 days. Schedule it daily
+  # on a real scheduler in deployed environments, like the sweeps above.
+  comment-snapshot-purge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["ops"]
+    environment:
+      <<: *app-env
+    command: ["python", "-m", "app.scripts.purge_comment_snapshots"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # One-shot migration runner. Started ONLY via its profile, never by `up`:
   #     docker compose run --rm migrate
   migrate:

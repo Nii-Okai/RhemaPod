@@ -30,8 +30,9 @@ function RootNavigator() {
       <Stack.Screen name="series/[id]" options={{ title: '' }} />
       {/* W4.6 — Profile & Settings' Library rows (design spec 1n, P8: no counts, plain
           navigating rows). Each screen sets its own title via `Stack.Screen options`. */}
-      <Stack.Screen name="notes" />
       <Stack.Screen name="history" />
+      {/* Sermon comments — Me > Blocked users (design spec comments-and-player §3.2). */}
+      <Stack.Screen name="blocked-users" />
     </Stack>
   );
 }

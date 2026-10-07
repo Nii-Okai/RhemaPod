@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
-import { useVideoPlayer } from 'expo-video';
+import { useVideoPlayer, type VideoView } from 'expo-video';
 import { AppText, PrimaryButton } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
@@ -15,9 +15,10 @@ import { isPlayable } from '../sermon/_detail/isPlayable';
 import { DownloadButton } from '../sermon/_detail/DownloadButton';
 import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
-import { TransportControls } from './_player/TransportControls';
+import { PlayerBottomBar } from './_player/TransportControls';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
-import { NotesDrawer } from './_player/NotesDrawer';
+import { CommentsPanel } from './_comments/CommentsPanel';
+import { useControlsOverlay } from './_player/useControlsOverlay';
 import { useProgressFlush } from './_player/useProgressFlush';
 import { useSleepTimer } from './_player/useSleepTimer';
 import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
@@ -27,8 +28,8 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * W4.2). `expo-video` on the Stream signed URL (`GET /sermons/{sermon_id}/stream`, the
  * F4-fixed read — L18), transport controls, speed, sleep timer, background audio,
  * lock-screen/Control-Center remote controls (`showNowPlayingNotification` +
- * `staysActiveInBackground`, both platforms), buffering state, the Notes drawer, and
- * progress flush per L16.
+ * `staysActiveInBackground`, both platforms), buffering state, the comments panel
+ * (plan sermon-comments S13), and progress flush per L16.
  *
  * **Scope boundary:** the design spec's Player composition also names a "download" and
  * "share-clip" action pinned alongside transport controls. Share-clip is cut whole (plan
@@ -39,9 +40,10 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * W4.2 (this screen) and W4.5 (offline downloads) are real, the two entry points share one
  * button and one state source, per spec.
  *
- * **Known gap, flagged not silently scoped down:** seeking is fixed-increment (±15s), not
- * drag-to-scrub — see `TransportControls`' own docstring for why (no draggable-slider
- * primitive exists in this design system yet).
+ * Layout (design spec comments-and-player §1): header, video with its tap-to-toggle
+ * overlay, the always-visible bottom bar (scrub, time, speed, sleep, fullscreen), the
+ * download row, then the comments panel in the remaining space. The whole screen sits in a
+ * `KeyboardAvoidingView` so the pinned composer rides above the keyboard.
  */
 export default function PlayerScreen() {
   const { id: sermonId } = useLocalSearchParams<{ id: string }>();
@@ -64,7 +66,7 @@ export default function PlayerScreen() {
   if (isLoading) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} />
+        <PlayerHeader onBack={goBack} title={detail?.title} />
         <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
           <AppText variant="ui.body" tone="secondary">
             Loading…
@@ -89,7 +91,7 @@ export default function PlayerScreen() {
     // guard, not a state the app's own navigation ever produces.
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} />
+        <PlayerHeader onBack={goBack} title={detail.title} />
         <PlayerError message="This sermon isn't available yet." />
       </View>
     );
@@ -98,7 +100,7 @@ export default function PlayerScreen() {
   if (streamQuery.isError || !streamQuery.data) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} />
+        <PlayerHeader onBack={goBack} title={detail.title} />
         <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />
       </View>
     );
@@ -108,7 +110,7 @@ export default function PlayerScreen() {
   if (!variant) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} />
+        <PlayerHeader onBack={goBack} title={detail.title} />
         <PlayerError message="No playable audio or video was found for this sermon." onRetry={() => streamQuery.refetch()} />
       </View>
     );
@@ -118,8 +120,8 @@ export default function PlayerScreen() {
     progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0;
 
   return (
-    <View style={styles.screen}>
-      <PlayerHeader onBack={goBack} />
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <PlayerHeader onBack={goBack} title={detail.title} />
       {/* Mounted only once detail/progress/stream/preferences have all resolved — see
           `PlayerContent`'s own docstring for why that ordering matters (it seeds
           `useProgressFlush`'s resume baseline exactly once, at first render). */}
@@ -131,7 +133,7 @@ export default function PlayerScreen() {
         defaultSpeed={preferences.preferences.defaultSpeed}
         onChangeDefaultSpeed={preferences.setDefaultSpeed}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -188,7 +190,10 @@ function PlayerContent({
     },
     (p) => {
       // Background audio + lock-screen/Control-Center remote controls (both platforms) —
-      // the plan's own required scope, not an incidental extra.
+      // the plan's own required scope, not an incidental extra. expo-video 2.0.x exposes no
+      // option for the remote skip interval: its iOS NowPlayingManager hard-codes 10s
+      // (`skipTimeInterval`) and its Android playback service uses `SEEK_INTERVAL_MS` =
+      // 10000, so the lock-screen skip already matches this screen's 10s buttons.
       p.staysActiveInBackground = true;
       p.showNowPlayingNotification = true;
       // 1/sec is frequent enough for a smooth scrub bar and a responsive progress-flush
@@ -248,21 +253,66 @@ function PlayerContent({
   const sleepTimer = useSleepTimer({ onExpire: () => player.pause() });
   const [sleepSheetOpen, setSleepSheetOpen] = useState(false);
 
-  const getCurrentPositionSeconds = useCallback(() => player.currentTime, [player]);
+  const videoRef = useRef<VideoView>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const toggleFullscreen = () => {
+    const view = videoRef.current;
+    if (!view) return;
+    // Best-effort: a platform that refuses fullscreen leaves playback untouched.
+    (isFullscreen ? view.exitFullscreen() : view.enterFullscreen()).catch(() => {});
+  };
+
+  // The sermon ended: pin the overlay with a Replay control until playback resumes.
+  const [isEnded, setIsEnded] = useState(false);
+  useEventListener(player, 'playToEnd', () => setIsEnded(true));
+  useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
+    if (playing) setIsEnded(false);
+  });
+
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const overlay = useControlsOverlay({
+    isPlaying,
+    isBuffering: status === 'loading',
+    isEnded,
+    pinned: sleepSheetOpen || isScrubbing,
+  });
+
+  const duration = player.duration > 0 ? player.duration : null;
 
   return (
     <>
-      <VideoSurface player={player} isBuffering={status === 'loading'} />
-      <TransportControls
+      <VideoSurface
+        player={player}
+        videoRef={videoRef}
+        isBuffering={status === 'loading'}
         isPlaying={isPlaying}
+        isEnded={isEnded}
+        overlay={overlay}
+        isFullscreen={isFullscreen}
+        onFullscreenChange={setIsFullscreen}
+        onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+        onReplay={() => player.replay()}
+        onSeekBy={(seconds) => player.seekBy(seconds)}
+      />
+      <PlayerBottomBar
         currentTimeSeconds={currentTime}
-        durationSeconds={player.duration > 0 ? player.duration : null}
+        durationSeconds={duration}
         playbackSpeed={speed}
         sleepRemainingSeconds={sleepTimer.remainingSeconds}
-        onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
-        onSeekBy={(seconds) => player.seekBy(seconds)}
+        isFullscreen={isFullscreen}
+        onSeekTo={(seconds) => {
+          player.currentTime = seconds;
+          overlay.touch();
+        }}
+        onSeekBy={(seconds) => {
+          player.seekBy(seconds);
+          overlay.touch();
+        }}
+        onScrubStart={() => setIsScrubbing(true)}
+        onScrubEnd={() => setIsScrubbing(false)}
         onCycleSpeed={cycleSpeed}
         onOpenSleepTimer={() => setSleepSheetOpen(true)}
+        onToggleFullscreen={toggleFullscreen}
       />
       <View style={styles.downloadRow}>
         <DownloadButton
@@ -271,7 +321,7 @@ function PlayerContent({
           hasAudio={detail.media_refs.some((ref) => ref.type === 'audio')}
         />
       </View>
-      <NotesDrawer sermonId={sermonId} getCurrentPositionSeconds={getCurrentPositionSeconds} />
+      <CommentsPanel sermonId={sermonId} />
       <SleepTimerSheet
         visible={sleepSheetOpen}
         hasActiveTimer={sleepTimer.remainingSeconds !== null}

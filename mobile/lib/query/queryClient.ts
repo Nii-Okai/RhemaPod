@@ -11,7 +11,7 @@ import { retryDelay, shouldRetry } from './retryPolicy';
  *
  * `sermons` is built out below as the concrete instance (it's also the
  * plan's own example, §A.8). Phase 4 adds sibling domains — `series`,
- * `announcements`, `notes`, etc. — by mirroring this exact shape:
+ * `announcements`, etc. — by mirroring this exact shape:
  *
  *   <domain>: {
  *     all: ['<domain>'] as const,
@@ -91,18 +91,15 @@ export const queryKeys = {
     // `/me/*` reads, but the same "the caller's own data" scoping, so it's folded in here
     // rather than opening a new top-level domain for one endpoint.
     profile: () => [...queryKeys.me.all, 'profile'] as const,
+    // `GET /me/blocks` — the authors the caller has blocked (Me > Blocked users).
+    blocks: () => [...queryKeys.me.all, 'blocks'] as const,
   },
-  /**
-   * W4.6 — the two distinct note reads this app has: every note the caller owns
-   * (Profile & Settings' Library "Notes" row, and the tablet two-pane "Your notes"
-   * panel) vs. one sermon's own notes (the eventual W4.2 Player drawer). Mirrors the
-   * `sermons` shape's `all`-prefix convention, adapted since neither read takes the
-   * same shape of params as a generic paginated list.
-   */
-  notes: {
-    all: ['notes'] as const,
-    mine: () => [...queryKeys.notes.all, 'mine'] as const,
-    forSermon: (sermonId: string) => [...queryKeys.notes.all, 'sermon', sermonId] as const,
+  // `GET /sermons/{sermon_id}/comments` — one sermon's comment thread (offset-paginated,
+  // newest first). Its own domain, like `progress`/`stream`: a per-sermon resource that
+  // shares a path segment with `sermons` but is a different, user-generated resource.
+  comments: {
+    all: ['comments'] as const,
+    forSermon: (sermonId: string) => [...queryKeys.comments.all, 'sermon', sermonId] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are

@@ -35,6 +35,9 @@ function counts(next: () => { sermons: number; series: number; review: number })
     http.get("*/api/bff/series", () =>
       HttpResponse.json(new Array(next().series).fill({ id: "s" })),
     ),
+    http.get("*/api/bff/admin/comments", () =>
+      HttpResponse.json({ items: [], total: 4, limit: 1, offset: 0 }),
+    ),
     http.get("*/api/bff/approvals/sermons/review-queue", () => {
       const n = next().review;
       return HttpResponse.json({ items: [], total: n, limit: 1, offset: 0 });
@@ -70,7 +73,7 @@ describe("useNavCounts — fresh-session refetch", () => {
     });
 
     await waitFor(() =>
-      expect(result.current).toEqual({ sermons: 2, series: 1, reviewQueue: 0 }),
+      expect(result.current).toEqual({ sermons: 2, series: 1, reviewQueue: 0, comments: 4 }),
     );
 
     // New session signs in → the login form drops every `nav` key.
@@ -78,7 +81,7 @@ describe("useNavCounts — fresh-session refetch", () => {
     await client.invalidateQueries({ queryKey: queryKeys.nav.all() });
 
     await waitFor(() =>
-      expect(result.current).toEqual({ sermons: 9, series: 4, reviewQueue: 3 }),
+      expect(result.current).toEqual({ sermons: 9, series: 4, reviewQueue: 3, comments: 4 }),
     );
   });
 
@@ -89,6 +92,7 @@ describe("useNavCounts — fresh-session refetch", () => {
       sermons: 99,
       series: 99,
       reviewQueue: 99,
+      comments: 99,
     });
 
     counts(() => ({ sermons: 5, series: 2, review: 1 }));
@@ -98,7 +102,7 @@ describe("useNavCounts — fresh-session refetch", () => {
     });
 
     await waitFor(() =>
-      expect(result.current).toEqual({ sermons: 5, series: 2, reviewQueue: 1 }),
+      expect(result.current).toEqual({ sermons: 5, series: 2, reviewQueue: 1, comments: 4 }),
     );
   });
 });

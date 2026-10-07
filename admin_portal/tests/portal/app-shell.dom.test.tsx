@@ -73,6 +73,9 @@ function backend() {
     http.get("*/api/bff/approvals/sermons/review-queue", () =>
       HttpResponse.json({ items: [], total: 2, limit: 1, offset: 0 }),
     ),
+    http.get("*/api/bff/admin/comments", () =>
+      HttpResponse.json({ items: [], total: 0, limit: 1, offset: 0 }),
+    ),
   );
 }
 

@@ -2,7 +2,17 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,6 +74,11 @@ class User(Base):
     # NULL). DB-authoritative "is this account still pending?" — ``resend_invite``
     # gates on it. Replaced the no-TTL ``invite_pending`` Redis key (ADR 0005 §4).
     activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Set once when the user accepts the comments terms (timestamp only, no
+    # version; plan P9). NULL = not accepted, posting is refused.
+    comments_terms_accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -641,59 +656,211 @@ class PlaybackSession(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Mobile: notes
+# Sermon comments (plan-sermon-comments §A.3)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class SermonNote(Base):
-    """A member's timestamped note on a sermon they're watching/listening to.
 
-    Strictly user-owned: no sharing, no staff visibility, no admin read path.
-    Unlike every other content-read surface in this codebase, `notes_service`
-    grants no staff bypass — a note is a person's own study, not something
-    the review queue or an admin has any business reading. See
-    `app/services/notes_service.py` for the authorization rule this table
-    backs.
+class CommentStatus(str, enum.Enum):
+    VISIBLE = "VISIBLE"
+    HIDDEN = "HIDDEN"
 
-    Unlike `PlaybackSession`, this is many-rows-per-(user, sermon) by design —
-    a listener takes several notes across one sermon — so there is no unique
-    constraint pairing the two foreign keys.
-    """
 
-    __tablename__ = "sermon_notes"
+class CommentReportReason(str, enum.Enum):
+    SPAM = "spam"
+    HARASSMENT = "harassment"
+    HATE = "hate"
+    SEXUAL = "sexual"
+    SELF_HARM = "self_harm"
+    OTHER = "other"
+
+
+class ModerationAction(str, enum.Enum):
+    HIDE = "hide"
+    RESTORE = "restore"
+    HARD_DELETE = "hard_delete"
+    SELF_DELETE = "self_delete"
+    AUTO_HIDE = "auto_hide"
+    DISMISS_REPORTS = "dismiss_reports"
+
+
+class SermonComment(Base):
+    __tablename__ = "sermon_comments"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     sermon_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("sermons.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        UUID(as_uuid=True), ForeignKey("sermons.id", ondelete="CASCADE"), nullable=False
     )
-    # Where in the sermon this note was taken. Clamped to the sermon's known
-    # duration (when there is one) by notes_service — see its docstring.
-    position_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    # CASCADE: erasing a user erases their comments.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[CommentStatus] = mapped_column(
+        Enum(CommentStatus, name="comment_status", native_enum=False, length=20),
+        default=CommentStatus.VISIBLE,
+        server_default=CommentStatus.VISIBLE.value,
+        nullable=False,
+    )
+    hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    hidden_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    hidden_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # True when the hide came from the report-threshold auto-hide (A.5), not a
+    # moderator. Lets the admin queue surface wrongful auto-hides first.
+    hidden_auto: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    # Maintained in the same transaction as the report insert.
+    report_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+
+    __table_args__ = (
+        # char_length() is Postgres-only; the legacy SQLite suite builds the
+        # schema with create_all, so emit this CHECK on Postgres only. The
+        # migration (the production path) always creates it.
+        CheckConstraint(
+            "char_length(body) BETWEEN 1 AND 1000", name="ck_sermon_comments_body_len"
+        ).ddl_if(dialect="postgresql"),
+        CheckConstraint(
+            "status IN ('VISIBLE', 'HIDDEN')", name="ck_sermon_comments_status"
+        ),
+        Index(
+            "ix_sermon_comments_sermon_status_created",
+            "sermon_id", "status", text("created_at DESC"), "id",
+        ),
+        Index("ix_sermon_comments_user_created", "user_id", "created_at"),
+        Index(
+            "ix_sermon_comments_reported",
+            "report_count",
+            postgresql_where=text("report_count > 0"),
+        ),
+        Index("ix_sermon_comments_status_created", "status", "created_at"),
+    )
+
+
+class SermonCommentReport(Base):
+    __tablename__ = "sermon_comment_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sermon_comments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reason: Mapped[CommentReportReason] = mapped_column(
+        Enum(
+            CommentReportReason,
+            name="comment_report_reason",
+            native_enum=False,
+            length=20,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     __table_args__ = (
-        # GET /sermons/{id}/notes: WHERE user_id = :caller AND sermon_id = :id
-        # ORDER BY position_seconds.
-        Index(
-            "ix_sermon_notes_user_sermon_position",
-            "user_id", "sermon_id", "position_seconds",
+        UniqueConstraint("comment_id", "reporter_id", name="uq_comment_report_reporter"),
+        CheckConstraint(
+            "reason IN ('spam', 'harassment', 'hate', 'sexual', 'self_harm', 'other')",
+            name="ck_sermon_comment_reports_reason",
         ),
-        # GET /me/notes: WHERE user_id = :caller ORDER BY created_at DESC.
-        Index("ix_sermon_notes_user_created", "user_id", "created_at"),
+    )
+
+
+class CommentModerationLog(Base):
+    """Append-only moderation trail. Deliberately FK-free on comment/sermon/author
+    so it survives hard delete of the comment, the sermon, or the author."""
+
+    __tablename__ = "comment_moderation_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # NULL for auto_hide, and after the actor's account is erased.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[ModerationAction] = mapped_column(
+        Enum(
+            ModerationAction,
+            name="comment_moderation_action",
+            native_enum=False,
+            length=20,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sermon_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    body_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Reports cleared by a dismiss_reports action; NULL for every other action.
+    cleared_report_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('hide', 'restore', 'hard_delete', 'self_delete', 'auto_hide', 'dismiss_reports')",
+            name="ck_comment_moderation_log_action",
+        ),
+        CheckConstraint(
+            "action NOT IN ('hide', 'hard_delete', 'dismiss_reports') OR reason IS NOT NULL",
+            name="ck_comment_moderation_log_reason_required",
+        ),
+        CheckConstraint(
+            "(action = 'dismiss_reports' AND cleared_report_count IS NOT NULL"
+            " AND cleared_report_count > 0)"
+            " OR (action <> 'dismiss_reports' AND cleared_report_count IS NULL)",
+            name="ck_comment_moderation_log_cleared_count",
+        ),
+        CheckConstraint(
+            "body_snapshot IS NULL OR action = 'hard_delete'",
+            name="ck_comment_moderation_log_snapshot_hard_delete",
+        ),
+    )
+
+
+class UserBlock(Base):
+    """Viewer-level block. Surrogate ``id`` (plan P2) so the API can unblock and
+    list without exposing user ids."""
+
+    __tablename__ = "user_blocks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    blocker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    blocked_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("blocker_id", "blocked_id", name="uq_user_blocks_pair"),
+        CheckConstraint("blocker_id <> blocked_id", name="ck_user_blocks_no_self"),
     )

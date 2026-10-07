@@ -12,6 +12,7 @@ import { toBadgeStatus, type SermonStatus } from "@/components/sermons/sermon-st
 
 import { AccessCard } from "@/components/sermons/editor/access-card";
 import { ApprovalLogCard } from "@/components/sermons/editor/approval-log-card";
+import { CommentsCard } from "@/components/sermons/editor/comments-card";
 import { DetailsCard } from "@/components/sermons/editor/details-card";
 import { EditorSkeleton } from "@/components/sermons/editor/editor-skeleton";
 import { MediaJobsCard } from "@/components/sermons/editor/media-jobs-card";
@@ -531,6 +532,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
                 approvalLog.error.status === 404
               }
             />
+            {sermonId ? <CommentsCard sermonId={sermonId} /> : null}
           </div>
         </div>
       </div>

@@ -8,6 +8,12 @@ import { spacing } from '../../../theme/spacing';
 export interface LibraryRowProps {
   label: string;
   onPress: () => void;
+  /** A secondary line under the label (the current name, a contact address). */
+  detail?: string;
+  /** Overrides the default accessible name (the label, plus the detail when present). */
+  accessibilityLabel?: string;
+  /** Hides the trailing chevron for a row that doesn't navigate. */
+  hideChevron?: boolean;
 }
 
 /**
@@ -16,18 +22,27 @@ export interface LibraryRowProps {
  * Announcements row (P2: "'Me' gets an Announcements row") — same shape, different
  * destination, not a distinct component.
  */
-export function LibraryRow({ label, onPress }: LibraryRowProps) {
+export function LibraryRow({ label, onPress, detail, accessibilityLabel, hideChevron = false }: LibraryRowProps) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? (detail ? `${label}, ${detail}` : label)}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <AppText variant="ui.bodyLarge">{label}</AppText>
-      <View style={styles.chevron}>
-        <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+      <View style={styles.text}>
+        <AppText variant="ui.bodyLarge">{label}</AppText>
+        {detail ? (
+          <AppText variant="ui.body" tone="secondary">
+            {detail}
+          </AppText>
+        ) : null}
       </View>
+      {hideChevron ? null : (
+        <View style={styles.chevron}>
+          <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -41,6 +56,9 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     opacity: 0.7,
+  },
+  text: {
+    flex: 1,
   },
   chevron: {
     marginLeft: spacing.sm,

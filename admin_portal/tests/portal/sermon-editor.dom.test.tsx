@@ -98,6 +98,10 @@ interface BackendOpts {
     created_at: string;
   }>;
   onPatch?: (body: Record<string, unknown>) => void;
+  /** `total` per comments probe (`all` / `reported` / `hidden`); default 0. */
+  commentTotals?: { all: number; reported: number; hidden: number };
+  /** Make every comments probe fail with this status. */
+  commentsStatus?: number;
 }
 
 function backend(opts: BackendOpts = {}) {
@@ -142,6 +146,22 @@ function backend(opts: BackendOpts = {}) {
     http.get(`*/api/bff/sermons/${SERMON_ID}/uploads`, () =>
       HttpResponse.json([]),
     ),
+    http.get("*/api/bff/admin/comments", ({ request }) => {
+      if (opts.commentsStatus) {
+        return HttpResponse.json(
+          { detail: "nope", correlation_id: "c" },
+          { status: opts.commentsStatus },
+        );
+      }
+      const q = new URL(request.url).searchParams;
+      const t = opts.commentTotals ?? { all: 0, reported: 0, hidden: 0 };
+      const total = q.get("reported_only")
+        ? t.reported
+        : q.get("status") === "HIDDEN"
+          ? t.hidden
+          : t.all;
+      return HttpResponse.json({ items: [], total, limit: 1, offset: 0 });
+    }),
     http.patch(`*/api/bff/sermons/${SERMON_ID}`, async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       opts.onPatch?.(body);
@@ -609,5 +629,63 @@ describe("SermonEditor — Series picks a Category", () => {
     );
 
     await vi.waitFor(() => expect(bodies).toEqual([{ series_id: null }]));
+  });
+});
+
+describe("SermonEditor — Comments card", () => {
+  it("shows total / reported / hidden from the list totals and deep-links to the queue", async () => {
+    backend({ commentTotals: { all: 12, reported: 3, hidden: 2 } });
+    renderEditor();
+
+    const link = await screen.findByRole("link", { name: "Review reported" });
+    expect(link).toHaveAttribute("href", `/comments?sermon_id=${SERMON_ID}`);
+    expect(await screen.findByText("12")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByText("Reported")).toBeInTheDocument();
+    expect(screen.getByText("Hidden")).toBeInTheDocument();
+  });
+
+  it("reads 'View all' when nothing is reported", async () => {
+    backend({ commentTotals: { all: 4, reported: 0, hidden: 1 } });
+    renderEditor();
+
+    const link = await screen.findByRole("link", { name: "View all" });
+    expect(link).toHaveAttribute("href", `/comments?sermon_id=${SERMON_ID}`);
+  });
+
+  it("says 'No comments yet.' for a sermon with no comments", async () => {
+    backend();
+    renderEditor();
+    expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
+  });
+
+  it("renders no Comments card for an unsaved sermon (no id)", async () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+        mutations: { retry: false },
+      },
+    });
+    backend({ commentTotals: { all: 12, reported: 3, hidden: 2 } });
+    render(
+      <QueryClientProvider client={client}>
+        <SermonEditor />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText("Title")).toBeInTheDocument();
+    expect(screen.queryByText("Comments")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Review reported" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "View all" })).toBeNull();
+  });
+
+  it("fails quietly when the counts can't load", async () => {
+    backend({ commentsStatus: 500 });
+    renderEditor();
+    expect(
+      await screen.findByText("Couldn’t load comments."),
+    ).toBeInTheDocument();
+    // The rest of the editor is unaffected.
+    expect(await screen.findByLabelText("Title")).toBeInTheDocument();
   });
 });
