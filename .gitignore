@@ -57,8 +57,6 @@ mobile/node_modules/
 # assumption the narrower entries below used to make).
 mobile/ios/
 mobile/android/
-mobile/spike/ios/
-mobile/spike/android/
 
 # Local Docker Compose override (auto-loaded by `docker compose`). Used on
 # machines where a host-native Postgres already holds 127.0.0.1:5432 — the
