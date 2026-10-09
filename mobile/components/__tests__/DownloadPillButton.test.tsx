@@ -9,10 +9,15 @@ jest.mock('@expo/vector-icons');
 
 const mockedUseDownloads = useDownloads as jest.Mock;
 
+const items = [{ sermonId: 'e1', title: 'Part One', mediaType: 'audio' as const }];
+
 function record(overrides: Partial<DownloadRecord> = {}): DownloadRecord {
   return {
     sermonId: 'e1',
     title: 'Part One',
+    thumbnailUrl: null,
+    category: null,
+    mediaType: 'audio',
     state: 'ready',
     progress: 1,
     bytesTotal: 1000,
@@ -48,28 +53,28 @@ describe('DownloadPillButton', () => {
   it('shows a Download pill when nothing has been queued yet, and starts a download on press', () => {
     const download = jest.fn();
     mockedUseDownloads.mockReturnValue(hook({ download }));
-    const { getByText } = render(<DownloadPillButton sermonId="e1" title="Part One" />);
+    const { getByText } = render(<DownloadPillButton items={items} />);
 
     fireEvent.press(getByText('Download'));
-    expect(download).toHaveBeenCalledWith('e1', 'Part One');
+    expect(download).toHaveBeenCalledWith('e1', 'Part One', 'audio', undefined, undefined);
   });
 
   it('shows a queued state', () => {
     mockedUseDownloads.mockReturnValue(hook({ find: jest.fn(() => record({ state: 'queued', progress: 0 })) }));
-    const { getByText } = render(<DownloadPillButton sermonId="e1" title="Part One" />);
+    const { getByText } = render(<DownloadPillButton items={items} />);
     expect(getByText('Queued…')).toBeTruthy();
   });
 
   it('shows download progress while downloading', () => {
     mockedUseDownloads.mockReturnValue(hook({ find: jest.fn(() => record({ state: 'downloading', progress: 0.65 })) }));
-    const { getByText } = render(<DownloadPillButton sermonId="e1" title="Part One" />);
+    const { getByText } = render(<DownloadPillButton items={items} />);
     expect(getByText('Downloading… 65%')).toBeTruthy();
   });
 
   it('shows a Downloaded state with a working delete', () => {
     const remove = jest.fn();
     mockedUseDownloads.mockReturnValue(hook({ remove, find: jest.fn(() => record({ state: 'ready' })) }));
-    const { getByText, getByLabelText } = render(<DownloadPillButton sermonId="e1" title="Part One" />);
+    const { getByText, getByLabelText } = render(<DownloadPillButton items={items} />);
 
     expect(getByText('Downloaded')).toBeTruthy();
     fireEvent.press(getByLabelText('Delete downloaded Part One'));
@@ -84,10 +89,10 @@ describe('DownloadPillButton', () => {
         find: jest.fn(() => record({ state: 'failed', failureMessage: 'Download failed.' })),
       }),
     );
-    const { getByText, getByLabelText } = render(<DownloadPillButton sermonId="e1" title="Part One" />);
+    const { getByText, getByLabelText } = render(<DownloadPillButton items={items} />);
 
     expect(getByText('Download failed.')).toBeTruthy();
-    fireEvent.press(getByLabelText('Retry download of Part One'));
+    fireEvent.press(getByLabelText('Retry download'));
     expect(retry).toHaveBeenCalledWith('e1');
   });
 });

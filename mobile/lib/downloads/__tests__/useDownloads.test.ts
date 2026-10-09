@@ -53,6 +53,9 @@ function record(sermonId: string, overrides: Partial<DownloadRecord> = {}): Down
   return {
     sermonId,
     title: 'Title',
+    thumbnailUrl: null,
+    category: null,
+    mediaType: 'audio',
     state: 'ready',
     progress: 1,
     bytesTotal: 100,
@@ -68,8 +71,8 @@ function record(sermonId: string, overrides: Partial<DownloadRecord> = {}): Down
 function makeFakeManager(initial: DownloadRecord[] = []): jest.Mocked<DownloadManager> {
   let rows = [...initial];
   return {
-    enqueueDownload: jest.fn(async (sermonId: string, title: string) => {
-      rows = [...rows, record(sermonId, { title, state: 'queued', progress: 0 })];
+    enqueueDownload: jest.fn(async (sermonId: string, title: string, mediaType: DownloadRecord['mediaType']) => {
+      rows = [...rows, record(sermonId, { title, mediaType, state: 'queued', progress: 0 })];
     }),
     retryDownload: jest.fn(async () => undefined),
     deleteDownload: jest.fn(async (sermonId: string) => {
@@ -119,11 +122,42 @@ describe('useDownloads', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.download('sermon-1', 'A Sermon');
+      await result.current.download('sermon-1', 'A Sermon', 'audio');
     });
 
-    expect(manager.enqueueDownload).toHaveBeenCalledWith('sermon-1', 'A Sermon');
+    expect(manager.enqueueDownload).toHaveBeenCalledWith('sermon-1', 'A Sermon', 'audio', undefined, undefined);
     expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', title: 'A Sermon' });
+  });
+
+  it('download() shows a queued record immediately, without waiting for the manager call to resolve', async () => {
+    // `enqueueDownload` doesn't resolve until the whole transfer finishes (real
+    // `downloadManager` behaviour — see `useDownloads.ts`'s own doc comment on
+    // `setOptimisticQueued`), so this fake never resolves at all: if `find()` only showed
+    // `queued` *after* `download()`'s promise settled, this assertion would hang/timeout
+    // instead of passing, proving the optimistic write happens up front.
+    const manager = makeFakeManager([]);
+    manager.enqueueDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.download('sermon-1', 'A Sermon', 'audio');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, title: 'A Sermon' });
+  });
+
+  it('retry() shows the record back in queued immediately, without waiting for the manager call to resolve', async () => {
+    const manager = makeFakeManager([record('sermon-1', { state: 'failed', failureReason: 'network' })]);
+    manager.retryDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.retry('sermon-1');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, failureReason: null });
   });
 
   it('retry() and remove() delegate to the manager and refresh', async () => {

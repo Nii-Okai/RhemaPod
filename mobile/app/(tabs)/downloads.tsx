@@ -1,106 +1,82 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { AppText, QueryState, Toggle } from '../../components';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppText } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
-import { useOfflinePlayback } from '../../lib/downloads/useOfflinePlayback';
 import { DownloadRow } from './_downloads/DownloadRow';
-import { OfflinePlayerBar } from './_downloads/OfflinePlayerBar';
 
 /**
- * Downloads (design spec §1l, plan W4.5) — offline audio downloads: queue/progress,
- * Wi-Fi-only toggle, offline playback (path A decrypt-to-temp, foreground-only — the
- * full W4.2 player is a separate build), retry with a real failure reason, delete.
- * Starting a download itself happens from sermon-detail's Download control
- * (`app/sermon/_detail/DownloadButton.tsx`) — this screen only manages what's already
- * queued/downloaded, per the spec's own separation of "start" and "manage".
+ * Downloads (design spec §1l, plan W4.5) — offline audio and video downloads (video added
+ * session 2026-10-08): queue/progress, retry with a real failure reason, delete. Starting
+ * a download itself happens from sermon-detail's or series-detail's `DownloadPillButton`,
+ * or an episode row's own `EpisodeDownloadButton` — this screen only manages what's
+ * already queued/downloaded, per the spec's own separation of "start" and "manage".
+ *
+ * Play navigates into the real Player screen (session 2026-10-08 — this list's own
+ * standalone mini-player, audio-only and a dead end for a video download, is retired) —
+ * that screen prefers the local file for a `ready` download over streaming, for both
+ * media types, so there is exactly one playback surface for a downloaded sermon.
+ *
+ * Redesigned session 2026-10-09 (Isaac's asks): top padding starts at `insets.top`, below
+ * the notch/Dynamic Island, rather than a fixed value that happened to clear it on some
+ * devices and not others; the empty state centers in the remaining screen height instead
+ * of sitting near the top; each row (`DownloadRow`) carries a real thumbnail with its
+ * state's action overlaid on it, replacing the old title+"Downloaded"+right-icon layout.
+ * The Wi-Fi-only toggle — this screen's one setting — briefly had its own dedicated
+ * settings page (gear icon + empty-state link), since retired in favor of folding it into
+ * Profile & Settings' own `DownloadsSection` (`me.tsx`) instead of a second settings
+ * surface — this screen is purely the download list again, no header action of its own.
  */
 export default function DownloadsScreen() {
   const downloads = useDownloads();
-  const playback = useOfflinePlayback();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const playingDownload = playback.playingSermonId ? downloads.find(playback.playingSermonId) : undefined;
+  const isEmpty = !downloads.isLoading && downloads.downloads.length === 0;
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}>
         <AppText variant="display.section" style={styles.heading}>
           Downloads
         </AppText>
 
-        <View style={styles.wifiRow}>
-          <View style={styles.wifiLabel}>
-            <AppText variant="ui.body">Wi-Fi only</AppText>
-            <AppText variant="ui.label" tone="tertiary">
-              Downloads wait for Wi-Fi when this is on.
+        {downloads.isLoading ? (
+          <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel="Loading downloads">
+            <ActivityIndicator color={colors.accent.gold} />
+          </View>
+        ) : isEmpty ? (
+          <View style={styles.centered}>
+            <AppText variant="ui.bodyLarge" style={styles.emptyText}>
+              No downloads yet
+            </AppText>
+            <AppText variant="ui.body" tone="secondary" style={styles.emptyText}>
+              Download a sermon from its detail page to watch or listen offline.
             </AppText>
           </View>
-          <Toggle
-            value={downloads.wifiOnly}
-            onValueChange={(next) => {
-              void downloads.setWifiOnly(next);
-            }}
-            disabled={downloads.isSavingWifiOnly}
-            accessibilityLabel="Wi-Fi only downloads"
-          />
-        </View>
-
-        {playback.error ? (
-          <View style={styles.errorBanner}>
-            <AppText variant="ui.label" style={styles.errorText}>
-              {playback.error}
-            </AppText>
-          </View>
-        ) : null}
-
-        <QueryState
-          isLoading={downloads.isLoading}
-          isError={false}
-          isEmpty={!downloads.isLoading && downloads.downloads.length === 0}
-          emptyTitle="No downloads yet"
-          emptyDescription="Download a sermon's audio from its detail page to listen offline."
-          loadingLabel="Loading downloads"
-        >
+        ) : (
           <View style={styles.list}>
             {downloads.downloads.map((download) => (
               <DownloadRow
                 key={download.sermonId}
                 download={download}
-                isPlaying={playback.playingSermonId === download.sermonId}
                 onPlay={(sermonId) => {
-                  if (playback.playingSermonId === sermonId) {
-                    void playback.stop();
-                  } else {
-                    void playback.play(sermonId);
-                  }
+                  router.push({ pathname: '/player/[id]', params: { id: sermonId } });
                 }}
                 onRetry={(sermonId) => {
                   void downloads.retry(sermonId);
                 }}
                 onDelete={(sermonId) => {
-                  if (playback.playingSermonId === sermonId) {
-                    void playback.stop();
-                  }
                   void downloads.remove(sermonId);
                 }}
               />
             ))}
           </View>
-        </QueryState>
+        )}
       </ScrollView>
-
-      {playback.localUri && playingDownload ? (
-        <View style={styles.playerDock}>
-          <OfflinePlayerBar
-            title={playingDownload.title}
-            localUri={playback.localUri}
-            onClose={() => {
-              void playback.stop();
-            }}
-          />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -111,37 +87,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface.app,
   },
   content: {
+    flexGrow: 1,
     padding: spacing.lg,
     paddingBottom: spacing.xxl * 2,
-    gap: spacing.lg,
   },
   heading: {
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  wifiRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  wifiLabel: {
+  centered: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyText: {
+    textAlign: 'center',
   },
   list: {
-    gap: spacing.md,
-  },
-  errorBanner: {
-    backgroundColor: colors.status.rose.bg,
-    borderColor: colors.status.rose.border,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: spacing.md,
-  },
-  errorText: {
-    color: colors.status.rose.text,
-  },
-  playerDock: {
-    padding: spacing.md,
+    gap: spacing.lg,
   },
 });

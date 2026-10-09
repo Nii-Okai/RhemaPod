@@ -25,6 +25,7 @@ const episode: SeriesEpisode = {
   thumbnail_url: 'https://cdn.example.com/episode.jpg',
   locked: false,
   tier: 'free',
+  media_type: 'audio',
 } as SeriesEpisode;
 
 beforeEach(() => {
@@ -138,7 +139,13 @@ describe('EpisodeRow', () => {
 
     fireEvent.press(getByLabelText('Download The Destiny of the Church - Part 1'));
 
-    expect(download).toHaveBeenCalledWith('ep1', 'The Destiny of the Church - Part 1');
+    expect(download).toHaveBeenCalledWith(
+      'ep1',
+      'The Destiny of the Church - Part 1',
+      'audio',
+      'https://cdn.example.com/episode.jpg',
+      null,
+    );
     expect(onPress).not.toHaveBeenCalled();
   });
 });

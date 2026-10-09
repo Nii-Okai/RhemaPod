@@ -38,6 +38,19 @@ const mockedUseIsOnline = useIsOnline as jest.Mock;
 // "download button" describe block below can drive each state (queued/downloading/ready/
 // failed) rather than only the harmless empty default other tests rely on.
 jest.mock('../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
+// This screen now calls `useLocalPlayback` unconditionally too (see its own doc comment
+// on the offline-vs-streamed split) — mocked to a harmless always-ready return so a test
+// that happens to mock `find()` into returning a `ready` record for 'sermon-1' (the
+// "download button" describe block below does, for its own unrelated reason) doesn't
+// accidentally tip this screen into the offline branch with no local file, which would
+// otherwise render the "no playable audio or video" error instead of the player.
+jest.mock('../../../lib/downloads/useLocalPlayback', () => ({
+  useLocalPlayback: jest.fn(() => ({
+    localUri: 'file:///downloads/sermon-1-local.mp4',
+    isPreparing: false,
+    error: null,
+  })),
+}));
 
 const mockedUseDownloads = useDownloads as jest.Mock;
 
@@ -77,6 +90,7 @@ const baseDetail = {
   tier: 'free',
   locked: false,
   tags: ['grief', 'hope'],
+  media_type: 'audio',
   media_refs: [
     { id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' },
     { id: 'm2', type: 'audio', quality: 'aac', s3_key: 'z', hls_manifest_key: null },
@@ -489,14 +503,17 @@ describe('PlayerScreen — comments', () => {
 });
 
 describe('PlayerScreen — download button', () => {
-  // Same `DownloadButton` component sermon-detail wires (`_detail/DownloadButton.tsx`),
-  // composed here against the Player screen's own sermon identity (the route param /
-  // `detail.id` the rest of this screen already plays from) — this proves it's the
-  // *currently playing* sermon driving the button, not a second, independently-derived id.
+  // Same `DownloadPillButton` component sermon-detail wires, composed here against the
+  // Player screen's own sermon identity (the route param / `detail.id` the rest of this
+  // screen already plays from) — this proves it's the *currently playing* sermon driving
+  // the button, not a second, independently-derived id.
   function record(overrides: Partial<DownloadRecord> = {}): DownloadRecord {
     return {
       sermonId: 'sermon-1',
       title: 'Anchored in the Storm',
+      thumbnailUrl: null,
+      category: null,
+      mediaType: 'audio',
       state: 'ready',
       progress: 1,
       bytesTotal: 1000,
@@ -525,8 +542,14 @@ describe('PlayerScreen — download button', () => {
     });
 
     const { findByText } = renderPlayer();
-    fireEvent.press(await findByText('Download for offline'));
-    expect(download).toHaveBeenCalledWith('sermon-1', 'Anchored in the Storm');
+    fireEvent.press(await findByText('Download'));
+    expect(download).toHaveBeenCalledWith(
+      'sermon-1',
+      'Anchored in the Storm',
+      'audio',
+      'https://cdn.example.com/art.jpg',
+      'Teaching',
+    );
   });
 
   it('shows a queued state for the playing sermon', async () => {
@@ -544,7 +567,7 @@ describe('PlayerScreen — download button', () => {
     });
 
     const { findByText } = renderPlayer();
-    await findByText('Queued for download');
+    await findByText('Queued…');
   });
 
   it('shows download progress for the playing sermon', async () => {
@@ -583,7 +606,7 @@ describe('PlayerScreen — download button', () => {
     });
 
     const { findByText, getByLabelText } = renderPlayer();
-    await findByText('Downloaded for offline');
+    await findByText('Downloaded');
     fireEvent.press(getByLabelText('Delete downloaded Anchored in the Storm'));
     expect(remove).toHaveBeenCalledWith('sermon-1');
   });
@@ -611,15 +634,15 @@ describe('PlayerScreen — download button', () => {
       ),
     });
 
-    const { findByText } = renderPlayer();
+    const { findByText, getByLabelText } = renderPlayer();
     await findByText("This sermon doesn't have an audio version available to download.");
-    fireEvent.press(await findByText('Retry'));
+    fireEvent.press(getByLabelText('Retry download'));
     expect(retry).toHaveBeenCalledWith('sermon-1');
   });
 
-  it('renders no download affordance when the playing sermon has no audio rendition', async () => {
-    mockReads({ detail: { ...baseDetail, media_refs: [baseDetail.media_refs[0]] } });
+  it('renders no download affordance when the playing sermon has no rendition', async () => {
+    mockReads({ detail: { ...baseDetail, media_type: null } });
     const { queryByText } = renderPlayer();
-    await waitFor(() => expect(queryByText('Download for offline')).toBeNull());
+    await waitFor(() => expect(queryByText('Download')).toBeNull());
   });
 });

@@ -12,7 +12,9 @@ import { useStream, selectPlaybackVariant, type StreamVariant } from '../../lib/
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
 import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { isPlayable } from '../sermon/_detail/isPlayable';
-import { DownloadButton } from '../sermon/_detail/DownloadButton';
+import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
+import { useDownloads } from '../../lib/downloads/useDownloads';
+import { useLocalPlayback } from '../../lib/downloads/useLocalPlayback';
 import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
@@ -30,14 +32,24 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * `staysActiveInBackground`, both platforms), buffering state, the comments panel
  * (plan sermon-comments S13), and progress flush per L16.
  *
+ * **Offline playback** (Isaac's ask, session 2026-10-08 — the sole playback surface for a
+ * downloaded sermon now, replacing the Downloads tab's old standalone mini-player): when
+ * `useDownloads().find(sermonId)` is `ready`, this screen never calls `useStream` at all —
+ * `useLocalPlayback` resolves a local `file://` path instead (audio's path-A decrypted
+ * copy, or video's own persisted file directly) and that becomes the player's `variant`,
+ * same `expo-video` instance either way. Everything else (scrub, speed, sleep timer,
+ * comments) is unchanged; only where the bytes come from differs.
+ *
  * **Scope boundary:** the design spec's Player composition also names a "download" and
  * "share-clip" action pinned alongside transport controls. Share-clip is cut whole (plan
  * L5). Download (spec §3: "duplicates the Downloads-screen action — needs the same
  * in-progress/queued/complete states threaded through both entry points") is wired here
- * via `_detail/DownloadButton` — screen-agnostic against `useDownloads`, so this is
- * composition, not a second implementation of the download state machine. Now that both
- * W4.2 (this screen) and W4.5 (offline downloads) are real, the two entry points share one
- * button and one state source, per spec.
+ * via the same `DownloadPillButton` sermon detail uses (session 2026-10-08 — the older,
+ * plain-text `_detail/DownloadButton` this screen used before is retired with no
+ * consumers left) — screen-agnostic against `useDownloads`, so this is composition, not a
+ * second implementation of the download state machine. Now that both W4.2 (this screen)
+ * and W4.5 (offline downloads) are real, every download entry point shares one button
+ * skin and one state source, per spec.
  *
  * Layout (design spec comments-and-player §1, revised 2026-10-08 — no controls outside the
  * player): header, video with every control (scrub, time, speed, sleep, fullscreen, plus
@@ -54,14 +66,26 @@ export default function PlayerScreen() {
   const detail = detailQuery.data;
   const playable = detail ? isPlayable(detail) : false;
 
+  // A `ready` download plays from its own local file instead of streaming (Isaac's ask,
+  // session 2026-10-08: "watch or listen offline later" means an actual playback path,
+  // not just a file sitting on disk) — `useStream`'s signed-URL fetch is skipped
+  // entirely when one exists, so this screen makes no network call at all for a sermon
+  // the user already downloaded.
+  const downloads = useDownloads();
+  const downloadRecord = downloads.find(sermonId);
+  const isDownloaded = downloadRecord?.state === 'ready';
+
   const progressQuery = useSermonProgress(sermonId, { enabled: Boolean(detail) && playable });
-  const streamQuery = useStream(sermonId, { enabled: Boolean(detail) && playable });
+  const streamQuery = useStream(sermonId, { enabled: Boolean(detail) && playable && !isDownloaded });
+  const localPlayback = useLocalPlayback(sermonId, Boolean(detail) && playable && isDownloaded);
   const preferences = usePlaybackPreferences();
 
   const isLoading =
     detailQuery.isLoading ||
+    downloads.isLoading ||
     preferences.isLoading ||
-    (playable && (progressQuery.isLoading || streamQuery.isLoading));
+    (playable && progressQuery.isLoading) ||
+    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading));
 
   if (isLoading) {
     return (
@@ -97,7 +121,16 @@ export default function PlayerScreen() {
     );
   }
 
-  if (streamQuery.isError || !streamQuery.data) {
+  if (isDownloaded) {
+    if (localPlayback.error) {
+      return (
+        <View style={styles.screen}>
+          <PlayerHeader onBack={goBack} title={detail.title} />
+          <PlayerError message={localPlayback.error} />
+        </View>
+      );
+    }
+  } else if (streamQuery.isError || !streamQuery.data) {
     return (
       <View style={styles.screen}>
         <PlayerHeader onBack={goBack} title={detail.title} />
@@ -106,12 +139,20 @@ export default function PlayerScreen() {
     );
   }
 
-  const variant = selectPlaybackVariant(streamQuery.data.variants);
+  const variant: StreamVariant | null =
+    isDownloaded && downloadRecord && localPlayback.localUri
+      ? { type: downloadRecord.mediaType, quality: null, url: localPlayback.localUri }
+      : !isDownloaded && streamQuery.data
+        ? selectPlaybackVariant(streamQuery.data.variants)
+        : null;
   if (!variant) {
     return (
       <View style={styles.screen}>
         <PlayerHeader onBack={goBack} title={detail.title} />
-        <PlayerError message="No playable audio or video was found for this sermon." onRetry={() => streamQuery.refetch()} />
+        <PlayerError
+          message="No playable audio or video was found for this sermon."
+          onRetry={isDownloaded ? undefined : () => streamQuery.refetch()}
+        />
       </View>
     );
   }
@@ -179,6 +220,20 @@ function PlayerContent({
   defaultSpeed,
   onChangeDefaultSpeed,
 }: PlayerContentProps) {
+  // Same single-item-or-empty shape sermon detail's own pill uses — every sermon has at
+  // most one rendition, so this is never more than one entry.
+  const downloadItems: DownloadPillItem[] = detail.media_type
+    ? [
+        {
+          sermonId: detail.id,
+          title: detail.title,
+          mediaType: detail.media_type,
+          thumbnailUrl: detail.thumbnail_url,
+          category: detail.category_name,
+        },
+      ]
+    : [];
+
   const player = useVideoPlayer(
     {
       uri: variant.url,
@@ -314,11 +369,7 @@ function PlayerContent({
         onToggleFullscreen={toggleFullscreen}
       />
       <View style={styles.downloadRow}>
-        <DownloadButton
-          sermonId={sermonId}
-          title={detail.title}
-          hasAudio={detail.media_refs.some((ref) => ref.type === 'audio')}
-        />
+        <DownloadPillButton items={downloadItems} />
       </View>
       <CommentsPanel sermonId={sermonId} />
       <SleepTimerSheet

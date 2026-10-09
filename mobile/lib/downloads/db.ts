@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DownloadFailureReason, DownloadRecord, DownloadState } from './types';
+import type { DownloadFailureReason, DownloadMediaType, DownloadRecord, DownloadState } from './types';
 
 /**
  * Download-state tracking, `expo-sqlite`, own dedicated database file — per the
@@ -21,6 +21,9 @@ const DB_NAME = 'rhemapod-downloads.db';
 interface DownloadRow {
   sermon_id: string;
   title: string;
+  thumbnail_url: string | null;
+  category: string | null;
+  media_type: string;
   state: string;
   progress: number;
   bytes_total: number | null;
@@ -35,6 +38,9 @@ function rowToRecord(row: DownloadRow): DownloadRecord {
   return {
     sermonId: row.sermon_id,
     title: row.title,
+    thumbnailUrl: row.thumbnail_url,
+    category: row.category,
+    mediaType: row.media_type as DownloadMediaType,
     state: row.state as DownloadState,
     progress: row.progress,
     bytesTotal: row.bytes_total,
@@ -66,6 +72,28 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
           updated_at INTEGER NOT NULL
         );
       `);
+      // Migration (Isaac's ask, session 2026-10-08: video downloads). An install that
+      // already has this table predates `media_type` — `CREATE TABLE IF NOT EXISTS`
+      // above is a no-op against it, so the column is added here instead, guarded by a
+      // `PRAGMA table_info` check: SQLite's `ALTER TABLE ADD COLUMN` errors if the
+      // column already exists, and this runs on every app start. Every existing row
+      // predates this feature and was always audio (the only kind downloads came in),
+      // so that's the correct backfill default, not a guess.
+      const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(downloads)');
+      if (!columns.some((c) => c.name === 'media_type')) {
+        await db.execAsync("ALTER TABLE downloads ADD COLUMN media_type TEXT NOT NULL DEFAULT 'audio';");
+      }
+      // Migration (Isaac's ask, session 2026-10-09: Downloads list redesign — a real
+      // thumbnail and the sermon's category replacing the generic "Downloaded" text). Both
+      // nullable with no default: an install that predates this never had a thumbnail/
+      // category to backfill, and `null` is already the correct "show the fallback art,
+      // omit the category" rendering for those rows, not a value worth guessing.
+      if (!columns.some((c) => c.name === 'thumbnail_url')) {
+        await db.execAsync('ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT;');
+      }
+      if (!columns.some((c) => c.name === 'category')) {
+        await db.execAsync('ALTER TABLE downloads ADD COLUMN category TEXT;');
+      }
       return db;
     })();
   }
@@ -100,17 +128,30 @@ export async function listActiveDownloads(): Promise<DownloadRecord[]> {
   return rows.map(rowToRecord);
 }
 
-/** Insert-or-replace, used to (re)start a download from a clean `queued` state — wipes any prior failure/progress for this sermon. */
-export async function upsertQueued(sermonId: string, title: string): Promise<void> {
+/** Insert-or-replace, used to (re)start a download from a clean `queued` state — wipes any prior failure/progress for this sermon. `mediaType` is fixed at first insert (a sermon has exactly one rendition) and left untouched on a conflict/retry — a row never silently switches between audio and video. `thumbnailUrl`/`category` default to `null` (optional, not required on every caller — see `downloadManager.ts`'s own doc comment) and are refreshed on conflict same as `title`, so a retry picks up any since-changed catalog metadata. */
+export async function upsertQueued(
+  sermonId: string,
+  title: string,
+  mediaType: DownloadMediaType,
+  thumbnailUrl: string | null = null,
+  category: string | null = null,
+): Promise<void> {
   const db = await getDb();
   const now = Date.now();
   await db.runAsync(
-    `INSERT INTO downloads (sermon_id, title, state, progress, bytes_total, failure_reason, failure_message, key_id_hex, created_at, updated_at)
-     VALUES ($sermonId, $title, 'queued', 0, NULL, NULL, NULL, NULL, $now, $now)
+    `INSERT INTO downloads (sermon_id, title, thumbnail_url, category, media_type, state, progress, bytes_total, failure_reason, failure_message, key_id_hex, created_at, updated_at)
+     VALUES ($sermonId, $title, $thumbnailUrl, $category, $mediaType, 'queued', 0, NULL, NULL, NULL, NULL, $now, $now)
      ON CONFLICT(sermon_id) DO UPDATE SET
-       title = $title, state = 'queued', progress = 0, bytes_total = NULL,
-       failure_reason = NULL, failure_message = NULL, updated_at = $now`,
-    { $sermonId: sermonId, $title: title, $now: now },
+       title = $title, thumbnail_url = $thumbnailUrl, category = $category, state = 'queued', progress = 0,
+       bytes_total = NULL, failure_reason = NULL, failure_message = NULL, updated_at = $now`,
+    {
+      $sermonId: sermonId,
+      $title: title,
+      $thumbnailUrl: thumbnailUrl,
+      $category: category,
+      $mediaType: mediaType,
+      $now: now,
+    },
   );
 }
 
@@ -131,9 +172,10 @@ export async function updateProgress(sermonId: string, progress: number): Promis
   });
 }
 
+/** `keyIdHex` is audio-only (the file it names came through `rpa-crypto`'s encrypt step) — null for a video record, which has nothing to key. */
 export async function markReady(
   sermonId: string,
-  fields: { bytesTotal: number; keyIdHex: string },
+  fields: { bytesTotal: number; keyIdHex: string | null },
 ): Promise<void> {
   const db = await getDb();
   await db.runAsync(

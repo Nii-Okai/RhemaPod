@@ -43,8 +43,24 @@ export function encryptedFilePath(sermonId: string): string {
   return `${downloadsDir()}${sermonId}.rpa1`;
 }
 
+/** The final, plain (unencrypted — see `types.ts`'s own doc comment on `DownloadMediaType`)
+ * video file — lives in the same `downloadsDir` as audio's `.rpa1` files, distinguished by
+ * extension, so the one startup sweep / storage-summary walk over that directory already
+ * covers both kinds without a second directory to manage. */
+export function videoFilePath(sermonId: string): string {
+  return `${downloadsDir()}${sermonId}.mp4`;
+}
+
 export function tmpDownloadFilePath(sermonId: string): string {
   return `${downloadTmpDir()}${sermonId}.audio.tmp`;
+}
+
+/** Video has no separate encrypt pass (plain fetch straight to its final path), so unlike
+ * audio it needs no plaintext-staging tmp file at all in steady state — this exists only
+ * for the download itself to resume into before the atomic rename to `videoFilePath`,
+ * mirroring `tmpDownloadFilePath`'s role for audio's own plaintext-before-encrypt stage. */
+export function tmpDownloadVideoFilePath(sermonId: string): string {
+  return `${downloadTmpDir()}${sermonId}.video.tmp`;
 }
 
 /** A fresh, unpredictable filename per playback session — never reused, so a stale decrypted file from a crash never collides with (or gets mistaken for) a new one. */

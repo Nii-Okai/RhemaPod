@@ -8,7 +8,7 @@ import { getOrCreateInstallKey } from './installKey';
 import { canStartDownload as networkCanStartDownload } from './network';
 import { loadDownloadPreferences } from '../settings/downloadPreferences';
 import * as paths from './paths';
-import type { DownloadFailureReason, DownloadRecord } from './types';
+import type { DownloadFailureReason, DownloadMediaType, DownloadRecord } from './types';
 
 /**
  * The W4.5 download orchestrator — queue, fetch, encrypt, verify, and the offline
@@ -42,7 +42,9 @@ export interface DownloadManagerDeps {
   };
   paths: {
     encryptedFilePath: typeof paths.encryptedFilePath;
+    videoFilePath: typeof paths.videoFilePath;
     tmpDownloadFilePath: typeof paths.tmpDownloadFilePath;
+    tmpDownloadVideoFilePath: typeof paths.tmpDownloadVideoFilePath;
     playbackTempFilePath: typeof paths.playbackTempFilePath;
     partFilePath: typeof paths.partFilePath;
     downloadsDir: typeof paths.downloadsDir;
@@ -54,8 +56,8 @@ export interface DownloadManagerDeps {
   /** Deletes every file directly inside `dir` — see `paths.clearDirectoryContents`. */
   clearDirectory: (dir: string) => Promise<void>;
   getFileSize: (uri: string) => Promise<number>;
-  /** Fetches the signed audio URL for a sermon. Rejects with `ApiError` on any HTTP/network failure — this manager classifies that itself, callers don't need to. */
-  fetchAudioUrl: (sermonId: string) => Promise<string>;
+  /** Fetches the signed download URL for a sermon's audio or video rendition (whichever `mediaType` asks for). Rejects with `ApiError` on any HTTP/network failure, or a 409 if that sermon has no rendition of that type — this manager classifies that itself, callers don't need to. */
+  fetchDownloadUrl: (sermonId: string, mediaType: DownloadMediaType) => Promise<string>;
   /** Streams `url` to `destPath`, reporting 0–1 progress. Rejects on any network failure (dropped connection, timeout, non-2xx). */
   downloadToFile: (url: string, destPath: string, onProgress: (progress: number) => void) => Promise<void>;
   getInstallKey: () => Promise<string>;
@@ -78,11 +80,12 @@ async function realDownloadToFile(url: string, destPath: string, onProgress: (pr
   }
 }
 
-async function realFetchAudioUrl(sermonId: string): Promise<string> {
+async function realFetchDownloadUrl(sermonId: string, mediaType: DownloadMediaType): Promise<string> {
   try {
-    const response = await api.get('/sermons/{sermon_id}/download/audio', {
-      params: { path: { sermon_id: sermonId } },
-    });
+    const response =
+      mediaType === 'video'
+        ? await api.get('/sermons/{sermon_id}/download/video', { params: { path: { sermon_id: sermonId } } })
+        : await api.get('/sermons/{sermon_id}/download/audio', { params: { path: { sermon_id: sermonId } } });
     return response.url;
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -112,7 +115,7 @@ function defaultDeps(): DownloadManagerDeps {
       const info = await FileSystem.getInfoAsync(uri, { size: true });
       return info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
     },
-    fetchAudioUrl: realFetchAudioUrl,
+    fetchDownloadUrl: realFetchDownloadUrl,
     downloadToFile: realDownloadToFile,
     getInstallKey: getOrCreateInstallKey,
     canStartDownload: realCanStartDownload,
@@ -130,10 +133,15 @@ export class PlaybackUnavailableError extends Error {
   }
 }
 
-function classifyStartError(err: unknown): { reason: DownloadFailureReason; message: string } {
+function classifyStartError(
+  err: unknown,
+  mediaType: DownloadMediaType,
+): { reason: DownloadFailureReason; message: string } {
   if (err instanceof ApiError) {
     if (err.status === 409) {
-      return { reason: 'no_audio', message: "This sermon doesn't have an audio version available to download." };
+      return mediaType === 'video'
+        ? { reason: 'no_video', message: "This sermon doesn't have a video version available to download." }
+        : { reason: 'no_audio', message: "This sermon doesn't have an audio version available to download." };
     }
     if (err.network) {
       return { reason: 'network', message: 'Could not reach the server. Check your connection and retry.' };
@@ -183,14 +191,7 @@ async function handlePlaybackDecryptError(
 export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = {}) {
   const deps: DownloadManagerDeps = { ...defaultDeps(), ...overrides };
 
-  async function runDownload(sermonId: string): Promise<void> {
-    const canStart = await deps.canStartDownload();
-    if (!canStart) {
-      // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
-      // `useDownloads.ts` for the resume-on-reconnect trigger.
-      return;
-    }
-
+  async function runAudioDownload(sermonId: string): Promise<void> {
     const tmpPath = deps.paths.tmpDownloadFilePath(sermonId);
     const encryptedPath = deps.paths.encryptedFilePath(sermonId);
 
@@ -199,7 +200,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.ensureDir(deps.paths.downloadsDir());
       await deps.db.markDownloading(sermonId);
 
-      const url = await deps.fetchAudioUrl(sermonId);
+      const url = await deps.fetchDownloadUrl(sermonId, 'audio');
 
       await deps.deleteFile(tmpPath); // never resume a stale partial plaintext file — always a clean fetch
       await deps.downloadToFile(url, tmpPath, (progress) => {
@@ -229,9 +230,61 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       // (that only exists after a successful rename), but the `.part` companion is real
       // and needs the same cleanup or it leaks forever.
       await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
-      const { reason, message } = classifyStartError(err);
+      const { reason, message } = classifyStartError(err, 'audio');
       await deps.db.markFailed(sermonId, reason, message);
     }
+  }
+
+  /**
+   * Video's own, simpler path (Isaac's ask, session 2026-10-08): no encrypt pass, no RPA1
+   * header, no install key — a plain fetch straight into a tmp file, then an atomic rename
+   * into its final `videoFilePath` once the transfer completes in full. The file that lands
+   * there has only the OS's own file protection, by design (see `types.ts`'s own doc
+   * comment on `DownloadMediaType`) — `expo-video` reads it directly off disk, so there is
+   * no decrypt-to-temp step at playback time either (`preparePlaybackFile` below just
+   * hands back this same path).
+   */
+  async function runVideoDownload(sermonId: string): Promise<void> {
+    const tmpPath = deps.paths.tmpDownloadVideoFilePath(sermonId);
+    const finalPath = deps.paths.videoFilePath(sermonId);
+
+    try {
+      await deps.ensureDir(deps.paths.downloadTmpDir());
+      await deps.ensureDir(deps.paths.downloadsDir());
+      await deps.db.markDownloading(sermonId);
+
+      const url = await deps.fetchDownloadUrl(sermonId, 'video');
+
+      await deps.deleteFile(tmpPath); // never resume a stale partial file — always a clean fetch
+      await deps.downloadToFile(url, tmpPath, (progress) => {
+        void deps.db.updateProgress(sermonId, progress);
+      });
+
+      // `expo-file-system`'s own move is the atomic rename — the same "never a half-written
+      // file at the final path" guarantee audio gets from the native module's `.part`-then-
+      // rename, just via the platform's own primitive instead of a custom one, since there's
+      // no encrypt step here to stage behind a companion file.
+      await FileSystem.moveAsync({ from: tmpPath, to: finalPath });
+
+      const bytesTotal = await deps.getFileSize(finalPath);
+      await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: null });
+    } catch (err) {
+      await deps.deleteFile(tmpPath);
+      await deps.deleteFile(finalPath); // a failed moveAsync can still leave a partial file at the destination
+      const { reason, message } = classifyStartError(err, 'video');
+      await deps.db.markFailed(sermonId, reason, message);
+    }
+  }
+
+  async function runDownload(sermonId: string, mediaType: DownloadMediaType): Promise<void> {
+    const canStart = await deps.canStartDownload();
+    if (!canStart) {
+      // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
+      // `useDownloads.ts` for the resume-on-reconnect trigger.
+      return;
+    }
+    if (mediaType === 'video') await runVideoDownload(sermonId);
+    else await runAudioDownload(sermonId);
   }
 
   /**
@@ -243,11 +296,17 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
    * restart a failed download, and it must not skip that cleanup just because it took a
    * different name.
    */
-  async function enqueueDownload(sermonId: string, title: string): Promise<void> {
+  async function enqueueDownload(
+    sermonId: string,
+    title: string,
+    mediaType: DownloadMediaType,
+    thumbnailUrl: string | null = null,
+    category: string | null = null,
+  ): Promise<void> {
     const existing = await deps.db.getDownload(sermonId);
     if (!existing) {
-      await deps.db.upsertQueued(sermonId, title);
-      await runDownload(sermonId);
+      await deps.db.upsertQueued(sermonId, title, mediaType, thumbnailUrl, category);
+      await runDownload(sermonId, mediaType);
       return;
     }
     if (existing.state === 'failed') {
@@ -255,22 +314,33 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     }
   }
 
-  /** Always restarts from a clean slate — deletes any stale tmp/encrypted file first, so a corrupt or partial artifact from the failed attempt is never reused. */
+  /** Always restarts from a clean slate — deletes any stale tmp/encrypted/video file first, so a corrupt or partial artifact from the failed attempt is never reused. `mediaType`, `thumbnailUrl` and `category` all come from the existing row, not a caller argument — a sermon's rendition is fixed at first enqueue (see `db.upsertQueued`'s own doc comment), and reusing the row's own last-known thumbnail/category here (rather than defaulting to `upsertQueued`'s own `null` default) is what stops a retry from blanking out art/category a successful first attempt already recorded. */
   async function retryDownload(sermonId: string): Promise<void> {
     const existing = await deps.db.getDownload(sermonId);
     if (!existing) return;
 
-    await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
-    await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
-    await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
-    await deps.db.upsertQueued(sermonId, existing.title);
-    await runDownload(sermonId);
+    if (existing.mediaType === 'video') {
+      await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
+      await deps.deleteFile(deps.paths.videoFilePath(sermonId));
+    } else {
+      await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
+      await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
+      await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
+    }
+    await deps.db.upsertQueued(sermonId, existing.title, existing.mediaType, existing.thumbnailUrl, existing.category);
+    await runDownload(sermonId, existing.mediaType);
   }
 
   async function deleteDownload(sermonId: string): Promise<void> {
+    // Both file sets, unconditionally, rather than looking the record up first to branch on
+    // `mediaType` — `deleteFile` is already a tolerant no-op on a path that doesn't exist
+    // (see `paths.deleteIfExists`), so deleting the shape this sermon's rendition isn't is
+    // free, and this stays correct even if a row's own `media_type` is ever missing/stale.
     await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
     await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
     await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
+    await deps.deleteFile(deps.paths.videoFilePath(sermonId));
+    await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
     await deps.db.deleteDownload(sermonId);
   }
 
@@ -294,7 +364,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     const all = await deps.db.listDownloads();
     for (const record of all) {
       if (record.state === 'queued') {
-        await runDownload(record.sermonId);
+        await runDownload(record.sermonId, record.mediaType);
       }
     }
   }
@@ -313,26 +383,48 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   async function startupSweep(): Promise<void> {
     const stale = await deps.db.listActiveDownloads();
     for (const record of stale) {
-      const encryptedPath = deps.paths.encryptedFilePath(record.sermonId);
-      await deps.deleteFile(deps.paths.tmpDownloadFilePath(record.sermonId));
-      await deps.deleteFile(encryptedPath);
-      await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
+      if (record.mediaType === 'video') {
+        await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(record.sermonId));
+        await deps.deleteFile(deps.paths.videoFilePath(record.sermonId));
+      } else {
+        const encryptedPath = deps.paths.encryptedFilePath(record.sermonId);
+        await deps.deleteFile(deps.paths.tmpDownloadFilePath(record.sermonId));
+        await deps.deleteFile(encryptedPath);
+        await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
+      }
       await deps.db.markFailed(record.sermonId, 'interrupted', 'The download was interrupted. Tap Retry to try again.');
     }
     await deps.clearDirectory(deps.paths.playbackTmpDir());
   }
 
   /**
-   * Decrypts a `ready` download to a fresh, randomly-named temp plaintext file for
-   * playback (path A, per the architect's writeup) and returns its `file://` path. Every
-   * failure mode — not ready yet, key loss, a corrupt/tampered file — rejects with a
+   * For audio: decrypts a `ready` download to a fresh, randomly-named temp plaintext file
+   * for playback (path A, per the architect's writeup) and returns its `file://` path.
+   * Every failure mode — not ready yet, key loss, a corrupt/tampered file — rejects with a
    * typed `PlaybackUnavailableError` and leaves the download row pointing at "needs a
    * re-download", never returns a path to anything that isn't fully verified plaintext.
+   *
+   * For video: there's nothing to decrypt (see `types.ts`'s own doc comment on
+   * `DownloadMediaType`) — this just hands back `videoFilePath` directly, after confirming
+   * the file is actually there and non-empty. Callers still don't need to know which kind
+   * of record they played before calling `cleanupPlaybackTempFile` afterward: that function
+   * only ever deletes a path under the playback-temp directory, so handing it this video
+   * path back is a safe no-op rather than deleting the user's actual download.
    */
   async function preparePlaybackFile(sermonId: string): Promise<string> {
     const record = await deps.db.getDownload(sermonId);
     if (!record || record.state !== 'ready') {
       throw new PlaybackUnavailableError('unknown', 'This download is not ready to play yet.');
+    }
+
+    if (record.mediaType === 'video') {
+      const videoPath = deps.paths.videoFilePath(sermonId);
+      const size = await deps.getFileSize(videoPath);
+      if (size <= 0) {
+        await deps.db.markFailed(sermonId, 'corrupt', 'The downloaded file was damaged. Re-download to watch offline again.');
+        throw new PlaybackUnavailableError('corrupt', 'The downloaded file was damaged. Re-download to watch offline again.');
+      }
+      return videoPath;
     }
 
     const installKey = await deps.getInstallKey();
@@ -348,8 +440,14 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     }
   }
 
-  /** Deletes every file under the playback-temp directory — called once at app start (a crash during path A's playback can otherwise leave a plaintext file behind indefinitely) and whenever playback stops or the track changes. */
+  /** Deletes `path` only if it's actually under the playback-temp directory — i.e. only
+   * audio's path-A decrypted copy, never a real persisted file like video's own
+   * `videoFilePath` (which `preparePlaybackFile` hands back directly, with no temp copy
+   * made). Called once at app start (a crash during path A's playback can otherwise leave
+   * a plaintext file behind indefinitely) and whenever playback stops or the track
+   * changes. */
   async function cleanupPlaybackTempFile(path: string): Promise<void> {
+    if (!path.startsWith(deps.paths.playbackTmpDir())) return;
     await deps.deleteFile(path);
   }
 

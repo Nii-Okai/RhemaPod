@@ -26,6 +26,7 @@ import {
 interface FakeRow {
   sermon_id: string;
   title: string;
+  media_type: string;
   state: string;
   progress: number;
   bytes_total: number | null;
@@ -49,6 +50,7 @@ function makeFakeDatabase() {
         rows.set(sermonId, {
           sermon_id: sermonId,
           title: params.$title as string,
+          media_type: existing?.media_type ?? (params.$mediaType as string),
           state: 'queued',
           progress: 0,
           bytes_total: null,
@@ -124,7 +126,7 @@ beforeEach(() => {
 
 describe('downloads db', () => {
   it('upsertQueued creates a fresh row in the queued state with zero progress', async () => {
-    await upsertQueued('sermon-1', 'A Great Sermon');
+    await upsertQueued('sermon-1', 'A Great Sermon', 'audio');
     const record = await getDownload('sermon-1');
     expect(record).toMatchObject({
       sermonId: 'sermon-1',
@@ -141,7 +143,7 @@ describe('downloads db', () => {
   });
 
   it('the full lifecycle — queued -> downloading -> progress -> ready — reads back correctly', async () => {
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     await markDownloading('sermon-1');
     expect((await getDownload('sermon-1'))?.state).toBe('downloading');
 
@@ -160,7 +162,7 @@ describe('downloads db', () => {
   });
 
   it('updateProgress clamps out-of-range values into [0, 1]', async () => {
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     await updateProgress('sermon-1', 1.5);
     expect((await getDownload('sermon-1'))?.progress).toBe(1);
     await updateProgress('sermon-1', -0.5);
@@ -168,7 +170,7 @@ describe('downloads db', () => {
   });
 
   it('markFailed records a distinguishable reason and message, readable back by the UI', async () => {
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     await markDownloading('sermon-1');
     await markFailed('sermon-1', 'network', 'Could not reach the server. Check your connection.');
 
@@ -181,24 +183,24 @@ describe('downloads db', () => {
   });
 
   it('retrying (upsertQueued again) clears a prior failure back to a clean queued state', async () => {
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     await markFailed('sermon-1', 'corrupt', 'The downloaded file was damaged.');
     expect((await getDownload('sermon-1'))?.state).toBe('failed');
 
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     const record = await getDownload('sermon-1');
     expect(record).toMatchObject({ state: 'queued', progress: 0, failureReason: null, failureMessage: null });
   });
 
   it('deleteDownload removes the row entirely', async () => {
-    await upsertQueued('sermon-1', 'Title');
+    await upsertQueued('sermon-1', 'Title', 'audio');
     await deleteDownload('sermon-1');
     await expect(getDownload('sermon-1')).resolves.toBeNull();
   });
 
   it('listDownloads returns every row, most-recently-updated first', async () => {
-    await upsertQueued('sermon-a', 'A');
-    await upsertQueued('sermon-b', 'B');
+    await upsertQueued('sermon-a', 'A', 'audio');
+    await upsertQueued('sermon-b', 'B', 'audio');
     await markDownloading('sermon-a'); // bumps sermon-a's updated_at last
 
     const list = await listDownloads();
@@ -206,10 +208,10 @@ describe('downloads db', () => {
   });
 
   it('listActiveDownloads returns only queued/downloading rows — the startup-sweep target set', async () => {
-    await upsertQueued('sermon-a', 'A');
-    await upsertQueued('sermon-b', 'B');
+    await upsertQueued('sermon-a', 'A', 'audio');
+    await upsertQueued('sermon-b', 'B', 'audio');
     await markDownloading('sermon-b');
-    await upsertQueued('sermon-c', 'C');
+    await upsertQueued('sermon-c', 'C', 'audio');
     await markReady('sermon-c', { bytesTotal: 1, keyIdHex: '00' });
 
     const active = await listActiveDownloads();

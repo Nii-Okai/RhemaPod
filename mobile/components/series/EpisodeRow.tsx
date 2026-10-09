@@ -106,7 +106,13 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
           ) : null}
         </View>
       </Pressable>
-      <EpisodeDownloadButton episodeId={episode.id} episodeTitle={episode.title} />
+      <EpisodeDownloadButton
+        episodeId={episode.id}
+        episodeTitle={episode.title}
+        mediaType={episode.media_type ?? null}
+        thumbnailUrl={episode.thumbnail_url}
+        category={episode.category_name}
+      />
     </View>
   );
 }
