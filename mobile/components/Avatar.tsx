@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { AppText } from './Text';
 
@@ -8,7 +8,11 @@ export interface AvatarProps {
   name: string;
   /** Stable id to hash into the rotating palette — falls back to `name`. */
   seed?: string;
-  size?: 38 | 40;
+  size?: number;
+  /** A real profile picture (session 2026-10-09) — renders instead of the initials
+   * chip when present. `null`/`undefined` keeps the original initials-only
+   * behavior; every existing call site is unaffected by this addition. */
+  imageUri?: string | null;
 }
 
 export function initialsFrom(name: string): string {
@@ -31,8 +35,20 @@ export function hashToIndex(seed: string, bucketCount: number): number {
   return hash % bucketCount;
 }
 
-/** Circular initials chip (spec §4), rotating bg from `colors.avatarPalette`. */
-export function Avatar({ name, seed, size = 40 }: AvatarProps) {
+/** Circular initials chip (spec §4), rotating bg from `colors.avatarPalette` — or, when
+ * `imageUri` is set, the user's own profile picture instead. */
+export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
+  if (imageUri) {
+    return (
+      <Image
+        source={{ uri: imageUri }}
+        accessible
+        accessibilityLabel={name}
+        style={[styles.base, { width: size, height: size, borderRadius: size / 2 }]}
+      />
+    );
+  }
+
   const bg = colors.avatarPalette[hashToIndex(seed ?? name, colors.avatarPalette.length)];
 
   return (

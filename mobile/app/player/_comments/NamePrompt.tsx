@@ -7,7 +7,7 @@ import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
 import { previewDisplayName } from '../../../lib/format/displayName';
 import { useUpdateFullName, type UserPublic } from '../../../lib/query/hooks/useProfile';
-import { Sheet } from './Sheet';
+import { Sheet } from '../../../components/Sheet';
 import { nameErrorMessage } from './commentErrors';
 
 const MAX_NAME_LENGTH = 100;

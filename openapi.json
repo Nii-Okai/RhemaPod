@@ -613,6 +613,84 @@
         "title": "AudioDownloadResponse",
         "type": "object"
       },
+      "AvatarResponse": {
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "required": [
+          "avatar_url"
+        ],
+        "title": "AvatarResponse",
+        "type": "object"
+      },
+      "AvatarTicket": {
+        "description": "Pre-signed PUT for a profile picture \u2014 same direct-to-storage pattern\nsermon/series thumbnails already use.",
+        "properties": {
+          "avatar_key": {
+            "title": "Avatar Key",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "method": {
+            "default": "PUT",
+            "title": "Method",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "expires_in",
+          "avatar_key"
+        ],
+        "title": "AvatarTicket",
+        "type": "object"
+      },
+      "AvatarUploadRequest": {
+        "properties": {
+          "content_type": {
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_type"
+        ],
+        "title": "AvatarUploadRequest",
+        "type": "object"
+      },
       "BlockCreated": {
         "description": "Result of blocking by comment id. `id` is null only when there was\nnothing to block (the caller's own comment, or a block removed\nconcurrently).",
         "properties": {
@@ -1392,6 +1470,14 @@
         "title": "ForgotPasswordRequest",
         "type": "object"
       },
+      "Gender": {
+        "enum": [
+          "male",
+          "female"
+        ],
+        "title": "Gender",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1403,6 +1489,25 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LikeState": {
+        "description": "Response for a like/unlike action \u2014 the caller's own `ActionButton`\nreflects both halves (the glyph from `liked`, the number from\n`like_count`) off one response, not a second round trip.",
+        "properties": {
+          "like_count": {
+            "title": "Like Count",
+            "type": "integer"
+          },
+          "liked": {
+            "title": "Liked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "liked",
+          "like_count"
+        ],
+        "title": "LikeState",
         "type": "object"
       },
       "LogoutRequest": {
@@ -1831,9 +1936,49 @@
         "title": "PortalResponse",
         "type": "object"
       },
+      "ProfileDetailsUpdate": {
+        "additionalProperties": false,
+        "description": "Me-page profile edit (Isaac's ask, session 2026-10-09): first/last\nname and gender, independent of `ProfileUpdate`'s single `full_name`\nfield above and of avatar upload (its own ticket/confirm pair below).\n`first_name`/`last_name` must be given together or not at all \u2014 the\nservice rejects one without the other (a name can't be half-updated);\n`gender` can be set on its own. Saving a name goes through the same\ncontent-moderation rules `full_name` always has\n(`comments_service.update_profile_name`), since it still recomputes and\npublicly displays as `full_name`.",
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gender"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          }
+        },
+        "title": "ProfileDetailsUpdate",
+        "type": "object"
+      },
       "ProfileUpdate": {
         "additionalProperties": false,
-        "description": "Self-edit of the caller's profile. `full_name` only: role, email and\nactivation are never self-editable (extra keys are a 422). Normalisation\nand the URL/blocklist checks live in the service.",
+        "description": "Self-edit of the caller's profile via `full_name` directly \u2014 unchanged,\nstill used by the comments flow's own name prompt (`comments_service.\nupdate_full_name`). Role, email and activation are never self-editable\n(extra keys are a 422). Normalisation and the URL/blocklist checks live in\nthe service.",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -2405,6 +2550,16 @@
             "title": "Id",
             "type": "string"
           },
+          "like_count": {
+            "default": 0,
+            "title": "Like Count",
+            "type": "integer"
+          },
+          "liked_by_me": {
+            "default": false,
+            "title": "Liked By Me",
+            "type": "boolean"
+          },
           "status": {
             "$ref": "#/components/schemas/SermonStatus"
           },
@@ -2574,6 +2729,16 @@
           "is_prophets_catalog": {
             "default": false,
             "title": "Is Prophets Catalog",
+            "type": "boolean"
+          },
+          "like_count": {
+            "default": 0,
+            "title": "Like Count",
+            "type": "integer"
+          },
+          "liked_by_me": {
+            "default": false,
+            "title": "Liked By Me",
             "type": "boolean"
           },
           "locked": {
@@ -3115,6 +3280,16 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "like_count": {
+            "default": 0,
+            "title": "Like Count",
+            "type": "integer"
+          },
+          "liked_by_me": {
+            "default": false,
+            "title": "Liked By Me",
+            "type": "boolean"
           },
           "locked": {
             "title": "Locked",
@@ -4331,6 +4506,17 @@
             ],
             "title": "Activated At"
           },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "comments_terms_accepted_at": {
             "anyOf": [
               {
@@ -4353,6 +4539,17 @@
             "title": "Email",
             "type": "string"
           },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
           "full_name": {
             "anyOf": [
               {
@@ -4364,6 +4561,16 @@
             ],
             "title": "Full Name"
           },
+          "gender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gender"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -4372,6 +4579,17 @@
           "is_active": {
             "title": "Is Active",
             "type": "boolean"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
           },
           "role": {
             "$ref": "#/components/schemas/UserRole"
@@ -6741,7 +6959,7 @@
         ]
       },
       "patch": {
-        "description": "Self-edit of `full_name`, the only self-editable field. It is shown to\nother viewers as \"First L.\" on comments, so it goes through the same\nnormalisation, URL, contact and blocklist rules as a comment body, plus\nreserved titles. Limited to 5 changes per hour per user (429 + Retry-After);\na rejected name returns one generic message.",
+        "description": "Self-edit of `full_name`, the only self-editable field. It is shown to\nother viewers as \"First L.\" on comments, so it goes through the same\nnormalisation, URL, contact and blocklist rules as a comment body, plus\nreserved titles. Limited to 5 changes per hour per user (429 + Retry-After);\na rejected name returns one generic message. The comments flow's own name\nprompt is the one remaining caller \u2014 the Me page's own profile editor uses\n`PATCH /me/profile` below instead.",
         "operationId": "update_me_api_v1_auth_me_patch",
         "requestBody": {
           "content": {
@@ -6781,6 +6999,146 @@
           }
         ],
         "summary": "Update Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/avatar/confirm": {
+      "post": {
+        "operationId": "avatar_confirm_api_v1_auth_me_avatar_confirm_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "avatar_key",
+            "required": true,
+            "schema": {
+              "title": "Avatar Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Avatar Confirm",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/avatar/upload-ticket": {
+      "post": {
+        "operationId": "avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarTicket"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Avatar Upload Ticket",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/profile": {
+      "patch": {
+        "description": "Me page profile edit (Isaac's ask, session 2026-10-09): first/last name\nand gender, independent of `PATCH /me`'s `full_name` field and of avatar\nupload. A name change goes through the exact same moderation and rate\nlimit `PATCH /me` already has (`comments_service.update_profile_name`) \u2014\nit still recomputes and publicly displays as `full_name`.",
+        "operationId": "update_me_profile_api_v1_auth_me_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDetailsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Me Profile",
         "tags": [
           "auth"
         ]
@@ -7233,6 +7591,101 @@
           }
         ],
         "summary": "Get Sermon",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/sermons/{sermon_id}/like": {
+      "delete": {
+        "operationId": "unlike_sermon_api_v1_catalog_sermons__sermon_id__like_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unlike Sermon",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "put": {
+        "description": "Idempotent \u2014 liking an already-liked sermon is a 200 no-op, not a 409\n(see `likes_service`'s own doc comment). 404 if the sermon doesn't exist\nor isn't visible to this viewer \u2014 the same `get_sermon_detail` visibility\ncheck `get_sermon` above uses, so liking never leaks whether an invisible\nsermon id is real.",
+        "operationId": "like_sermon_api_v1_catalog_sermons__sermon_id__like_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Like Sermon",
         "tags": [
           "catalog"
         ]
@@ -8419,6 +8872,101 @@
           }
         ],
         "summary": "Series Episodes",
+        "tags": [
+          "series"
+        ]
+      }
+    },
+    "/api/v1/series/{series_id}/like": {
+      "delete": {
+        "operationId": "unlike_series_api_v1_series__series_id__like_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Series Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unlike Series",
+        "tags": [
+          "series"
+        ]
+      },
+      "put": {
+        "description": "Idempotent \u2014 liking an already-liked series is a 200 no-op, not a 409\n(see `likes_service`'s own doc comment). 404 if the series doesn't exist\nor isn't visible to this viewer, same existence check `get_series` itself\nuses, so liking never leaks whether an invisible series id is real.",
+        "operationId": "like_series_api_v1_series__series_id__like_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Series Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Like Series",
         "tags": [
           "series"
         ]

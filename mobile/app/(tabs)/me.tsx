@@ -1,7 +1,8 @@
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AppText, Avatar } from '../../components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppText, Card, LinkButton } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
@@ -9,10 +10,12 @@ import { useCurrentUser } from '../../lib/query/hooks/useProfile';
 import { previewDisplayName } from '../../lib/format/displayName';
 import { CONTACT_EMAIL, isComplianceContentPending } from '../../lib/content/commentsCompliance';
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
-import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
+import { useDownloads } from '../../lib/downloads/useDownloads';
+import { DownloadsSection } from './_me/DownloadsSection';
 import { LibraryRow } from './_me/LibraryRow';
 import { PlaybackSection } from './_me/PlaybackSection';
-import { NamePrompt } from '../player/_comments/NamePrompt';
+import { ProfileAvatarPicker } from './_me/ProfileAvatarPicker';
+import { ProfileDetailsSheet } from './_me/ProfileDetailsSheet';
 import { TermsSheet } from '../player/_comments/TermsSheet';
 
 const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
@@ -23,33 +26,47 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  * (L5 — push is cut entirely, "a dead toggle is worse than no toggle"), no Library
  * counts (P8 — "24"/"96" would need an unbuilt paginated-count contract).
  *
- * Sermon comments (plan S13, design spec comments-and-player §3) add: a name row that
- * edits `full_name` (shown to other viewers as "First L." on comments), a Blocked users
- * row, and a "Help and safety" section with the published contact address and the comment
- * guidelines. One column on every device width: the tablet two-pane existed only to dock
- * the Notes panel, which is gone with Notes.
+ * Sermon comments (plan S13, design spec comments-and-player §3) add: a profile editor
+ * that writes `full_name` (shown to other viewers as "First L." on comments), a Blocked
+ * users row, and a "Help and safety" section with the published contact address and the
+ * comment guidelines.
+ *
+ * Redesigned session 2026-10-09 (Isaac's asks):
+ *  - A real profile picture (`ProfileAvatarPicker`, tap the hero avatar) and a
+ *    first/last-name + gender editor (`ProfileDetailsSheet`) replace the old single
+ *    "Name" row + `NamePrompt` combo — that sheet is untouched and still owns the
+ *    comments flow's own pre-first-post name prompt, a separate screen entirely.
+ *  - Top padding starts at `insets.top`, below the notch/Dynamic Island.
+ *  - Each settings group is a `Card` now — "make the page more organized" — instead of
+ *    bare, visually-undifferentiated sections.
+ *  - Downloads' own Wi-Fi-only toggle lives here too (session 2026-10-09, same day —
+ *    the Downloads tab's dedicated settings page is retired in favor of this one
+ *    consolidated screen).
+ *  - Playback's default-speed picker is gone (Isaac's ask) — the Player screen's own
+ *    in-session speed control already covers it; see `PlaybackSection`'s own doc
+ *    comment.
+ *
+ * One column on every device width: the tablet two-pane existed only to dock the Notes
+ * panel, which is gone with Notes.
  */
 export default function MeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
 
   const profileQuery = useCurrentUser();
-  const { preferences, isSaving, setDefaultSpeed, setAutoplayNextInSeries } = usePlaybackPreferences();
+  const { preferences, isSaving, setAutoplayNextInSeries } = usePlaybackPreferences();
+  const { wifiOnly, isSavingWifiOnly, setWifiOnly } = useDownloads();
   const [playbackError, setPlaybackError] = React.useState<string | null>(null);
 
-  const [nameSheetOpen, setNameSheetOpen] = React.useState(false);
+  const [detailsSheetOpen, setDetailsSheetOpen] = React.useState(false);
   const [guidelinesOpen, setGuidelinesOpen] = React.useState(false);
-  const [nameUpdated, setNameUpdated] = React.useState(false);
+  const [profileUpdated, setProfileUpdated] = React.useState(false);
 
   const profile = profileQuery.data;
   const currentName = (profile?.full_name ?? '').trim();
   const publicName = previewDisplayName(currentName);
   const contactPending = isComplianceContentPending(CONTACT_EMAIL);
-
-  const handleChangeSpeed = (speed: PlaybackSpeed) => {
-    setPlaybackError(null);
-    setDefaultSpeed(speed).catch(() => setPlaybackError(PLAYBACK_SAVE_ERROR));
-  };
 
   const handleChangeAutoplay = (enabled: boolean) => {
     setPlaybackError(null);
@@ -57,24 +74,35 @@ export default function MeScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="me-layout">
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}
+      testID="me-layout"
+    >
       <View style={styles.header}>
         {profileQuery.isLoading ? (
           <AppText variant="ui.body" tone="secondary">
             Loading profile…
           </AppText>
-        ) : profileQuery.isError || !profileQuery.data ? (
+        ) : profileQuery.isError || !profile ? (
           <AppText variant="ui.body" tone="secondary">
             Couldn't load your profile.
           </AppText>
         ) : (
           <>
-            <Avatar name={profileQuery.data.full_name || profileQuery.data.email} seed={profileQuery.data.id} size={40} />
+            <ProfileAvatarPicker
+              name={profile.full_name || profile.email}
+              seed={profile.id}
+              avatarUrl={profile.avatar_url ?? null}
+            />
             <View style={styles.headerText}>
-              <AppText variant="display.row">{profileQuery.data.full_name || profileQuery.data.email}</AppText>
+              <AppText variant="display.row">{profile.full_name || profile.email}</AppText>
               <AppText variant="ui.body" tone="secondary">
-                {profileQuery.data.email}
+                {profile.email}
               </AppText>
+              <View style={styles.editProfileLink}>
+                <LinkButton label="Edit profile" onPress={() => setDetailsSheetOpen(true)} />
+              </View>
             </View>
           </>
         )}
@@ -82,17 +110,9 @@ export default function MeScreen() {
 
       {profile ? (
         <View style={styles.section}>
-          <LibraryRow
-            label="Name"
-            detail={currentName || 'Add your name'}
-            onPress={() => {
-              setNameUpdated(false);
-              setNameSheetOpen(true);
-            }}
-          />
-          {nameUpdated ? (
+          {profileUpdated ? (
             <AppText variant="ui.badge" tone="secondary" accessibilityLiveRegion="polite">
-              Name updated.
+              Profile updated.
             </AppText>
           ) : null}
           {publicName ? (
@@ -103,28 +123,35 @@ export default function MeScreen() {
         </View>
       ) : null}
 
-      <PlaybackSection
-        defaultSpeed={preferences.defaultSpeed}
-        autoplayNextInSeries={preferences.autoplayNextInSeries}
-        onChangeSpeed={handleChangeSpeed}
-        onChangeAutoplay={handleChangeAutoplay}
-        disabled={isSaving}
-        error={playbackError}
-      />
+      <Card style={styles.card}>
+        <PlaybackSection
+          autoplayNextInSeries={preferences.autoplayNextInSeries}
+          onChangeAutoplay={handleChangeAutoplay}
+          disabled={isSaving}
+          error={playbackError}
+        />
+      </Card>
 
-      <View style={styles.section}>
+      <Card style={styles.card}>
+        <DownloadsSection
+          wifiOnly={wifiOnly}
+          onChangeWifiOnly={(enabled) => {
+            void setWifiOnly(enabled);
+          }}
+          disabled={isSavingWifiOnly}
+        />
+      </Card>
+
+      <Card style={styles.card}>
         <AppText variant="ui.label" tone="tertiary" style={styles.sectionHeading}>
           Library
         </AppText>
         <LibraryRow label="Blocked users" onPress={() => router.push('/blocked-users')} />
         <LibraryRow label="History" onPress={() => router.push('/history')} />
-      </View>
-
-      <View style={styles.section}>
         <LibraryRow label="Announcements" onPress={() => router.push('/(tabs)/announcements')} />
-      </View>
+      </Card>
 
-      <View style={styles.section}>
+      <Card style={styles.card}>
         <AppText variant="ui.label" tone="tertiary" style={styles.sectionHeading}>
           Help and safety
         </AppText>
@@ -139,7 +166,7 @@ export default function MeScreen() {
           }}
         />
         <LibraryRow label="Comment guidelines" onPress={() => setGuidelinesOpen(true)} />
-      </View>
+      </Card>
 
       <Pressable
         accessibilityRole="button"
@@ -152,15 +179,15 @@ export default function MeScreen() {
         </AppText>
       </Pressable>
 
-      <NamePrompt
-        visible={nameSheetOpen}
-        initialName={currentName}
-        title="Your name"
-        saveLabel="Save"
-        onClose={() => setNameSheetOpen(false)}
+      <ProfileDetailsSheet
+        visible={detailsSheetOpen}
+        initialFirstName={profile?.first_name ?? ''}
+        initialLastName={profile?.last_name ?? ''}
+        initialGender={profile?.gender ?? null}
+        onClose={() => setDetailsSheetOpen(false)}
         onSaved={() => {
-          setNameSheetOpen(false);
-          setNameUpdated(true);
+          setDetailsSheetOpen(false);
+          setProfileUpdated(true);
         }}
       />
       <TermsSheet visible={guidelinesOpen} readOnly onClose={() => setGuidelinesOpen(false)} />
@@ -184,9 +211,17 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerText: {
+    flex: 1,
     gap: spacing.xs,
+    alignItems: 'flex-start',
+  },
+  editProfileLink: {
+    marginTop: spacing.xs,
   },
   section: {
+    gap: spacing.xs,
+  },
+  card: {
     gap: spacing.xs,
   },
   sectionHeading: {

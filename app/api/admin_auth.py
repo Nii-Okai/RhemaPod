@@ -66,7 +66,7 @@ async def list_users(
         db, limit=limit, offset=offset, role_filter=role
     )
     return Page[UserPublic](
-        items=[UserPublic.model_validate(u) for u in rows],
+        items=[auth_service.to_user_public(u) for u in rows],
         total=total, limit=limit, offset=offset,
     )
 
@@ -121,7 +121,7 @@ async def create_staff(
         invite_link = email_module._reset_link(invite_token)
 
     return StaffCreateResponse(
-        user=UserPublic.model_validate(created), invite_link=invite_link
+        user=auth_service.to_user_public(created), invite_link=invite_link
     )
 
 
@@ -138,7 +138,7 @@ async def change_role(
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
-    return UserPublic.model_validate(updated)
+    return auth_service.to_user_public(updated)
 
 
 @router.patch("/{user_id}/active", response_model=UserActiveResponse)
@@ -163,7 +163,7 @@ async def set_active(
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return UserActiveResponse(
-        user=UserPublic.model_validate(updated),
+        user=auth_service.to_user_public(updated),
         revocation_deferred=revocation_deferred,
     )
 
@@ -201,5 +201,5 @@ async def resend_invite(
         invite_link = email_module._reset_link(invite_token)
 
     return StaffCreateResponse(
-        user=UserPublic.model_validate(target), invite_link=invite_link
+        user=auth_service.to_user_public(target), invite_link=invite_link
     )

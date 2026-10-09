@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Image, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActionButton, AppText, CastCloseHeader, DetailError, PrimaryButton, Tag } from '../../components';
-import { DownloadPillButton } from '../../components/DownloadPillButton';
+import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
 import { EpisodeRow } from '../../components/series/EpisodeRow';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { colors } from '../../theme/colors';
@@ -11,9 +11,10 @@ import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
-import { useSeriesDetail, useSeriesEpisodes } from '../../lib/query/hooks/useSeries';
+import { useSeriesDetail, useSeriesEpisodes, useToggleSeriesLike } from '../../lib/query/hooks/useSeries';
 import { useWatchHistory } from '../../lib/query/hooks/useWatchHistory';
 import { buildHistoryMap } from '../../lib/format/episodeStatus';
+import { shareContent } from '../../lib/share/shareContent';
 import { resolveSeriesCta } from './_detail/cta';
 import { DetailTabs, type DetailTab } from './_detail/DetailTabs';
 import { seriesMetaLine } from './_detail/meta';
@@ -46,12 +47,15 @@ import { SeriesDetailSkeleton } from './_detail/Skeleton';
  *
  * Play and Download stack as two full-width pills (Isaac's ask, session 2026-09-30 —
  * Netflix's own title-page pair: white Play directly above gray Download, same width).
- * `DownloadPillButton` always targets whichever episode the CTA above it targets, so the
- * two buttons never disagree about which episode "this" means. The action row's own
- * Download button (session 2026-10-01, matching a different Netflix reference screenshot
- * — My List/Rate/Share/Download as four evenly-spaced icons) is a separate, additive
- * action: it queues *every* episode in the series, not just the one the CTA pill
- * targets.
+ * Unlike the Play CTA (which always targets whichever episode `resolveSeriesCta` picks),
+ * the Download pill targets the whole series (Isaac's ask, session 2026-10-08: "the top
+ * horizontal download pill is used to download media for all episodes") — it's given
+ * every episode with a rendition (`downloadableEpisodes`) and its own `aggregate()` folds
+ * all of them into one progress readout, same mechanism `EpisodeDownloadButton` uses
+ * per-row. The action row's own Download button (session 2026-10-01, matching a
+ * different Netflix reference screenshot — My List/Rate/Share/Download as four
+ * evenly-spaced icons) now queues the identical set as a second, harmless entry point to
+ * the same bulk action, not a separate one.
  *
  * The Play/Resume CTA (`resolveSeriesCta`) reads off `GET /me/history?series_id=<id>` to
  * pick Resume vs. Play and which episode — scoped to this series (Decision 6) rather
@@ -76,8 +80,8 @@ export default function SeriesDetailScreen() {
   const episodes = useSeriesEpisodes(id);
   const history = useWatchHistory(id);
   const [inMyList, setInMyList] = useState(false);
-  const [liked, setLiked] = useState(false);
   const [tab, setTab] = useState<DetailTab>('episodes');
+  const toggleLike = useToggleSeriesLike(id);
   const downloads = useDownloads();
 
   const historyMap = useMemo(() => buildHistoryMap(history.data ?? []), [history.data]);
@@ -103,16 +107,24 @@ export default function SeriesDetailScreen() {
 
   const onShare = () => {
     if (!series.data) return;
-    void Share.share({ message: series.data.title });
+    void shareContent({
+      title: series.data.title,
+      description: series.data.description,
+      thumbnailUrl: series.data.thumbnail_url,
+      deepLinkPath: `series/${series.data.id}`,
+    });
   };
 
   // Queues every episode through the same `useDownloads()` pipeline every other
   // download control in this app uses — `download()` is already a no-op for anything
   // not fresh/failed (`downloadManager.enqueueDownload`'s own doc comment), so calling
   // it for an already-downloading or already-ready episode is safe, not a duplicate.
-  const onDownloadAll = (episodeList: { id: string; title: string }[]) => {
+  // Downloads whichever rendition each episode actually has (Isaac's ask, session
+  // 2026-10-08: "download based on the media type available for each episode") — an
+  // episode with no rendition at all yet is skipped, not retried as a failure.
+  const onDownloadAll = (episodeList: DownloadPillItem[]) => {
     episodeList.forEach((episode) => {
-      void downloads.download(episode.id, episode.title);
+      void downloads.download(episode.sermonId, episode.title, episode.mediaType, episode.thumbnailUrl, episode.category);
     });
   };
 
@@ -136,6 +148,18 @@ export default function SeriesDetailScreen() {
 
   const detail = series.data;
   const episodeItems = episodes.data ?? [];
+  // Episodes with no rendition uploaded yet have nothing to download — the pill (and
+  // the action row's own bulk button below) both filter them out rather than queuing a
+  // request that can only 409.
+  const downloadableEpisodes: DownloadPillItem[] = episodeItems
+    .filter((episode): episode is typeof episode & { media_type: 'audio' | 'video' } => Boolean(episode.media_type))
+    .map((episode) => ({
+      sermonId: episode.id,
+      title: episode.title,
+      mediaType: episode.media_type,
+      thumbnailUrl: episode.thumbnail_url,
+      category: episode.category_name,
+    }));
 
   return (
     <View style={styles.screen}>
@@ -171,7 +195,7 @@ export default function SeriesDetailScreen() {
                 fullWidth
                 onPress={() => goToEpisode(cta.episodeId)}
               />
-              <DownloadPillButton sermonId={cta.episodeId} title={cta.episodeTitle} />
+              <DownloadPillButton items={downloadableEpisodes} label="Download all episodes" />
             </View>
           ) : null}
 
@@ -190,19 +214,21 @@ export default function SeriesDetailScreen() {
               onPress={() => setInMyList((current) => !current)}
             />
             <ActionButton
-              icon={liked ? 'heart' : 'heart-outline'}
-              label="Like"
-              accessibilityLabel={liked ? 'Unlike' : 'Like'}
-              selected={liked}
-              onPress={() => setLiked((current) => !current)}
+              icon={detail.liked_by_me ? 'heart' : 'heart-outline'}
+              label={`Like\n${detail.like_count}`}
+              accessibilityLabel={
+                detail.liked_by_me ? `Unlike, ${detail.like_count} likes` : `Like, ${detail.like_count} likes`
+              }
+              selected={detail.liked_by_me}
+              onPress={() => toggleLike.toggle(detail.liked_by_me)}
             />
             <ActionButton icon="share-outline" label="Share" accessibilityLabel="Share this series" onPress={onShare} />
-            {episodeItems.length > 0 ? (
+            {downloadableEpisodes.length > 0 ? (
               <ActionButton
                 icon="download-outline"
-                label={`Download\n${episodeItems.length} Episode${episodeItems.length === 1 ? '' : 's'}`}
-                accessibilityLabel={`Download all ${episodeItems.length} episode${episodeItems.length === 1 ? '' : 's'}`}
-                onPress={() => onDownloadAll(episodeItems)}
+                label={`Download\n${downloadableEpisodes.length} Episode${downloadableEpisodes.length === 1 ? '' : 's'}`}
+                accessibilityLabel={`Download all ${downloadableEpisodes.length} episode${downloadableEpisodes.length === 1 ? '' : 's'}`}
+                onPress={() => onDownloadAll(downloadableEpisodes)}
               />
             ) : null}
           </View>

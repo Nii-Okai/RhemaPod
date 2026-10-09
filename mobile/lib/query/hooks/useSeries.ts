@@ -7,13 +7,14 @@
  * server returns. An episode with `episode_number: null` stays null; it is
  * not part of the numbered sequence.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/typedClient';
 import { queryKeys } from '../queryClient';
 import type { components } from '../../api/schema';
 
 export type SeriesPublic = components['schemas']['SeriesPublic'];
 export type SeriesEpisode = components['schemas']['SermonListItem'];
+type LikeState = components['schemas']['LikeState'];
 
 /**
  * `GET /api/v1/series` — member-readable (no auth-role guard on the route; confirmed
@@ -38,6 +39,31 @@ export function useSeriesDetail(seriesId: string) {
       api.get('/series/{series_id}', { params: { path: { series_id: seriesId } }, init: { signal } }),
     enabled: Boolean(seriesId),
   });
+}
+
+/** `PUT`/`DELETE /series/{series_id}/like` — the series-page sibling of
+ * `useToggleSermonLike`; see that hook's own doc comment for the full reasoning
+ * (same server idempotency, same "pick the direction from the caller's current
+ * `liked_by_me`" design, same write-the-response-into-cache-not-refetch pattern). */
+export function useToggleSeriesLike(seriesId: string) {
+  const queryClient = useQueryClient();
+  const applyState = (state: LikeState) => {
+    queryClient.setQueryData<SeriesPublic>(queryKeys.series.detail(seriesId), (series) =>
+      series ? { ...series, liked_by_me: state.liked, like_count: state.like_count } : series,
+    );
+  };
+  const like = useMutation({
+    mutationFn: () => api.put('/series/{series_id}/like', { params: { path: { series_id: seriesId } } }),
+    onSuccess: applyState,
+  });
+  const unlike = useMutation({
+    mutationFn: () => api.delete('/series/{series_id}/like', { params: { path: { series_id: seriesId } } }),
+    onSuccess: applyState,
+  });
+  return {
+    toggle: (currentlyLiked: boolean) => void (currentlyLiked ? unlike.mutate() : like.mutate()),
+    isPending: like.isPending || unlike.isPending,
+  };
 }
 
 export function useSeriesEpisodes(seriesId: string) {

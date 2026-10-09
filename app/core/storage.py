@@ -735,6 +735,14 @@ def thumbnail_key(kind: str, entity_id: uuid.UUID, filename: str) -> str:
     return f"thumbnails/{kind}/{entity_id}/{uuid.uuid4()}.{suffix}"
 
 
+def avatar_key(user_id: uuid.UUID, filename: str) -> str:
+    """Key for a profile picture — same shape as `thumbnail_key`, a fresh UUID per
+    upload so replacing an avatar never collides with a cached copy of the old one
+    at the same URL."""
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    return f"avatars/{user_id}/{uuid.uuid4()}.{suffix}"
+
+
 def cdn_url_for(key: str, *, presigned_fallback: str) -> str:
     """Resolve the URL a client should use to fetch `key`.
 

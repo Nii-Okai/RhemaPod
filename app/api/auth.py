@@ -12,10 +12,14 @@ from app.core.net import client_ip
 from app.core.rate_limit import check_rate_limit
 from app.db.database import get_db
 from app.models.schemas import (
+    AvatarResponse,
+    AvatarTicket,
+    AvatarUploadRequest,
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LogoutRequest,
     MessageResponse,
+    ProfileDetailsUpdate,
     ProfileUpdate,
     RefreshRequest,
     ResetPasswordRequest,
@@ -48,7 +52,7 @@ async def register(data: UserRegister, db: DbDep) -> UserPublic:
         user = await auth_service.register_user(db, data)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
-    return UserPublic.model_validate(user)
+    return auth_service.to_user_public(user)
 
 
 @router.post("/login", response_model=TokenPair)
@@ -185,7 +189,7 @@ async def read_me(user: CurrentUserDep, db: DbDep) -> UserPublic:
     record = await auth_service.get_user_by_id(db, user.id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return UserPublic.model_validate(record)
+    return auth_service.to_user_public(record)
 
 
 @router.patch("/me", response_model=UserPublic)
@@ -194,7 +198,9 @@ async def update_me(data: ProfileUpdate, user: CurrentUserDep, db: DbDep) -> Use
     other viewers as "First L." on comments, so it goes through the same
     normalisation, URL, contact and blocklist rules as a comment body, plus
     reserved titles. Limited to 5 changes per hour per user (429 + Retry-After);
-    a rejected name returns one generic message."""
+    a rejected name returns one generic message. The comments flow's own name
+    prompt is the one remaining caller — the Me page's own profile editor uses
+    `PATCH /me/profile` below instead."""
     record = await auth_service.get_user_by_id(db, user.id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -206,4 +212,56 @@ async def update_me(data: ProfileUpdate, user: CurrentUserDep, db: DbDep) -> Use
             detail=exc.message,
             headers=exc.headers or None,
         )
-    return UserPublic.model_validate(record)
+    return auth_service.to_user_public(record)
+
+
+@router.patch("/me/profile", response_model=UserPublic)
+async def update_me_profile(data: ProfileDetailsUpdate, user: CurrentUserDep, db: DbDep) -> UserPublic:
+    """Me page profile edit (Isaac's ask, session 2026-10-09): first/last name
+    and gender, independent of `PATCH /me`'s `full_name` field and of avatar
+    upload. A name change goes through the exact same moderation and rate
+    limit `PATCH /me` already has (`comments_service.update_profile_name`) —
+    it still recomputes and publicly displays as `full_name`."""
+    record = await auth_service.get_user_by_id(db, user.id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if (data.first_name is None) != (data.last_name is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="first_name and last_name must be provided together",
+        )
+    try:
+        if data.first_name is not None and data.last_name is not None:
+            record = await comments_service.update_profile_name(db, record, data.first_name, data.last_name)
+        if data.gender is not None:
+            record = await auth_service.update_gender(db, record, data.gender)
+    except ContentError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.message,
+            headers=exc.headers or None,
+        )
+    return auth_service.to_user_public(record)
+
+
+@router.post("/me/avatar/upload-ticket", response_model=AvatarTicket, status_code=status.HTTP_201_CREATED)
+async def avatar_upload_ticket(data: AvatarUploadRequest, user: CurrentUserDep, db: DbDep) -> AvatarTicket:
+    record = await auth_service.get_user_by_id(db, user.id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        return await auth_service.create_avatar_ticket(record, data.filename, data.content_type)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/me/avatar/confirm", response_model=AvatarResponse)
+async def avatar_confirm(avatar_key: str, user: CurrentUserDep, db: DbDep) -> AvatarResponse:
+    record = await auth_service.get_user_by_id(db, user.id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        url = await auth_service.confirm_avatar(db, record, avatar_key)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return AvatarResponse(avatar_url=url)

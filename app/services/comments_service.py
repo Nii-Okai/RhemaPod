@@ -585,6 +585,33 @@ async def update_full_name(db: AsyncSession, actor: User, raw_name: str) -> User
     return actor
 
 
+async def update_profile_name(
+    db: AsyncSession, actor: User, raw_first_name: str, raw_last_name: str
+) -> User:
+    """Me-page profile edit's own name path (Isaac's ask, session 2026-10-09) —
+    a sibling of `update_full_name` above, not a replacement: that one stays
+    exactly as-is for the comments flow's single-field name prompt. Each half
+    goes through the identical per-field content rules `validate_full_name`
+    already applies to a whole name (URL/contact/blocklist/reserved-title,
+    1-100 chars) — a user can't smuggle a link into "first_name" just because
+    it's a shorter box than the comments flow's one field. Shares the same
+    `PROFILE_LIMITS` rate-limit bucket as `update_full_name`: it's still "how
+    often can you change your displayed name an hour", regardless of which
+    screen changed it.
+    """
+    await _charge(actor.id, "profile", PROFILE_LIMITS)
+    first_name = validate_full_name(raw_first_name)
+    last_name = validate_full_name(raw_last_name)
+    async with _write_guard(db, "profile_write_failed"):
+        actor.first_name = first_name
+        actor.last_name = last_name
+        actor.full_name = f"{first_name} {last_name}"
+        await db.commit()
+        await db.refresh(actor)
+    log.info("profile_name_updated", user_id=str(actor.id))
+    return actor
+
+
 # ── Moderation (admin side, plan §A.4 / §A.5 / §A.6) ─────────────────────────
 AdminSort = Literal["recent", "most_reported"]
 

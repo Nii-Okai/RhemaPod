@@ -140,6 +140,14 @@ class SeriesPublic(BaseModel):
     # the portal's series grid drops its per-card count + category-join probes.
     episode_count: int
     category_name: str | None
+    # Isaac's ask, session 2026-10-09: the series-page Like button needs a real
+    # counter. Computed the same way episode_count is (a correlated subquery in
+    # the read query, see `content_service._series_public_stmt`) — every series
+    # read carries it, list and detail alike, same as episode_count/category_name
+    # above; nothing about this field is detail-only. `liked_by_me` is `false`
+    # for an anonymous viewer (no user to have liked anything).
+    like_count: int = 0
+    liked_by_me: bool = False
 
 
 class EpisodeOrderRequest(BaseModel):
@@ -272,6 +280,23 @@ class SermonDetail(SermonListItem):
     media_refs: list[MediaRefPublic]
     published_at: datetime | None
     created_at: datetime
+    # Isaac's ask, session 2026-10-09: the sermon-page Like button needs a real
+    # counter. Detail-only (unlike `SeriesPublic`'s own like fields, which also
+    # cover list rows) — `SermonListItem` already splits list from detail, so
+    # there's no shared-schema reason to compute this for every catalog row the
+    # way series' own single list+detail schema does. `liked_by_me` is `false`
+    # for an anonymous viewer.
+    like_count: int = 0
+    liked_by_me: bool = False
+
+
+class LikeState(BaseModel):
+    """Response for a like/unlike action — the caller's own `ActionButton`
+    reflects both halves (the glyph from `liked`, the number from
+    `like_count`) off one response, not a second round trip."""
+
+    liked: bool
+    like_count: int
 
 
 class SermonAdminDetail(SermonDetail):

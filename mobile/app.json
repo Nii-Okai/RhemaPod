@@ -42,6 +42,13 @@
         {
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RhemaPod needs access to your photos to set a profile picture.",
+          "cameraPermission": "RhemaPod needs access to your camera to take a profile picture."
+        }
       ]
     ],
     "scheme": "rhemapod"

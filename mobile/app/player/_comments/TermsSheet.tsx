@@ -6,7 +6,7 @@ import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 import { COMMENTS_TERMS_TEXT, isComplianceContentPending } from '../../../lib/content/commentsCompliance';
 import { useAcceptCommentsTerms } from '../../../lib/query/hooks/useProfile';
-import { Sheet } from './Sheet';
+import { Sheet } from '../../../components/Sheet';
 
 // `COMMENTS_TERMS_TEXT` opens with its own title line ("RhemaPod Comment Guidelines")
 // followed by a blank line, then the body — split once so the title can render bold

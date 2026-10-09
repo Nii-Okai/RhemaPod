@@ -31,10 +31,17 @@ DROP_REV = "d1e2f3a4b5c6"
 COMMENTS_REV = "e5f6a7b8c9d0"
 PRE_DROP_REV = "c7d8e9f0a1b2"
 # The merge revision joining this chain with the sibling (verses/prophets-catalog)
-# branch. Head for "upgrade head" purposes, but MG-01/04/06/07 below target
-# COMMENTS_REV/DROP_REV directly rather than relying on "head" or a relative `-1`
-# step — both become ambiguous once a merge revision has two parents.
+# branch. MG-01/04/06/07 below target COMMENTS_REV/DROP_REV directly rather than
+# relying on "head" or a relative `-1` step — both become ambiguous once a merge
+# revision has two parents.
 MERGE_REV = "0543034f79af"
+# The actual current head — whatever's chained on top of MERGE_REV as of the most
+# recent migration (session 2026-10-09: sermon/series likes, `1366448aa162`, itself
+# chained on the user-profile-fields migration, `7adae5c5173d`). A future migration
+# moves this constant forward again; the chain assertions below it (MERGE_REV/
+# COMMENTS_REV/DROP_REV/PRE_DROP_REV, all further down the tree) don't change, since
+# they describe ancestry beneath MERGE_REV, not what sits on top of it.
+CURRENT_HEAD = "1366448aa162"
 
 NEW_TABLES = {
     "sermon_comments",
@@ -156,7 +163,7 @@ def conn(migrated):
 def test_mg01_single_head_and_chain(alembic_runner, throwaway_db):
     cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == [MERGE_REV]
+    assert script.get_heads() == [CURRENT_HEAD]
     assert COMMENTS_REV in script.get_revision(MERGE_REV).down_revision
     assert script.get_revision(COMMENTS_REV).down_revision == DROP_REV
     assert script.get_revision(DROP_REV).down_revision == PRE_DROP_REV

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.models.models import UserRole
+from app.models.models import Gender, UserRole
 
 # Obvious values rejected regardless of length. Length is the dominant factor
 # in resistance to offline cracking, so we require 12 rather than imposing
@@ -84,6 +84,12 @@ class UserPublic(BaseModel):
     id: uuid.UUID
     email: EmailStr
     full_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    gender: Gender | None = None
+    # Resolved from `avatar_key` at read time (`auth_service._avatar_url`), same
+    # presigned/CDN path as a sermon's `thumbnail_url` — never the raw key itself.
+    avatar_url: str | None = None
     role: UserRole
     is_active: bool
     # NULL while the staff invite is still outstanding; the timestamp the account
@@ -96,13 +102,53 @@ class UserPublic(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Self-edit of the caller's profile. `full_name` only: role, email and
-    activation are never self-editable (extra keys are a 422). Normalisation
-    and the URL/blocklist checks live in the service."""
+    """Self-edit of the caller's profile via `full_name` directly — unchanged,
+    still used by the comments flow's own name prompt (`comments_service.
+    update_full_name`). Role, email and activation are never self-editable
+    (extra keys are a 422). Normalisation and the URL/blocklist checks live in
+    the service."""
 
     model_config = ConfigDict(extra="forbid")
 
     full_name: str
+
+
+class ProfileDetailsUpdate(BaseModel):
+    """Me-page profile edit (Isaac's ask, session 2026-10-09): first/last
+    name and gender, independent of `ProfileUpdate`'s single `full_name`
+    field above and of avatar upload (its own ticket/confirm pair below).
+    `first_name`/`last_name` must be given together or not at all — the
+    service rejects one without the other (a name can't be half-updated);
+    `gender` can be set on its own. Saving a name goes through the same
+    content-moderation rules `full_name` always has
+    (`comments_service.update_profile_name`), since it still recomputes and
+    publicly displays as `full_name`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    first_name: str | None = None
+    last_name: str | None = None
+    gender: Gender | None = None
+
+
+class AvatarUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=3, max_length=120)
+
+
+class AvatarTicket(BaseModel):
+    """Pre-signed PUT for a profile picture — same direct-to-storage pattern
+    sermon/series thumbnails already use."""
+
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int
+    avatar_key: str
+
+
+class AvatarResponse(BaseModel):
+    avatar_url: str | None
 
 
 class TokenPair(BaseModel):

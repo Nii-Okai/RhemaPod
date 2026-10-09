@@ -1,7 +1,8 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Platform, Share } from 'react-native';
+import { Platform } from 'react-native';
+import RNShare from 'react-native-share';
 import SeriesDetailScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
@@ -9,12 +10,18 @@ import { useDownloads } from '../../../lib/downloads/useDownloads';
 
 jest.mock('@expo/vector-icons');
 
+// `react-native-share` resolves its real native module (`RNShare`) at import time —
+// unavailable under Jest, same gap as every other native module this app mocks. This
+// screen's own Share-button coverage only needs the call to go somewhere; the actual
+// composed-message/thumbnail-download logic is `lib/share/__tests__/shareContent.test.ts`'s.
+jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 jest.mock('../../../lib/api/typedClient', () => ({
-  api: { get: jest.fn() },
+  api: { get: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 // `DownloadPillButton` (rendered under the Play CTA) pulls in the real download stack
@@ -34,6 +41,8 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
+const mockedPut = api.put as jest.Mock;
+const mockedDelete = api.delete as jest.Mock;
 
 const seriesDetail = {
   id: 's1',
@@ -45,6 +54,8 @@ const seriesDetail = {
   status: 'published',
   tier: 'free',
   episode_count: 3,
+  like_count: 0,
+  liked_by_me: false,
 };
 
 function episode(overrides: Record<string, unknown>) {
@@ -63,6 +74,7 @@ function episode(overrides: Record<string, unknown>) {
     episode_number: 1,
     tier: 'free',
     locked: false,
+    media_type: 'audio',
     ...overrides,
   };
 }
@@ -114,6 +126,8 @@ function renderScreen() {
 
 beforeEach(() => {
   mockedGet.mockReset();
+  mockedPut.mockReset();
+  mockedDelete.mockReset();
   mockPush.mockClear();
   mockBack.mockClear();
   mockDismissAll.mockClear();
@@ -278,7 +292,7 @@ describe('SeriesDetailScreen — Play CTA (no watch history)', () => {
 });
 
 describe('SeriesDetailScreen — Download pill', () => {
-  it('targets the same episode as the Play/Resume CTA above it', async () => {
+  it('downloads every episode in the series, not just the Play/Resume CTA episode (Isaac\'s ask, session 2026-10-08)', async () => {
     mockHappyPath();
     const download = jest.fn();
     mockedUseDownloads.mockReturnValue({
@@ -292,16 +306,14 @@ describe('SeriesDetailScreen — Download pill', () => {
       remove: jest.fn(),
       find: jest.fn(() => undefined),
     });
-    const { findAllByLabelText } = renderScreen();
+    const { findByLabelText } = renderScreen();
 
-    // The happy-path fixture's CTA resolves to Resume → e2 ("Part Two") — see the
-    // "shows Resume..." test above for why. Two controls share this label now (the
-    // CTA's own pill, and e2's own per-row `EpisodeDownloadButton`, since they
-    // happen to target the same episode here) — the pill is first in the tree.
-    const matches = await findAllByLabelText('Download Part Two');
-    expect(matches).toHaveLength(2);
-    fireEvent.press(matches[0]);
-    expect(download).toHaveBeenCalledWith('e2', 'Part Two');
+    fireEvent.press(await findByLabelText('Download all episodes'));
+
+    expect(download).toHaveBeenCalledWith('e1', 'Part One', 'audio', null, null);
+    expect(download).toHaveBeenCalledWith('e2', 'Part Two', 'audio', null, null);
+    expect(download).toHaveBeenCalledWith('e3', 'Bonus Q&A', 'audio', null, null);
+    expect(download).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -327,9 +339,9 @@ describe('SeriesDetailScreen — Download all (action row)', () => {
 
     fireEvent.press(button);
 
-    expect(download).toHaveBeenCalledWith('e1', 'Part One');
-    expect(download).toHaveBeenCalledWith('e2', 'Part Two');
-    expect(download).toHaveBeenCalledWith('e3', 'Bonus Q&A');
+    expect(download).toHaveBeenCalledWith('e1', 'Part One', 'audio', null, null);
+    expect(download).toHaveBeenCalledWith('e2', 'Part Two', 'audio', null, null);
+    expect(download).toHaveBeenCalledWith('e3', 'Bonus Q&A', 'audio', null, null);
     expect(download).toHaveBeenCalledTimes(3);
   });
 
@@ -363,15 +375,75 @@ describe('SeriesDetailScreen — My List', () => {
 });
 
 describe('SeriesDetailScreen — Share', () => {
-  it('shares the series title via the native Share sheet', async () => {
+  it('shares the series title, description, and deep link via react-native-share', async () => {
     mockHappyPath();
-    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' } as never);
+    const openSpy = RNShare.open as jest.Mock;
     const { findByLabelText } = renderScreen();
 
     fireEvent.press(await findByLabelText('Share this series'));
 
-    await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ message: 'Anchored' }));
-    shareSpy.mockRestore();
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Anchored',
+          message: expect.stringContaining('Anchored'),
+        }),
+      ),
+    );
+    const call = openSpy.mock.calls[0][0];
+    expect(call.message).toContain('A study of trust in the storm.');
+    expect(call.message).toContain('rhemapod://series/s1');
+  });
+});
+
+describe('SeriesDetailScreen — Like', () => {
+  it('shows the real like count and an unselected heart when the viewer has not liked it', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/series/{series_id}') return Promise.resolve({ ...seriesDetail, like_count: 5, liked_by_me: false });
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      if (path === '/me/history') return Promise.resolve(history);
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    const { findByText, getByLabelText } = renderScreen();
+
+    await findByText('Anchored');
+    expect(getByLabelText('Like, 5 likes')).toBeTruthy();
+  });
+
+  it('likes via PUT and updates the count/heart from the response, no refetch', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/series/{series_id}') return Promise.resolve({ ...seriesDetail, like_count: 5, liked_by_me: false });
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      if (path === '/me/history') return Promise.resolve(history);
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    mockedPut.mockResolvedValue({ liked: true, like_count: 6 });
+    const { findByLabelText, getByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Like, 5 likes'));
+
+    await waitFor(() =>
+      expect(mockedPut).toHaveBeenCalledWith('/series/{series_id}/like', { params: { path: { series_id: 's1' } } }),
+    );
+    await waitFor(() => expect(getByLabelText('Unlike, 6 likes')).toBeTruthy());
+  });
+
+  it('unlikes via DELETE when already liked', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/series/{series_id}') return Promise.resolve({ ...seriesDetail, like_count: 6, liked_by_me: true });
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      if (path === '/me/history') return Promise.resolve(history);
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    mockedDelete.mockResolvedValue({ liked: false, like_count: 5 });
+    const { findByLabelText, getByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Unlike, 6 likes'));
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/series/{series_id}/like', { params: { path: { series_id: 's1' } } }),
+    );
+    await waitFor(() => expect(getByLabelText('Like, 5 likes')).toBeTruthy());
   });
 });
 

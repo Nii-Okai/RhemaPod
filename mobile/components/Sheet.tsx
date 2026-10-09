@@ -1,9 +1,9 @@
 import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../../theme/colors';
-import { radius } from '../../../theme/radius';
-import { spacing } from '../../../theme/spacing';
+import { colors } from '../theme/colors';
+import { radius } from '../theme/radius';
+import { spacing } from '../theme/spacing';
 
 export interface SheetProps {
   visible: boolean;
@@ -12,7 +12,10 @@ export interface SheetProps {
 }
 
 /**
- * Bottom-sheet chrome shared by the report, terms and name sheets (design spec §2.4): a
+ * Bottom-sheet chrome, originally shared by the report, terms and name sheets (design
+ * spec §2.4), promoted here from `app/player/_comments/` once the Me page's own avatar
+ * picker (session 2026-10-09) became a second, unrelated feature area needing the exact
+ * same chrome — same promotion bar `IconButton`/`Toggle`'s own doc comments describe. A
  * slide-up `Modal`, a `surface.app` scrim at 0.6 (the `SleepTimerSheet` precedent, no rgba
  * literal), a `surface.raised` body with `radius.xl` top corners, safe-area bottom padding,
  * and a scroll region so a tall sheet (large text sizes) never clips. Tapping the scrim or

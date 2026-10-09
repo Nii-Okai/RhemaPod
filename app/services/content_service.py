@@ -48,9 +48,11 @@ from app.models.models import (
     SermonStatus,
     SermonTag,
     Series,
+    SeriesLike,
     User,
     UserRole,
 )
+from app.services import likes_service
 from app.services.approval import resolve_transition
 
 settings = get_settings()
@@ -706,7 +708,14 @@ async def _assemble_sermon_detail(
     has_sub = await _has_subscription(db, user)
     names = await load_ref_names(db, [sermon])
 
-    base = to_list_item(sermon, tier, has_sub, names)
+    # A sermon carries exactly one rendition (video or audio, never both — mobile
+    # download UI's own assumption), so the first media_ref's type is the whole
+    # answer. `media_refs` is already eager-loaded for this read; no extra query.
+    media_type = sermon.media_refs[0].type.value if sermon.media_refs else None
+    base = to_list_item(sermon, tier, has_sub, names, media_type=media_type)
+    like_count, liked_by_me = await likes_service.sermon_like_state(
+        db, sermon.id, user.id if user is not None else None
+    )
     return SermonDetail(
         **base.model_dump(),
         status=sermon.status,
@@ -714,6 +723,8 @@ async def _assemble_sermon_detail(
         media_refs=sermon.media_refs,
         published_at=sermon.published_at,
         created_at=sermon.created_at,
+        like_count=like_count,
+        liked_by_me=liked_by_me,
     )
 
 
@@ -1619,11 +1630,16 @@ async def get_series(db: AsyncSession, series_id: uuid.UUID) -> Series:
 # Per-series episode count + resolved category name, computed in the read query
 # via a correlated count subquery + an outer join (same style as
 # `review_queue_page`'s per-row subqueries). One query, no round-trip per row.
-def _series_public_stmt(include_unpublished: bool):
-    """Series rows + a correlated episode count + the resolved category name.
+def _series_public_stmt(include_unpublished: bool, viewer_id: uuid.UUID | None = None):
+    """Series rows + a correlated episode count, the resolved category name,
+    and (Isaac's ask, session 2026-10-09) a correlated like count + whether
+    `viewer_id` has liked each row.
 
     `include_unpublished=False` scopes the episode count to published sermons —
-    see `staff_sees_full_counts`.
+    see `staff_sees_full_counts`. `viewer_id=None` (anonymous) still runs the
+    `liked_by_me` subquery rather than branching it away — `SeriesLike.user_id
+    == None` renders as `IS NULL`, which a NOT NULL column can never match, so
+    it already always resolves to `false` without a second code path.
     """
     episode_count = (
         select(func.count(Sermon.id))
@@ -1635,23 +1651,37 @@ def _series_public_stmt(include_unpublished: bool):
         .scalar_subquery()
         .label("episode_count")
     )
+    like_count = (
+        select(func.count(SeriesLike.id))
+        .where(SeriesLike.series_id == Series.id)
+        .correlate(Series)
+        .scalar_subquery()
+        .label("like_count")
+    )
+    liked_by_me = (
+        select(func.count(SeriesLike.id) > 0)
+        .where(SeriesLike.series_id == Series.id, SeriesLike.user_id == viewer_id)
+        .correlate(Series)
+        .scalar_subquery()
+        .label("liked_by_me")
+    )
     return select(
-        Series, episode_count, Category.name.label("category_name")
+        Series, episode_count, Category.name.label("category_name"), like_count, liked_by_me
     ).outerjoin(Category, Category.id == Series.category_id)
 
 
 async def list_series(
-    db: AsyncSession, include_unpublished: bool = False
-) -> list[tuple[Series, int, str | None]]:
-    stmt = _series_public_stmt(include_unpublished).order_by(Series.title)
+    db: AsyncSession, include_unpublished: bool = False, viewer_id: uuid.UUID | None = None
+) -> list[tuple[Series, int, str | None, int, bool]]:
+    stmt = _series_public_stmt(include_unpublished, viewer_id).order_by(Series.title)
     return [tuple(row) for row in (await db.execute(stmt)).all()]
 
 
 async def get_series_public(
-    db: AsyncSession, series_id: uuid.UUID, include_unpublished: bool = False
-) -> tuple[Series, int, str | None]:
+    db: AsyncSession, series_id: uuid.UUID, include_unpublished: bool = False, viewer_id: uuid.UUID | None = None
+) -> tuple[Series, int, str | None, int, bool]:
     row = (await db.execute(
-        _series_public_stmt(include_unpublished).where(Series.id == series_id)
+        _series_public_stmt(include_unpublished, viewer_id).where(Series.id == series_id)
     )).one_or_none()
     if row is None:
         raise ContentError("Series not found", status_code=404)

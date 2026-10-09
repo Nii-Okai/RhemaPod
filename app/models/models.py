@@ -52,6 +52,11 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
 
 
+class Gender(str, enum.Enum):
+    MALE = "male"
+    FEMALE = "female"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -61,7 +66,24 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(320), unique=True, index=True, nullable=False
     )
+    # The single display field everywhere else in the backend (comments, announcement
+    # approval logs, staff invite emails) still reads/writes this — unchanged by the
+    # addition below. `first_name`/`last_name` are the Me-page profile-edit UI's own
+    # fields (Isaac's ask, session 2026-10-09); saving them recomputes this as
+    # f"{first_name} {last_name}" server-side (`comments_service.update_profile_name`),
+    # through the exact same content-moderation rules `full_name` always has, so nothing
+    # downstream needs to know these new columns exist.
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gender: Mapped[Gender | None] = mapped_column(
+        Enum(Gender, name="user_gender", native_enum=False, length=10),
+        nullable=True,
+    )
+    # Avatar storage mirrors `Sermon.thumbnail_key`/`Series.thumbnail_key` — a key into
+    # the same media bucket, resolved to a URL on read via the same presigned/CDN path
+    # (`auth_service._avatar_url`), never a raw public object URL.
+    avatar_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", native_enum=False, length=20),
@@ -869,6 +891,61 @@ class UserBlock(Base):
     __table_args__ = (
         UniqueConstraint("blocker_id", "blocked_id", name="uq_user_blocks_pair"),
         CheckConstraint("blocker_id <> blocked_id", name="ck_user_blocks_no_self"),
+    )
+
+
+class SermonLike(Base):
+    """A viewer's like on a sermon (Isaac's ask, session 2026-10-09: "the like
+    button" needs a real counter and backend). Surrogate ``id`` for the same
+    reason `UserBlock` has one — no API ever needs to address a row by its own
+    id, but every other table in this codebase gets a real primary key rather
+    than a composite one. One row per (user, sermon); liking twice is a no-op
+    at the service layer (`likes_service.like_sermon`'s own `ON CONFLICT DO
+    NOTHING`), not a 409 — the client's own idempotent PUT semantics."""
+
+    __tablename__ = "sermon_likes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    sermon_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sermons.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "sermon_id", name="uq_sermon_likes_pair"),
+        Index("ix_sermon_likes_sermon_id", "sermon_id"),
+    )
+
+
+class SeriesLike(Base):
+    """A viewer's like on a series — the series-page sibling of `SermonLike`,
+    same shape and the same reasoning throughout."""
+
+    __tablename__ = "series_likes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    series_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("series.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "series_id", name="uq_series_likes_pair"),
+        Index("ix_series_likes_series_id", "series_id"),
     )
 
 

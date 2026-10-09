@@ -10,9 +10,9 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import check_rate_limit
 from app.core.token_store import TokenStoreUnavailable
-from app.models.models import User, UserRole
-from app.models.schemas import UserRegister
-from app.services.content_service import ContentError
+from app.models.models import Gender, User, UserRole
+from app.models.schemas import AvatarTicket, UserPublic, UserRegister
+from app.services.content_service import ALLOWED_IMAGE_TYPES, ContentError
 
 import secrets  # noqa: E402
 
@@ -48,6 +48,115 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return await db.get(User, user_id)
+
+
+def _avatar_url(key: str | None) -> str | None:
+    """Turn a stored avatar key into a fetchable URL — same presigned-then-
+    `cdn_url_for` path `content_service._thumbnail_url` uses for a sermon/series
+    cover image, not duplicated logic reinvented here, just the user-domain copy
+    of it (avatars are a `User` concern, not a `content_service` one)."""
+    if not key:
+        return None
+    from app.core import storage as storage_module
+
+    presigned = storage_module.get_storage().presigned_download_url(
+        settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
+    )
+    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
+
+
+def to_user_public(user: User) -> UserPublic:
+    """Builds `UserPublic` field-by-field rather than `UserPublic.model_validate(user)`
+    — `avatar_url` is derived from `avatar_key` (same reason `to_list_item` builds
+    `SermonListItem` explicitly instead of blind-validating the ORM row), so a plain
+    `from_attributes` validate would just silently leave it `None` forever."""
+    return UserPublic(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        gender=user.gender,
+        avatar_url=_avatar_url(user.avatar_key),
+        role=user.role,
+        is_active=user.is_active,
+        activated_at=user.activated_at,
+        comments_terms_accepted_at=user.comments_terms_accepted_at,
+        created_at=user.created_at,
+    )
+
+
+async def update_gender(db: AsyncSession, actor: User, gender: Gender) -> User:
+    """No moderation/rate-limit concern — unlike a name, this is never shown to
+    other viewers and has no free-text injection surface (a fixed enum)."""
+    actor.gender = gender
+    await db.commit()
+    await db.refresh(actor)
+    log.info("profile_gender_updated", user_id=str(actor.id))
+    return actor
+
+
+def _validate_avatar_image_type(content_type: str) -> None:
+    if content_type.lower() not in ALLOWED_IMAGE_TYPES:
+        raise ContentError(
+            f"Unsupported image type '{content_type}'. Use JPEG, PNG, or WebP.",
+            status_code=400,
+        )
+
+
+async def create_avatar_ticket(actor: User, filename: str, content_type: str) -> AvatarTicket:
+    """Issue a pre-signed PUT for a profile picture — same direct-to-storage
+    pattern `content_service.create_thumbnail_ticket` uses; the image never
+    passes through this API."""
+    from app.core import storage as storage_module
+
+    _validate_avatar_image_type(content_type)
+    key = storage_module.avatar_key(actor.id, filename)
+    url = storage_module.get_storage().presigned_upload_url(
+        settings.object_store_media_bucket, key, content_type,
+        settings.upload_url_expire_seconds,
+    )
+    return AvatarTicket(
+        upload_url=url,
+        headers={"Content-Type": content_type},
+        expires_in=settings.upload_url_expire_seconds,
+        avatar_key=key,
+    )
+
+
+async def confirm_avatar(db: AsyncSession, actor: User, key: str) -> str | None:
+    """Attach an uploaded profile picture after verifying it actually landed —
+    same verification sequence `content_service.confirm_thumbnail` runs (prefix
+    check, object exists, size cap), just against the user's own row instead of
+    a sermon/series."""
+    from app.core import storage as storage_module
+
+    expected_prefix = f"avatars/{actor.id}/"
+    if not key.startswith(expected_prefix):
+        raise ContentError("Avatar key does not belong to this account", 400)
+
+    store = storage_module.get_storage()
+    if not store.object_exists(settings.object_store_media_bucket, key):
+        raise ContentError(
+            "No uploaded image found — complete the PUT first", status_code=409
+        )
+
+    size = store.object_size(settings.object_store_media_bucket, key)
+    if size is not None and size > settings.max_thumbnail_bytes:
+        try:
+            store.delete_object(settings.object_store_media_bucket, key)
+        except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
+            log.warning("oversize_avatar_cleanup_failed", key=key)
+        raise ContentError(
+            f"Image is larger than the "
+            f"{settings.max_thumbnail_bytes // (1024 * 1024)} MB limit.",
+            status_code=413,
+        )
+
+    actor.avatar_key = key
+    await db.commit()
+    log.info("avatar_set", user_id=str(actor.id))
+    return _avatar_url(key)
 
 
 async def register_user(db: AsyncSession, data: UserRegister) -> User:

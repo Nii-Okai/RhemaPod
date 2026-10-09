@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActionButton, AppText, CastCloseHeader, DetailError, PrimaryButton, Tag } from '../../components';
-import { DownloadPillButton } from '../../components/DownloadPillButton';
+import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { colors } from '../../theme/colors';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { nextRelatedSermonRoute, RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
-import { useSermonDetail } from '../../lib/query/hooks/useSermons';
+import { useSermonDetail, useToggleSermonLike } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
+import { shareContent } from '../../lib/share/shareContent';
 import { resolveCta } from './_detail/cta';
 import { isPlayable } from './_detail/isPlayable';
 import { sermonMetaLine } from './_detail/meta';
@@ -32,9 +33,9 @@ export default function SermonDetailScreen() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [inMyList, setInMyList] = useState(false);
-  const [liked, setLiked] = useState(false);
 
   const detailQuery = useSermonDetail(id);
+  const toggleLike = useToggleSermonLike(id);
   const detail = detailQuery.data;
   const playable = detail ? isPlayable(detail) : false;
   // Only worth checking once we know the sermon is actually playable — a locked or
@@ -75,6 +76,21 @@ export default function SermonDetailScreen() {
   }
 
   const metaLine = sermonMetaLine(detail);
+  // Every sermon has exactly one rendition uploaded (audio or video, never both), so this
+  // is always a single-item list — `DownloadPillButton` just treats it as the degenerate
+  // case of the same series-detail bulk-download fold rather than a separate one-sermon
+  // code path. No item at all when `media_type` is unset (nothing uploaded yet).
+  const downloadItems: DownloadPillItem[] = detail.media_type
+    ? [
+        {
+          sermonId: detail.id,
+          title: detail.title,
+          mediaType: detail.media_type,
+          thumbnailUrl: detail.thumbnail_url,
+          category: detail.category_name,
+        },
+      ]
+    : [];
   // A progress-lookup failure degrades gracefully to "treat as Fresh" rather than
   // blocking the whole screen on a secondary, non-critical query.
   const cta = resolveCta(detail, progressQuery.data ?? null);
@@ -93,7 +109,13 @@ export default function SermonDetailScreen() {
       pathname: nextRelatedSermonRoute(pathname),
       params: { id: sermonId, [RELATED_PARAM]: RELATED_PARAM_VALUE },
     });
-  const onShare = () => void Share.share({ message: detail.title });
+  const onShare = () =>
+    void shareContent({
+      title: detail.title,
+      description: detail.description,
+      thumbnailUrl: detail.thumbnail_url,
+      deepLinkPath: `sermon/${detail.id}`,
+    });
 
   return (
     <View style={styles.screen}>
@@ -129,7 +151,7 @@ export default function SermonDetailScreen() {
               onPress={onCtaPress}
               disabled={cta.disabled}
             />
-            {playable ? <DownloadPillButton sermonId={detail.id} title={detail.title} /> : null}
+            {playable ? <DownloadPillButton items={downloadItems} /> : null}
           </View>
           {cta.caption ? (
             <AppText variant="ui.body" tone="tertiary">
@@ -151,11 +173,13 @@ export default function SermonDetailScreen() {
               onPress={() => setInMyList((current) => !current)}
             />
             <ActionButton
-              icon={liked ? 'heart' : 'heart-outline'}
-              label="Like"
-              accessibilityLabel={liked ? 'Unlike' : 'Like'}
-              selected={liked}
-              onPress={() => setLiked((current) => !current)}
+              icon={detail.liked_by_me ? 'heart' : 'heart-outline'}
+              label={`Like\n${detail.like_count}`}
+              accessibilityLabel={
+                detail.liked_by_me ? `Unlike, ${detail.like_count} likes` : `Like, ${detail.like_count} likes`
+              }
+              selected={detail.liked_by_me}
+              onPress={() => toggleLike.toggle(detail.liked_by_me)}
             />
             <ActionButton icon="share-outline" label="Share" accessibilityLabel="Share this sermon" onPress={onShare} />
           </View>

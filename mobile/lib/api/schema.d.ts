@@ -735,9 +735,69 @@ export interface paths {
          *     other viewers as "First L." on comments, so it goes through the same
          *     normalisation, URL, contact and blocklist rules as a comment body, plus
          *     reserved titles. Limited to 5 changes per hour per user (429 + Retry-After);
-         *     a rejected name returns one generic message.
+         *     a rejected name returns one generic message. The comments flow's own name
+         *     prompt is the one remaining caller — the Me page's own profile editor uses
+         *     `PATCH /me/profile` below instead.
          */
         patch: operations["update_me_api_v1_auth_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/me/avatar/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avatar Confirm */
+        post: operations["avatar_confirm_api_v1_auth_me_avatar_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/avatar/upload-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avatar Upload Ticket */
+        post: operations["avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Me Profile
+         * @description Me page profile edit (Isaac's ask, session 2026-10-09): first/last name
+         *     and gender, independent of `PATCH /me`'s `full_name` field and of avatar
+         *     upload. A name change goes through the exact same moderation and rate
+         *     limit `PATCH /me` already has (`comments_service.update_profile_name`) —
+         *     it still recomputes and publicly displays as `full_name`.
+         */
+        patch: operations["update_me_profile_api_v1_auth_me_profile_patch"];
         trace?: never;
     };
     "/api/v1/auth/refresh": {
@@ -936,6 +996,31 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/{sermon_id}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Like Sermon
+         * @description Idempotent — liking an already-liked sermon is a 200 no-op, not a 409
+         *     (see `likes_service`'s own doc comment). 404 if the sermon doesn't exist
+         *     or isn't visible to this viewer — the same `get_sermon_detail` visibility
+         *     check `get_sermon` above uses, so liking never leaks whether an invisible
+         *     sermon id is real.
+         */
+        put: operations["like_sermon_api_v1_catalog_sermons__sermon_id__like_put"];
+        post?: never;
+        /** Unlike Sermon */
+        delete: operations["unlike_sermon_api_v1_catalog_sermons__sermon_id__like_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1285,6 +1370,30 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/series/{series_id}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Like Series
+         * @description Idempotent — liking an already-liked series is a 200 no-op, not a 409
+         *     (see `likes_service`'s own doc comment). 404 if the series doesn't exist
+         *     or isn't visible to this viewer, same existence check `get_series` itself
+         *     uses, so liking never leaks whether an invisible series id is real.
+         */
+        put: operations["like_series_api_v1_series__series_id__like_put"];
+        post?: never;
+        /** Unlike Series */
+        delete: operations["unlike_series_api_v1_series__series_id__like_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2267,6 +2376,40 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AvatarResponse */
+        AvatarResponse: {
+            /** Avatar Url */
+            avatar_url: string | null;
+        };
+        /**
+         * AvatarTicket
+         * @description Pre-signed PUT for a profile picture — same direct-to-storage pattern
+         *     sermon/series thumbnails already use.
+         */
+        AvatarTicket: {
+            /** Avatar Key */
+            avatar_key: string;
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @default PUT
+             */
+            method: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** AvatarUploadRequest */
+        AvatarUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
         /**
          * BlockCreated
          * @description Result of blocking by comment id. `id` is null only when there was
@@ -2584,10 +2727,27 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * Gender
+         * @enum {string}
+         */
+        Gender: "male" | "female";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LikeState
+         * @description Response for a like/unlike action — the caller's own `ActionButton`
+         *     reflects both halves (the glyph from `liked`, the number from
+         *     `like_count`) off one response, not a second round trip.
+         */
+        LikeState: {
+            /** Like Count */
+            like_count: number;
+            /** Liked */
+            liked: boolean;
         };
         /**
          * LogoutRequest
@@ -2766,10 +2926,31 @@ export interface components {
             portal_url: string;
         };
         /**
+         * ProfileDetailsUpdate
+         * @description Me-page profile edit (Isaac's ask, session 2026-10-09): first/last
+         *     name and gender, independent of `ProfileUpdate`'s single `full_name`
+         *     field above and of avatar upload (its own ticket/confirm pair below).
+         *     `first_name`/`last_name` must be given together or not at all — the
+         *     service rejects one without the other (a name can't be half-updated);
+         *     `gender` can be set on its own. Saving a name goes through the same
+         *     content-moderation rules `full_name` always has
+         *     (`comments_service.update_profile_name`), since it still recomputes and
+         *     publicly displays as `full_name`.
+         */
+        ProfileDetailsUpdate: {
+            /** First Name */
+            first_name?: string | null;
+            gender?: components["schemas"]["Gender"] | null;
+            /** Last Name */
+            last_name?: string | null;
+        };
+        /**
          * ProfileUpdate
-         * @description Self-edit of the caller's profile. `full_name` only: role, email and
-         *     activation are never self-editable (extra keys are a 422). Normalisation
-         *     and the URL/blocklist checks live in the service.
+         * @description Self-edit of the caller's profile via `full_name` directly — unchanged,
+         *     still used by the comments flow's own name prompt (`comments_service.
+         *     update_full_name`). Role, email and activation are never self-editable
+         *     (extra keys are a 422). Normalisation and the URL/blocklist checks live in
+         *     the service.
          */
         ProfileUpdate: {
             /** Full Name */
@@ -2975,6 +3156,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             status: components["schemas"]["SermonStatus"];
             /** Thumbnail Url */
             thumbnail_url?: string | null;
@@ -3034,6 +3225,16 @@ export interface components {
              * @default false
              */
             is_prophets_catalog: boolean;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             /** Locked */
             locked: boolean;
             /** Media Refs */
@@ -3166,6 +3367,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             /** Locked */
             locked: boolean;
             /** Media Refs */
@@ -3603,6 +3814,8 @@ export interface components {
         UserPublic: {
             /** Activated At */
             activated_at?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Comments Terms Accepted At */
             comments_terms_accepted_at?: string | null;
             /**
@@ -3615,8 +3828,11 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** First Name */
+            first_name?: string | null;
             /** Full Name */
             full_name?: string | null;
+            gender?: components["schemas"]["Gender"] | null;
             /**
              * Id
              * Format: uuid
@@ -3624,6 +3840,8 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Last Name */
+            last_name?: string | null;
             role: components["schemas"]["UserRole"];
         };
         /** UserRegister */
@@ -5018,6 +5236,103 @@ export interface operations {
             };
         };
     };
+    avatar_confirm_api_v1_auth_me_avatar_confirm_post: {
+        parameters: {
+            query: {
+                avatar_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_me_profile_api_v1_auth_me_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileDetailsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
@@ -5299,6 +5614,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SermonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    like_sermon_api_v1_catalog_sermons__sermon_id__like_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlike_sermon_api_v1_catalog_sermons__sermon_id__like_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
                 };
             };
             /** @description Validation Error */
@@ -5985,6 +6362,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    like_series_api_v1_series__series_id__like_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlike_series_api_v1_series__series_id__like_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
                 };
             };
             /** @description Validation Error */

@@ -7,7 +7,7 @@ import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
 import type { CommentReportReason } from '../../../lib/query/hooks/useComments';
-import { Sheet } from './Sheet';
+import { Sheet } from '../../../components/Sheet';
 
 const DETAIL_MAX = 500;
 

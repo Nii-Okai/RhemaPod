@@ -219,17 +219,19 @@ async def search_series(
 
     rank = _text_rank(db, columns, query)
     order = rank if rank is not None else Series.title.asc()
+    viewer_id = user.id if user is not None else None
     rows = (await db.execute(
-        _series_public_stmt(include_unpublished).where(condition)
+        _series_public_stmt(include_unpublished, viewer_id).where(condition)
         .order_by(order).limit(limit)
     )).all()
 
     items = [
         SeriesPublic(
             **series_to_public(series), episode_count=episode_count,
-            category_name=category_name,
+            category_name=category_name, like_count=like_count,
+            liked_by_me=liked_by_me,
         )
-        for series, episode_count, category_name in rows
+        for series, episode_count, category_name, like_count, liked_by_me in rows
     ]
     return items, total
 

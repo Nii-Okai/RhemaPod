@@ -7,6 +7,7 @@ import { api } from '../../../lib/api/typedClient';
 import { ApiError } from '../../../lib/api/errors';
 import { CONTACT_EMAIL } from '../../../lib/content/commentsCompliance';
 import { useAuth } from '../../../lib/auth/AuthContext';
+import { useDownloads } from '../../../lib/downloads/useDownloads';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
 jest.mock('../../../lib/api/typedClient', () => ({
@@ -16,6 +17,13 @@ jest.mock('../../../lib/api/typedClient', () => ({
 jest.mock('../../../lib/auth/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
+
+// Explicit factory (not a bare automock) — an automock still has to `require()` the real
+// module first to learn its shape, which for `useDownloads` pulls in `downloadManager.ts`
+// -> `modules/rpa-crypto` -> the real native module resolution (unavailable under Jest,
+// same gap as every other native-module test in this app — see `downloads.test.tsx`'s
+// identical mock).
+jest.mock('../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
 
 // The real store is SQLite-backed and doesn't run under Jest — same in-memory
 // stand-in `lib/query/__tests__/persister.test.tsx` already established, reused
@@ -40,6 +48,17 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+// Explicit factory, not a bare automock, for the same reason every other native module in
+// this app's tests gets one — `ProfileAvatarPicker` imports this at module scope, and the
+// real module ships ESM the Jest transform doesn't handle (see this mock's own commit for
+// the exact failure). No test here exercises an actual pick, so these are never called.
+jest.mock('expo-image-picker', () => ({
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+}));
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -48,11 +67,16 @@ jest.mock('expo-router', () => ({
 const mockedGet = api.get as jest.Mock;
 const mockedPatch = api.patch as jest.Mock;
 const mockedUseAuth = useAuth as jest.Mock;
+const mockedUseDownloads = useDownloads as jest.Mock;
 
 let profile: {
   id: string;
   email: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  gender: string | null;
+  avatar_url: string | null;
   role: string;
   is_active: boolean;
   created_at: string;
@@ -84,6 +108,10 @@ beforeEach(() => {
     id: 'user-1',
     email: 'ada@example.com',
     full_name: 'Ada Nwosu',
+    first_name: 'Ada',
+    last_name: 'Nwosu',
+    gender: null,
+    avatar_url: null,
     role: 'member',
     is_active: true,
     created_at: '2024-01-01T00:00:00Z',
@@ -96,6 +124,17 @@ beforeEach(() => {
     register: jest.fn(),
     forgotPassword: jest.fn(),
     signOut: jest.fn(),
+  });
+  mockedUseDownloads.mockReturnValue({
+    downloads: [],
+    isLoading: false,
+    wifiOnly: true,
+    isSavingWifiOnly: false,
+    setWifiOnly: jest.fn(),
+    download: jest.fn(),
+    retry: jest.fn(),
+    remove: jest.fn(),
+    find: jest.fn(),
   });
 });
 
@@ -190,72 +229,117 @@ describe('MeScreen — layout', () => {
     });
     expect(queryByText("Couldn't save your playback settings. Try again.")).toBeNull();
   });
+
+  it('shows the Downloads section with the current Wi-Fi-only state, and toggling it calls setWifiOnly (session 2026-10-09 — folded in from the retired standalone downloads-settings page)', async () => {
+    const setWifiOnly = jest.fn();
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      wifiOnly: true,
+      isSavingWifiOnly: false,
+      setWifiOnly,
+      download: jest.fn(),
+      retry: jest.fn(),
+      remove: jest.fn(),
+      find: jest.fn(),
+    });
+    mockRoutes();
+    const { findByText, getByLabelText } = renderMeScreen();
+    await findByText('ada@example.com');
+
+    const toggle = getByLabelText('Wi-Fi only downloads');
+    expect(toggle.props.accessibilityState.checked).toBe(true);
+
+    fireEvent.press(toggle);
+    expect(setWifiOnly).toHaveBeenCalledWith(false);
+  });
 });
 
-describe('MeScreen — name edit', () => {
-  it('shows the current name and how it appears on comments', async () => {
+describe('MeScreen — profile edit', () => {
+  it('shows an Edit profile link and how the current name appears on comments', async () => {
     mockRoutes();
-    const { findByLabelText, getByText } = renderMeScreen();
-    expect(await findByLabelText('Name, Ada Nwosu')).toBeTruthy();
+    const { findByText, getByText } = renderMeScreen();
+    await findByText('ada@example.com');
+    expect(getByText('Edit profile')).toBeTruthy();
     expect(getByText("Shown as 'Ada N.' on comments.")).toBeTruthy();
   });
 
-  it('prompts to add a name when blank', async () => {
-    profile = { ...profile, full_name: null };
+  it('pre-fills first/last name from the profile, and saves both plus gender through PATCH /auth/me/profile', async () => {
     mockRoutes();
-    const { findByLabelText } = renderMeScreen();
-    expect(await findByLabelText('Name, Add your name')).toBeTruthy();
-  });
+    mockedPatch.mockImplementation(
+      async (_path: string, opts: { body: { first_name: string; last_name: string; gender: string | null } }) => {
+        profile = {
+          ...profile,
+          first_name: opts.body.first_name,
+          last_name: opts.body.last_name,
+          gender: opts.body.gender,
+          full_name: `${opts.body.first_name} ${opts.body.last_name}`,
+        };
+        return profile;
+      },
+    );
+    const { findByText, getByLabelText, getByText, findByLabelText } = renderMeScreen();
 
-  it('saves a new name through PATCH /auth/me, refreshes the profile, and confirms', async () => {
-    mockRoutes();
-    mockedPatch.mockImplementation(async (_path: string, opts: { body: { full_name: string } }) => {
-      profile = { ...profile, full_name: opts.body.full_name };
-      return profile;
-    });
-    const { findByLabelText, getByLabelText, getByText, findByText } = renderMeScreen();
+    fireEvent.press(await findByText('Edit profile'));
+    expect((await findByLabelText('First name')).props.value).toBe('Ada');
+    expect(getByLabelText('Last name').props.value).toBe('Nwosu');
 
-    fireEvent.press(await findByLabelText('Name, Ada Nwosu'));
-    const field = await findByLabelText('Full name');
     await act(async () => {
-      fireEvent.changeText(field, 'Ada Obi');
+      fireEvent.changeText(getByLabelText('First name'), 'Ada');
+      fireEvent.changeText(getByLabelText('Last name'), 'Obi');
+      fireEvent.press(getByLabelText('Female'));
     });
-    expect(getByText("You'll appear as Ada O.")).toBeTruthy();
     await act(async () => {
       fireEvent.press(getByText('Save'));
     });
 
-    expect(mockedPatch).toHaveBeenCalledWith('/auth/me', { body: { full_name: 'Ada Obi' } });
-    expect(await findByText('Name updated.')).toBeTruthy();
+    expect(mockedPatch).toHaveBeenCalledWith('/auth/me/profile', {
+      body: { first_name: 'Ada', last_name: 'Obi', gender: 'female' },
+    });
+    expect(await findByText('Profile updated.')).toBeTruthy();
     expect(await findByText("Shown as 'Ada O.' on comments.")).toBeTruthy();
-    expect(getByLabelText('Name, Ada Obi')).toBeTruthy();
   });
 
-  it('shows the server\'s generic rejection and keeps the old name', async () => {
+  it('disables Save until both first and last name are non-empty', async () => {
+    mockRoutes();
+    const { findByText, getByLabelText, getByText } = renderMeScreen();
+
+    fireEvent.press(await findByText('Edit profile'));
+    await act(async () => {
+      fireEvent.changeText(getByLabelText('Last name'), '');
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Save'));
+    });
+
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
+  it('shows the server\'s generic rejection and leaves the sheet open', async () => {
     mockRoutes();
     mockedPatch.mockRejectedValue(new ApiError(422, "This name can't be used"));
-    const { findByLabelText, getByText, findByText } = renderMeScreen();
+    const { findByText, getByLabelText, getByText, findByText: findByTextAgain } = renderMeScreen();
 
-    fireEvent.press(await findByLabelText('Name, Ada Nwosu'));
+    fireEvent.press(await findByText('Edit profile'));
     await act(async () => {
-      fireEvent.changeText(await findByLabelText('Full name'), 'Pastor Ada');
+      fireEvent.changeText(getByLabelText('First name'), 'Pastor');
     });
     await act(async () => {
       fireEvent.press(getByText('Save'));
     });
 
-    expect(await findByText("This name can't be used")).toBeTruthy();
+    expect(await findByTextAgain("This name can't be used")).toBeTruthy();
     expect(getByText("Shown as 'Ada N.' on comments.")).toBeTruthy();
   });
 
   it('explains the 5-per-hour limit on a 429', async () => {
     mockRoutes();
     mockedPatch.mockRejectedValue(new ApiError(429, 'Too many requests'));
-    const { findByLabelText, getByText, findByText } = renderMeScreen();
+    const { findByText, getByLabelText, getByText } = renderMeScreen();
 
-    fireEvent.press(await findByLabelText('Name, Ada Nwosu'));
+    fireEvent.press(await findByText('Edit profile'));
     await act(async () => {
-      fireEvent.changeText(await findByLabelText('Full name'), 'Ada Obi');
+      fireEvent.changeText(getByLabelText('First name'), 'Ada');
     });
     await act(async () => {
       fireEvent.press(getByText('Save'));

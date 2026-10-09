@@ -1,16 +1,23 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { PixelRatio } from 'react-native';
+import RNShare from 'react-native-share';
 import { QueryClientProvider } from '@tanstack/react-query';
 import SermonDetailScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
 jest.mock('../../../lib/api/typedClient', () => ({
-  api: { get: jest.fn() },
+  api: { get: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 jest.mock('@expo/vector-icons');
+
+// `react-native-share` resolves its real native module (`RNShare`) at import time —
+// unavailable under Jest, same gap as every other native module this app mocks. This
+// screen's own Share-button coverage only needs the call to go somewhere; the actual
+// composed-message/thumbnail-download logic is `lib/share/__tests__/shareContent.test.ts`'s.
+jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
 
 // Explicit factory (not a bare automock) — an automock still has to `require()` the real
 // module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
@@ -47,6 +54,8 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
+const mockedPut = api.put as jest.Mock;
+const mockedDelete = api.delete as jest.Mock;
 
 const baseDetail = {
   id: 'sermon-1',
@@ -64,10 +73,13 @@ const baseDetail = {
   tier: 'free',
   locked: false,
   tags: ['grief', 'hope'],
+  media_type: 'video',
   media_refs: [{ id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' }],
   published_at: '2026-09-04T12:00:00Z',
   status: 'published',
   created_at: '2026-09-01T00:00:00Z',
+  like_count: 0,
+  liked_by_me: false,
 };
 
 const emptySearchResults = {
@@ -174,6 +186,68 @@ describe('SermonDetailScreen — fresh', () => {
     await findByText('Anchored in the Storm');
     // No <Image> should have mounted — the fallback is a flat surface.sunken fill.
     expect(queryByRole('image')).toBeNull();
+  });
+});
+
+describe('SermonDetailScreen — Share', () => {
+  it('shares the sermon title, description, and deep link via react-native-share', async () => {
+    mockDetailAndProgress(baseDetail, null);
+    const openSpy = RNShare.open as jest.Mock;
+    const { findByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Share this sermon'));
+
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Anchored in the Storm',
+          message: expect.stringContaining('Anchored in the Storm'),
+        }),
+      ),
+    );
+    const call = openSpy.mock.calls[0][0];
+    expect(call.message).toContain('A word for the weary.');
+    expect(call.message).toContain('rhemapod://sermon/sermon-1');
+  });
+});
+
+describe('SermonDetailScreen — Like', () => {
+  it('shows the real like count and an unselected heart when the viewer has not liked it', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 3, liked_by_me: false });
+    const { findByText, getByLabelText } = renderDetail();
+
+    await findByText('Anchored in the Storm');
+    expect(getByLabelText('Like, 3 likes')).toBeTruthy();
+  });
+
+  it('likes via PUT and updates the count/heart from the response, no refetch', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 3, liked_by_me: false });
+    mockedPut.mockResolvedValue({ liked: true, like_count: 4 });
+    const { findByLabelText, getByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Like, 3 likes'));
+
+    await waitFor(() =>
+      expect(mockedPut).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}/like', {
+        params: { path: { sermon_id: 'sermon-1' } },
+      }),
+    );
+    await waitFor(() => expect(getByLabelText('Unlike, 4 likes')).toBeTruthy());
+  });
+
+  it('unlikes via DELETE when already liked', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 4, liked_by_me: true });
+    mockedDelete.mockResolvedValue({ liked: false, like_count: 3 });
+    const { findByLabelText, getByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Unlike, 4 likes'));
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}/like', {
+        params: { path: { sermon_id: 'sermon-1' } },
+      }),
+    );
+    await waitFor(() => expect(getByLabelText('Like, 3 likes')).toBeTruthy());
   });
 });
 
