@@ -35,6 +35,7 @@ from app.models.content_schemas import (
     AudioDownloadResponse,
     StreamResponse,
     StreamVariant,
+    VideoDownloadResponse,
     UploadTicket,
 )
 from app.models.models import (
@@ -662,6 +663,49 @@ async def get_audio_download(
         user_id=str(user.id) if user else None,
     )
     return AudioDownloadResponse(sermon_id=sermon.id, url=url, expires_in=expires_in)
+
+
+async def get_video_download(
+    db: AsyncSession,
+    sermon_id: uuid.UUID,
+    user: User | None,
+    has_subscription: bool,
+) -> VideoDownloadResponse:
+    """Short-lived signed URL for the VIDEO rendition, for offline download
+    (Isaac's ask, session 2026-10-08 — revisits L6's original "audio-only,
+    ever" call). Deliberately NOT given the same at-rest protection the
+    mobile client's audio download path gets (JS-level encryption via its
+    native `rpa-crypto` module, decrypted to a temp file only at playback
+    time): `expo-video` needs to read a file format it recognizes directly,
+    which a custom-encrypted blob isn't, so a video download the mobile
+    client writes from this URL sits on disk under the OS's own file
+    protection only. A disclosed tradeoff (Isaac's call), not an oversight.
+
+    Same authorization as get_stream/get_audio_download — reused via
+    _authorize_stream_access, not reimplemented. 409 when the sermon has no
+    video rendition, matching get_audio_download's own framing.
+    """
+    sermon, _is_staff = await _authorize_stream_access(
+        db, sermon_id, user, has_subscription
+    )
+
+    video_ref = next(
+        (ref for ref in sermon.media_refs if ref.type == MediaType.VIDEO), None
+    )
+    if video_ref is None:
+        raise ContentError(
+            "No video rendition available for this sermon", status_code=409
+        )
+
+    expires_in = settings.stream_url_expire_seconds
+    url = _resolve_variant_url(video_ref, expires_in=expires_in)
+
+    log.info(
+        "video_download_issued",
+        sermon_id=str(sermon.id),
+        user_id=str(user.id) if user else None,
+    )
+    return VideoDownloadResponse(sermon_id=sermon.id, url=url, expires_in=expires_in)
 
 
 # ── Media ref management ──────────────────────────────────────────────────────

@@ -30,6 +30,11 @@ from tests.comments_pg import (  # noqa: F401  (fixtures)
 DROP_REV = "d1e2f3a4b5c6"
 COMMENTS_REV = "e5f6a7b8c9d0"
 PRE_DROP_REV = "c7d8e9f0a1b2"
+# The merge revision joining this chain with the sibling (verses/prophets-catalog)
+# branch. Head for "upgrade head" purposes, but MG-01/04/06/07 below target
+# COMMENTS_REV/DROP_REV directly rather than relying on "head" or a relative `-1`
+# step — both become ambiguous once a merge revision has two parents.
+MERGE_REV = "0543034f79af"
 
 NEW_TABLES = {
     "sermon_comments",
@@ -151,7 +156,8 @@ def conn(migrated):
 def test_mg01_single_head_and_chain(alembic_runner, throwaway_db):
     cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == [COMMENTS_REV]
+    assert script.get_heads() == [MERGE_REV]
+    assert COMMENTS_REV in script.get_revision(MERGE_REV).down_revision
     assert script.get_revision(COMMENTS_REV).down_revision == DROP_REV
     assert script.get_revision(DROP_REV).down_revision == PRE_DROP_REV
 
@@ -169,7 +175,9 @@ def test_mg02_mg03_round_trip_fingerprint_identical(throwaway_db, alembic_runner
 def test_mg04_downgrade_removes_only_comment_objects(throwaway_db, alembic_runner):
     url = throwaway_db.sa_url
     _ok(alembic_runner(url, "upgrade", "head"))
-    _ok(alembic_runner(url, "downgrade", "-1"))
+    # Target DROP_REV explicitly rather than a relative `-1` step: from the merge
+    # revision's two parents, a relative step is an "Ambiguous walk" to alembic.
+    _ok(alembic_runner(url, "downgrade", DROP_REV))
     tables = _tables(throwaway_db.dsn)
     assert not (NEW_TABLES & tables)
     with psycopg.connect(throwaway_db.dsn) as c:
@@ -207,7 +215,8 @@ def test_mg06_round_trip_with_seeded_rows_discards_data(migrated, alembic_runner
                  (uuid.uuid4(), admin, author))
     _log(conn, cid, "self_delete")
     conn.execute("UPDATE users SET comments_terms_accepted_at = now() WHERE id=%s", (author,))
-    _ok(alembic_runner(migrated.sa_url, "downgrade", "-1"))
+    # Target DROP_REV explicitly — see MG-04's comment on why `-1` is ambiguous here.
+    _ok(alembic_runner(migrated.sa_url, "downgrade", DROP_REV))
     _ok(alembic_runner(migrated.sa_url, "upgrade", "head"))
     for t in NEW_TABLES:
         assert conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0
@@ -222,7 +231,10 @@ def test_mg07_upgrade_is_purely_additive(throwaway_db, alembic_runner):
     url = throwaway_db.sa_url
     _ok(alembic_runner(url, "upgrade", DROP_REV))
     before = _catalog_names(throwaway_db.dsn)
-    _ok(alembic_runner(url, "upgrade", "head"))
+    # Target COMMENTS_REV, not "head": "head" now also pulls in the sibling
+    # verses/prophets-catalog branch (merged at MERGE_REV), which this test has
+    # no opinion on — it's scoped to what the comments revision itself adds.
+    _ok(alembic_runner(url, "upgrade", COMMENTS_REV))
     after = _catalog_names(throwaway_db.dsn)
     assert before <= after, f"upgrade removed objects: {sorted(before - after)}"
     added_tables = {n[1] for n in after - before if n[0] == "col"}

@@ -235,6 +235,7 @@ def to_list_item(
     tier: ContentTier,
     has_subscription: bool,
     names: "RefNames | None" = None,
+    media_type: str | None = None,
 ) -> SermonListItem:
     names = names or RefNames()
     return SermonListItem(
@@ -253,6 +254,7 @@ def to_list_item(
         tier=tier,
         locked=(tier == ContentTier.PAID and not has_subscription),
         publish_at=sermon.publish_at,
+        media_type=media_type,
     )
 
 

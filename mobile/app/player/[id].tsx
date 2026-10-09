@@ -15,7 +15,6 @@ import { isPlayable } from '../sermon/_detail/isPlayable';
 import { DownloadButton } from '../sermon/_detail/DownloadButton';
 import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
-import { PlayerBottomBar } from './_player/TransportControls';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
 import { CommentsPanel } from './_comments/CommentsPanel';
 import { useControlsOverlay } from './_player/useControlsOverlay';
@@ -40,10 +39,11 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * W4.2 (this screen) and W4.5 (offline downloads) are real, the two entry points share one
  * button and one state source, per spec.
  *
- * Layout (design spec comments-and-player §1): header, video with its tap-to-toggle
- * overlay, the always-visible bottom bar (scrub, time, speed, sleep, fullscreen), the
- * download row, then the comments panel in the remaining space. The whole screen sits in a
- * `KeyboardAvoidingView` so the pinned composer rides above the keyboard.
+ * Layout (design spec comments-and-player §1, revised 2026-10-08 — no controls outside the
+ * player): header, video with every control (scrub, time, speed, sleep, fullscreen, plus
+ * play/pause/skip) folded into its own tap-to-toggle overlay, the download row, then the
+ * comments panel in the remaining space. The whole screen sits in a `KeyboardAvoidingView`
+ * so the pinned composer rides above the keyboard.
  */
 export default function PlayerScreen() {
   const { id: sermonId } = useLocalSearchParams<{ id: string }>();
@@ -291,22 +291,21 @@ function PlayerContent({
         isFullscreen={isFullscreen}
         onFullscreenChange={setIsFullscreen}
         onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
-        onReplay={() => player.replay()}
+        onReplay={() => {
+          // `player.replay()` only seeks back to 0 — it does not resume playback (see its
+          // own doc comment: "Seeks the playback to the beginning"). Without the explicit
+          // `play()`, the sermon just sits paused at frame 0 and Replay looks like it does
+          // nothing.
+          player.replay();
+          player.play();
+        }}
         onSeekBy={(seconds) => player.seekBy(seconds)}
-      />
-      <PlayerBottomBar
         currentTimeSeconds={currentTime}
         durationSeconds={duration}
         playbackSpeed={speed}
         sleepRemainingSeconds={sleepTimer.remainingSeconds}
-        isFullscreen={isFullscreen}
         onSeekTo={(seconds) => {
           player.currentTime = seconds;
-          overlay.touch();
-        }}
-        onSeekBy={(seconds) => {
-          player.seekBy(seconds);
-          overlay.touch();
         }}
         onScrubStart={() => setIsScrubbing(true)}
         onScrubEnd={() => setIsScrubbing(false)}

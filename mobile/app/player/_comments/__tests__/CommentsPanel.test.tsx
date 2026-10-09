@@ -1,4 +1,5 @@
 import React from 'react';
+import { Keyboard } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { CommentsPanel } from '../CommentsPanel';
@@ -13,10 +14,10 @@ jest.mock('../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
 jest.mock('../../../../lib/hooks/useIsOnline', () => ({ useIsOnline: jest.fn(() => true) }));
-// These flow tests exercise the name-then-terms-then-post gating, not the I2-pending
-// release gate (covered on its own in TermsSheet.test.tsx against the real, still-pending
-// COMMENTS_TERMS_TEXT) — stand in a shipped-looking string so "Agree and continue" only
-// gates on the checkbox here, matching production once I2 lands.
+// These flow tests exercise the name-then-terms-then-post gating, not the I2 release gate
+// itself (covered on its own in TermsSheet.test.tsx against the real, now-shipped
+// COMMENTS_TERMS_TEXT) — stand in a short, single-line string (no title/body split) so
+// assertions can match on it directly regardless of how TermsSheet renders the real text.
 jest.mock('../../../../lib/content/commentsCompliance', () => {
   const actual = jest.requireActual('../../../../lib/content/commentsCompliance');
   return { ...actual, COMMENTS_TERMS_TEXT: 'Be respectful. No harassment, hate or sexual content.' };
@@ -255,6 +256,40 @@ describe('CommentsPanel — posting', () => {
     expect(mockedPost).not.toHaveBeenCalled();
   });
 
+  it('clears the draft and dismisses the keyboard once the post actually lands', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    mockedPost.mockResolvedValue(row('new', { is_mine: true, author_display_name: 'Ada N.', body: 'hello' }));
+    const utils = renderPanel();
+    await utils.findByText('Body of c1');
+    await type(utils, 'hello');
+
+    await act(async () => {
+      fireEvent.press(utils.getByLabelText('Post comment'));
+    });
+
+    expect(utils.getByLabelText('Write a comment').props.value).toBe('');
+    expect(dismiss).toHaveBeenCalled();
+    dismiss.mockRestore();
+  });
+
+  it('does not dismiss the keyboard when the draft was not cleared (text typed mid-flight)', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    let resolvePost: (value: Row) => void = () => {};
+    mockedPost.mockReturnValue(new Promise<Row>((resolve) => (resolvePost = resolve)));
+    const utils = renderPanel();
+    await utils.findByText('Body of c1');
+    await type(utils, 'hello');
+    await act(async () => {
+      fireEvent.press(utils.getByLabelText('Post comment'));
+    });
+    await type(utils, 'hello world');
+    dismiss.mockClear();
+
+    await act(async () => resolvePost(row('new', { is_mine: true, author_display_name: 'Ada N.', body: 'hello' })));
+    expect(dismiss).not.toHaveBeenCalled();
+    dismiss.mockRestore();
+  });
+
   it('guards against a double-tap sending twice before isPosting re-renders', async () => {
     let resolvePost: (value: Row) => void = () => {};
     mockedPost.mockReturnValue(new Promise<Row>((resolve) => (resolvePost = resolve)));
@@ -348,14 +383,14 @@ describe('CommentsPanel — name and terms gating', () => {
     expect(mockedPatch).toHaveBeenCalledWith('/auth/me', { body: { full_name: 'Ada Nwosu' } });
 
     // Terms step: agree is gated on the checkbox.
-    await utils.findByText('Comment guidelines');
+    await utils.findByText('Be respectful. No harassment, hate or sexual content.');
     expect(utils.getByRole('button', { name: 'Agree and continue' }).props.accessibilityState.disabled).toBe(true);
     fireEvent.press(utils.getByLabelText('I agree to the comment guidelines'));
     await act(async () => {
       fireEvent.press(utils.getByRole('button', { name: 'Agree and continue' }));
     });
     expect(mockedPost).toHaveBeenCalledWith('/me/comments-terms');
-    await waitFor(() => expect(utils.queryByText('Comment guidelines')).toBeNull());
+    await waitFor(() => expect(utils.queryByText('Be respectful. No harassment, hate or sexual content.')).toBeNull());
 
     // Nothing was posted by the prompts themselves; the draft is intact and now posts.
     expect(mockedPost).not.toHaveBeenCalledWith('/sermons/{sermon_id}/comments', expect.anything());
@@ -375,13 +410,13 @@ describe('CommentsPanel — name and terms gating', () => {
     await act(async () => {
       fireEvent.press(utils.getByLabelText('Post comment'));
     });
-    await utils.findByText('Comment guidelines');
+    await utils.findByText('Be respectful. No harassment, hate or sexual content.');
 
     await act(async () => {
       fireEvent.press(utils.getByText('Not now'));
     });
 
-    expect(utils.queryByText('Comment guidelines')).toBeNull();
+    expect(utils.queryByText('Be respectful. No harassment, hate or sexual content.')).toBeNull();
     expect(mockedPost).not.toHaveBeenCalled();
     expect(mockedPost).not.toHaveBeenCalledWith('/me/comments-terms');
     expect(mockedPost).not.toHaveBeenCalledWith('/sermons/{sermon_id}/comments', expect.anything());
@@ -405,7 +440,7 @@ describe('CommentsPanel — name and terms gating', () => {
       fireEvent.press(utils.getByText('Save and continue'));
     });
     expect(await utils.findByText("This name can't be used")).toBeTruthy();
-    expect(utils.queryByText('Comment guidelines')).toBeNull();
+    expect(utils.queryByText('Be respectful. No harassment, hate or sexual content.')).toBeNull();
   });
 
   it('offers no nickname hint in the name prompt (real name only)', async () => {
@@ -433,7 +468,7 @@ describe('CommentsPanel — name and terms gating', () => {
     await act(async () => {
       fireEvent.press(utils.getByLabelText('Post comment'));
     });
-    expect(await utils.findByText('Comment guidelines')).toBeTruthy();
+    expect(await utils.findByText('Be respectful. No harassment, hate or sexual content.')).toBeTruthy();
     expect(utils.getByLabelText('Write a comment').props.value).toBe('hello');
   });
 });

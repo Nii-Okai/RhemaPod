@@ -122,10 +122,10 @@ services:
         condition: service_healthy
 
   # One-shot comment-snapshot purge (sermon comments). Started ONLY via its
-  # profile, never by `up`, and never by `--profile sweeps`:
+  # own `ops` profile, never by `up` and never by any other service's profile:
   #     docker compose --profile ops run --rm comment-snapshot-purge
   # Nulls moderation-log body snapshots older than 90 days. Schedule it daily
-  # on a real scheduler in deployed environments, like the sweeps above.
+  # on a real scheduler in deployed environments, same as the periodic jobs above.
   comment-snapshot-purge:
     build:
       context: .
@@ -139,8 +139,8 @@ services:
       postgres:
         condition: service_healthy
 
-  # One-shot archive sweep (R2 storage). Started ONLY via its profile, never
-  # by `up`, and never by `--profile sweeps`:
+  # One-shot archive sweep (R2 storage). Started ONLY via its own `ops`
+  # profile, never by `up` and never by any other service's profile:
   #     docker compose --profile ops run --rm archive-sweep
   # app/scripts/sweep_archives.py is added in R1.9; this stub exists only so
   # `docker compose config` resolves the override's archive-sweep service.

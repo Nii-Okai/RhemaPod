@@ -246,6 +246,14 @@ class SermonListItem(BaseModel):
     # already cleared sermon_visibility_clause, so a returned publish_at is
     # always already in the past (or unset) — nothing premature leaks.
     publish_at: datetime | None = None
+    # Which rendition this sermon actually has (a sermon carries exactly one —
+    # video or audio, never both — mobile download UI's own assumption). None
+    # on every list endpoint except GET /series/{id}/episodes, the only caller
+    # that passes `to_list_item` a value for it today (offline downloads need
+    # to know the type per episode without a second request) — deliberately
+    # not resolved for every other list endpoint's rows (that's an eager-load
+    # per call site this field doesn't need yet).
+    media_type: Literal["audio", "video"] | None = None
 
 
 class SermonAdminListItem(SermonListItem):
@@ -470,6 +478,21 @@ class AudioDownloadResponse(BaseModel):
     audio rendition only, for offline download. Deliberately minimal: no
     `type`/`variants` list like StreamResponse, since this endpoint can only
     ever answer with audio (L6, locked — never a video path)."""
+
+    sermon_id: uuid.UUID
+    url: str
+    expires_in: int
+
+
+class VideoDownloadResponse(BaseModel):
+    """GET .../download/video — a short-lived signed URL for the video
+    rendition only, for offline download (L6's "audio-only, ever" revisited:
+    Isaac's ask, session 2026-10-08 — video downloads now ship, with weaker
+    at-rest protection than audio's own JS-level encryption gets; see
+    `media_service.get_video_download`'s own docstring). Same minimal shape
+    as `AudioDownloadResponse` deliberately — each sermon carries exactly one
+    rendition, never both, so no caller ever needs the two responses to
+    disagree in shape."""
 
     sermon_id: uuid.UUID
     url: str

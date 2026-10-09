@@ -18,6 +18,7 @@ from app.models.content_schemas import (
     UploadJobPublic,
     UploadRequest,
     UploadTicket,
+    VideoDownloadResponse,
 )
 from app.models.models import MediaType, User, UserRole
 from app.services import auth_service, content_service, media_service
@@ -206,6 +207,24 @@ async def download_audio(
     has_sub = await content_service._has_subscription(db, user)
     try:
         return await media_service.get_audio_download(db, sermon_id, user, has_sub)
+    except ContentError as exc:
+        raise _err(exc)
+
+
+@router.get(
+    "/sermons/{sermon_id}/download/video", response_model=VideoDownloadResponse
+)
+async def download_video(
+    sermon_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> VideoDownloadResponse:
+    """Short-lived signed URL for the video rendition only — offline video
+    downloads (Isaac's ask, session 2026-10-08, revisiting L6). Same
+    authorization as get_stream; 409 if the sermon has no video rendition.
+    See `media_service.get_video_download` for the at-rest protection
+    tradeoff this path accepts versus the audio download's encryption."""
+    has_sub = await content_service._has_subscription(db, user)
+    try:
+        return await media_service.get_video_download(db, sermon_id, user, has_sub)
     except ContentError as exc:
         raise _err(exc)
 

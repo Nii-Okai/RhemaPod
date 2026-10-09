@@ -21,7 +21,15 @@ export const fontFamily = {
 } as const;
 
 export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact';
-export type UiVariant = 'bodyLarge' | 'body' | 'label' | 'button' | 'badge' | 'avatarInitials' | 'actionLabel';
+export type UiVariant =
+  | 'bodyLarge'
+  | 'body'
+  | 'bodyBold'
+  | 'label'
+  | 'button'
+  | 'badge'
+  | 'avatarInitials'
+  | 'actionLabel';
 export type MonoVariant = 'meta' | 'tight';
 
 interface TypeStyle {
@@ -47,6 +55,10 @@ export const displayScale: Record<DisplayVariant, TypeStyle> = {
 export const uiScale: Record<UiVariant, TypeStyle> = {
   bodyLarge: { fontFamily: fontFamily.ui, fontSize: 16, lineHeightRatio: 1.4 },
   body: { fontFamily: fontFamily.ui, fontSize: 14, lineHeightRatio: 1.4 },
+  /** Same metrics as `body`, bold weight — a bolded run inside otherwise-body text (e.g.
+      a document's own title line rendered ahead of its body, TermsSheet's comment
+      guidelines). Not a heading — use a `display.*` variant for that. */
+  bodyBold: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1.4 },
   label: { fontFamily: fontFamily.uiSemiBold, fontSize: 13, lineHeightRatio: 1.2 },
   button: { fontFamily: fontFamily.uiSemiBold, fontSize: 14, lineHeightRatio: 1.2 },
   badge: { fontFamily: fontFamily.uiSemiBold, fontSize: 12, lineHeightRatio: 1.2 },

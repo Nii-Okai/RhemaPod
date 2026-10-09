@@ -207,6 +207,7 @@ async def series_episodes(
         raise HTTPException(status_code=404, detail="Series not found")
 
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from app.models.models import Sermon
 
@@ -214,6 +215,10 @@ async def series_episodes(
         select(Sermon)
         .where(Sermon.series_id == series_id, *sermon_visibility_clause())
         .order_by(Sermon.episode_number.asc().nullslast())
+        # Eager-loaded for `media_type` below (offline downloads need to know a
+        # episode's rendition without a second request per row) — scoped to this
+        # one query, not a change to `Sermon`'s default loading elsewhere.
+        .options(selectinload(Sermon.media_refs))
     )
     rows = (await db.execute(stmt)).scalars().all()
     # Resolve entitlement once for the caller — not per row (that would be a
@@ -229,7 +234,13 @@ async def series_episodes(
     # series).
     names = await load_ref_names(db, rows)
     items = [
-        to_list_item(s, effective_tier(s, series), has_sub, names)
+        to_list_item(
+            s,
+            effective_tier(s, series),
+            has_sub,
+            names,
+            media_type=next((ref.type.value for ref in s.media_refs), None),
+        )
         for s in rows
     ]
     return renumber_for_display(items)

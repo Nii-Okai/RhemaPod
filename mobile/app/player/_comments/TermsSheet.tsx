@@ -8,6 +8,12 @@ import { COMMENTS_TERMS_TEXT, isComplianceContentPending } from '../../../lib/co
 import { useAcceptCommentsTerms } from '../../../lib/query/hooks/useProfile';
 import { Sheet } from './Sheet';
 
+// `COMMENTS_TERMS_TEXT` opens with its own title line ("RhemaPod Comment Guidelines")
+// followed by a blank line, then the body — split once so the title can render bold
+// (the sheet's own "Comment guidelines" label header was removed as redundant with it).
+const [TERMS_TITLE, ...TERMS_BODY_LINES] = COMMENTS_TERMS_TEXT.split('\n\n');
+const TERMS_BODY = TERMS_BODY_LINES.join('\n\n');
+
 export interface TermsSheetProps {
   visible: boolean;
   /** Read-only mode (Me > Comment guidelines): no checkbox, no accept call. */
@@ -50,15 +56,13 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <AppText variant="ui.label" tone="tertiary" accessibilityRole="header" style={styles.heading}>
-        Comment guidelines
-      </AppText>
-      <AppText variant="ui.body" tone="secondary">
-        Be respectful. There is no tolerance for harassment, hate or sexual content. Reports are reviewed and users who
-        break these rules lose access.
-      </AppText>
       <View style={styles.terms}>
-        <AppText variant="ui.body">{COMMENTS_TERMS_TEXT}</AppText>
+        <AppText variant="ui.bodyBold" accessibilityRole="header">
+          {TERMS_TITLE}
+        </AppText>
+        <AppText variant="ui.body" tone="secondary">
+          {TERMS_BODY}
+        </AppText>
       </View>
       {readOnly ? (
         <View style={styles.cancel}>
@@ -103,14 +107,12 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
 }
 
 const styles = StyleSheet.create({
-  heading: {
-    textTransform: 'uppercase',
-  },
   terms: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.default,
     paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   checkRow: {
     flexDirection: 'row',

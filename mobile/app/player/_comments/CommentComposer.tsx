@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, Avatar } from '../../../components';
 import { colors } from '../../../theme/colors';
@@ -9,6 +9,8 @@ import { fontFamily } from '../../../theme/typography';
 
 export const COMMENT_MAX_LENGTH = 1000;
 const COUNTER_FROM = 900;
+const INPUT_MIN_HEIGHT = 38;
+const INPUT_MAX_HEIGHT = 96;
 
 export interface CommentComposerProps {
   /** The viewer's own name, for their avatar. */
@@ -18,6 +20,10 @@ export interface CommentComposerProps {
   error: string | null;
   /** Optional strip above the field (the one-time "appear as" notice). */
   notice?: React.ReactNode;
+  /** Device safe-area bottom inset (home indicator etc.) — added to the composer's own
+   * bottom padding so it doesn't sit flush against the edge when the keyboard is closed.
+   * `KeyboardAvoidingView` already covers the keyboard-open case. */
+  bottomInset?: number;
   /**
    * Called on the first tap of the field and on send. Returns true when a prompt (name or
    * terms) was opened instead — the composer then does not proceed.
@@ -34,8 +40,23 @@ export interface CommentComposerProps {
  * 422 text is shown as written. Name/terms gating is the caller's (`onGate`), which keeps
  * the draft across both prompts.
  */
-export function CommentComposer({ viewerName, isPosting, error, notice, onGate, onSubmit }: CommentComposerProps) {
+export function CommentComposer({
+  viewerName,
+  isPosting,
+  error,
+  notice,
+  bottomInset = 0,
+  onGate,
+  onSubmit,
+}: CommentComposerProps) {
   const [draft, setDraft] = useState('');
+  // CSS `maxHeight` on a multiline `TextInput` is unreliable as a growth cap — both
+  // platforms can report a native content size past it, which then stretches this pill
+  // (its height tracks the input) while the avatar/send stay pinned to the bottom edge via
+  // `alignItems: 'flex-end'`, leaving a tall gap under the text. Measuring and clamping the
+  // height explicitly (RN's own documented auto-expanding-input pattern) is the reliable
+  // fix, not a bigger `maxHeight`.
+  const [inputHeight, setInputHeight] = useState(INPUT_MIN_HEIGHT);
   const canSend = draft.trim().length > 0 && !isPosting;
   // `isPosting` comes from the caller's mutation state and only updates on the next
   // render, which can lag a rapid double-tap by a frame. This ref is set synchronously so
@@ -50,8 +71,16 @@ export function CommentComposer({ viewerName, isPosting, error, notice, onGate, 
     try {
       if (await onSubmit(body)) {
         // Functional update: only clear the draft if it still matches what was sent. If
-        // the user kept typing while the POST was in flight, their newer text survives.
-        setDraft((current) => (current === body ? '' : current));
+        // the user kept typing while the POST was in flight, their newer text survives —
+        // and in that case the keyboard stays up too, since there's still a draft to finish.
+        let cleared = false;
+        setDraft((current) => {
+          if (current !== body) return current;
+          cleared = true;
+          setInputHeight(INPUT_MIN_HEIGHT);
+          return '';
+        });
+        if (cleared) Keyboard.dismiss();
       }
     } finally {
       sendingRef.current = false;
@@ -59,7 +88,7 @@ export function CommentComposer({ viewerName, isPosting, error, notice, onGate, 
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingBottom: spacing.sm + bottomInset }]}>
       {notice}
       {error ? (
         <AppText variant="ui.badge" style={styles.error} accessibilityLiveRegion="polite">
@@ -84,7 +113,11 @@ export function CommentComposer({ viewerName, isPosting, error, notice, onGate, 
           maxLength={COMMENT_MAX_LENGTH}
           autoCapitalize="sentences"
           dataDetectorTypes="none"
-          style={styles.input}
+          onContentSizeChange={(event) => {
+            const next = event.nativeEvent.contentSize.height;
+            setInputHeight(Math.min(INPUT_MAX_HEIGHT, Math.max(INPUT_MIN_HEIGHT, next)));
+          }}
+          style={[styles.input, { height: inputHeight }]}
         />
         <Pressable
           accessibilityRole="button"
@@ -137,8 +170,9 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    maxHeight: 96,
-    minHeight: 38,
+    // Height is set explicitly per render (`inputHeight` state, clamped between
+    // INPUT_MIN_HEIGHT/INPUT_MAX_HEIGHT) — see the component's own note on why CSS
+    // `minHeight`/`maxHeight` alone aren't a reliable growth cap here.
     paddingVertical: spacing.sm,
     color: colors.text.primary,
     fontFamily: fontFamily.ui,

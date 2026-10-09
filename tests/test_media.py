@@ -530,6 +530,90 @@ async def test_audio_download_uses_stream_url_when_ingested(client, engine):
     assert "cloudflarestream.test" in r.json()["url"]
 
 
+async def test_video_download_free_sermon(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)  # VIDEO only
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sermon_id"] == sid
+    # Unlike audio, a VIDEO upload auto-ingests into Stream as part of the normal
+    # upload/confirm flow (`_start_stream_ingest`), so `_resolve_variant_url` routes
+    # through the Stream stub, not the plain S3 presigned URL — proven generically by
+    # `test_audio_download_uses_stream_url_when_ingested` for the other direction.
+    assert "cloudflarestream.test" in body["url"]
+    from app.core.config import get_settings
+
+    assert body["expires_in"] == get_settings().stream_url_expire_seconds
+
+
+async def test_video_download_paid_sermon_blocked_for_viewer(client, engine):
+    """Authz parity with get_stream/get_audio_download: same 403 upgrade_required gate."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Paid", "tier": "paid"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 403
+    assert r.json()["detail"]["upgrade_required"] is True
+
+
+async def test_video_download_unpublished_hidden_from_viewer(client, engine):
+    """Authz parity with get_stream: same 404 non-disclosure for unpublished."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 404
+
+
+async def test_video_download_editor_cannot_preview_another_editors_draft(client, engine):
+    """Authz parity with get_stream: same BOLA ownership guard."""
+    a = await make_user(client, engine, "a@example.com", "editor")
+    b = await make_user(client, engine, "b@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "A"}, headers=a)).json()["id"]
+    await upload_and_process(client, a, sid)
+
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=b)
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=a)
+    ).status_code == 200
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=mgr)
+    ).status_code == 200
+
+
+async def test_video_download_returns_409_when_no_video_rendition(client, engine):
+    """Audio-only sermon: 409, never a 404 (sermon itself is visible/authorized)
+    and never an audio URL from the video endpoint."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 409
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Media management: list and delete renditions
 # ═══════════════════════════════════════════════════════════════════════════════

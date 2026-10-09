@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, LinkButton, SkeletonBlock } from '../../../components';
 import { colors } from '../../../theme/colors';
@@ -54,6 +55,7 @@ export interface CommentsPanelProps {
  * applies. The draft lives in the composer, so it survives both prompts.
  */
 export function CommentsPanel({ sermonId }: CommentsPanelProps) {
+  const insets = useSafeAreaInsets();
   const online = useIsOnline();
   const profile = useCurrentUser();
   const comments = useSermonComments(sermonId, { enabled: online });
@@ -286,6 +288,15 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
 
   return (
     <View style={styles.panel}>
+      {/* No `TouchableWithoutFeedback` wrapper here on purpose — it was tried (session
+          2026-10-08) to dismiss the keyboard on a background tap, but it installs its own
+          touch responder on this whole area, which wins the responder negotiation against
+          the FlatList below *before* the list's own scroll/pull-to-refresh gesture gets a
+          chance to claim the touch — it broke both. The FlatList's own
+          `keyboardShouldPersistTaps="handled"` + `keyboardDismissMode="on-drag"` already
+          dismiss the keyboard on a background tap or a scroll drag inside the list, which
+          covers the real case (tapping away from an open keyboard while the thread is
+          showing) without touching its gesture handling. */}
       <View style={styles.header}>
         <AppText variant="ui.label" accessibilityRole="header">
           {`${total} ${total === 1 ? 'comment' : 'comments'}`}
@@ -317,6 +328,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
         viewerName={fullName || user?.email || ''}
         isPosting={post.isPending}
         error={postError}
+        bottomInset={insets.bottom}
         onGate={gate}
         onSubmit={submitComment}
         notice={

@@ -3,15 +3,17 @@ import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-
 import { VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 import { colors } from '../../../theme/colors';
-import { PlaybackOverlayControls } from './TransportControls';
+import { spacing } from '../../../theme/spacing';
+import { PlaybackOverlayControls, PlayerBottomBar } from './TransportControls';
 import type { ControlsOverlay } from './useControlsOverlay';
+import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
 
 const FADE_IN_MS = 150;
 const FADE_OUT_MS = 200;
 
 export interface VideoSurfaceProps {
   player: VideoPlayer;
-  /** Ref to the underlying `VideoView`, so the bottom bar can request native fullscreen. */
+  /** Ref to the underlying `VideoView`, so the controls can request native fullscreen. */
   videoRef: React.RefObject<VideoView>;
   /** Derived from the player's own `status` (`'loading'`). */
   isBuffering: boolean;
@@ -23,15 +25,32 @@ export interface VideoSurfaceProps {
   onTogglePlay: () => void;
   onReplay: () => void;
   onSeekBy: (seconds: number) => void;
+  /** The rest of what used to be the separate below-player bar (design spec revision,
+   * Isaac's ask session 2026-10-08: no buttons outside the player — scrub, time, speed,
+   * sleep timer and fullscreen all move onto the video surface itself, in the same
+   * tap-to-toggle, auto-hiding overlay as play/pause/skip). */
+  currentTimeSeconds: number;
+  durationSeconds: number | null;
+  playbackSpeed: PlaybackSpeed;
+  sleepRemainingSeconds: number | null;
+  onSeekTo: (seconds: number) => void;
+  onScrubStart: () => void;
+  onScrubEnd: () => void;
+  onCycleSpeed: () => void;
+  onOpenSleepTimer: () => void;
+  onToggleFullscreen: () => void;
 }
 
 /**
- * The video area (design spec comments-and-player §1.2): a 16:9 surface with a tap-to-toggle
- * overlay — a dimmer plus rewind / play-pause / forward — that fades in and out (instantly
- * under Reduce Motion) and auto-hides per `useControlsOverlay`. Inline, native controls are
- * off: this app draws its own. In native fullscreen they switch on and the OS controls take
- * over (so the overlay is not drawn there); exiting returns to the inline layout with the
- * playback position intact, since it is the same player.
+ * The video area (design spec comments-and-player §1.2, revised 2026-10-08): a 16:9 surface
+ * with a single tap-to-toggle overlay holding every control — a dimmer, rewind / play-pause /
+ * forward centred over the video, and the scrub bar / time / speed / sleep timer / fullscreen
+ * row anchored to its bottom edge. Nothing plays-related renders outside this surface. The
+ * overlay fades in and out (instantly under Reduce Motion) and auto-hides per
+ * `useControlsOverlay`. Inline, native controls are off: this app draws its own. In native
+ * fullscreen they switch on and the OS controls take over (so the overlay is not drawn
+ * there); exiting returns to the inline layout with the playback position intact, since it is
+ * the same player.
  */
 export function VideoSurface({
   player,
@@ -45,6 +64,16 @@ export function VideoSurface({
   onTogglePlay,
   onReplay,
   onSeekBy,
+  currentTimeSeconds,
+  durationSeconds,
+  playbackSpeed,
+  sleepRemainingSeconds,
+  onSeekTo,
+  onScrubStart,
+  onScrubEnd,
+  onCycleSpeed,
+  onOpenSleepTimer,
+  onToggleFullscreen,
 }: VideoSurfaceProps) {
   const { visible, reduceMotion } = overlay;
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -104,17 +133,41 @@ export function VideoSurface({
           {/* The dimmer is its own layer (`surface.app` + `opacity`, no rgba literal) so the
               controls above it render at full opacity and hold contrast over bright frames. */}
           <View style={styles.dimmer} pointerEvents="none" />
-          <PlaybackOverlayControls
-            isPlaying={isPlaying}
-            isBuffering={isBuffering}
-            isEnded={isEnded}
-            onTogglePlay={act(onTogglePlay)}
-            onReplay={act(onReplay)}
-            onSeekBy={(seconds) => {
-              overlay.touch();
-              onSeekBy(seconds);
-            }}
-          />
+          <View style={styles.centerRow}>
+            <PlaybackOverlayControls
+              isPlaying={isPlaying}
+              isBuffering={isBuffering}
+              isEnded={isEnded}
+              onTogglePlay={act(onTogglePlay)}
+              onReplay={act(onReplay)}
+              onSeekBy={(seconds) => {
+                overlay.touch();
+                onSeekBy(seconds);
+              }}
+            />
+          </View>
+          <View style={styles.bottomRow}>
+            <PlayerBottomBar
+              currentTimeSeconds={currentTimeSeconds}
+              durationSeconds={durationSeconds}
+              playbackSpeed={playbackSpeed}
+              sleepRemainingSeconds={sleepRemainingSeconds}
+              isFullscreen={isFullscreen}
+              onSeekTo={(seconds) => {
+                overlay.touch();
+                onSeekTo(seconds);
+              }}
+              onSeekBy={(seconds) => {
+                overlay.touch();
+                onSeekBy(seconds);
+              }}
+              onScrubStart={onScrubStart}
+              onScrubEnd={onScrubEnd}
+              onCycleSpeed={act(onCycleSpeed)}
+              onOpenSleepTimer={act(onOpenSleepTimer)}
+              onToggleFullscreen={act(onToggleFullscreen)}
+            />
+          </View>
         </Animated.View>
       ) : null}
     </View>
@@ -133,12 +186,20 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   dimmer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.surface.app,
     opacity: 0.45,
+  },
+  centerRow: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
 });

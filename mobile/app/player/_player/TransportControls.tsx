@@ -114,9 +114,10 @@ export interface PlayerBottomBarProps {
 }
 
 /**
- * The always-visible bar under the video (design spec §1.3): scrubbable seek, elapsed /
- * total, speed pill, sleep moon, native-fullscreen toggle. It sits below the video, not over
- * it, so the seek bar stays reachable when the overlay is hidden. Row 2 wraps rather than
+ * The bottom row of the video's own controls overlay (design spec §1.3, revised
+ * 2026-10-08): scrubbable seek, elapsed / total, speed pill, sleep moon, native-fullscreen
+ * toggle. Rendered by `VideoSurface` inside its tap-to-toggle overlay, anchored to the
+ * video's bottom edge — there is no separate below-player bar. Row 2 wraps rather than
  * overflowing at large Dynamic Type.
  */
 export function PlayerBottomBar({
@@ -222,9 +223,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   bar: {
-    backgroundColor: colors.surface.app,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    gap: spacing.xs,
   },
   row: {
     flexDirection: 'row',

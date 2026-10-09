@@ -1,9 +1,13 @@
 import { COMMENTS_TERMS_TEXT, CONTACT_EMAIL, isComplianceContentPending } from '../commentsCompliance';
 
 describe('commentsCompliance', () => {
-  it('flags the unsupplied I1/I2 inputs as pending so no surface can ship them silently', () => {
+  it('still flags the unsupplied I1 contact email as pending', () => {
     expect(isComplianceContentPending(CONTACT_EMAIL)).toBe(true);
-    expect(isComplianceContentPending(COMMENTS_TERMS_TEXT)).toBe(true);
+  });
+
+  it('no longer flags I2 — the real comment guidelines text shipped 2026-10-08', () => {
+    expect(isComplianceContentPending(COMMENTS_TERMS_TEXT)).toBe(false);
+    expect(COMMENTS_TERMS_TEXT).toContain('RhemaPod Comment Guidelines');
   });
 
   it('does not flag real content', () => {

@@ -407,6 +407,32 @@ describe('PlayerScreen — overlay', () => {
   });
 });
 
+describe('PlayerScreen — replay', () => {
+  it('resumes playback, not just seeks to 0 — player.replay() alone does not play', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      player.__simulatePlayToEnd();
+    });
+    expect(getByLabelText('Replay')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Replay'));
+    });
+    expect(player.replay).toHaveBeenCalledTimes(1);
+    // The real bug: `player.replay()` only seeks to 0 (its own doc comment says so) — without
+    // this second call, pressing Replay silently leaves the sermon paused at frame 0.
+    expect(player.play).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('PlayerScreen — fullscreen', () => {
   it('asks the video view for native fullscreen', async () => {
     mockReads();

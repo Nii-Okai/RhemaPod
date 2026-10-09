@@ -100,18 +100,8 @@ export const queryKeys = {
     // `/me/*` reads, but the same "the caller's own data" scoping, so it's folded in here
     // rather than opening a new top-level domain for one endpoint.
     profile: () => [...queryKeys.me.all, 'profile'] as const,
-  },
-  /**
-   * W4.6 — the two distinct note reads this app has: every note the caller owns
-   * (Profile & Settings' Library "Notes" row, and the tablet two-pane "Your notes"
-   * panel) vs. one sermon's own notes (the eventual W4.2 Player drawer). Mirrors the
-   * `sermons` shape's `all`-prefix convention, adapted since neither read takes the
-   * same shape of params as a generic paginated list.
-   */
-  notes: {
-    all: ['notes'] as const,
-    mine: () => [...queryKeys.notes.all, 'mine'] as const,
-    forSermon: (sermonId: string) => [...queryKeys.notes.all, 'sermon', sermonId] as const,
+    // `GET /me/blocks` — the authors the caller has blocked (Me > Blocked users).
+    blocks: () => [...queryKeys.me.all, 'blocks'] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
@@ -129,66 +119,6 @@ export const queryKeys = {
     all: ['stream'] as const,
     details: () => [...queryKeys.stream.all, 'detail'] as const,
     detail: (sermonId: string) => [...queryKeys.stream.details(), sermonId] as const,
-  },
-  // W4.3 — mirrors the `sermons` shape above per this factory's own doc comment.
-  categories: {
-    all: ['categories'] as const,
-    lists: () => [...queryKeys.categories.all, 'list'] as const,
-    list: (params: Record<string, unknown> = {}) => [...queryKeys.categories.lists(), params] as const,
-  },
-  speakers: {
-    all: ['speakers'] as const,
-    lists: () => [...queryKeys.speakers.all, 'list'] as const,
-    list: (params: Record<string, unknown> = {}) => [...queryKeys.speakers.lists(), params] as const,
-  },
-  /**
-   * `/search` also serves as the filtered-browse endpoint (no `q`) for the
-   * category/speaker drill-down lists — `results(params)` covers both, keyed
-   * on whatever filter combination the caller passes so a text search and a
-   * `category_id` browse never collide in the cache.
-   */
-  search: {
-    all: ['search'] as const,
-    // `object`, not `Record<string, unknown>`: callers pass a named params interface
-    // (`SearchResultsParams`), which has no index signature of its own.
-    results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
-    suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
-  },
-  // W4.4 — mirrors the `sermons` shape above per this factory's own doc comment.
-  series: {
-    all: ['series'] as const,
-    lists: () => [...queryKeys.series.all, 'list'] as const,
-    list: (params: Record<string, unknown> = {}) => [...queryKeys.series.lists(), params] as const,
-    details: () => [...queryKeys.series.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.series.details(), id] as const,
-    episodes: (id: string) => [...queryKeys.series.detail(id), 'episodes'] as const,
-  },
-  announcements: {
-    all: ['announcements'] as const,
-    lists: () => [...queryKeys.announcements.all, 'list'] as const,
-    list: (params: Record<string, unknown> = {}) => [...queryKeys.announcements.lists(), params] as const,
-  },
-  /**
-   * The caller's own `/me/*` reads, folded into one domain rather than split across
-   * `me` and a standalone `continueWatching` (W4.1/W4.4 reconciliation — both are reads
-   * scoped to the authenticated caller and nothing else needs that scoping split out):
-   * `GET /me/continue-watching` (started-but-unfinished, capped at the endpoint's own
-   * default of 10 — W4.1's Home shelf) and `GET /me/history` (up to 100 rows,
-   * most-recent-first — W4.4's series-episode status derivation, or, scoped to a
-   * `series_id`, up to `SERIES_HISTORY_LIMIT` rows for that series alone — Decision 6).
-   * Distinct endpoints, distinct semantics, same `/me/*` scoping.
-   */
-  me: {
-    all: ['me'] as const,
-    continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
-    history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
-    historyForSeries: (seriesId: string) => [...queryKeys.me.all, 'history', 'series', seriesId] as const,
-    // `GET /auth/me` (W4.6) — a different path prefix than the rest of this domain's
-    // `/me/*` reads, but the same "the caller's own data" scoping, so it's folded in here
-    // rather than opening a new top-level domain for one endpoint.
-    profile: () => [...queryKeys.me.all, 'profile'] as const,
-    // `GET /me/blocks` — the authors the caller has blocked (Me > Blocked users).
-    blocks: () => [...queryKeys.me.all, 'blocks'] as const,
   },
   // `GET /sermons/{sermon_id}/comments` — one sermon's comment thread (offset-paginated,
   // newest first). Its own domain, like `progress`/`stream`: a per-sermon resource that
@@ -196,23 +126,6 @@ export const queryKeys = {
   comments: {
     all: ['comments'] as const,
     forSermon: (sermonId: string) => [...queryKeys.comments.all, 'sermon', sermonId] as const,
-  },
-  // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
-  // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
-  // different resources that happen to share a path segment.
-  progress: {
-    all: ['progress'] as const,
-    details: () => [...queryKeys.progress.all, 'detail'] as const,
-    detail: (sermonId: string) => [...queryKeys.progress.details(), sermonId] as const,
-  },
-  // W4.2 — `GET /sermons/{sermon_id}/stream`, the signed-playback-URL read. Short-lived
-  // by design (`expires_in`, ~6h server default) — kept out of `sermons` since it's a
-  // distinct resource (signed URLs, not sermon metadata) that happens to share a path
-  // segment, mirroring the `progress` domain's own reasoning above.
-  stream: {
-    all: ['stream'] as const,
-    details: () => [...queryKeys.stream.all, 'detail'] as const,
-    detail: (sermonId: string) => [...queryKeys.stream.details(), sermonId] as const,
   },
 } as const;
 

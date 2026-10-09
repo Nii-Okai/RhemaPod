@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { TermsSheet } from '../TermsSheet';
 import { api } from '../../../../lib/api/typedClient';
@@ -27,20 +27,25 @@ function renderSheet() {
 
 beforeEach(() => {
   mockedPost.mockReset();
+  mockedPost.mockResolvedValue({});
 });
 
 describe('TermsSheet — I2 release gate', () => {
-  it('COMMENTS_TERMS_TEXT is still Isaac\'s placeholder on this build (sanity check for the test below)', () => {
-    expect(isComplianceContentPending(COMMENTS_TERMS_TEXT)).toBe(true);
+  it('COMMENTS_TERMS_TEXT is real content on this build, not Isaac\'s placeholder (sanity check for the test below)', () => {
+    expect(isComplianceContentPending(COMMENTS_TERMS_TEXT)).toBe(false);
   });
 
-  it('keeps "Agree and continue" disabled even once checked, while the terms text is a placeholder', async () => {
+  it('enables "Agree and continue" once checked, now that the real terms text has shipped', async () => {
     const utils = renderSheet();
-    fireEvent.press(utils.getByLabelText('I agree to the comment guidelines'));
     const button = utils.getByRole('button', { name: 'Agree and continue' });
     expect(button.props.accessibilityState.disabled).toBe(true);
 
-    fireEvent.press(button);
-    expect(mockedPost).not.toHaveBeenCalled();
+    fireEvent.press(utils.getByLabelText('I agree to the comment guidelines'));
+    expect(button.props.accessibilityState.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.press(button);
+    });
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledWith('/me/comments-terms'));
   });
 });

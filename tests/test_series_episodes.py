@@ -281,3 +281,46 @@ async def test_series_episodes_resolves_speaker_category_and_series_names(client
     assert episodes[0]["speaker_name"] == "Pastor Grace"
     assert episodes[0]["category_name"] == "Faith"
     assert episodes[0]["series_title"] == "Anchored"
+
+
+async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(client, engine):
+    """Offline downloads need to know a episode's rendition (audio or video)
+    without a second request per row — `media_type` is resolved per episode
+    from its own `media_refs`, not inherited from a sibling or the series."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post("/api/v1/series", json={"title": "Mixed"}, headers=ed)).json()
+
+    video_sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": "Video Ep", "series_id": series["id"], "episode_number": 1},
+        headers=ed,
+    )).json()["id"]
+    video_ticket = (await client.post(
+        f"/api/v1/sermons/{video_sid}/upload-url",
+        json={"filename": "sermon.mp4", "content_type": "video/mp4", "media_type": "video"},
+        headers=ed,
+    )).json()
+    await client.post(f"/api/v1/uploads/{video_ticket['job_id']}/confirm", headers=ed)
+    await client.post(f"/api/v1/sermons/{video_sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{video_sid}/approve", headers=mgr)
+    await client.post(f"/api/v1/approvals/sermons/{video_sid}/publish", headers=mgr)
+
+    audio_sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": "Audio Ep", "series_id": series["id"], "episode_number": 2},
+        headers=ed,
+    )).json()["id"]
+    audio_ticket = (await client.post(
+        f"/api/v1/sermons/{audio_sid}/upload-url",
+        json={"filename": "sermon.mp3", "content_type": "audio/mpeg", "media_type": "audio"},
+        headers=ed,
+    )).json()
+    await client.post(f"/api/v1/uploads/{audio_ticket['job_id']}/confirm", headers=ed)
+    await client.post(f"/api/v1/sermons/{audio_sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{audio_sid}/approve", headers=mgr)
+    await client.post(f"/api/v1/approvals/sermons/{audio_sid}/publish", headers=mgr)
+
+    episodes = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
+    by_title = {e["title"]: e["media_type"] for e in episodes}
+    assert by_title == {"Video Ep": "video", "Audio Ep": "audio"}

@@ -282,7 +282,7 @@ describe('MeScreen — help and safety', () => {
     await findByText('ada@example.com');
 
     fireEvent.press(getByText('Comment guidelines'));
-    expect(await findByText(/Be respectful/)).toBeTruthy();
+    expect(await findByText(/RhemaPod Comment Guidelines/)).toBeTruthy();
     expect(queryByLabelText('I agree to the comment guidelines')).toBeNull();
     expect(queryByText('Agree and continue')).toBeNull();
   });

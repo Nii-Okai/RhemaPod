@@ -1422,6 +1422,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sermons/{sermon_id}/download/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Video
+         * @description Short-lived signed URL for the video rendition only — offline video
+         *     downloads (Isaac's ask, session 2026-10-08, revisiting L6). Same
+         *     authorization as get_stream; 409 if the sermon has no video rendition.
+         *     See `media_service.get_video_download` for the at-rest protection
+         *     tradeoff this path accepts versus the audio download's encryption.
+         */
+        get: operations["download_video_api_v1_sermons__sermon_id__download_video_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}/media": {
         parameters: {
             query?: never;
@@ -2500,6 +2524,8 @@ export interface components {
             last_played_at: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Percent Complete */
             percent_complete: number | null;
             /** Position Seconds */
@@ -3012,6 +3038,8 @@ export interface components {
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Published At */
@@ -3069,6 +3097,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Series Id */
@@ -3140,6 +3170,8 @@ export interface components {
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Published At */
@@ -3186,6 +3218,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Series Id */
@@ -3690,6 +3724,28 @@ export interface components {
             text?: string | null;
             /** Translation */
             translation?: string | null;
+        };
+        /**
+         * VideoDownloadResponse
+         * @description GET .../download/video — a short-lived signed URL for the video
+         *     rendition only, for offline download (L6's "audio-only, ever" revisited:
+         *     Isaac's ask, session 2026-10-08 — video downloads now ship, with weaker
+         *     at-rest protection than audio's own JS-level encryption gets; see
+         *     `media_service.get_video_download`'s own docstring). Same minimal shape
+         *     as `AudioDownloadResponse` deliberately — each sermon carries exactly one
+         *     rendition, never both, so no caller ever needs the two responses to
+         *     disagree in shape.
+         */
+        VideoDownloadResponse: {
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Url */
+            url: string;
         };
     };
     responses: never;
@@ -6267,6 +6323,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AudioDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_video_api_v1_sermons__sermon_id__download_video_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoDownloadResponse"];
                 };
             };
             /** @description Validation Error */

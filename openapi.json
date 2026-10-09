@@ -1212,6 +1212,21 @@
             "title": "Locked",
             "type": "boolean"
           },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "audio",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
           "percent_complete": {
             "anyOf": [
               {
@@ -2572,6 +2587,21 @@
             "title": "Media Refs",
             "type": "array"
           },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "audio",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
           "publish_at": {
             "anyOf": [
               {
@@ -2792,6 +2822,21 @@
           "locked": {
             "title": "Locked",
             "type": "boolean"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "audio",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
           },
           "publish_at": {
             "anyOf": [
@@ -3082,6 +3127,21 @@
             "title": "Media Refs",
             "type": "array"
           },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "audio",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
           "publish_at": {
             "anyOf": [
               {
@@ -3269,6 +3329,21 @@
           "locked": {
             "title": "Locked",
             "type": "boolean"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "audio",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
           },
           "publish_at": {
             "anyOf": [
@@ -4563,6 +4638,31 @@
           }
         },
         "title": "VerseUpdate",
+        "type": "object"
+      },
+      "VideoDownloadResponse": {
+        "description": "GET .../download/video \u2014 a short-lived signed URL for the video\nrendition only, for offline download (L6's \"audio-only, ever\" revisited:\nIsaac's ask, session 2026-10-08 \u2014 video downloads now ship, with weaker\nat-rest protection than audio's own JS-level encryption gets; see\n`media_service.get_video_download`'s own docstring). Same minimal shape\nas `AudioDownloadResponse` deliberately \u2014 each sermon carries exactly one\nrendition, never both, so no caller ever needs the two responses to\ndisagree in shape.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sermon_id",
+          "url",
+          "expires_in"
+        ],
+        "title": "VideoDownloadResponse",
         "type": "object"
       }
     },
@@ -8984,6 +9084,55 @@
           }
         ],
         "summary": "Download Audio",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/download/video": {
+      "get": {
+        "description": "Short-lived signed URL for the video rendition only \u2014 offline video\ndownloads (Isaac's ask, session 2026-10-08, revisiting L6). Same\nauthorization as get_stream; 409 if the sermon has no video rendition.\nSee `media_service.get_video_download` for the at-rest protection\ntradeoff this path accepts versus the audio download's encryption.",
+        "operationId": "download_video_api_v1_sermons__sermon_id__download_video_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Video",
         "tags": [
           "media"
         ]
