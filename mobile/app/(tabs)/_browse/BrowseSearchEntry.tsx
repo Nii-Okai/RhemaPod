@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText } from '../../../components';
+import { AppText, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -32,7 +31,7 @@ export function BrowseSearchEntry({ onPress }: BrowseSearchEntryProps) {
       accessibilityLabel="Search sermons, series, speakers"
       style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
     >
-      <Ionicons name="search" size={18} color={colors.primaryButton.text} style={styles.icon} />
+      <PlatformIcon name="search" size={18} color={colors.primaryButton.text} style={styles.icon} />
       <AppText variant="ui.body" tone="inverse" style={styles.placeholder}>
         Search sermons, series, speakers
       </AppText>

@@ -1,9 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { AppText, LinkButton } from '../../../components';
-import { colors } from '../../../theme/colors';
-import { radius } from '../../../theme/radius';
-import { spacing } from '../../../theme/spacing';
+import { AppText } from './Text';
+import { LinkButton } from './Button';
+import { colors } from '../theme/colors';
+import { radius } from '../theme/radius';
+import { spacing } from '../theme/spacing';
 
 export interface SectionErrorProps {
   message: string;
@@ -12,10 +13,13 @@ export interface SectionErrorProps {
 
 /**
  * Same error-banner + Retry shape `QueryState.tsx` already uses for Browse/Search,
- * reimplemented locally for Home: Home's sections need a *skeleton* loading state
- * (`HeroSkeleton`/`ShelfSkeleton`), not `QueryState`'s spinner, so this reuses only its
- * error-branch visual/copy convention, not the component itself (three call sites here —
- * hero, continue-watching, series — is what justifies pulling it out at all).
+ * kept as its own component rather than folded into `QueryState`: a shelf section
+ * (Home's hero/continue-watching/series, the Library tab's own continue-watching
+ * shelf) needs a *skeleton* loading state (`HeroSkeleton`/`ShelfSkeleton`), not
+ * `QueryState`'s spinner, so this reuses only its error-branch visual/copy
+ * convention, not the component itself. Promoted here from Home's own `_home/`
+ * folder once the Library tab became a second consumer, same promotion bar
+ * `Sheet`/`ConfirmDialog` already cleared this session.
  */
 export function SectionError({ message, onRetry }: SectionErrorProps) {
   return (

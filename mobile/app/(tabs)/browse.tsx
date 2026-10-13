@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, QueryState, SpeakerListRow } from '../../components';
+import { AppText, PlatformIcon, QueryState, SpeakerListRow } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useCategories } from '../../lib/query/hooks/useCategories';
@@ -49,6 +48,7 @@ export default function BrowseScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}
+      showsVerticalScrollIndicator={false}
     >
       <AppText variant="display.section" style={styles.heading}>
         Browse
@@ -95,7 +95,7 @@ export default function BrowseScreen() {
               style={({ pressed }) => [styles.seeMore, pressed && styles.seeMorePressed]}
             >
               <AppText variant="ui.bodyLarge">{showAllCategories ? 'See less' : 'See more'}</AppText>
-              <Ionicons
+              <PlatformIcon
                 name={showAllCategories ? 'chevron-up' : 'chevron-down'}
                 size={18}
                 color={colors.text.primary}
@@ -126,9 +126,15 @@ export default function BrowseScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/speaker/[id]',
-                  // `bio` travels with the nav params rather than a second fetch — the
-                  // list row (useSpeakers) already has the full SpeakerPublic in hand.
-                  params: { id: speaker.id, name: speaker.name, bio: speaker.bio ?? '' },
+                  // `bio`/`sermonCount` travel with the nav params rather than a second
+                  // fetch — the list row (useSpeakers) already has the full SpeakerPublic
+                  // in hand.
+                  params: {
+                    id: speaker.id,
+                    name: speaker.name,
+                    bio: speaker.bio ?? '',
+                    sermonCount: String(speaker.sermon_count),
+                  },
                 })
               }
             />

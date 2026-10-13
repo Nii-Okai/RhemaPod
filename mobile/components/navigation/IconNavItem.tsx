@@ -1,10 +1,10 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { AppText } from '../Text';
+import { NavIcon } from './NavIcon';
 import type { NavRoute } from './routes';
 
 export interface IconNavItemProps {
@@ -18,7 +18,9 @@ export interface IconNavItemProps {
 /**
  * Icon + always-visible label item with an M3-style pill active indicator (design spec
  * §2's "pill active-indicator"). Shared by the Android bottom bar and the tablet rail —
- * the only two chromes that show icons at all (iOS stays text-only, spec §1.2).
+ * `PhoneTabBarIOS` shows icons too now (Isaac's ask, session 2026-10-11), but with its
+ * own plainer, non-pill iOS-native treatment rather than reusing this component — the
+ * M3 pill indicator is a distinctly Material pattern, not one iOS's own tab bar uses.
  */
 export function IconNavItem({ route, active, onPress, orientation }: IconNavItemProps) {
   return (
@@ -33,11 +35,7 @@ export function IconNavItem({ route, active, onPress, orientation }: IconNavItem
       ]}
     >
       <View style={[styles.pill, active && styles.pillActive]}>
-        <Ionicons
-          name={active ? route.iconActive : route.icon}
-          size={22}
-          color={active ? colors.accent.goldText : colors.text.tertiary}
-        />
+        <NavIcon route={route} active={active} size={22} color={active ? colors.accent.goldText : colors.text.tertiary} />
       </View>
       <AppText variant="ui.label" tone={active ? 'gold' : 'tertiary'} style={styles.label}>
         {route.label}

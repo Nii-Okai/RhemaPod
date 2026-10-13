@@ -284,7 +284,7 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
     fireEvent.press(getByText('Ada Nwosu'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/speaker/[id]',
-      params: { id: 'speaker-1', name: 'Ada Nwosu', bio: 'Teaching pastor.' },
+      params: { id: 'speaker-1', name: 'Ada Nwosu', bio: 'Teaching pastor.', sermonCount: '12' },
     });
   });
 

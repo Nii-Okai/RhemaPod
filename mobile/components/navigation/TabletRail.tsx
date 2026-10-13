@@ -1,11 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { IconNavItem } from './IconNavItem';
+import { PlatformIcon } from '../PlatformIcon';
 import { TABLET_RAIL_KEYS, isRouteActive, routeByKey } from './routes';
 
 /**
@@ -47,7 +47,7 @@ export function TabletRail() {
         onPress={() => router.push(meRoute.href)}
         style={({ pressed }) => [styles.avatarChip, pressed && styles.avatarChipPressed]}
       >
-        <Ionicons name="person" size={20} color={colors.accent.goldText} />
+        <PlatformIcon name="person" size={20} color={colors.accent.goldText} />
       </Pressable>
     </View>
   );

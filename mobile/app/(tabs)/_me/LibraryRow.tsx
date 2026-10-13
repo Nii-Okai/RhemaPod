@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText } from '../../../components';
+import { AppText, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 
@@ -40,7 +39,7 @@ export function LibraryRow({ label, onPress, detail, accessibilityLabel, hideChe
       </View>
       {hideChevron ? null : (
         <View style={styles.chevron}>
-          <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+          <PlatformIcon name="chevron-forward" size={18} color={colors.text.tertiary} />
         </View>
       )}
     </Pressable>

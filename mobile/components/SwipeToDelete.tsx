@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './Text';
+import { PlatformIcon } from './PlatformIcon';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
@@ -104,7 +104,7 @@ export function SwipeToDelete({ children, onDelete, deleteAccessibilityLabel, te
           accessibilityLabel={deleteAccessibilityLabel}
           style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
         >
-          <Ionicons name="trash" size={20} color={colors.status.rose.text} />
+          <PlatformIcon name="trash" size={20} color={colors.status.rose.text} />
           <AppText variant="ui.label" style={styles.actionLabel}>
             Delete
           </AppText>

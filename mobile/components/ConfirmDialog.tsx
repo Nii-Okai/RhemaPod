@@ -1,9 +1,10 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, LinkButton } from '../../../components';
-import { colors } from '../../../theme/colors';
-import { radius } from '../../../theme/radius';
-import { spacing } from '../../../theme/spacing';
+import { AppText } from './Text';
+import { LinkButton } from './Button';
+import { colors } from '../theme/colors';
+import { radius } from '../theme/radius';
+import { spacing } from '../theme/spacing';
 
 export interface ConfirmDialogProps {
   visible: boolean;

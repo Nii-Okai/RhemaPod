@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, LinkButton, PrimaryButton } from '../../../components';
+import { AppText, LinkButton, PlatformIcon, PrimaryButton } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 import { COMMENTS_TERMS_TEXT, isComplianceContentPending } from '../../../lib/content/commentsCompliance';
@@ -77,7 +76,7 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
             onPress={() => setAgreed((value) => !value)}
             style={styles.checkRow}
           >
-            <Ionicons
+            <PlatformIcon
               name={agreed ? 'checkbox' : 'square-outline'}
               size={24}
               color={agreed ? colors.accent.goldText : colors.text.tertiary}

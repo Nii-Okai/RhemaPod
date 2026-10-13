@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, PrimaryButton } from '../../../components';
+import { AppText, PlatformIcon, PrimaryButton } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -76,7 +75,7 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
       onPress={onBlock}
       style={({ pressed }) => [styles.blockRow, pressed && styles.pressed]}
     >
-      <Ionicons name="ban-outline" size={18} color={colors.status.rose.text} />
+      <PlatformIcon name="ban-outline" size={18} color={colors.status.rose.text} />
       <AppText variant="ui.button" style={styles.blockText}>
         {`Block ${authorName}`}
       </AppText>
@@ -87,7 +86,7 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
     return (
       <Sheet visible={visible} onClose={onClose}>
         <View accessibilityLiveRegion="polite" style={styles.done}>
-          <Ionicons name="checkmark-circle" size={32} color={colors.status.sage.text} />
+          <PlatformIcon name="checkmark-circle" size={32} color={colors.status.sage.text} />
           <AppText variant="ui.bodyLarge">Thanks. We'll review this comment.</AppText>
         </View>
         {blockRow}
@@ -118,7 +117,7 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
                 {item.helper}
               </AppText>
             </View>
-            <Ionicons
+            <PlatformIcon
               name={selected ? 'checkmark-circle' : 'ellipse-outline'}
               size={22}
               color={selected ? colors.accent.goldText : colors.text.tertiary}

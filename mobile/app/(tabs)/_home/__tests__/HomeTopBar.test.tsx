@@ -17,32 +17,37 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 }
 
 describe('HomeTopBar', () => {
-  it('renders the wordmark and fires each icon button\'s callback', () => {
+  it('renders the wordmark, with no Library icon, and fires each remaining icon button\'s callback', () => {
     const onSearchPress = jest.fn();
-    const onDownloadsPress = jest.fn();
-    const onAnnouncementsPress = jest.fn();
-    const { getByText, getByLabelText } = render(
-      <HomeTopBar
-        onSearchPress={onSearchPress}
-        onDownloadsPress={onDownloadsPress}
-        onAnnouncementsPress={onAnnouncementsPress}
-      />,
+    const onNotificationsPress = jest.fn();
+    const { getByText, getByLabelText, queryByLabelText } = render(
+      <HomeTopBar onSearchPress={onSearchPress} onNotificationsPress={onNotificationsPress} />,
     );
 
     expect(getByText('RhemaPod')).toBeTruthy();
+    expect(queryByLabelText('Library')).toBeNull();
 
     fireEvent.press(getByLabelText('Search'));
     expect(onSearchPress).toHaveBeenCalledTimes(1);
-    fireEvent.press(getByLabelText('Downloads'));
-    expect(onDownloadsPress).toHaveBeenCalledTimes(1);
     fireEvent.press(getByLabelText('Notifications'));
-    expect(onAnnouncementsPress).toHaveBeenCalledTimes(1);
+    expect(onNotificationsPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an unread badge on the bell only when there is an unseen count, capped at "9+"', () => {
+    const { queryByText, rerender } = render(<HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} />);
+    expect(queryByText('3')).toBeNull();
+
+    rerender(<HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} unseenNotificationsCount={3} />);
+    expect(queryByText('3')).toBeTruthy();
+
+    rerender(<HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} unseenNotificationsCount={14} />);
+    expect(queryByText('9+')).toBeTruthy();
   });
 
   it('reports its own rendered height via onHeight', () => {
     const onHeight = jest.fn();
     const { getByTestId } = render(
-      <HomeTopBar onSearchPress={jest.fn()} onDownloadsPress={jest.fn()} onAnnouncementsPress={jest.fn()} onHeight={onHeight} />,
+      <HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} onHeight={onHeight} />,
     );
 
     fireEvent(getByTestId('home-top-bar'), 'layout', {
@@ -53,9 +58,7 @@ describe('HomeTopBar', () => {
   });
 
   it('renders a constant (non-interpolated) solid background when no scrollY is given', () => {
-    const { UNSAFE_getAllByType } = render(
-      <HomeTopBar onSearchPress={jest.fn()} onDownloadsPress={jest.fn()} onAnnouncementsPress={jest.fn()} />,
-    );
+    const { UNSAFE_getAllByType } = render(<HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} />);
 
     const animatedView = UNSAFE_getAllByType(Animated.View)[0];
     const flat = flattenStyle(animatedView.props.style);
@@ -65,7 +68,7 @@ describe('HomeTopBar', () => {
   it('drives the solid background from an interpolation when scrollY is given', () => {
     const scrollY = new Animated.Value(0);
     const { UNSAFE_getAllByType } = render(
-      <HomeTopBar onSearchPress={jest.fn()} onDownloadsPress={jest.fn()} onAnnouncementsPress={jest.fn()} scrollY={scrollY} />,
+      <HomeTopBar onSearchPress={jest.fn()} onNotificationsPress={jest.fn()} scrollY={scrollY} />,
     );
 
     const animatedView = UNSAFE_getAllByType(Animated.View)[0];

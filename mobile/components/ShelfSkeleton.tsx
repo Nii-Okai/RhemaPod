@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SkeletonBlock } from '../../../components';
-import { spacing } from '../../../theme/spacing';
+import { SkeletonBlock } from './SkeletonBlock';
+import { spacing } from '../theme/spacing';
 
 export interface ShelfSkeletonProps {
   loadingLabel: string;
@@ -10,9 +10,10 @@ export interface ShelfSkeletonProps {
 const CARD_WIDTH = 160;
 
 /**
- * Static loading placeholder for a Home shelf (Continue watching / Series) — three
- * fixed-width card-shaped blocks, matching each real shelf card's own footprint
- * (`ContinueWatchingCard`/`SeriesCard`, both 160px wide).
+ * Static loading placeholder for a horizontal shelf (Home's Continue watching/Series,
+ * the Library tab's own Continue watching shelf) — three fixed-width card-shaped
+ * blocks, matching each real shelf card's own footprint. Promoted here from Home's
+ * own `_home/` folder once the Library tab became a second consumer.
  */
 export function ShelfSkeleton({ loadingLabel }: ShelfSkeletonProps) {
   return (

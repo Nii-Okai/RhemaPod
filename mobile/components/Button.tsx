@@ -1,17 +1,17 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { AppText } from './Text';
+import { PlatformIcon, type AppIconName } from './PlatformIcon';
 
 export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'children'> {
   label: string;
   loading?: boolean;
   /** Leading glyph — series detail's Play CTA (Isaac's ask, session 2026-09-30,
       Netflix's own Play button) is this prop's first user. */
-  icon?: React.ComponentProps<typeof Ionicons>['name'];
+  icon?: AppIconName;
   /** Stretches to fill its container instead of sizing to the label — series detail's
       Play button (same ask) is this prop's first user; every existing call site keeps
       the original content-sized pill by leaving this at its default. */
@@ -42,7 +42,7 @@ export function PrimaryButton({ label, loading = false, disabled, icon, fullWidt
         <ActivityIndicator color={colors.primaryButton.text} />
       ) : (
         <View style={styles.contentRow}>
-          {icon ? <Ionicons name={icon} size={18} color={colors.primaryButton.text} /> : null}
+          {icon ? <PlatformIcon name={icon} size={18} color={colors.primaryButton.text} /> : null}
           <AppText variant="ui.button" tone="inverse">
             {label}
           </AppText>

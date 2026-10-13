@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, Avatar, LinkButton, Sheet } from '../../../components';
+import { AppText, Avatar, LinkButton, PlatformIcon, Sheet } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -96,7 +95,7 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
           {updateAvatar.isPending ? (
             <ActivityIndicator size="small" color={colors.text.primary} />
           ) : (
-            <Ionicons name="camera" size={14} color={colors.text.primary} />
+            <PlatformIcon name="camera" size={14} color={colors.text.primary} />
           )}
         </View>
       </Pressable>
@@ -116,7 +115,7 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
           onPress={() => void pickFrom('camera')}
           style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
         >
-          <Ionicons name="camera-outline" size={20} color={colors.text.primary} />
+          <PlatformIcon name="camera-outline" size={20} color={colors.text.primary} />
           <AppText variant="ui.bodyLarge">Take photo</AppText>
         </Pressable>
         <Pressable
@@ -125,7 +124,7 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
           onPress={() => void pickFrom('library')}
           style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
         >
-          <Ionicons name="images-outline" size={20} color={colors.text.primary} />
+          <PlatformIcon name="images-outline" size={20} color={colors.text.primary} />
           <AppText variant="ui.bodyLarge">Choose from library</AppText>
         </Pressable>
         <View style={styles.cancel}>

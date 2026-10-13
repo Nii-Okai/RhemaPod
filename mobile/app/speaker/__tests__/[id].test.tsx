@@ -9,12 +9,18 @@ jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
+jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
 const mockPush = jest.fn();
-let mockParams: Record<string, string | undefined> = { id: 's1', name: 'Ada Nwosu', bio: 'Lead pastor' };
+const mockBack = jest.fn();
+let mockParams: Record<string, string | undefined> = { id: 's1', name: 'Ada Nwosu', bio: 'Lead pastor', sermonCount: '12' };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
   useLocalSearchParams: () => mockParams,
-  Stack: { Screen: () => null },
 }));
 
 const mockedGet = api.get as jest.Mock;
@@ -48,16 +54,19 @@ const sermon = {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
-  mockParams = { id: 's1', name: 'Ada Nwosu', bio: 'Lead pastor' };
+  mockBack.mockClear();
+  mockParams = { id: 's1', name: 'Ada Nwosu', bio: 'Lead pastor', sermonCount: '12' };
 });
 
 describe('SpeakerDrillDownScreen', () => {
-  it('shows the bio from nav params and filters /search by speaker_id', async () => {
+  it('shows the name, sermon count and bio from nav params, and filters /search by speaker_id', async () => {
     mockedGet.mockResolvedValue({ query: '', total: 1, limit: 20, offset: 0, results: [sermon] });
 
-    const { findByText, getByText } = renderScreen();
+    const { findByText, getByText, getAllByText } = renderScreen();
     await findByText('Anchored in the Storm');
 
+    expect(getAllByText('Ada Nwosu').length).toBeGreaterThan(0);
+    expect(getByText('12 sermons')).toBeTruthy();
     expect(getByText('Lead pastor')).toBeTruthy();
     expect(mockedGet).toHaveBeenCalledWith(
       '/search',
@@ -66,6 +75,14 @@ describe('SpeakerDrillDownScreen', () => {
 
     fireEvent.press(getByText('Anchored in the Storm'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } });
+  });
+
+  it('navigates back from the header chevron', async () => {
+    mockedGet.mockResolvedValue({ query: '', total: 0, limit: 20, offset: 0, results: [] });
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
   it('shows the verbatim "No bio yet" fallback when bio is empty', async () => {

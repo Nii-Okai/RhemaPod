@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, Card } from '../../../components';
+import { AppText, Card, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 
@@ -27,7 +26,7 @@ export function AnnouncementsEntry({ onPress }: AnnouncementsEntryProps) {
               What's happening at the church
             </AppText>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+          <PlatformIcon name="chevron-forward" size={20} color={colors.text.tertiary} />
         </Card>
       )}
     </Pressable>

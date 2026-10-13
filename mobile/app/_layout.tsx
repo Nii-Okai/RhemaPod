@@ -93,7 +93,12 @@ function RootNavigator() {
           would show "< Browse" next to the chevron, not a bare chevron) is disabled here
           for the same reason sermon/series detail disable it above. */}
       <Stack.Screen name="category/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="speaker/[id]" />
+      {/* Session 2026-10-11 (Isaac's report: "use preestablish navigation style") — this
+          had no `options` at all, so it fell through to the Stack's own default native
+          header (title text + "< Browse" back label) instead of the bare-chevron +
+          centered-title pattern every other drill-down screen here uses. Now matches
+          `category/[id]` above. */}
+      <Stack.Screen name="speaker/[id]" options={{ headerShown: false }} />
       {/* W4.1 — minimal placeholder; W4.2 builds the real player and its own chrome. */}
       <Stack.Screen name="player/[id]" options={{ headerShown: false }} />
       {/* W4.4 — series detail, another top-level stack route (plan L15):
@@ -116,6 +121,26 @@ function RootNavigator() {
           animationDuration: DETAIL_TRANSITION_DURATION,
         }}
       />
+      {/* Session 2026-10-10 — the Library tab's playlist detail screen, reached from
+          `(tabs)/library`. Native Stack header disabled, replaced by its own plain
+          back-chevron row — same "back chevron, no `<Library` label next to it" header
+          `category/[id].tsx` already established, not sermon/series detail's own
+          Cast+Close chrome (no cast surface here, and this isn't a dismiss-gesture
+          title page). See the screen's own doc comment. */}
+      <Stack.Screen name="playlist/[id]" options={{ headerShown: false }} />
+      {/* "Give your playlist a name" -> Create (Isaac's screenshots) — a genuine modal
+          presentation (the reference's full-bleed dark takeover with an X close, not a
+          push), reached from Library's own "New playlist" button and from the playlist
+          detail screen's options menu is NOT a caller — creation only ever starts from
+          Library. */}
+      <Stack.Screen name="playlist/create" options={{ headerShown: false, presentation: 'modal' }} />
+      {/* Session 2026-10-11 — Home's bell icon opens this instead of Announcements
+          (`HomeTopBar`'s own doc comment). Owns its own header (back chevron + centered
+          title), same "native Stack header disabled" pattern `category/[id]` and
+          `series.tsx`'s own phone header established — missing this entry here (Isaac's
+          report, same session: "Use previously established style for navigation page")
+          left the native default header showing on top of this screen's own custom one. */}
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
       {/* W4.6 — Profile & Settings' Library rows (design spec 1n, P8: no counts, plain
           navigating rows). Each screen sets its own title via `Stack.Screen options`. */}
       <Stack.Screen name="history" />

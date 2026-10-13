@@ -34,7 +34,7 @@ export default function HistoryScreen() {
   const history = historyQuery.data ?? [];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Stack.Screen options={{ title: 'Watch history' }} />
       <QueryState
         isLoading={historyQuery.isLoading}

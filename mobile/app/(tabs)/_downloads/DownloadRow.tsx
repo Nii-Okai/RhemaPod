@@ -1,12 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, CircularProgress, SwipeToDelete } from '../../../components';
+import { AppText, CircularProgress, ConfirmDialog, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
-import { scaledLineHeight } from '../../../theme/typography';
 import type { DownloadRecord } from '../../../lib/downloads/types';
+import { LIST_THUMBNAIL_SIZE } from '../_library/libraryLayout';
 
 export interface DownloadRowProps {
   download: DownloadRecord;
@@ -15,13 +14,14 @@ export interface DownloadRowProps {
   onDelete: (sermonId: string) => void;
 }
 
-// Isaac's ask, session 2026-10-09: "make each download item a little bigger" — scaled up
-// from the original 96/28/14 trio (thumbnail/overlay chip/overlay icon), proportionally.
-const THUMBNAIL_WIDTH = 128;
-const OVERLAY_CHIP_SIZE = 36;
-const OVERLAY_ICON_SIZE = 18;
-const PROGRESS_RING_SIZE = 34;
-const TITLE_FONT_SIZE = 17;
+// A square thumbnail at `LIST_THUMBNAIL_SIZE`, matching `PlaylistCard` (Isaac's ask,
+// session 2026-10-10: "Playlist and download list items should match size") — was a
+// wider 16:9 rectangle before. Overlay chip/icon/ring sized down to fit the smaller
+// square rather than scaled by a literal ratio, which would've made them too small to
+// read or tap comfortably.
+const OVERLAY_CHIP_SIZE = 28;
+const OVERLAY_ICON_SIZE = 14;
+const PROGRESS_RING_SIZE = 26;
 
 function formatBytes(bytes: number | null): string | null {
   if (bytes === null) return null;
@@ -45,49 +45,69 @@ function metaLineFor(download: DownloadRecord): string {
  * a real thumbnail with the state's action overlaid on it — play when ready, retry when
  * failed, the same `CircularProgress` ring every other download control in the app uses
  * while active — in place of the old generic title+"Downloaded"+right-side icon layout.
- * The thumbnail *is* the tap target for that state's primary action; there's no longer a
- * separate play button on the row's right edge. Swipe left to delete (`SwipeToDelete`)
- * replaces the old persistent trash `IconButton` — see that component's own doc comment
- * for why, including the VoiceOver/TalkBack fallback it carries so this isn't swipe-only.
+ * The thumbnail *is* the tap target for that state's primary action.
+ *
+ * A small gold checkmark precedes the category text once the download is `ready` (Isaac's
+ * ask, session 2026-10-10: "add a downloaded checked icon before category ... to show the
+ * difference") — now that playlist and download rows are visually unified in one list with
+ * no section header, this is the one thing that marks a row as a download rather than a
+ * playlist. It's gated on `isReady` specifically, not just "is a download": a downloading/
+ * queued/failed row's meta line is a status message, not a category, so a checkmark there
+ * would read as "this finished" when it hasn't.
+ *
+ * Long-press anywhere on the row opens a delete confirm (same session — replaces
+ * `SwipeToDelete`, which doesn't fit this screen's now-interleaved list/grid as cleanly as
+ * one consistent long-press gesture across every row and grid tile does). The whole row is
+ * one `Pressable` rather than a separate thumbnail-Pressable-inside-a-row (the swipe
+ * wrapper's old shape) specifically so long-press and short-press share one hit target.
+ * `onLongPress` fires regardless of download state — an in-progress download can still be
+ * deleted (cancelled) this way, so only the *short*-press play/retry action is gated on
+ * `isActive`, inside the handler itself rather than via the `Pressable`'s own `disabled`
+ * (which would have silently blocked `onLongPress` too). VoiceOver/TalkBack reach delete
+ * without the gesture at all, via the same `accessibilityActions` entry `SwipeToDelete`
+ * used to expose — parity, not a downgrade, for screen-reader users.
  */
 export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRowProps) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isReady = download.state === 'ready';
   const isFailed = download.state === 'failed';
   const isActive = download.state === 'queued' || download.state === 'downloading';
   const metaLine = metaLineFor(download);
 
-  const handleThumbnailPress = () => {
+  const handlePress = () => {
+    if (isActive) return;
     if (isReady) onPlay(download.sermonId);
     else if (isFailed) onRetry(download.sermonId);
   };
 
-  const thumbnailAccessibilityLabel = isReady
+  const accessibilityLabel = isReady
     ? `Play ${download.title} offline`
     : isFailed
       ? `Retry download of ${download.title}`
       : download.title;
 
   return (
-    <SwipeToDelete
-      onDelete={() => onDelete(download.sermonId)}
-      deleteAccessibilityLabel={`Delete downloaded ${download.title}`}
-      testID={`download-row-${download.sermonId}`}
-    >
-      <View style={styles.row}>
-        <Pressable
-          onPress={handleThumbnailPress}
-          disabled={isActive}
-          accessibilityRole="button"
-          accessibilityLabel={thumbnailAccessibilityLabel}
-          style={styles.artWrap}
-        >
+    <>
+      <Pressable
+        onPress={handlePress}
+        onLongPress={() => setConfirmingDelete(true)}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityActions={[{ name: 'delete', label: 'Delete' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'delete') onDelete(download.sermonId);
+        }}
+        testID={`download-row-${download.sermonId}`}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      >
+        <View style={styles.artWrap}>
           {download.thumbnailUrl ? (
             <Image source={{ uri: download.thumbnailUrl }} style={styles.thumbnail} resizeMode="cover" />
           ) : (
             <View style={styles.thumbnailFallback}>
-              <Ionicons
+              <PlatformIcon
                 name={download.mediaType === 'video' ? 'videocam-outline' : 'musical-notes-outline'}
-                size={26}
+                size={22}
                 color={colors.text.tertiary}
               />
             </View>
@@ -95,37 +115,59 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
           <View style={styles.overlayWrap} pointerEvents="none">
             {isReady ? (
               <View style={styles.overlayChip}>
-                <Ionicons name="play" size={OVERLAY_ICON_SIZE} color={colors.text.primary} />
+                <PlatformIcon name="play" size={OVERLAY_ICON_SIZE} color={colors.text.primary} />
               </View>
             ) : null}
             {isFailed ? (
               <View style={styles.overlayChip}>
-                <Ionicons name="refresh" size={OVERLAY_ICON_SIZE} color={colors.status.rose.text} />
+                <PlatformIcon name="refresh" size={OVERLAY_ICON_SIZE} color={colors.status.rose.text} />
               </View>
             ) : null}
             {isActive ? (
               <CircularProgress
                 progress={download.state === 'downloading' ? download.progress : 0}
                 size={PROGRESS_RING_SIZE}
-                strokeWidth={3}
+                strokeWidth={2.5}
                 spinning
               >
-                <Ionicons name="arrow-down" size={15} color={colors.text.secondary} />
+                <PlatformIcon name="arrow-down" size={12} color={colors.text.secondary} />
               </CircularProgress>
             ) : null}
           </View>
-        </Pressable>
+        </View>
 
         <View style={styles.textBlock}>
-          <AppText variant="ui.bodyLarge" numberOfLines={2} style={styles.title}>
+          <AppText variant="ui.bodyLarge" numberOfLines={1}>
             {download.title}
           </AppText>
-          <AppText variant="mono.tight" tone="tertiary" style={isFailed ? styles.failureText : undefined}>
-            {metaLine}
-          </AppText>
+          <View style={styles.metaRow}>
+            {isReady ? (
+              <PlatformIcon
+                name="checkmark-circle"
+                size={12}
+                color={colors.status.sage.text}
+                testID="download-ready-checkmark"
+              />
+            ) : null}
+            <AppText variant="mono.tight" tone="tertiary" style={isFailed ? styles.failureText : undefined}>
+              {metaLine}
+            </AppText>
+          </View>
         </View>
-      </View>
-    </SwipeToDelete>
+      </Pressable>
+
+      <ConfirmDialog
+        visible={confirmingDelete}
+        title="Delete this download?"
+        body={`"${download.title}" will be removed from this device.`}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          onDelete(download.sermonId);
+        }}
+        onCancel={() => setConfirmingDelete(false)}
+      />
+    </>
   );
 }
 
@@ -133,21 +175,23 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
-    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   artWrap: {
-    width: THUMBNAIL_WIDTH,
+    width: LIST_THUMBNAIL_SIZE,
   },
   thumbnail: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: radius.sm,
+    width: LIST_THUMBNAIL_SIZE,
+    height: LIST_THUMBNAIL_SIZE,
+    borderRadius: radius.md,
   },
   thumbnailFallback: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: radius.sm,
+    width: LIST_THUMBNAIL_SIZE,
+    height: LIST_THUMBNAIL_SIZE,
+    borderRadius: radius.md,
     backgroundColor: colors.surface.sunken,
     alignItems: 'center',
     justifyContent: 'center',
@@ -169,11 +213,12 @@ const styles = StyleSheet.create({
   },
   textBlock: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 2,
   },
-  title: {
-    fontSize: TITLE_FONT_SIZE,
-    lineHeight: scaledLineHeight(TITLE_FONT_SIZE, 1.4),
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   failureText: {
     color: colors.status.rose.text,

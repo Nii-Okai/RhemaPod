@@ -65,7 +65,7 @@ describe('BrowseScreen — populated', () => {
     fireEvent.press(getByText('Ruth Mensah'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/speaker/[id]',
-      params: { id: 's2', name: 'Ruth Mensah', bio: '' },
+      params: { id: 's2', name: 'Ruth Mensah', bio: '', sermonCount: '11' },
     });
   });
 });

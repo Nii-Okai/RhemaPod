@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, Avatar } from '../../../components';
+import { AppText, Avatar, PlatformIcon, type AppIconName } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -38,7 +37,7 @@ export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }
     return (
       <View style={[styles.hiddenWrap]}>
         <View style={[styles.notice, tint]} accessible accessibilityLabel={`${name}, ${time}. ${moderator ? 'Removed by a moderator.' : 'Under review. This comment is hidden while we check it.'}`}>
-          <Ionicons
+          <PlatformIcon
             name={moderator ? 'remove-circle-outline' : 'time-outline'}
             size={14}
             color={moderator ? colors.status.rose.text : colors.status.wheat.dot}
@@ -112,7 +111,7 @@ export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }
 }
 
 interface ActionLinkProps {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: AppIconName;
   label: string;
   accessibilityLabel: string;
   onPress: () => void;
@@ -126,7 +125,7 @@ function ActionLink({ icon, label, accessibilityLabel, onPress }: ActionLinkProp
       onPress={onPress}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={14} color={colors.text.tertiary} />
+      <PlatformIcon name={icon} size={14} color={colors.text.tertiary} />
       <AppText variant="ui.badge" tone="tertiary">
         {label}
       </AppText>

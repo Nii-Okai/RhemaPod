@@ -21,7 +21,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('../../../lib/api/typedClient', () => ({
-  api: { get: jest.fn(), put: jest.fn(), delete: jest.fn() },
+  api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 // `DownloadPillButton` (rendered under the Play CTA) pulls in the real download stack
@@ -41,6 +41,7 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
+const mockedPost = api.post as jest.Mock;
 const mockedPut = api.put as jest.Mock;
 const mockedDelete = api.delete as jest.Mock;
 
@@ -111,6 +112,8 @@ function mockHappyPath() {
     if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
     if (path === '/me/history') return Promise.resolve(history);
     if (path === '/search') return Promise.resolve(relatedSearchResults);
+    // No "My List" playlist yet — `useAddToDefaultLibrary`'s own "create on first add".
+    if (path === '/playlists') return Promise.resolve([]);
     throw new Error(`Unexpected path: ${path}`);
   });
 }
@@ -360,17 +363,73 @@ describe('SeriesDetailScreen — Download all (action row)', () => {
 });
 
 describe('SeriesDetailScreen — My List', () => {
-  it('toggles the accessibility label and selected state on press', async () => {
+  it('adds every episode to a "My List" playlist, creating it on the first-ever add', async () => {
     mockHappyPath();
-    const { findByLabelText, getByLabelText } = renderScreen();
+    mockedPost.mockImplementation((path: string) => {
+      if (path === '/playlists') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 0 });
+      if (path === '/playlists/{playlist_id}/items') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 1, items: [] });
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    const { findByLabelText } = renderScreen();
 
     const addButton = await findByLabelText('Add to My List');
     expect(addButton.props.accessibilityState).toEqual({ selected: false });
 
     fireEvent.press(addButton);
 
-    const removeButton = getByLabelText('Remove from My List');
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledWith('/playlists', { body: { name: 'My List', description: null, is_public: true } }));
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
+        params: { path: { playlist_id: 'p1' } },
+        body: { sermon_id: 'e1' },
+      }),
+    );
+    // All three episodes, in order — not just the first.
+    expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
+      params: { path: { playlist_id: 'p1' } },
+      body: { sermon_id: 'e2' },
+    });
+    expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
+      params: { path: { playlist_id: 'p1' } },
+      body: { sermon_id: 'e3' },
+    });
+    // Exactly one playlist created, not one per episode.
+    expect(mockedPost.mock.calls.filter((call) => call[0] === '/playlists')).toHaveLength(1);
+  });
+
+  it('shows "Remove from My List" once every episode has been added, and removes all of them on press', async () => {
+    const itemsFor = (list: typeof episodes) =>
+      list.map((ep, index) => ({ id: `item-${index}`, position: index, added_at: '2026-10-11T00:00:00Z', sermon: ep }));
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/series/{series_id}') return Promise.resolve(seriesDetail);
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      if (path === '/me/history') return Promise.resolve(history);
+      if (path === '/search') return Promise.resolve(relatedSearchResults);
+      if (path === '/playlists') return Promise.resolve([{ id: 'p1', name: 'My List', item_count: 3 }]);
+      if (path === '/playlists/{playlist_id}')
+        return Promise.resolve({ id: 'p1', name: 'My List', item_count: 3, items: itemsFor(episodes) });
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    mockedDelete.mockResolvedValue({ id: 'p1', name: 'My List', item_count: 0, items: [] });
+    const { findByLabelText } = renderScreen();
+
+    const removeButton = await findByLabelText('Remove from My List');
     expect(removeButton.props.accessibilityState).toEqual({ selected: true });
+
+    fireEvent.press(removeButton);
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+        params: { path: { playlist_id: 'p1', item_id: 'item-0' } },
+      }),
+    );
+    // All three episodes removed, not just the first.
+    expect(mockedDelete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+      params: { path: { playlist_id: 'p1', item_id: 'item-1' } },
+    });
+    expect(mockedDelete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+      params: { path: { playlist_id: 'p1', item_id: 'item-2' } },
+    });
   });
 });
 

@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, LinkButton } from '../../../components';
+import { AppText, LinkButton, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -32,7 +31,7 @@ export function AppearAsNotice({ displayName, onChange, onDismiss }: AppearAsNot
         hitSlop={spacing.sm}
         style={styles.close}
       >
-        <Ionicons name="close" size={18} color={colors.text.secondary} />
+        <PlatformIcon name="close" size={18} color={colors.text.secondary} />
       </Pressable>
     </View>
   );

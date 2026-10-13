@@ -841,6 +841,104 @@ class VerseAdminItem(VersePublic):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Playlists (Isaac's ask, session 2026-10-10: a "Library" tab for user-created
+# playlists, Spotify's own playlist flow as the reference). Private to their
+# owner — `GET /playlists`/`GET /playlists/{id}` only ever return the signed-in
+# viewer's own rows; `is_public` is stored and toggleable (matching the
+# reference screenshots' "Public playlist" badge / "Make private" option) but
+# nothing reads it yet — no cross-user playlist browsing exists in this app,
+# so building one here would be the "button that does nothing" this codebase
+# deliberately avoids (see `ActionButton`'s own Set Reminders/Rate precedent).
+# A playlist item always points at a `Sermon` row — series episodes ARE
+# sermons (`Sermon.series_id`), so "sermons and episodes" needs no second
+# content type or polymorphic column, unlike the Like tables' sermon/series
+# split.
+# ═══════════════════════════════════════════════════════════════════════════════
+class PlaylistCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=300)
+    is_public: bool = True
+
+
+class PlaylistUpdate(BaseModel):
+    """Every field optional — a PATCH only touches what the client sends,
+    same convention `SeriesUpdate`/`ProfileDetailsUpdate` already use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=300)
+    is_public: bool | None = None
+
+
+class PlaylistItemPublic(BaseModel):
+    id: uuid.UUID
+    position: int
+    added_at: datetime
+    sermon: SermonListItem
+
+
+class PlaylistPublic(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    is_public: bool
+    cover_url: str | None
+    owner_name: str | None
+    item_count: int
+    total_duration_seconds: int
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class PlaylistDetail(PlaylistPublic):
+    """Items are pre-filtered to what's currently visible to the viewer —
+    a sermon unpublished after being added just quietly drops out of the
+    list (same "invisible content never renders" rule every other catalog
+    read follows), without deleting the underlying `PlaylistItem` row, so it
+    reappears if the sermon is republished."""
+
+    items: list[PlaylistItemPublic]
+
+
+class PlaylistItemAdd(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sermon_id: uuid.UUID
+
+
+class PlaylistItemOrderRequest(BaseModel):
+    """Every current item id, in the caller's desired order — same
+    all-or-nothing shape `EpisodeOrderRequest` uses for episode reordering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[uuid.UUID]
+
+
+class PlaylistCoverUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=3, max_length=120)
+
+
+class PlaylistCoverTicket(BaseModel):
+    """Pre-signed PUT for a playlist cover image — same direct-to-storage
+    pattern the profile avatar and sermon/series thumbnails already use."""
+
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int
+    cover_key: str
+
+
+class PlaylistCoverResponse(BaseModel):
+    cover_url: str | None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Pagination
 # ═══════════════════════════════════════════════════════════════════════════════
 from typing import Generic, TypeVar  # noqa: E402

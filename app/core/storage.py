@@ -743,6 +743,14 @@ def avatar_key(user_id: uuid.UUID, filename: str) -> str:
     return f"avatars/{user_id}/{uuid.uuid4()}.{suffix}"
 
 
+def playlist_cover_key(playlist_id: uuid.UUID, filename: str) -> str:
+    """Key for a playlist cover image — same shape as `avatar_key`, a fresh
+    UUID per upload so replacing a cover never collides with a cached copy of
+    the old one at the same URL."""
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    return f"playlist_covers/{playlist_id}/{uuid.uuid4()}.{suffix}"
+
+
 def cdn_url_for(key: str, *, presigned_fallback: str) -> str:
     """Resolve the URL a client should use to fetch `key`.
 

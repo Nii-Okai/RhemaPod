@@ -949,6 +949,70 @@ class SeriesLike(Base):
     )
 
 
+class Playlist(Base):
+    """A viewer-owned playlist (Isaac's ask, session 2026-10-10: a "Library"
+    tab for creating playlists, Spotify's own flow as the reference). Deleting
+    the owning user CASCADEs — a playlist has no meaning without its owner, no
+    sharing/collaboration surface exists in this app."""
+
+    __tablename__ = "playlists"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+    cover_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    items: Mapped[list["PlaylistItem"]] = relationship(
+        "PlaylistItem",
+        back_populates="playlist",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="PlaylistItem.position",
+    )
+
+
+class PlaylistItem(Base):
+    """One sermon (or series episode — episodes ARE sermons, see
+    `Sermon.series_id`) in a playlist, at a given `position`. No unique
+    constraint on `(playlist_id, sermon_id)` — Spotify allows the same track
+    twice in one playlist, and so does this. Deleting the sermon CASCADEs:
+    a playlist entry has no meaning once its content is gone."""
+
+    __tablename__ = "playlist_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    playlist_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("playlists.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sermon_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sermons.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    playlist: Mapped["Playlist"] = relationship("Playlist", back_populates="items")
+
+    __table_args__ = (
+        Index("ix_playlist_items_playlist_id_position", "playlist_id", "position"),
+    )
+
+
 # Precomputed, not called inline inside `Verse` — the `text` *column* below would
 # otherwise shadow the module-level `text()` SQL-literal function for the rest of that
 # class body (a real bug, caught by the SQLite test suite: "'MappedColumn' object is

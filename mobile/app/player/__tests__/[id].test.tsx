@@ -13,7 +13,6 @@ import { createTestQueryClient } from '../../../lib/query/testUtils';
 import { __enterFullscreen, __exitFullscreen, __lastMockPlayer } from '../../../__mocks__/expo-video';
 import { useIsOnline } from '../../../lib/hooks/useIsOnline';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
-import type { DownloadRecord } from '../../../lib/downloads/types';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
@@ -26,6 +25,11 @@ jest.mock('../../../components/navigation/platform', () => ({
 jest.mock('expo-video');
 jest.mock('@expo/vector-icons');
 
+// `QueueList`'s per-item Share action pulls in `shareContent`, which pulls in the
+// native `react-native-share` module — not present under Jest, same reasoning as the
+// playlist screen's own test file already mocking this.
+jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
+
 // The comments panel reads connectivity through this one hook; mocking it (rather than
 // `expo-network`, which has no native module under Jest) lets a test flip the device offline.
 jest.mock('../../../lib/hooks/useIsOnline', () => ({ useIsOnline: jest.fn(() => true) }));
@@ -34,15 +38,15 @@ const mockedUseIsOnline = useIsOnline as jest.Mock;
 // Explicit factory (not a bare automock) — an automock still has to `require()` the real
 // module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
 // module resolution (unavailable under Jest). `useDownloads` itself is a reconfigurable
-// `jest.fn()` (same pattern as `_detail/__tests__/DownloadButton.test.tsx`) so the
-// "download button" describe block below can drive each state (queued/downloading/ready/
-// failed) rather than only the harmless empty default other tests rely on.
+// `jest.fn()` so a test can drive this screen's own offline-vs-streamed routing
+// (`useDownloads().find(sermonId)` deciding whether to prefer the local file) rather than
+// only the harmless empty default other tests rely on — there's no download-starting UI
+// left on this screen itself (session 2026-10-09 — see the screen's own doc comment).
 jest.mock('../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
-// This screen now calls `useLocalPlayback` unconditionally too (see its own doc comment
-// on the offline-vs-streamed split) — mocked to a harmless always-ready return so a test
-// that happens to mock `find()` into returning a `ready` record for 'sermon-1' (the
-// "download button" describe block below does, for its own unrelated reason) doesn't
-// accidentally tip this screen into the offline branch with no local file, which would
+// This screen calls `useLocalPlayback` unconditionally too (see its own doc comment on
+// the offline-vs-streamed split) — mocked to a harmless always-ready return so a test
+// that puts a `ready` record into `find()` for 'sermon-1' to exercise that routing
+// doesn't accidentally tip into the offline branch with no local file, which would
 // otherwise render the "no playable audio or video" error instead of the player.
 jest.mock('../../../lib/downloads/useLocalPlayback', () => ({
   useLocalPlayback: jest.fn(() => ({
@@ -53,15 +57,19 @@ jest.mock('../../../lib/downloads/useLocalPlayback', () => ({
 }));
 
 const mockedUseDownloads = useDownloads as jest.Mock;
+const mockDownload = jest.fn();
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockSetParams = jest.fn();
+let mockParams: Record<string, string | undefined> = { id: 'sermon-1' };
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ id: 'sermon-1' }),
-  useRouter: () => ({ back: mockBack }),
+  useLocalSearchParams: () => mockParams,
+  useRouter: () => ({ back: mockBack, replace: mockReplace, setParams: mockSetParams }),
 }));
 
 jest.mock('expo-sqlite/kv-store', () => ({
@@ -122,11 +130,13 @@ function mockReads({
   progress = null,
   stream = baseStream,
   comments = [],
+  playlist = null,
 }: {
   detail?: unknown;
   progress?: unknown;
   stream?: unknown;
   comments?: unknown[];
+  playlist?: unknown;
 } = {}) {
   mockedGet.mockImplementation((path: string) => {
     if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(detail);
@@ -136,8 +146,35 @@ function mockReads({
       return Promise.resolve({ items: comments, total: comments.length, limit: 25, offset: 0 });
     }
     if (path === '/auth/me') return Promise.resolve(profile);
+    if (path === '/playlists/{playlist_id}') return Promise.resolve(playlist);
     throw new Error(`unexpected path: ${path}`);
   });
+}
+
+function playlistItem(sermonId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id: `item-${sermonId}`,
+    position: 0,
+    added_at: '2026-10-10T00:00:00Z',
+    sermon: { ...baseDetail, id: sermonId, title: `Title ${sermonId}`, ...overrides },
+  };
+}
+
+function playlist(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'p1',
+    name: 'Driving',
+    description: null,
+    is_public: false,
+    cover_url: null,
+    owner_name: 'Isaac N.A. Okai',
+    item_count: 0,
+    total_duration_seconds: 0,
+    created_at: '2026-10-10T00:00:00Z',
+    updated_at: null,
+    items: [],
+    ...overrides,
+  };
 }
 
 function renderPlayer() {
@@ -152,6 +189,10 @@ function renderPlayer() {
 beforeEach(() => {
   mockedGet.mockReset();
   mockBack.mockClear();
+  mockReplace.mockClear();
+  mockSetParams.mockClear();
+  mockDownload.mockClear();
+  mockParams = { id: 'sermon-1' };
   mockedUseIsOnline.mockReturnValue(true);
   __enterFullscreen.mockClear();
   __exitFullscreen.mockClear();
@@ -163,7 +204,7 @@ beforeEach(() => {
     wifiOnly: true,
     isSavingWifiOnly: false,
     setWifiOnly: jest.fn(),
-    download: jest.fn(),
+    download: mockDownload,
     retry: jest.fn(),
     remove: jest.fn(),
     find: jest.fn(() => undefined),
@@ -447,6 +488,151 @@ describe('PlayerScreen — replay', () => {
   });
 });
 
+describe('PlayerScreen — playlist queue', () => {
+  it('advances to the next sermon in the queue on playToEnd, staying on this screen (setParams, not replace)', async () => {
+    mockParams = { id: 'sermon-1', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '0' };
+    mockReads();
+    const { findByTestId, queryByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      player.__simulatePlayToEnd();
+    });
+
+    expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '1' });
+    expect(mockReplace).not.toHaveBeenCalled();
+    // Moved on by itself — never pins the single-sermon Replay control.
+    expect(queryByLabelText('Replay')).toBeNull();
+  });
+
+  it('falls back to the ordinary Replay control at the end of the queue', async () => {
+    mockParams = { id: 'sermon-3', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '2' };
+    mockReads();
+    const { findByTestId, getByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      player.__simulatePlayToEnd();
+    });
+
+    expect(mockSetParams).not.toHaveBeenCalled();
+    expect(getByLabelText('Replay')).toBeTruthy();
+  });
+
+  it('wraps to the first item instead of stopping, when repeat is on', async () => {
+    mockParams = {
+      id: 'sermon-3',
+      queue: 'sermon-1,sermon-2,sermon-3',
+      queueIndex: '2',
+      playlistId: 'p1',
+      repeat: '1',
+    };
+    mockReads({ playlist: playlist({ items: [playlistItem('sermon-1'), playlistItem('sermon-2'), playlistItem('sermon-3')] }) });
+    const { findByTestId } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      player.__simulatePlayToEnd();
+    });
+
+    expect(mockSetParams).toHaveBeenCalledWith({
+      id: 'sermon-1',
+      queue: 'sermon-1,sermon-2,sermon-3',
+      queueIndex: '0',
+      playlistId: 'p1',
+      repeat: '1',
+    });
+  });
+});
+
+describe('PlayerScreen — queue list', () => {
+  function renderWithQueue(overrides: Partial<Record<string, string>> = {}) {
+    mockParams = {
+      id: 'sermon-1',
+      queue: 'sermon-1,sermon-2',
+      queueIndex: '0',
+      playlistId: 'p1',
+      ...overrides,
+    };
+    mockReads({
+      playlist: playlist({ items: [playlistItem('sermon-1'), playlistItem('sermon-2')] }),
+    });
+    return renderPlayer();
+  }
+
+  it('shows the queue list (playlist name, position, owner, private lock) instead of comments', async () => {
+    const { findByText, queryByText } = renderWithQueue();
+
+    expect(await findByText(/Driving/)).toBeTruthy();
+    expect(await findByText('1/2')).toBeTruthy();
+    expect(await findByText('Isaac N.A. Okai')).toBeTruthy();
+    expect(await findByText('Title sermon-2')).toBeTruthy();
+    expect(queryByText('Comments')).toBeNull();
+  });
+
+  it('tapping another row jumps playback to it, staying on this screen (setParams, not replace)', async () => {
+    const { findByLabelText } = renderWithQueue();
+
+    fireEvent.press(await findByLabelText('Play Title sermon-2'));
+
+    expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', queue: 'sermon-1,sermon-2', queueIndex: '1', playlistId: 'p1' });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('toggling repeat updates the route param without a remount (setParams, not replace)', async () => {
+    const { findByLabelText } = renderWithQueue();
+
+    fireEvent.press(await findByLabelText('Repeat this queue'));
+
+    expect(mockSetParams).toHaveBeenCalledWith({ repeat: '1' });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('shuffle reorders only the not-yet-played tail, leaving the current item in place', async () => {
+    const { findByLabelText } = renderWithQueue({ queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '0' });
+
+    fireEvent.press(await findByLabelText('Shuffle the rest of this queue'));
+
+    expect(mockSetParams).toHaveBeenCalledTimes(1);
+    const [{ queue: newQueue }] = mockSetParams.mock.calls[0];
+    expect(newQueue.startsWith('sermon-1,')).toBe(true);
+    expect(newQueue.split(',').sort()).toEqual(['sermon-1', 'sermon-2', 'sermon-3']);
+  });
+
+  it('a queue row\'s "..." menu downloads, removes from the playlist, or shares that item', async () => {
+    const { findByLabelText, getByLabelText } = renderWithQueue();
+
+    fireEvent.press(await findByLabelText('More options for Title sermon-2'));
+    fireEvent.press(getByLabelText('Download'));
+
+    expect(mockDownload).toHaveBeenCalledWith('sermon-2', 'Title sermon-2', 'audio', expect.any(String), 'Teaching');
+
+    fireEvent.press(await findByLabelText('More options for Title sermon-2'));
+    fireEvent.press(getByLabelText('Remove from playlist'));
+
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+        params: { path: { playlist_id: 'p1', item_id: 'item-sermon-2' } },
+      }),
+    );
+  });
+});
+
 describe('PlayerScreen — fullscreen', () => {
   it('asks the video view for native fullscreen', async () => {
     mockReads();
@@ -502,147 +688,3 @@ describe('PlayerScreen — comments', () => {
   });
 });
 
-describe('PlayerScreen — download button', () => {
-  // Same `DownloadPillButton` component sermon-detail wires, composed here against the
-  // Player screen's own sermon identity (the route param / `detail.id` the rest of this
-  // screen already plays from) — this proves it's the *currently playing* sermon driving
-  // the button, not a second, independently-derived id.
-  function record(overrides: Partial<DownloadRecord> = {}): DownloadRecord {
-    return {
-      sermonId: 'sermon-1',
-      title: 'Anchored in the Storm',
-      thumbnailUrl: null,
-      category: null,
-      mediaType: 'audio',
-      state: 'ready',
-      progress: 1,
-      bytesTotal: 1000,
-      failureReason: null,
-      failureMessage: null,
-      keyIdHex: '00',
-      createdAt: 0,
-      updatedAt: 0,
-      ...overrides,
-    };
-  }
-
-  it('shows a Download control for the playing sermon when nothing is queued yet, and starts a download on press', async () => {
-    mockReads();
-    const download = jest.fn();
-    mockedUseDownloads.mockReturnValue({
-      downloads: [],
-      isLoading: false,
-      wifiOnly: true,
-      isSavingWifiOnly: false,
-      setWifiOnly: jest.fn(),
-      download,
-      retry: jest.fn(),
-      remove: jest.fn(),
-      find: jest.fn((id: string) => (id === 'sermon-1' ? undefined : record())),
-    });
-
-    const { findByText } = renderPlayer();
-    fireEvent.press(await findByText('Download'));
-    expect(download).toHaveBeenCalledWith(
-      'sermon-1',
-      'Anchored in the Storm',
-      'audio',
-      'https://cdn.example.com/art.jpg',
-      'Teaching',
-    );
-  });
-
-  it('shows a queued state for the playing sermon', async () => {
-    mockReads();
-    mockedUseDownloads.mockReturnValue({
-      downloads: [],
-      isLoading: false,
-      wifiOnly: true,
-      isSavingWifiOnly: false,
-      setWifiOnly: jest.fn(),
-      download: jest.fn(),
-      retry: jest.fn(),
-      remove: jest.fn(),
-      find: jest.fn((id: string) => (id === 'sermon-1' ? record({ state: 'queued', progress: 0 }) : undefined)),
-    });
-
-    const { findByText } = renderPlayer();
-    await findByText('Queued…');
-  });
-
-  it('shows download progress for the playing sermon', async () => {
-    mockReads();
-    mockedUseDownloads.mockReturnValue({
-      downloads: [],
-      isLoading: false,
-      wifiOnly: true,
-      isSavingWifiOnly: false,
-      setWifiOnly: jest.fn(),
-      download: jest.fn(),
-      retry: jest.fn(),
-      remove: jest.fn(),
-      find: jest.fn((id: string) =>
-        id === 'sermon-1' ? record({ state: 'downloading', progress: 0.65 }) : undefined,
-      ),
-    });
-
-    const { findByText } = renderPlayer();
-    await findByText('Downloading… 65%');
-  });
-
-  it('shows a Downloaded state with a working delete, scoped to the playing sermon', async () => {
-    mockReads();
-    const remove = jest.fn();
-    mockedUseDownloads.mockReturnValue({
-      downloads: [],
-      isLoading: false,
-      wifiOnly: true,
-      isSavingWifiOnly: false,
-      setWifiOnly: jest.fn(),
-      download: jest.fn(),
-      retry: jest.fn(),
-      remove,
-      find: jest.fn((id: string) => (id === 'sermon-1' ? record({ state: 'ready' }) : undefined)),
-    });
-
-    const { findByText, getByLabelText } = renderPlayer();
-    await findByText('Downloaded');
-    fireEvent.press(getByLabelText('Delete downloaded Anchored in the Storm'));
-    expect(remove).toHaveBeenCalledWith('sermon-1');
-  });
-
-  it('shows the real failure reason with a working Retry for the playing sermon', async () => {
-    mockReads();
-    const retry = jest.fn();
-    mockedUseDownloads.mockReturnValue({
-      downloads: [],
-      isLoading: false,
-      wifiOnly: true,
-      isSavingWifiOnly: false,
-      setWifiOnly: jest.fn(),
-      download: jest.fn(),
-      retry,
-      remove: jest.fn(),
-      find: jest.fn((id: string) =>
-        id === 'sermon-1'
-          ? record({
-              state: 'failed',
-              failureReason: 'no_audio',
-              failureMessage: "This sermon doesn't have an audio version available to download.",
-            })
-          : undefined,
-      ),
-    });
-
-    const { findByText, getByLabelText } = renderPlayer();
-    await findByText("This sermon doesn't have an audio version available to download.");
-    fireEvent.press(getByLabelText('Retry download'));
-    expect(retry).toHaveBeenCalledWith('sermon-1');
-  });
-
-  it('renders no download affordance when the playing sermon has no rendition', async () => {
-    mockReads({ detail: { ...baseDetail, media_type: null } });
-    const { queryByText } = renderPlayer();
-    await waitFor(() => expect(queryByText('Download')).toBeNull());
-  });
-});

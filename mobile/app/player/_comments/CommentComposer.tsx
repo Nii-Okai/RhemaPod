@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, Avatar } from '../../../components';
+import { AppText, Avatar, PlatformIcon } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -131,7 +130,7 @@ export function CommentComposer({
           {isPosting ? (
             <ActivityIndicator color={colors.primaryButton.text} />
           ) : (
-            <Ionicons name="paper-plane" size={20} color={canSend ? colors.primaryButton.text : colors.text.tertiary} />
+            <PlatformIcon name="paper-plane" size={20} color={canSend ? colors.primaryButton.text : colors.text.tertiary} />
           )}
         </Pressable>
       </View>

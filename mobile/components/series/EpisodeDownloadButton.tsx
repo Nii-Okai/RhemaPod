@@ -1,9 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { CircularProgress } from '../CircularProgress';
 import { IconButton } from '../IconButton';
 import { PopIn } from '../PopIn';
+import { PlatformIcon } from '../PlatformIcon';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
@@ -74,7 +74,7 @@ export function EpisodeDownloadButton({
         style={styles.ringWrap}
       >
         <CircularProgress progress={progress} size={24} strokeWidth={2.5} spinning>
-          <Ionicons name="arrow-down" size={11} color={colors.text.secondary} />
+          <PlatformIcon name="arrow-down" size={11} color={colors.text.secondary} />
         </CircularProgress>
       </Pressable>
     );

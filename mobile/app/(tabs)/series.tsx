@@ -37,7 +37,7 @@ export default function SeriesScreen() {
           <View style={styles.headerSpacer} />
         </View>
       )}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {isTablet ? (
           <AppText variant="display.section" style={styles.heading}>
             Series

@@ -3,12 +3,15 @@ import { Animated, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton } from '../../../components';
 import { colors } from '../../../theme/colors';
+import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
 export interface HomeTopBarProps {
   onSearchPress: () => void;
-  onDownloadsPress: () => void;
-  onAnnouncementsPress: () => void;
+  onNotificationsPress: () => void;
+  /** New-release count since the user last opened Notifications (Isaac's ask, session
+   * 2026-10-11: "Show counter") — a small badge on the bell, omitted entirely at 0. */
+  unseenNotificationsCount?: number;
   /** Drives the bar's background fade (Isaac's ask, session 2026-09-30: a Prime
       Video/Netflix-style top bar that's transparent over the hero and solidifies as
       you scroll past it). Omitted entirely, the bar just renders solid, same as
@@ -31,6 +34,12 @@ const DEFAULT_FADE_DISTANCE = 180;
  * token) so its own content never draws under the system chrome, independent of
  * whether the screen positions the bar in normal flow or absolutely overlaid.
  *
+ * The bell no longer opens Announcements (Isaac's ask, session 2026-10-11: "should open
+ * notifications page showing new releases") — it pushes `/notifications` instead, with a
+ * small unread-count badge (`unseenNotificationsCount`, `useNotificationsBadge`'s own
+ * doc comment). Announcements itself is still reachable, just from the You tab's own row
+ * now, not from here.
+ *
  * Two background layers, both always present so the bar reads correctly whether or
  * not a caller passes `scrollY`:
  *  - A constant, low-opacity dark scrim — keeps the wordmark/icons legible over
@@ -43,8 +52,8 @@ const DEFAULT_FADE_DISTANCE = 180;
  */
 export function HomeTopBar({
   onSearchPress,
-  onDownloadsPress,
-  onAnnouncementsPress,
+  onNotificationsPress,
+  unseenNotificationsCount = 0,
   scrollY,
   fadeDistance = DEFAULT_FADE_DISTANCE,
   onHeight,
@@ -73,8 +82,16 @@ export function HomeTopBar({
           </AppText>
         </AppText>
         <View style={styles.actions}>
-          <IconButton icon="download-outline" accessibilityLabel="Downloads" onPress={onDownloadsPress} />
-          <IconButton icon="notifications-outline" accessibilityLabel="Notifications" onPress={onAnnouncementsPress} />
+          <View>
+            <IconButton icon="notifications-outline" accessibilityLabel="Notifications" onPress={onNotificationsPress} />
+            {unseenNotificationsCount > 0 ? (
+              <View style={styles.badge} pointerEvents="none">
+                <AppText variant="ui.label" tone="inverse" style={styles.badgeText}>
+                  {unseenNotificationsCount > 9 ? '9+' : String(unseenNotificationsCount)}
+                </AppText>
+              </View>
+            ) : null}
+          </View>
           <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearchPress} />
         </View>
       </View>
@@ -105,5 +122,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
 });

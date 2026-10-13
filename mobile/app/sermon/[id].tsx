@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
@@ -9,6 +9,7 @@ import { colors } from '../../theme/colors';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { nextRelatedSermonRoute, RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
+import { useAddToDefaultLibrary } from '../../lib/query/hooks/usePlaylists';
 import { useSermonDetail, useToggleSermonLike } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
 import { shareContent } from '../../lib/share/shareContent';
@@ -32,7 +33,7 @@ export default function SermonDetailScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const [inMyList, setInMyList] = useState(false);
+  const defaultLibrary = useAddToDefaultLibrary();
 
   const detailQuery = useSermonDetail(id);
   const toggleLike = useToggleSermonLike(id);
@@ -166,17 +167,22 @@ export default function SermonDetailScreen() {
           {detail.tags.length > 0 ? <TagsRow tags={detail.tags} /> : null}
           <View style={styles.actionRow}>
             <ActionButton
-              icon={inMyList ? 'checkmark' : 'add'}
+              icon={defaultLibrary.isInDefaultLibrary(detail.id) ? 'checkmark' : 'add'}
               label="My List"
-              accessibilityLabel={inMyList ? 'Remove from My List' : 'Add to My List'}
-              selected={inMyList}
-              onPress={() => setInMyList((current) => !current)}
+              accessibilityLabel={defaultLibrary.isInDefaultLibrary(detail.id) ? 'Remove from My List' : 'Add to My List'}
+              selected={defaultLibrary.isInDefaultLibrary(detail.id)}
+              onPress={() => defaultLibrary.toggleSermon(detail.id)}
             />
             <ActionButton
               icon={detail.liked_by_me ? 'heart' : 'heart-outline'}
-              label={`Like\n${detail.like_count}`}
+              label="Like"
+              badgeCount={detail.like_count}
               accessibilityLabel={
-                detail.liked_by_me ? `Unlike, ${detail.like_count} likes` : `Like, ${detail.like_count} likes`
+                detail.like_count > 0
+                  ? `${detail.liked_by_me ? 'Unlike' : 'Like'}, ${detail.like_count} likes`
+                  : detail.liked_by_me
+                    ? 'Unlike'
+                    : 'Like'
               }
               selected={detail.liked_by_me}
               onPress={() => toggleLike.toggle(detail.liked_by_me)}

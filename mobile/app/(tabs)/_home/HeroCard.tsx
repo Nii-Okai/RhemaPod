@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, PressableScale } from '../../../components';
+import React from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { AppText, PlatformIcon, PressableScale } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatDuration } from '../../../lib/format/duration';
+import { useAddToDefaultLibrary } from '../../../lib/query/hooks/usePlaylists';
 import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
 
 export interface HeroCardProps {
@@ -41,9 +41,17 @@ export interface HeroCardProps {
  * "button"` would make VoiceOver/TalkBack announce one opaque "button" over three more, all
  * describing overlapping actions. Sighted users still get "tap anywhere to open," but the
  * accessible surface is the explicit controls, not the whole card.
+ *
+ * "My List" is a real playlist now (Isaac's ask, session 2026-10-11: "add sermon to
+ * default library" — this was a local `useState` toggle before, doing nothing past a
+ * remount; see `useAddToDefaultLibrary`'s own doc comment for the "default" convention).
+ * Once added, the circle shows a checkmark — tapping it again removes the sermon
+ * (Isaac's ask, session 2026-10-11: "allow user toggle"; it was a one-way add-only
+ * button the one session prior).
  */
 export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
-  const [saved, setSaved] = useState(false);
+  const defaultLibrary = useAddToDefaultLibrary();
+  const saved = defaultLibrary.isInDefaultLibrary(sermon.id);
   const duration = formatDuration(sermon.duration_seconds);
   const watchLabel = duration ? `Watch, ${duration}` : 'Watch';
 
@@ -68,7 +76,7 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
 
         <View style={styles.playButtonWrap} pointerEvents="none">
           <View style={styles.playButton}>
-            <Ionicons name="play" size={26} color={colors.text.primary} />
+            <PlatformIcon name="play" size={26} color={colors.text.primary} />
           </View>
         </View>
       </View>
@@ -80,20 +88,24 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
           accessibilityLabel={watchLabel}
           style={styles.watchPill}
         >
-          <Ionicons name="play" size={15} color={colors.primaryButton.text} />
+          <PlatformIcon name="play" size={15} color={colors.primaryButton.text} />
           <AppText variant="ui.button" tone="inverse">
             Watch{duration ? ` · ${duration}` : ''}
           </AppText>
         </PressableScale>
 
         <PressableScale
-          onPress={() => setSaved((current) => !current)}
+          onPress={() => defaultLibrary.toggleSermon(sermon.id)}
           accessibilityRole="button"
           accessibilityLabel={saved ? 'Remove from My List' : 'Add to My List'}
           accessibilityState={{ selected: saved }}
           style={styles.savedCircle}
         >
-          <Ionicons name={saved ? 'checkmark' : 'add'} size={20} color={colors.text.primary} />
+          {defaultLibrary.isToggling ? (
+            <ActivityIndicator size="small" color={colors.text.primary} />
+          ) : (
+            <PlatformIcon name={saved ? 'checkmark' : 'add'} size={20} color={colors.text.primary} />
+          )}
         </PressableScale>
       </View>
     </Pressable>

@@ -11,6 +11,7 @@ import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
+import { useAddToDefaultLibrary } from '../../lib/query/hooks/usePlaylists';
 import { useSeriesDetail, useSeriesEpisodes, useToggleSeriesLike } from '../../lib/query/hooks/useSeries';
 import { useWatchHistory } from '../../lib/query/hooks/useWatchHistory';
 import { buildHistoryMap } from '../../lib/format/episodeStatus';
@@ -79,7 +80,7 @@ export default function SeriesDetailScreen() {
   const series = useSeriesDetail(id);
   const episodes = useSeriesEpisodes(id);
   const history = useWatchHistory(id);
-  const [inMyList, setInMyList] = useState(false);
+  const defaultLibrary = useAddToDefaultLibrary();
   const [tab, setTab] = useState<DetailTab>('episodes');
   const toggleLike = useToggleSeriesLike(id);
   const downloads = useDownloads();
@@ -160,6 +161,18 @@ export default function SeriesDetailScreen() {
       thumbnailUrl: episode.thumbnail_url,
       category: episode.category_name,
     }));
+  // "My List" toggles every episode at once, same bulk-operate-on-the-whole-series
+  // convention Download already established above — unlike Download, this doesn't need
+  // a rendition to exist (`downloadableEpisodes`'s own filter), so it targets every
+  // episode rather than just the downloadable subset. "Already added" is only true once
+  // every episode is in, not just some — a checkmark implying "fully done" when half
+  // the series is still missing would be misleading. Toggling off (Isaac's ask, session
+  // 2026-10-11: "allow user toggle") removes every episode, since by definition all of
+  // them are in whenever this reads true; toggling on only adds whichever are still
+  // missing — `useAddToDefaultLibrary`'s own `toggleSermons` doesn't blindly re-add
+  // ones already there.
+  const inMyList = episodeItems.length > 0 && episodeItems.every((episode) => defaultLibrary.isInDefaultLibrary(episode.id));
+  const toggleAllInMyList = () => defaultLibrary.toggleSermons(episodeItems.map((episode) => episode.id));
 
   return (
     <View style={styles.screen}>
@@ -211,13 +224,18 @@ export default function SeriesDetailScreen() {
               label="My List"
               accessibilityLabel={inMyList ? 'Remove from My List' : 'Add to My List'}
               selected={inMyList}
-              onPress={() => setInMyList((current) => !current)}
+              onPress={toggleAllInMyList}
             />
             <ActionButton
               icon={detail.liked_by_me ? 'heart' : 'heart-outline'}
-              label={`Like\n${detail.like_count}`}
+              label="Like"
+              badgeCount={detail.like_count}
               accessibilityLabel={
-                detail.liked_by_me ? `Unlike, ${detail.like_count} likes` : `Like, ${detail.like_count} likes`
+                detail.like_count > 0
+                  ? `${detail.liked_by_me ? 'Unlike' : 'Like'}, ${detail.like_count} likes`
+                  : detail.liked_by_me
+                    ? 'Unlike'
+                    : 'Like'
               }
               selected={detail.liked_by_me}
               onPress={() => toggleLike.toggle(detail.liked_by_me)}

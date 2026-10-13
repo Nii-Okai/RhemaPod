@@ -33,3 +33,13 @@ export function useStream(sermonId: string, options: { enabled?: boolean } = {})
 export function selectPlaybackVariant(variants: StreamVariant[]): StreamVariant | null {
   return variants.find((v) => v.type === 'video') ?? variants.find((v) => v.type === 'audio') ?? null;
 }
+
+/** The opposite preference from `selectPlaybackVariant` above — audio first, falling
+ * back to the video rendition (whose own muxed audio track still plays fine with no
+ * `VideoView` mounted to show it). For `usePlaylistPreview`'s inline "tap to hear a bit
+ * of this" affordance (Isaac's ask, session 2026-10-10), which is sound-only by design —
+ * there's no surface in a playlist row's 48px thumbnail worth rendering actual video
+ * into. */
+export function selectAudioVariant(variants: StreamVariant[]): StreamVariant | null {
+  return variants.find((v) => v.type === 'audio') ?? variants.find((v) => v.type === 'video') ?? null;
+}

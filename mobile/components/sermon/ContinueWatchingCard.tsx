@@ -1,11 +1,14 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { AppText, FadeTitle, PressableScale, ProgressBar } from '../../../components';
-import { colors } from '../../../theme/colors';
-import { radius } from '../../../theme/radius';
-import { spacing } from '../../../theme/spacing';
-import { formatDuration } from '../../../lib/format/duration';
-import type { ContinueWatchingItem } from '../../../lib/query/hooks/useContinueWatching';
+import { AppText } from '../Text';
+import { FadeTitle } from '../FadeTitle';
+import { PressableScale } from '../PressableScale';
+import { ProgressBar } from '../ProgressBar';
+import { colors } from '../../theme/colors';
+import { radius } from '../../theme/radius';
+import { spacing } from '../../theme/spacing';
+import { formatDuration } from '../../lib/format/duration';
+import type { ContinueWatchingItem } from '../../lib/query/hooks/useContinueWatching';
 
 export interface ContinueWatchingCardProps {
   item: ContinueWatchingItem;
@@ -22,10 +25,20 @@ function remainingLabel(item: ContinueWatchingItem): string | null {
   return `${formatDuration(remaining)} left`;
 }
 
+/** "Category · N:NN left" — category before the remaining time (Isaac's ask, session
+ * 2026-10-10), same `[category, stat].filter(Boolean).join(' · ')` shape `DownloadRow`'s
+ * own meta line already uses, rendered together in one `mono` line rather than the
+ * category getting its own non-mono segment — matching that existing precedent instead
+ * of inventing a second convention for "category paired with a stat". */
+function metaLineFor(item: ContinueWatchingItem): string | null {
+  const parts = [item.category_name, remainingLabel(item)].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 /**
  * Home's "Continue watching" shelf card (design spec §3 Home: "in-progress items with
  * time-remaining"). Compact-density card per §4's "two density variants" note — a fixed-
- * width shelf card, not the full-width `SermonResultRow` used by Search/Browse drill-down.
+ * width shelf card, not the grid-width `SermonCard` category/speaker drill-down use.
  *
  * The progress bar overlaid on the art's bottom edge reuses the shared `ProgressBar`
  * (track + gold fill, §4 — the same primitive download-progress rows use) rather than a
@@ -36,8 +49,8 @@ function remainingLabel(item: ContinueWatchingItem): string | null {
  * when `duration_seconds` itself is unknown, in which case there's nothing true to show.
  */
 export function ContinueWatchingCard({ item, onPress }: ContinueWatchingCardProps) {
-  const remaining = remainingLabel(item);
-  const label = remaining ? `${item.title}, ${remaining}` : item.title;
+  const metaLine = metaLineFor(item);
+  const label = metaLine ? `${item.title}, ${metaLine}` : item.title;
   const progress = item.percent_complete !== null ? item.percent_complete / 100 : null;
 
   return (
@@ -60,9 +73,9 @@ export function ContinueWatchingCard({ item, onPress }: ContinueWatchingCardProp
       </View>
       <View style={styles.body}>
         <FadeTitle width={TITLE_WIDTH}>{item.title}</FadeTitle>
-        {remaining ? (
+        {metaLine ? (
           <AppText variant="mono.meta" tone="tertiary">
-            {remaining}
+            {metaLine}
           </AppText>
         ) : null}
       </View>

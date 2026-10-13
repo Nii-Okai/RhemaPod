@@ -60,6 +60,13 @@ export const queryKeys = {
     // `object`, not `Record<string, unknown>`: callers pass a named params interface
     // (`SearchResultsParams`), which has no index signature of its own.
     results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
+    // Distinct key namespace from `results` above — an `useInfiniteQuery` cache entry
+    // ({pages, pageParams}) has a different shape than a plain `useQuery` one (a flat
+    // `SearchResults`), so the two must never collide under the same key even when
+    // called with identical params (`AddToPlaylistSheet`'s own paginated Sermons/
+    // Episodes tabs, Isaac's ask, session 2026-10-10 — "not all episodes are showing,"
+    // the 20-result-cap root cause).
+    resultsInfinite: (params: object = {}) => [...queryKeys.search.all, 'results-infinite', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
   // W4.4 — mirrors the `sermons` shape above per this factory's own doc comment.
@@ -126,6 +133,16 @@ export const queryKeys = {
   comments: {
     all: ['comments'] as const,
     forSermon: (sermonId: string) => [...queryKeys.comments.all, 'sermon', sermonId] as const,
+  },
+  // The Library tab's playlists (Isaac's ask, session 2026-10-10) — mirrors the
+  // `sermons`/`series` shape; `list()` takes no params (GET /playlists is always
+  // "all of the caller's own playlists", there's no filter to key on).
+  playlists: {
+    all: ['playlists'] as const,
+    lists: () => [...queryKeys.playlists.all, 'list'] as const,
+    list: () => [...queryKeys.playlists.lists()] as const,
+    details: () => [...queryKeys.playlists.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.playlists.details(), id] as const,
   },
 } as const;
 

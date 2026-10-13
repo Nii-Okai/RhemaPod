@@ -36,4 +36,36 @@ describe('ActionButton', () => {
 
     expect(getByText('Download\n3 Episodes')).toBeTruthy();
   });
+
+  describe('badgeCount (Like\'s own counter)', () => {
+    it('shows no badge at all when the count is 0', () => {
+      const { queryByText } = render(
+        <ActionButton icon="heart-outline" label="Like" accessibilityLabel="Like" badgeCount={0} onPress={jest.fn()} />,
+      );
+      expect(queryByText('0')).toBeNull();
+    });
+
+    it('shows no badge when badgeCount is omitted', () => {
+      const { queryByText } = render(
+        <ActionButton icon="heart-outline" label="Like" accessibilityLabel="Like" onPress={jest.fn()} />,
+      );
+      expect(queryByText('0')).toBeNull();
+    });
+
+    it('shows the real count once it is 1 or more', () => {
+      const { getByText } = render(
+        <ActionButton icon="heart" label="Like" accessibilityLabel="Unlike, 5 likes" badgeCount={5} onPress={jest.fn()} />,
+      );
+      expect(getByText('5')).toBeTruthy();
+      // The label itself stays plain "Like" — the count lives on the badge, not a second line.
+      expect(getByText('Like')).toBeTruthy();
+    });
+
+    it('caps a very large count at "99+" rather than overflowing the badge', () => {
+      const { getByText } = render(
+        <ActionButton icon="heart" label="Like" accessibilityLabel="Unlike, 250 likes" badgeCount={250} onPress={jest.fn()} />,
+      );
+      expect(getByText('99+')).toBeTruthy();
+    });
+  });
 });

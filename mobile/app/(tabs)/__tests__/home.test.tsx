@@ -105,13 +105,13 @@ describe('HomeScreen — populated', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's1' } });
   });
 
-  it('navigates to the announcements route (P2) when the top bar bell is pressed', async () => {
+  it('navigates to /notifications when the top bar bell is pressed', async () => {
     mockRoutes();
     const { findByLabelText } = renderHome();
 
     fireEvent.press(await findByLabelText('Notifications'));
 
-    expect(mockPush).toHaveBeenCalledWith('/announcements');
+    expect(mockPush).toHaveBeenCalledWith('/notifications');
   });
 
   it('navigates to the full series list when the Series section\'s arrow is pressed', async () => {

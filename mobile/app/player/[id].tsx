@@ -12,12 +12,15 @@ import { useStream, selectPlaybackVariant, type StreamVariant } from '../../lib/
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
 import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { isPlayable } from '../sermon/_detail/isPlayable';
-import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { useLocalPlayback } from '../../lib/downloads/useLocalPlayback';
+import { usePlaylist, useRemovePlaylistItem, type PlaylistItemPublic } from '../../lib/query/hooks/usePlaylists';
+import { shuffled } from '../playlist/_detail/playlistQueue';
+import { shareContent } from '../../lib/share/shareContent';
 import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
+import { QueueList, type QueueListProps } from './_player/QueueList';
 import { CommentsPanel } from './_comments/CommentsPanel';
 import { useControlsOverlay } from './_player/useControlsOverlay';
 import { useProgressFlush } from './_player/useProgressFlush';
@@ -42,29 +45,106 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  *
  * **Scope boundary:** the design spec's Player composition also names a "download" and
  * "share-clip" action pinned alongside transport controls. Share-clip is cut whole (plan
- * L5). Download (spec §3: "duplicates the Downloads-screen action — needs the same
- * in-progress/queued/complete states threaded through both entry points") is wired here
- * via the same `DownloadPillButton` sermon detail uses (session 2026-10-08 — the older,
- * plain-text `_detail/DownloadButton` this screen used before is retired with no
- * consumers left) — screen-agnostic against `useDownloads`, so this is composition, not a
- * second implementation of the download state machine. Now that both W4.2 (this screen)
- * and W4.5 (offline downloads) are real, every download entry point shares one button
- * skin and one state source, per spec.
+ * L5). Download's own pill lived here too for a while (session 2026-10-08) but is gone
+ * again (Isaac's ask, session 2026-10-09 — it duplicated sermon/series detail's own
+ * pill directly above the comments panel with nothing distinguishing the two); starting
+ * a download is sermon/series detail's job exclusively now, this screen only plays back
+ * whatever's already downloaded (`useLocalPlayback`, above).
  *
- * Layout (design spec comments-and-player §1, revised 2026-10-08 — no controls outside the
+ * Layout (design spec comments-and-player §1, revised 2026-10-09 — no controls outside the
  * player): header, video with every control (scrub, time, speed, sleep, fullscreen, plus
- * play/pause/skip) folded into its own tap-to-toggle overlay, the download row, then the
- * comments panel in the remaining space. The whole screen sits in a `KeyboardAvoidingView`
- * so the pinned composer rides above the keyboard.
+ * play/pause/skip) folded into its own tap-to-toggle overlay, then the comments panel in
+ * the remaining space. The whole screen sits in a `KeyboardAvoidingView` so the pinned
+ * composer rides above the keyboard.
+ *
+ * **Playlist queue** (Isaac's ask, session 2026-10-10 — "play items in their playlist"):
+ * opened with `queue`/`queueIndex`/`playlistId` route params (`[id].tsx`'s own Play/
+ * Shuffle), this screen auto-advances to the next sermon on `playToEnd` instead of
+ * sitting on a Replay control — `router.replace`, not `push`, so playing through a long
+ * playlist doesn't stack a screen per item. Opened any other way (a detail page's play
+ * button, a notification), those params are absent and playback behaves exactly as
+ * before: it just stops at the end.
+ *
+ * **Queue list, not comments** (Isaac's ask, session 2026-10-11: "Do not open player
+ * page with comments, rather open another page with all playlist items"): when opened
+ * with a `playlistId`, `QueueList` takes the comments panel's exact spot below the
+ * video/transport controls — those are unchanged, only what's underneath them differs.
+ * `repeat` is a fourth route param (`'1'`/absent), toggled via `router.setParams`.
+ *
+ * Tapping a queue row, and auto-advancing on `playToEnd`, both move to a different
+ * sermon via `router.setParams` too, not `router.replace` (Isaac's own follow-up, same
+ * session: "do not open a new screen, stay on the same screen to play next item") — `id`
+ * is just another param on this one mounted route, same as `queue`/`queueIndex`, so
+ * updating it in place re-renders `PlayerScreen` with the new sermon id and no
+ * navigation transition at all. `PlayerContent` below is `key={sermonId}`-ed
+ * specifically so IT still remounts when the id changes (`useVideoPlayer`'s source and
+ * `useProgressFlush`'s resume baseline are both genuinely mount-time-only state — see
+ * `PlayerContent`'s own doc comment), without that inner remount reading as the user
+ * having left the screen.
  */
 export default function PlayerScreen() {
-  const { id: sermonId } = useLocalSearchParams<{ id: string }>();
+  const { id: sermonId, queue, queueIndex, playlistId, repeat } = useLocalSearchParams<{
+    id: string;
+    queue?: string;
+    queueIndex?: string;
+    playlistId?: string;
+    repeat?: string;
+  }>();
   const router = useRouter();
+  // Playing through a playlist (`[id].tsx`'s own Play/Shuffle, Isaac's ask, session
+  // 2026-10-10) — `queue` is the whole ordered sermon-id list, `queueIndex` this
+  // sermon's own position in it. `null` for every other way into this screen (a
+  // sermon/series detail page's own play button, a notification deep link, ...), which
+  // all still just play the one sermon and stop, same as always.
+  const queueIds = queue ? queue.split(',') : null;
+  const currentQueueIndex = queueIndex ? Number(queueIndex) : 0;
+  const repeatEnabled = repeat === '1';
+
+  const buildQueueParams = (targetId: string, index: number) => {
+    const params: Record<string, string> = { id: targetId, queue: queue!, queueIndex: String(index) };
+    if (playlistId) params.playlistId = playlistId;
+    if (repeat) params.repeat = repeat;
+    return params;
+  };
+
+  // Repeat wraps to the queue's own first item once the last one ends, instead of
+  // just stopping (Isaac's ask, same session as the queue list itself — "make them
+  // real" when asked whether repeat/shuffle should actually do anything).
+  const nextInQueue = queueIds
+    ? currentQueueIndex + 1 < queueIds.length
+      ? { id: queueIds[currentQueueIndex + 1]!, index: currentQueueIndex + 1 }
+      : repeatEnabled && queueIds.length > 0
+        ? { id: queueIds[0]!, index: 0 }
+        : null
+    : null;
+  // `setParams`, not `replace` — a jump within the same queue should stay on this
+  // screen, no navigation transition (Isaac's ask, session 2026-10-11: "do not open a
+  // new screen, stay on the same screen to play next item"). `id` is just another
+  // param on this same mounted route (same as `queue`/`queueIndex`/`repeat`), so
+  // updating it in place re-renders `PlayerScreen` with the new sermon id — no push,
+  // no replace, no back-stack entry. `PlayerContent` below is keyed on `sermonId`
+  // specifically so it still remounts *internally* when that id changes (a fresh
+  // `useVideoPlayer` source and freshly seeded `useProgressFlush` baseline — both are
+  // genuinely mount-time-only state, see `PlayerContent`'s own doc comment), without
+  // that remount being a *navigation* the user perceives as leaving the screen.
+  const advanceToNext = nextInQueue ? () => router.setParams(buildQueueParams(nextInQueue.id, nextInQueue.index)) : null;
+
+  const selectQueueItem = (targetId: string, index: number) => router.setParams(buildQueueParams(targetId, index));
+
+  // No remount — the currently-playing sermon doesn't change, only what happens later.
+  const toggleRepeat = () => router.setParams({ repeat: repeatEnabled ? '0' : '1' });
+
+  const shuffleRemaining = () => {
+    if (!queueIds) return;
+    const played = queueIds.slice(0, currentQueueIndex + 1);
+    const remaining = shuffled(queueIds.slice(currentQueueIndex + 1));
+    router.setParams({ queue: [...played, ...remaining].join(',') });
+  };
+
   const goBack = () => router.back();
 
-  const detailQuery = useSermonDetail(sermonId);
-  const detail = detailQuery.data;
-  const playable = detail ? isPlayable(detail) : false;
+  const playlistQuery = usePlaylist(playlistId);
+  const removeFromPlaylist = useRemovePlaylistItem(playlistId ?? '');
 
   // A `ready` download plays from its own local file instead of streaming (Isaac's ask,
   // session 2026-10-08: "watch or listen offline later" means an actual playback path,
@@ -74,6 +154,46 @@ export default function PlayerScreen() {
   const downloads = useDownloads();
   const downloadRecord = downloads.find(sermonId);
   const isDownloaded = downloadRecord?.state === 'ready';
+
+  const queueDisplayItems: PlaylistItemPublic[] = queueIds
+    ? (queueIds
+        .map((sid) => playlistQuery.data?.items.find((item) => item.sermon.id === sid))
+        .filter(Boolean) as PlaylistItemPublic[])
+    : [];
+
+  const downloadQueueItem = (item: PlaylistItemPublic) => {
+    void downloads.download(item.sermon.id, item.sermon.title, item.sermon.media_type ?? 'audio', item.sermon.thumbnail_url, item.sermon.category_name);
+  };
+  const shareQueueItem = (item: PlaylistItemPublic) => {
+    void shareContent({
+      title: item.sermon.title,
+      description: item.sermon.description,
+      thumbnailUrl: item.sermon.thumbnail_url,
+      deepLinkPath: `sermon/${item.sermon.id}`,
+    });
+  };
+
+  const queueContext: QueueListProps | null =
+    playlistId && playlistQuery.data
+      ? {
+          playlistName: playlistQuery.data.name,
+          ownerName: playlistQuery.data.owner_name,
+          isPublic: playlistQuery.data.is_public,
+          items: queueDisplayItems,
+          currentIndex: currentQueueIndex,
+          repeatEnabled,
+          onToggleRepeat: toggleRepeat,
+          onShuffleRemaining: shuffleRemaining,
+          onSelectItem: selectQueueItem,
+          onRemove: (itemId) => removeFromPlaylist.mutate(itemId),
+          onDownload: downloadQueueItem,
+          onShare: shareQueueItem,
+        }
+      : null;
+
+  const detailQuery = useSermonDetail(sermonId);
+  const detail = detailQuery.data;
+  const playable = detail ? isPlayable(detail) : false;
 
   const progressQuery = useSermonProgress(sermonId, { enabled: Boolean(detail) && playable });
   const streamQuery = useStream(sermonId, { enabled: Boolean(detail) && playable && !isDownloaded });
@@ -85,7 +205,13 @@ export default function PlayerScreen() {
     downloads.isLoading ||
     preferences.isLoading ||
     (playable && progressQuery.isLoading) ||
-    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading));
+    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading)) ||
+    // Blocks on the playlist read too, when there is one — `PlayerContent` renders
+    // `QueueList` only once `queueContext` is non-null (`playlistQuery.data` present),
+    // otherwise it falls back to the comments panel; without this, that fallback would
+    // flash on screen for the instant before the (usually cache-warm, since the user
+    // just came from the playlist page) playlist read resolves.
+    (Boolean(playlistId) && playlistQuery.isLoading);
 
   if (isLoading) {
     return (
@@ -167,12 +293,18 @@ export default function PlayerScreen() {
           `PlayerContent`'s own docstring for why that ordering matters (it seeds
           `useProgressFlush`'s resume baseline exactly once, at first render). */}
       <PlayerContent
+        // Forces a fresh mount (new `useVideoPlayer`/`useProgressFlush` seed) when the
+        // queue moves to a different sermon, since `PlayerScreen` itself no longer
+        // navigates to do that (see `selectQueueItem`/`advanceToNext`'s own comment).
+        key={sermonId}
         sermonId={sermonId}
         detail={detail}
         variant={variant}
         initialPositionSeconds={initialPositionSeconds}
         defaultSpeed={preferences.preferences.defaultSpeed}
         onChangeDefaultSpeed={preferences.setDefaultSpeed}
+        onPlayToEnd={advanceToNext}
+        queueContext={queueContext}
       />
     </KeyboardAvoidingView>
   );
@@ -201,6 +333,13 @@ interface PlayerContentProps {
   initialPositionSeconds: number;
   defaultSpeed: PlaybackSpeed;
   onChangeDefaultSpeed: (speed: PlaybackSpeed) => Promise<void>;
+  /** Advances to the next sermon in a playlist queue — `null` when this sermon wasn't
+   * opened as part of one, or is the queue's last item and repeat is off (see
+   * `PlayerScreen`'s own doc comment on `queue`/`queueIndex`/`repeat`). */
+  onPlayToEnd: (() => void) | null;
+  /** Renders `QueueList` in place of `CommentsPanel` when present — see `PlayerScreen`'s
+   * own doc comment on "Queue list, not comments". */
+  queueContext: QueueListProps | null;
 }
 
 /**
@@ -219,21 +358,9 @@ function PlayerContent({
   initialPositionSeconds,
   defaultSpeed,
   onChangeDefaultSpeed,
+  onPlayToEnd,
+  queueContext,
 }: PlayerContentProps) {
-  // Same single-item-or-empty shape sermon detail's own pill uses — every sermon has at
-  // most one rendition, so this is never more than one entry.
-  const downloadItems: DownloadPillItem[] = detail.media_type
-    ? [
-        {
-          sermonId: detail.id,
-          title: detail.title,
-          mediaType: detail.media_type,
-          thumbnailUrl: detail.thumbnail_url,
-          category: detail.category_name,
-        },
-      ]
-    : [];
-
   const player = useVideoPlayer(
     {
       uri: variant.url,
@@ -317,9 +444,14 @@ function PlayerContent({
     (isFullscreen ? view.exitFullscreen() : view.enterFullscreen()).catch(() => {});
   };
 
-  // The sermon ended: pin the overlay with a Replay control until playback resumes.
+  // The sermon ended: pin the overlay with a Replay control until playback resumes —
+  // unless there's a next item queued up (a playlist's Play/Shuffle), in which case
+  // this screen moves on by itself instead of waiting on a Replay tap nobody asked for.
   const [isEnded, setIsEnded] = useState(false);
-  useEventListener(player, 'playToEnd', () => setIsEnded(true));
+  useEventListener(player, 'playToEnd', () => {
+    if (onPlayToEnd) onPlayToEnd();
+    else setIsEnded(true);
+  });
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
     if (playing) setIsEnded(false);
   });
@@ -368,10 +500,7 @@ function PlayerContent({
         onOpenSleepTimer={() => setSleepSheetOpen(true)}
         onToggleFullscreen={toggleFullscreen}
       />
-      <View style={styles.downloadRow}>
-        <DownloadPillButton items={downloadItems} />
-      </View>
-      <CommentsPanel sermonId={sermonId} />
+      {queueContext ? <QueueList {...queueContext} /> : <CommentsPanel sermonId={sermonId} />}
       <SleepTimerSheet
         visible={sleepSheetOpen}
         hasActiveTimer={sleepTimer.remainingSeconds !== null}
@@ -396,9 +525,5 @@ const styles = StyleSheet.create({
   },
   errorText: {
     textAlign: 'center',
-  },
-  downloadRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
   },
 });

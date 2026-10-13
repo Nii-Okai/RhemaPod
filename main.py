@@ -18,6 +18,7 @@ from app.api.catalog import router as catalog_router
 from app.api.comments import router as comments_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
+from app.api.playlists import router as playlists_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
@@ -191,6 +192,7 @@ for _router in (
     catalog_router,
     comments_router,
     media_router,
+    playlists_router,
     announcements_router,
     subscriptions_router,
     search_router,

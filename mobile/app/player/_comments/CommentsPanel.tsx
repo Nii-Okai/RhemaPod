@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, LinkButton, SkeletonBlock } from '../../../components';
+import { AppText, ConfirmDialog, LinkButton, PlatformIcon, SkeletonBlock } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -24,7 +23,6 @@ import { useCurrentUser } from '../../../lib/query/hooks/useProfile';
 import { AppearAsNotice } from './AppearAsNotice';
 import { CommentComposer } from './CommentComposer';
 import { CommentRow } from './CommentRow';
-import { ConfirmDialog } from './ConfirmDialog';
 import { NamePrompt } from './NamePrompt';
 import { ReportSheet } from './ReportSheet';
 import { TermsSheet } from './TermsSheet';
@@ -193,7 +191,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
     return (
       <View style={[styles.panel, styles.centered]}>
         <View accessibilityLiveRegion="polite" style={styles.offline}>
-          <Ionicons name="cloud-offline-outline" size={28} color={colors.text.tertiary} />
+          <PlatformIcon name="cloud-offline-outline" size={28} color={colors.text.tertiary} />
           <AppText variant="ui.body" tone="secondary">
             Comments unavailable offline
           </AppText>

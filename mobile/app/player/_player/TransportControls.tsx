@@ -1,7 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText } from '../../../components';
+import { AppText, PlatformIcon, type AppIconName } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -26,7 +25,7 @@ export interface PlaybackOverlayControlsProps {
 interface CircleButtonProps {
   size: number;
   iconSize: number;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: AppIconName;
   label: string;
   onPress: () => void;
   busy?: boolean;
@@ -47,7 +46,7 @@ function CircleButton({ size, iconSize, icon, label, onPress, busy = false }: Ci
           {busy ? (
             <ActivityIndicator color={colors.accent.goldText} />
           ) : (
-            <Ionicons name={icon} size={iconSize} color={colors.text.primary} />
+            <PlatformIcon name={icon} size={iconSize} color={colors.text.primary} />
           )}
         </View>
       )}
@@ -175,7 +174,7 @@ export function PlayerBottomBar({
           hitSlop={spacing.sm}
           style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
         >
-          <Ionicons
+          <PlatformIcon
             name={sleepRemainingSeconds !== null ? 'moon' : 'moon-outline'}
             size={18}
             color={sleepRemainingSeconds !== null ? colors.accent.goldText : colors.text.secondary}
@@ -194,7 +193,7 @@ export function PlayerBottomBar({
           hitSlop={spacing.sm}
           style={({ pressed }) => [styles.fullscreen, pressed && styles.pressed]}
         >
-          <Ionicons name={isFullscreen ? 'contract' : 'expand'} size={22} color={colors.text.primary} />
+          <PlatformIcon name={isFullscreen ? 'contract' : 'expand'} size={22} color={colors.text.primary} />
         </Pressable>
       </View>
     </View>

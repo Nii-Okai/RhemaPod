@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '../Text';
+import { PlatformIcon } from '../PlatformIcon';
 import { colors } from '../../theme/colors';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
@@ -81,7 +81,7 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
           )}
           <View style={styles.playButtonWrap} pointerEvents="none">
             <View style={styles.playButton}>
-              <Ionicons name="play" size={14} color={colors.text.primary} />
+              <PlatformIcon name="play" size={14} color={colors.text.primary} />
             </View>
           </View>
           <View style={styles.durationBadge} pointerEvents="none">

@@ -79,6 +79,8 @@ function detail(over: Partial<SermonAdminDetail> = {}): SermonAdminDetail {
     published_at: null,
     created_at: "2026-09-01T10:00:00Z",
     updated_at: "2026-09-05T10:00:00Z",
+    like_count: 0,
+    liked_by_me: false,
     ...over,
   };
 }

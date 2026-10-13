@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { ContinueWatchingCard } from '../ContinueWatchingCard';
-import type { ContinueWatchingItem } from '../../../../lib/query/hooks/useContinueWatching';
+import type { ContinueWatchingItem } from '../../../lib/query/hooks/useContinueWatching';
 
 const item: ContinueWatchingItem = {
   id: 's1',
@@ -33,6 +33,26 @@ describe('ContinueWatchingCard', () => {
 
     fireEvent.press(getByLabelText('Anchored in the Storm, 20:00 left'));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the category before the remaining time (Isaac\'s ask, session 2026-10-10)', () => {
+    const { getByText, getByLabelText } = render(
+      <ContinueWatchingCard item={{ ...item, category_name: 'Teaching' }} onPress={jest.fn()} />,
+    );
+
+    expect(getByText('Teaching · 20:00 left')).toBeTruthy();
+    expect(getByLabelText('Anchored in the Storm, Teaching · 20:00 left')).toBeTruthy();
+  });
+
+  it('shows the category alone when there is no remaining-time to pair it with', () => {
+    const { getByText } = render(
+      <ContinueWatchingCard
+        item={{ ...item, category_name: 'Teaching', duration_seconds: null }}
+        onPress={jest.fn()}
+      />,
+    );
+
+    expect(getByText('Teaching')).toBeTruthy();
   });
 
   it('floors remaining time at 0 rather than going negative', () => {

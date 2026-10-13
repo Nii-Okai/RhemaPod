@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText, IconButton, QueryState } from '../components';
+import { AppText, IconButton, PlatformIcon, QueryState } from '../components';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
@@ -15,7 +14,7 @@ import type { components } from '../lib/api/schema';
 
 type SermonListItem = components['schemas']['SermonListItem'];
 
-/** "42:18 · Ada Nwosu" — same composition `SermonResultRow` (still used elsewhere) uses. */
+/** "42:18 · Ada Nwosu" — same duration-then-speaker composition `SermonCard`'s own meta line uses. */
 function sermonMeta(sermon: SermonListItem): string {
   const parts = [formatDuration(sermon.duration_seconds), sermon.speaker_name].filter(
     (part): part is string => Boolean(part),
@@ -45,9 +44,9 @@ const DEBOUNCE_MS = 300;
  * Every row — suggestions and all three result groups alike — renders as a plain
  * `SearchRow` (title + hairline divider, Isaac's ask, session 2026-10-02: a flat list
  * matching the Prime Video reference), not the richer thumbnail/avatar rows
- * `SermonResultRow`/`SeriesListCard`/`SpeakerListRow` still render elsewhere (category
- * drill-down, the all-series page, Browse). The dropped detail (duration, speaker,
- * episode count, bio) still reaches VoiceOver via each row's `accessibilityLabel`.
+ * `SermonCard`/`SeriesListCard`/`SpeakerListRow` still render elsewhere (category/
+ * speaker drill-down, the all-series page, Browse). The dropped detail (duration,
+ * speaker, episode count, bio) still reaches VoiceOver via each row's `accessibilityLabel`.
  */
 export default function SearchScreen() {
   const router = useRouter();
@@ -86,10 +85,10 @@ export default function SearchScreen() {
     router.push({ pathname: '/series/[id]', params: { id } });
   }
 
-  function goToSpeaker(speaker: { id: string; name: string; bio: string | null }) {
+  function goToSpeaker(speaker: { id: string; name: string; bio: string | null; sermon_count: number }) {
     router.push({
       pathname: '/speaker/[id]',
-      params: { id: speaker.id, name: speaker.name, bio: speaker.bio ?? '' },
+      params: { id: speaker.id, name: speaker.name, bio: speaker.bio ?? '', sermonCount: String(speaker.sermon_count) },
     });
   }
 
@@ -105,7 +104,7 @@ export default function SearchScreen() {
           visually continues from the same spot rather than sliding in as a new screen. */}
       <View style={styles.searchBarWrap}>
         <View style={styles.inputPill}>
-          <Ionicons name="search" size={18} color={colors.primaryButton.text} style={styles.inputIcon} />
+          <PlatformIcon name="search" size={18} color={colors.primaryButton.text} style={styles.inputIcon} />
           <TextInput
             value={rawQuery}
             onChangeText={setRawQuery}
@@ -122,13 +121,18 @@ export default function SearchScreen() {
           />
           {hasQuery ? (
             <Pressable onPress={() => setRawQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={colors.primaryButton.text} style={styles.inputIcon} />
+              <PlatformIcon name="close-circle" size={18} color={colors.primaryButton.text} style={styles.inputIcon} />
             </Pressable>
           ) : null}
         </View>
       </View>
 
-      <ScrollView style={styles.results} contentContainerStyle={styles.resultsContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.results}
+        contentContainerStyle={styles.resultsContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {!hasQuery ? (
           <View style={styles.prompt}>
             <AppText variant="ui.bodyLarge" style={styles.promptTitle}>

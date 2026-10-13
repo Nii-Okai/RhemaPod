@@ -1,11 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, type PressableProps } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { PlatformIcon, type AppIconName } from './PlatformIcon';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
 export interface IconButtonProps extends Omit<PressableProps, 'style' | 'children'> {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: AppIconName;
   size?: number;
   /**
    * Required — no default. An icon-only control with no accessible name is a dead end for
@@ -32,7 +32,7 @@ export function IconButton({ icon, size = 24, accessibilityLabel, disabled, ...r
       style={({ pressed }) => [styles.base, pressed && !disabled && styles.pressed, disabled && styles.disabled]}
       {...rest}
     >
-      <Ionicons name={icon} size={size} color={colors.text.primary} />
+      <PlatformIcon name={icon} size={size} color={colors.text.primary} />
     </Pressable>
   );
 }

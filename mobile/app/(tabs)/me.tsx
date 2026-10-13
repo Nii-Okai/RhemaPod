@@ -78,6 +78,7 @@ export default function MeScreen() {
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}
       testID="me-layout"
+      showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
         {profileQuery.isLoading ? (

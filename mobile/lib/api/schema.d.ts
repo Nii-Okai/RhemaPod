@@ -1231,6 +1231,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Playlists */
+        get: operations["list_playlists_api_v1_playlists_get"];
+        put?: never;
+        /** Create Playlist */
+        post: operations["create_playlist_api_v1_playlists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Playlist */
+        get: operations["get_playlist_api_v1_playlists__playlist_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Playlist */
+        delete: operations["delete_playlist_api_v1_playlists__playlist_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Playlist */
+        patch: operations["update_playlist_api_v1_playlists__playlist_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/cover/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cover Confirm */
+        post: operations["cover_confirm_api_v1_playlists__playlist_id__cover_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/cover/upload-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cover Upload Ticket */
+        post: operations["cover_upload_ticket_api_v1_playlists__playlist_id__cover_upload_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Item */
+        post: operations["add_item_api_v1_playlists__playlist_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Items */
+        put: operations["reorder_items_api_v1_playlists__playlist_id__items_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Item */
+        delete: operations["remove_item_api_v1_playlists__playlist_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -2919,6 +3041,165 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PlaylistCoverResponse */
+        PlaylistCoverResponse: {
+            /** Cover Url */
+            cover_url: string | null;
+        };
+        /**
+         * PlaylistCoverTicket
+         * @description Pre-signed PUT for a playlist cover image — same direct-to-storage
+         *     pattern the profile avatar and sermon/series thumbnails already use.
+         */
+        PlaylistCoverTicket: {
+            /** Cover Key */
+            cover_key: string;
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @default PUT
+             */
+            method: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** PlaylistCoverUploadRequest */
+        PlaylistCoverUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
+        /** PlaylistCreate */
+        PlaylistCreate: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Is Public
+             * @default true
+             */
+            is_public: boolean;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PlaylistDetail
+         * @description Items are pre-filtered to what's currently visible to the viewer —
+         *     a sermon unpublished after being added just quietly drops out of the
+         *     list (same "invisible content never renders" rule every other catalog
+         *     read follows), without deleting the underlying `PlaylistItem` row, so it
+         *     reappears if the sermon is republished.
+         */
+        PlaylistDetail: {
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Item Count */
+            item_count: number;
+            /** Items */
+            items: components["schemas"]["PlaylistItemPublic"][];
+            /** Name */
+            name: string;
+            /** Owner Name */
+            owner_name: string | null;
+            /** Total Duration Seconds */
+            total_duration_seconds: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** PlaylistItemAdd */
+        PlaylistItemAdd: {
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+        };
+        /**
+         * PlaylistItemOrderRequest
+         * @description Every current item id, in the caller's desired order — same
+         *     all-or-nothing shape `EpisodeOrderRequest` uses for episode reordering.
+         */
+        PlaylistItemOrderRequest: {
+            /** Item Ids */
+            item_ids: string[];
+        };
+        /** PlaylistItemPublic */
+        PlaylistItemPublic: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            sermon: components["schemas"]["SermonListItem"];
+        };
+        /** PlaylistPublic */
+        PlaylistPublic: {
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Item Count */
+            item_count: number;
+            /** Name */
+            name: string;
+            /** Owner Name */
+            owner_name: string | null;
+            /** Total Duration Seconds */
+            total_duration_seconds: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * PlaylistUpdate
+         * @description Every field optional — a PATCH only touches what the client sends,
+         *     same convention `SeriesUpdate`/`ProfileDetailsUpdate` already use.
+         */
+        PlaylistUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Is Public */
+            is_public?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /** PortalResponse */
         PortalResponse: {
@@ -6078,6 +6359,324 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_playlists_api_v1_playlists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPublic"][];
+                };
+            };
+        };
+    };
+    create_playlist_api_v1_playlists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_playlist_api_v1_playlists__playlist_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_playlist_api_v1_playlists__playlist_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_playlist_api_v1_playlists__playlist_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cover_confirm_api_v1_playlists__playlist_id__cover_confirm_post: {
+        parameters: {
+            query: {
+                cover_key: string;
+            };
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistCoverResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cover_upload_ticket_api_v1_playlists__playlist_id__cover_upload_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistCoverUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistCoverTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_api_v1_playlists__playlist_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_items_api_v1_playlists__playlist_id__items_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_api_v1_playlists__playlist_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
                 };
             };
             /** @description Validation Error */

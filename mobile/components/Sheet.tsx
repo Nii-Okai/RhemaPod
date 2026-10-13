@@ -9,6 +9,13 @@ export interface SheetProps {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** Fires once this sheet's native `Modal` has actually finished dismissing — iOS
+   * only (RN's own `Modal.js`: "OnDismiss is implemented on iOS only"). A caller that
+   * needs to open a SECOND `Modal` right after this one closes (`PlaylistOptionsSheet`,
+   * Isaac's ask, session 2026-10-10) needs this, not just `onClose` — two native modals
+   * presenting/dismissing in the same tick reliably hangs iOS, and only this event (not
+   * a guessed delay) reliably tells you the first one is actually gone. */
+  onDismiss?: () => void;
 }
 
 /**
@@ -21,10 +28,10 @@ export interface SheetProps {
  * and a scroll region so a tall sheet (large text sizes) never clips. Tapping the scrim or
  * the system back closes it.
  */
-export function Sheet({ visible, onClose, children }: SheetProps) {
+export function Sheet({ visible, onClose, children, onDismiss }: SheetProps) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable
           style={StyleSheet.absoluteFillObject}
@@ -35,7 +42,11 @@ export function Sheet({ visible, onClose, children }: SheetProps) {
           <View style={styles.scrim} />
         </Pressable>
         <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]} accessibilityViewIsModal>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
             {children}
           </ScrollView>
         </View>

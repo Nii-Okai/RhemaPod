@@ -21,6 +21,10 @@ jest.mock('react-native-safe-area-context', () => ({
 // machinery `jest-expo` doesn't stand up in this test environment.
 jest.mock('@expo/vector-icons');
 
+// Every chrome's `NavIcon` calls `useCurrentUser` (the "You" tab's avatar) — mocked
+// directly, same reasoning as `chromeComponents.test.tsx`'s own identical mock.
+jest.mock('../../../lib/query/hooks/useProfile', () => ({ useCurrentUser: () => ({ data: undefined }) }));
+
 const mockedUsePlatformOS = usePlatformOS as jest.Mock;
 
 function setWindowWidth(width: number) {

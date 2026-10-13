@@ -1,9 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { AppText } from './Text';
 import { CircularProgress } from './CircularProgress';
 import { PopIn } from './PopIn';
+import { PlatformIcon } from './PlatformIcon';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
@@ -135,7 +135,7 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
         accessibilityLabel={progressLabel}
       >
         <CircularProgress progress={status.progress} size={20} strokeWidth={2.5} spinning>
-          <Ionicons name="arrow-down" size={10} color={colors.text.primary} />
+          <PlatformIcon name="arrow-down" size={10} color={colors.text.primary} />
         </CircularProgress>
         <AppText variant="ui.button" tone="primary">
           {progressLabel}
@@ -153,7 +153,7 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
           accessibilityLabel={items.length > 1 ? 'Delete downloaded episodes' : `Delete downloaded ${items[0].title}`}
           style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
         >
-          <Ionicons name="checkmark-circle" size={18} color={colors.accent.gold} />
+          <PlatformIcon name="checkmark-circle" size={18} color={colors.accent.gold} />
           <AppText variant="ui.button" tone="gold">
             Downloaded
           </AppText>
@@ -170,7 +170,7 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
         accessibilityLabel="Retry download"
         style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
       >
-        <Ionicons name="refresh" size={18} color={colors.status.rose.text} />
+        <PlatformIcon name="refresh" size={18} color={colors.status.rose.text} />
         <AppText variant="ui.button" style={styles.failureText}>
           {status.message}
         </AppText>
@@ -185,7 +185,7 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
       accessibilityLabel={items.length > 1 ? label : `Download ${items[0].title}`}
       style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
     >
-      <Ionicons name="download-outline" size={18} color={colors.text.primary} />
+      <PlatformIcon name="download-outline" size={18} color={colors.text.primary} />
       <AppText variant="ui.button" tone="primary">
         {label}
       </AppText>

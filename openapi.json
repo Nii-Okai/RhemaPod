@@ -1923,6 +1923,411 @@
         "title": "Page[UserPublic]",
         "type": "object"
       },
+      "PlaylistCoverResponse": {
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          }
+        },
+        "required": [
+          "cover_url"
+        ],
+        "title": "PlaylistCoverResponse",
+        "type": "object"
+      },
+      "PlaylistCoverTicket": {
+        "description": "Pre-signed PUT for a playlist cover image \u2014 same direct-to-storage\npattern the profile avatar and sermon/series thumbnails already use.",
+        "properties": {
+          "cover_key": {
+            "title": "Cover Key",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "method": {
+            "default": "PUT",
+            "title": "Method",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "expires_in",
+          "cover_key"
+        ],
+        "title": "PlaylistCoverTicket",
+        "type": "object"
+      },
+      "PlaylistCoverUploadRequest": {
+        "properties": {
+          "content_type": {
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_type"
+        ],
+        "title": "PlaylistCoverUploadRequest",
+        "type": "object"
+      },
+      "PlaylistCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_public": {
+            "default": true,
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PlaylistCreate",
+        "type": "object"
+      },
+      "PlaylistDetail": {
+        "description": "Items are pre-filtered to what's currently visible to the viewer \u2014\na sermon unpublished after being added just quietly drops out of the\nlist (same \"invisible content never renders\" rule every other catalog\nread follows), without deleting the underlying `PlaylistItem` row, so it\nreappears if the sermon is republished.",
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistItemPublic"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "total_duration_seconds": {
+            "title": "Total Duration Seconds",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "is_public",
+          "cover_url",
+          "owner_name",
+          "item_count",
+          "total_duration_seconds",
+          "created_at",
+          "updated_at",
+          "items"
+        ],
+        "title": "PlaylistDetail",
+        "type": "object"
+      },
+      "PlaylistItemAdd": {
+        "additionalProperties": false,
+        "properties": {
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sermon_id"
+        ],
+        "title": "PlaylistItemAdd",
+        "type": "object"
+      },
+      "PlaylistItemOrderRequest": {
+        "additionalProperties": false,
+        "description": "Every current item id, in the caller's desired order \u2014 same\nall-or-nothing shape `EpisodeOrderRequest` uses for episode reordering.",
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "PlaylistItemOrderRequest",
+        "type": "object"
+      },
+      "PlaylistItemPublic": {
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "sermon": {
+            "$ref": "#/components/schemas/SermonListItem"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "added_at",
+          "sermon"
+        ],
+        "title": "PlaylistItemPublic",
+        "type": "object"
+      },
+      "PlaylistPublic": {
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "total_duration_seconds": {
+            "title": "Total Duration Seconds",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "is_public",
+          "cover_url",
+          "owner_name",
+          "item_count",
+          "total_duration_seconds",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlaylistPublic",
+        "type": "object"
+      },
+      "PlaylistUpdate": {
+        "additionalProperties": false,
+        "description": "Every field optional \u2014 a PATCH only touches what the client sends,\nsame convention `SeriesUpdate`/`ProfileDetailsUpdate` already use.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "PlaylistUpdate",
+        "type": "object"
+      },
       "PortalResponse": {
         "properties": {
           "portal_url": {
@@ -8317,6 +8722,512 @@
         "summary": "Recommended For You",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/playlists": {
+      "get": {
+        "operationId": "list_playlists_api_v1_playlists_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaylistPublic"
+                  },
+                  "title": "Response List Playlists Api V1 Playlists Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Playlists",
+        "tags": [
+          "playlists"
+        ]
+      },
+      "post": {
+        "operationId": "create_playlist_api_v1_playlists_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Playlist",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}": {
+      "delete": {
+        "operationId": "delete_playlist_api_v1_playlists__playlist_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Playlist",
+        "tags": [
+          "playlists"
+        ]
+      },
+      "get": {
+        "operationId": "get_playlist_api_v1_playlists__playlist_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Playlist",
+        "tags": [
+          "playlists"
+        ]
+      },
+      "patch": {
+        "operationId": "update_playlist_api_v1_playlists__playlist_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Playlist",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}/cover/confirm": {
+      "post": {
+        "operationId": "cover_confirm_api_v1_playlists__playlist_id__cover_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cover_key",
+            "required": true,
+            "schema": {
+              "title": "Cover Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistCoverResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cover Confirm",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}/cover/upload-ticket": {
+      "post": {
+        "operationId": "cover_upload_ticket_api_v1_playlists__playlist_id__cover_upload_ticket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistCoverUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistCoverTicket"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cover Upload Ticket",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}/items": {
+      "post": {
+        "operationId": "add_item_api_v1_playlists__playlist_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistItemAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Item",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}/items/order": {
+      "put": {
+        "operationId": "reorder_items_api_v1_playlists__playlist_id__items_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistItemOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reorder Items",
+        "tags": [
+          "playlists"
+        ]
+      }
+    },
+    "/api/v1/playlists/{playlist_id}/items/{item_id}": {
+      "delete": {
+        "operationId": "remove_item_api_v1_playlists__playlist_id__items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Playlist Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Item",
+        "tags": [
+          "playlists"
         ]
       }
     },

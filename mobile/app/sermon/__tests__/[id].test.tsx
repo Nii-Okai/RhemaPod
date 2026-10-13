@@ -8,7 +8,7 @@ import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
 jest.mock('../../../lib/api/typedClient', () => ({
-  api: { get: jest.fn(), put: jest.fn(), delete: jest.fn() },
+  api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 jest.mock('@expo/vector-icons');
@@ -54,6 +54,7 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
+const mockedPost = api.post as jest.Mock;
 const mockedPut = api.put as jest.Mock;
 const mockedDelete = api.delete as jest.Mock;
 
@@ -94,11 +95,19 @@ const emptySearchResults = {
   results: [],
 };
 
-function mockDetailAndProgress(detail: unknown, progress: unknown = null, searchResults: unknown = emptySearchResults) {
+function mockDetailAndProgress(
+  detail: unknown,
+  progress: unknown = null,
+  searchResults: unknown = emptySearchResults,
+  playlists: unknown[] = [],
+) {
   mockedGet.mockImplementation((path: string) => {
     if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(detail);
     if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(progress);
     if (path === '/search') return Promise.resolve(searchResults);
+    // No "My List" playlist yet by default — `useAddToDefaultLibrary`'s own
+    // "create on first add".
+    if (path === '/playlists') return Promise.resolve(playlists);
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -114,6 +123,7 @@ function renderDetail() {
 
 beforeEach(() => {
   mockedGet.mockReset();
+  mockedPost.mockReset();
   mockBack.mockClear();
   mockPush.mockClear();
   mockDismissAll.mockClear();
@@ -485,6 +495,61 @@ describe('SermonDetailScreen — Related', () => {
     const { findByText } = renderDetail();
 
     await findByText('No related sermons yet.');
+  });
+});
+
+describe('SermonDetailScreen — My List', () => {
+  it('adds this sermon to a "My List" playlist, creating it on the first-ever add', async () => {
+    mockDetailAndProgress(baseDetail);
+    mockedPost.mockImplementation((path: string) => {
+      if (path === '/playlists') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 0 });
+      if (path === '/playlists/{playlist_id}/items') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 1, items: [] });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    const { findByLabelText } = renderDetail();
+
+    const addButton = await findByLabelText('Add to My List');
+    expect(addButton.props.accessibilityState).toEqual({ selected: false });
+
+    fireEvent.press(addButton);
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith('/playlists', { body: { name: 'My List', description: null, is_public: true } }),
+    );
+    expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
+      params: { path: { playlist_id: 'p1' } },
+      body: { sermon_id: 'sermon-1' },
+    });
+  });
+
+  it('shows "Remove from My List" when this sermon is already there, and removes it on press', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(baseDetail);
+      if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(null);
+      if (path === '/search') return Promise.resolve(emptySearchResults);
+      if (path === '/playlists') return Promise.resolve([{ id: 'p1', name: 'My List', item_count: 1 }]);
+      if (path === '/playlists/{playlist_id}')
+        return Promise.resolve({
+          id: 'p1',
+          name: 'My List',
+          item_count: 1,
+          items: [{ id: 'item-1', position: 0, added_at: '2026-10-11T00:00:00Z', sermon: baseDetail }],
+        });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    mockedDelete.mockResolvedValue({ id: 'p1', name: 'My List', item_count: 0, items: [] });
+    const { findByLabelText } = renderDetail();
+
+    const removeButton = await findByLabelText('Remove from My List');
+    expect(removeButton.props.accessibilityState).toEqual({ selected: true });
+
+    fireEvent.press(removeButton);
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+        params: { path: { playlist_id: 'p1', item_id: 'item-1' } },
+      }),
+    );
   });
 });
 

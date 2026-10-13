@@ -18,6 +18,12 @@ jest.mock('react-native-safe-area-context', () => ({
 // machinery `jest-expo` doesn't stand up in this test environment.
 jest.mock('@expo/vector-icons');
 
+// `NavIcon` (every chrome's icon renderer, since the "You" tab needs profile data for
+// its avatar) calls `useCurrentUser`, a react-query hook — mocked directly rather than
+// wrapping every render here in a `QueryClientProvider`, same reasoning `useDownloads`
+// gets mocked directly elsewhere: these tests care about nav structure, not profile data.
+jest.mock('../../../lib/query/hooks/useProfile', () => ({ useCurrentUser: () => ({ data: undefined }) }));
+
 const push = jest.fn();
 let mockPathname = '/home';
 
@@ -30,10 +36,10 @@ beforeEach(() => {
 });
 
 describe('PhoneTabBarIOS', () => {
-  it('shows the four P1-resolved, text-only labels and navigates on press', () => {
+  it('shows the four P1-resolved labels (icon + label each) and navigates on press', () => {
     const { getByText, queryByText } = render(<PhoneTabBarIOS />);
 
-    for (const label of ['Home', 'Browse', 'Downloads', 'Me']) {
+    for (const label of ['Home', 'Browse', 'Library', 'You']) {
       expect(getByText(label)).toBeTruthy();
     }
     expect(queryByText('Saved')).toBeNull();
@@ -44,10 +50,10 @@ describe('PhoneTabBarIOS', () => {
   });
 
   it('marks the tab matching the current route as selected', () => {
-    mockPathname = '/downloads';
+    mockPathname = '/library';
     const { getByRole } = render(<PhoneTabBarIOS />);
 
-    expect(getByRole('button', { name: 'Downloads' }).props.accessibilityState).toEqual({ selected: true });
+    expect(getByRole('button', { name: 'Library' }).props.accessibilityState).toEqual({ selected: true });
     expect(getByRole('button', { name: 'Home' }).props.accessibilityState).toEqual({ selected: false });
   });
 });
@@ -56,23 +62,23 @@ describe('PhoneTabBarAndroid', () => {
   it('shows the same four destinations as iOS and navigates on press', () => {
     const { getByText } = render(<PhoneTabBarAndroid />);
 
-    for (const label of ['Home', 'Browse', 'Downloads', 'Me']) {
+    for (const label of ['Home', 'Browse', 'Library', 'You']) {
       expect(getByText(label)).toBeTruthy();
     }
 
-    fireEvent.press(getByText('Downloads'));
-    expect(push).toHaveBeenCalledWith('/(tabs)/downloads');
+    fireEvent.press(getByText('Library'));
+    expect(push).toHaveBeenCalledWith('/(tabs)/library');
   });
 });
 
 describe('TabletRail', () => {
-  it('shows Series and Announcements (P3), omits a dedicated Me item, and navigates on press', () => {
+  it('shows Series and Announcements (P3), omits a dedicated You item, and navigates on press', () => {
     const { getByText, queryByText, getByLabelText } = render(<TabletRail />);
 
-    for (const label of ['Home', 'Series', 'Browse', 'Downloads', 'Announcements']) {
+    for (const label of ['Home', 'Series', 'Browse', 'Library', 'Announcements']) {
       expect(getByText(label)).toBeTruthy();
     }
-    expect(queryByText('Me')).toBeNull();
+    expect(queryByText('You')).toBeNull();
 
     fireEvent.press(getByText('Series'));
     expect(push).toHaveBeenCalledWith('/(tabs)/series');

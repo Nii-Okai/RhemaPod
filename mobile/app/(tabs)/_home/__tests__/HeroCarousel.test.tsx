@@ -1,9 +1,30 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { HeroCarousel } from '../HeroCarousel';
+import { api } from '../../../../lib/api/typedClient';
+import { createTestQueryClient } from '../../../../lib/query/testUtils';
 import type { SermonListItem } from '../../../../lib/query/hooks/useSermons';
 
 jest.mock('@expo/vector-icons');
+
+// `HeroCard` (every card in the carousel) now reads `useAddToDefaultLibrary`, a
+// react-query hook, for its real +/checkmark state (Isaac's ask, session 2026-10-11:
+// "add sermon to default library") — every render here needs a provider under it now.
+jest.mock('../../../../lib/api/typedClient', () => ({
+  api: { get: jest.fn(), post: jest.fn() },
+}));
+const mockedGet = api.get as jest.Mock;
+
+function renderCarousel(sermons: SermonListItem[], onPress: (id: string) => void) {
+  mockedGet.mockResolvedValue([]);
+  const client = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={client}>
+      <HeroCarousel sermons={sermons} onPress={onPress} />
+    </QueryClientProvider>,
+  );
+}
 
 function makeSermon(overrides: Partial<SermonListItem>): SermonListItem {
   return {
@@ -27,16 +48,14 @@ function makeSermon(overrides: Partial<SermonListItem>): SermonListItem {
 
 describe('HeroCarousel', () => {
   it('renders nothing when given no sermons', () => {
-    const { toJSON } = render(<HeroCarousel sermons={[]} onPress={jest.fn()} />);
+    const { toJSON } = renderCarousel([], jest.fn());
     expect(toJSON()).toBeNull();
   });
 
   it('renders a single plain HeroCard (no dots) when given exactly one sermon', () => {
     const onPress = jest.fn();
     const sermon = makeSermon({ id: 's1' });
-    const { getByLabelText, queryAllByLabelText } = render(
-      <HeroCarousel sermons={[sermon]} onPress={onPress} />,
-    );
+    const { getByLabelText, queryAllByLabelText } = renderCarousel([sermon], onPress);
 
     fireEvent.press(getByLabelText('Watch, 31:02'));
     expect(onPress).toHaveBeenCalledWith('s1');
@@ -47,9 +66,7 @@ describe('HeroCarousel', () => {
   it('renders a paged carousel with one dot per sermon when given several', () => {
     const onPress = jest.fn();
     const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' }), makeSermon({ id: 's3' })];
-    const { getAllByLabelText, getByLabelText } = render(
-      <HeroCarousel sermons={sermons} onPress={onPress} />,
-    );
+    const { getAllByLabelText, getByLabelText } = renderCarousel(sermons, onPress);
 
     // All three cards' Watch CTAs are mounted in the horizontal ScrollView.
     expect(getAllByLabelText('Watch, 31:02')).toHaveLength(3);
@@ -62,7 +79,7 @@ describe('HeroCarousel', () => {
       makeSermon({ id: 's1', duration_seconds: 60 }),
       makeSermon({ id: 's2', duration_seconds: 120 }),
     ];
-    const { getByLabelText } = render(<HeroCarousel sermons={sermons} onPress={onPress} />);
+    const { getByLabelText } = renderCarousel(sermons, onPress);
 
     fireEvent.press(getByLabelText('Watch, 2:00'));
     expect(onPress).toHaveBeenCalledWith('s2');
@@ -79,7 +96,7 @@ describe('HeroCarousel', () => {
 
     it('pages forward on its own after the interval, and wraps back to the first page', () => {
       const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' }), makeSermon({ id: 's3' })];
-      const { getByTestId, getByLabelText } = render(<HeroCarousel sermons={sermons} onPress={jest.fn()} />);
+      const { getByTestId, getByLabelText } = renderCarousel(sermons, jest.fn());
 
       fireEvent(getByTestId('hero-carousel'), 'layout', {
         nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
@@ -99,7 +116,7 @@ describe('HeroCarousel', () => {
 
     it('does not advance while the user is actively dragging', () => {
       const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' })];
-      const { getByTestId, getByLabelText } = render(<HeroCarousel sermons={sermons} onPress={jest.fn()} />);
+      const { getByTestId, getByLabelText } = renderCarousel(sermons, jest.fn());
 
       fireEvent(getByTestId('hero-carousel'), 'layout', {
         nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },

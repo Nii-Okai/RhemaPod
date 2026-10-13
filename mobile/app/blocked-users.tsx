@@ -18,7 +18,7 @@ export default function BlockedUsersScreen() {
   const blocks = blocksQuery.data ?? [];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Stack.Screen options={{ title: 'Blocked users' }} />
       {blocksQuery.isLoading ? (
         <View accessibilityRole="progressbar" accessibilityLabel="Loading blocked users" style={styles.list}>

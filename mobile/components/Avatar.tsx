@@ -50,6 +50,13 @@ export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
   }
 
   const bg = colors.avatarPalette[hashToIndex(seed ?? name, colors.avatarPalette.length)];
+  // `ui.avatarInitials`' own 14px is tuned for this component's usual 38-40px size (every
+  // call site but one) — at a genuinely small size (`playlist/[id].tsx`'s 22px owner
+  // avatar), a fixed 14px two-letter string leaves almost no margin before the circle's
+  // own curve, reading as "touching the edge" (Isaac's ask, session 2026-10-10) rather
+  // than comfortably centered. Scaling down (never up) keeps every existing 38-40px
+  // avatar pixel-identical while giving a small one real breathing room.
+  const fontSize = Math.min(14, Math.round(size * 0.4));
 
   return (
     <View
@@ -57,7 +64,11 @@ export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
       accessibilityLabel={name}
       style={[styles.base, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}
     >
-      <AppText variant="ui.avatarInitials" tone="gold">
+      <AppText
+        variant="ui.avatarInitials"
+        tone="gold"
+        style={fontSize < 14 ? { fontSize, lineHeight: fontSize * 1.2 } : undefined}
+      >
         {initialsFrom(name)}
       </AppText>
     </View>

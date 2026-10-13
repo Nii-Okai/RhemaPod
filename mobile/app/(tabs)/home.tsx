@@ -1,38 +1,31 @@
 import React, { useRef, useState } from 'react';
 import { Animated, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, StaggerItem } from '../../components';
+import { AppText, PlatformIcon, StaggerItem } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
-import { ApiError } from '../../lib/api/errors';
+import { userMessageFor } from '../../lib/api/errors';
 import { useHeroSermons } from '../../lib/query/hooks/useHeroSermons';
 import { useContinueWatching } from '../../lib/query/hooks/useContinueWatching';
 import { useNewReleases } from '../../lib/query/hooks/useNewReleases';
+import { useNotificationsBadge } from '../../lib/query/hooks/useNotificationsBadge';
 import { useProphetsCatalog } from '../../lib/query/hooks/useProphetsCatalog';
 import { useRecommended } from '../../lib/query/hooks/useRecommended';
 import { useTrending } from '../../lib/query/hooks/useTrending';
 import { useSeriesList } from '../../lib/query/hooks/useSeries';
 import { pathnameFor, routeByKey } from '../../components/navigation/routes';
-import { ContinueWatchingCard } from './_home/ContinueWatchingCard';
+import { ContinueWatchingCard } from '../../components/sermon/ContinueWatchingCard';
 import { HeroCarousel } from './_home/HeroCarousel';
 import { HeroSkeleton } from './_home/HeroSkeleton';
 import { HomeTopBar } from './_home/HomeTopBar';
 import { ImageOnlyCard } from '../../components/sermon/ImageOnlyCard';
-import { SectionError } from './_home/SectionError';
+import { SectionError } from '../../components/SectionError';
 import { SeriesCard } from '../../components/series/SeriesCard';
 import { SermonCard } from '../../components/sermon/SermonCard';
-import { ShelfSkeleton } from './_home/ShelfSkeleton';
+import { ShelfSkeleton } from '../../components/ShelfSkeleton';
 import { SpotlightCard } from './_home/SpotlightCard';
 import { VerseStrip } from './_home/VerseStrip';
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  return 'Something went wrong. Try again.';
-}
-
-const ANNOUNCEMENTS_PATH = pathnameFor(routeByKey('announcements'));
 
 // Shared sizing for both image-only discovery shelves (Isaac's ask: "a little
 // slimmer but taller" than `ImageOnlyCard`'s own 160×16:9 default, applied to
@@ -93,8 +86,13 @@ function chunkPairs<T>(items: T[]): T[][] {
  * literal duplicate shelf. New Releases and Trending keep their own strict, meaningful
  * order (recency; play count) — only the two signal-less shelves are shuffled.
  *
- * The P2 Announcements entry point isn't a section here anymore — `HomeTopBar`'s bell
- * icon (`onAnnouncementsPress`) is the surviving entry point into `/announcements`.
+ * The P2 Announcements entry point isn't a section here anymore, and `HomeTopBar`'s bell
+ * icon no longer opens it either (Isaac's ask, session 2026-10-11 — the bell now opens
+ * `/notifications`, a new-releases list, instead); the You tab's own Announcements row
+ * is the surviving entry point into `/announcements`. The top bar also lost its Library
+ * icon entirely (same session) — Library is already the phone tab bar's own destination,
+ * one tap away regardless of which screen you're on, so a second, Home-specific shortcut
+ * to it was redundant.
  *
  * "Make it more alive" pass (Isaac's ask, session 2026-09-30), everything except
  * per-item color theming (flagged as needing a new dependency, deferred):
@@ -160,12 +158,12 @@ export default function HomeScreen() {
   // W4.4 owns `/series/[id]`'s screen — this is only the navigation call, per the
   // Conductor's decision not to create that route file here.
   const goToSeries = (id: string) => router.push({ pathname: '/series/[id]', params: { id } });
-  const goToAnnouncements = () => router.push(ANNOUNCEMENTS_PATH);
+  const goToNotifications = () => router.push('/notifications');
   // `/search` is a top-level stack route (not a tab) since the Search tab was removed
   // (Isaac's ask, session 2026-10-02) — no `routeByKey` entry for it anymore.
   const goToSearch = () => router.push('/search');
-  const goToDownloads = () => router.push(pathnameFor(routeByKey('downloads')));
   const goToSeriesList = () => router.push(pathnameFor(routeByKey('series')));
+  const notificationsBadge = useNotificationsBadge();
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -204,8 +202,8 @@ export default function HomeScreen() {
       <View style={styles.topBarOverlay}>
         <HomeTopBar
           onSearchPress={goToSearch}
-          onDownloadsPress={goToDownloads}
-          onAnnouncementsPress={goToAnnouncements}
+          onNotificationsPress={goToNotifications}
+          unseenNotificationsCount={notificationsBadge.unseenCount}
           scrollY={scrollY}
           onHeight={setTopBarHeight}
         />
@@ -233,7 +231,7 @@ export default function HomeScreen() {
         </View>
       ) : hero.isError ? (
         <View style={{ paddingTop: barRowHeight }}>
-          <SectionError message={errorMessage(hero.error)} onRetry={() => hero.refetch()} />
+          <SectionError message={userMessageFor(hero.error)} onRetry={() => hero.refetch()} />
         </View>
       ) : heroItems.length > 0 ? (
         // No top padding here, unlike the other three branches — the hero art is meant
@@ -266,7 +264,7 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             continue watching
           </AppText>
-          <SectionError message={errorMessage(continueWatching.error)} onRetry={() => continueWatching.refetch()} />
+          <SectionError message={userMessageFor(continueWatching.error)} onRetry={() => continueWatching.refetch()} />
         </View>
       ) : continueWatchingItems.length > 0 ? (
         <View style={styles.section}>
@@ -295,7 +293,7 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             new releases
           </AppText>
-          <SectionError message={errorMessage(newReleases.error)} onRetry={() => newReleases.refetch()} />
+          <SectionError message={userMessageFor(newReleases.error)} onRetry={() => newReleases.refetch()} />
         </View>
       ) : newReleaseItems.length > 0 ? (
         <View style={styles.section}>
@@ -327,12 +325,12 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             series
           </AppText>
-          <Ionicons name="chevron-forward" size={18} color={colors.text.secondary} />
+          <PlatformIcon name="chevron-forward" size={18} color={colors.text.secondary} />
         </Pressable>
         {series.isLoading ? (
           <ShelfSkeleton loadingLabel="Loading series" />
         ) : series.isError ? (
-          <SectionError message={errorMessage(series.error)} onRetry={() => series.refetch()} />
+          <SectionError message={userMessageFor(series.error)} onRetry={() => series.refetch()} />
         ) : seriesItems.length === 0 ? (
           <AppText variant="ui.body" tone="secondary">
             No series yet — check back once the catalogue has one.
@@ -364,7 +362,7 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             prophet&rsquo;s catalog
           </AppText>
-          <SectionError message={errorMessage(prophetsCatalog.error)} onRetry={() => prophetsCatalog.refetch()} />
+          <SectionError message={userMessageFor(prophetsCatalog.error)} onRetry={() => prophetsCatalog.refetch()} />
         </View>
       ) : prophetsCatalogItems.length > 0 ? (
         <>
@@ -398,7 +396,7 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             recommended for you
           </AppText>
-          <SectionError message={errorMessage(recommended.error)} onRetry={() => recommended.refetch()} />
+          <SectionError message={userMessageFor(recommended.error)} onRetry={() => recommended.refetch()} />
         </View>
       ) : recommendedItems.length > 0 ? (
         <View style={styles.section}>
@@ -432,7 +430,7 @@ export default function HomeScreen() {
           <AppText variant="ui.label" tone="secondary" style={styles.sectionLabel}>
             trending
           </AppText>
-          <SectionError message={errorMessage(trending.error)} onRetry={() => trending.refetch()} />
+          <SectionError message={userMessageFor(trending.error)} onRetry={() => trending.refetch()} />
         </View>
       ) : trendingItems.length > 0 ? (
         <View style={styles.section}>
