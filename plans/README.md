@@ -16,6 +16,6 @@ separately in the append-only `status.md` at the repo root — not in the plan.
 | `plan-mobile-app.md` | RhemaPod mobile viewer app (React Native + Expo, iOS · Android · tablet) — MVP | final; 10 planner resolutions + 18 locked decisions — awaiting go/no-go at `[HUMAN_GATE M1]` |
 | `plan-r2-storage.md` | R2 live storage + AWS S3 Deep Archive cold tier (cross-vendor archive, delete pass, dev cutover) | approved at R0; R1/R2 provisioned (smoke owed); in progress |
 | `plan-sermon-comments.md` | Sermon Comments replacing Notes: backend, moderation, admin queue, mobile player restyle + comments (gates C1–C5) | draft — awaiting Isaac approval |
-| `plan-media-cache.md` | Mobile media cache Phase 1 — silent LRU disk cache for streamed non-HLS audio, `/stream` re-validated, sign-out wiped (gates G0–G3) | S0–S10 complete, twice reviewed (all findings fixed); device checklist V1–V16 complete (2026-10-15); awaiting `[HUMAN_GATE G3]` merge decision |
+| `plan-media-cache.md` | Mobile media cache Phase 1 — silent LRU disk cache for streamed non-HLS audio, `/stream` re-validated, sign-out wiped (gates G0–G3) | shipped — merged to `dev` 2026-10-15 (`2e01215`), `[HUMAN_GATE G3]` crossed |
 
 New plans go here.
