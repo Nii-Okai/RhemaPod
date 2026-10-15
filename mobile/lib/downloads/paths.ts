@@ -51,6 +51,17 @@ export function videoFilePath(sermonId: string): string {
   return `${downloadsDir()}${sermonId}.mp4`;
 }
 
+/** The local, permanent copy of the thumbnail image (session 2026-10-15 fix for the
+ * 6h-expiring presigned `thumbnail_url` going blank/403 on a sermon that's sat `ready`
+ * for a while — see `types.ts`'s own doc comment on `DownloadRecord.thumbnailPath`).
+ * Lives in the same `downloadsDir` as the media file itself, not a separate directory —
+ * same lifecycle (deleted alongside it in `deleteDownload`, survives offline the same
+ * way), so it needs no startup-sweep reconciliation of its own beyond what the media file
+ * already gets. */
+export function thumbnailFilePath(sermonId: string): string {
+  return `${downloadsDir()}${sermonId}.thumb`;
+}
+
 export function tmpDownloadFilePath(sermonId: string): string {
   return `${downloadTmpDir()}${sermonId}.audio.tmp`;
 }

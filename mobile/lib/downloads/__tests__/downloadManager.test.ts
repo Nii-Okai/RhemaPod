@@ -71,6 +71,7 @@ function makeFakeDb() {
           sermonId,
           title,
           thumbnailUrl,
+          thumbnailPath: existing?.thumbnailPath ?? null,
           category,
           mediaType: existing?.mediaType ?? mediaType,
           state: 'queued',
@@ -114,6 +115,12 @@ function makeFakeDb() {
     deleteDownload: jest.fn(async (sermonId: string) => {
       rows.delete(sermonId);
     }),
+    setThumbnailPath: jest.fn(async (sermonId: string, path: string | null) => {
+      const row = rows.get(sermonId);
+      if (!row) return false;
+      row.thumbnailPath = path;
+      return true;
+    }),
   };
 
   return { api, rows };
@@ -124,6 +131,7 @@ function seedRow(rows: Map<string, DownloadRecord>, sermonId: string, state: Dow
     sermonId,
     title: 'Seeded Sermon',
     thumbnailUrl: null,
+    thumbnailPath: null,
     category: null,
     mediaType: 'audio',
     state,
@@ -142,6 +150,7 @@ function makeFakePaths(): DownloadManagerDeps['paths'] {
   return {
     encryptedFilePath: (id) => `file:///downloads/${id}.rpa1`,
     videoFilePath: (id) => `file:///downloads/${id}.mp4`,
+    thumbnailFilePath: (id) => `file:///downloads/${id}.thumb`,
     tmpDownloadFilePath: (id) => `file:///tmp/${id}.audio.tmp`,
     tmpDownloadVideoFilePath: (id) => `file:///tmp/${id}.video.tmp`,
     playbackTempFilePath: (id) => `file:///playback-tmp/${id}-token.pcm-tmp`,
@@ -164,6 +173,8 @@ interface Harness {
   readHeaderInfo: jest.Mock;
   canStartDownload: jest.Mock;
   getInstallKey: jest.Mock;
+  onDownloadReady: jest.Mock;
+  setThumbnailPath: jest.Mock;
 }
 
 function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
@@ -181,9 +192,14 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
   const readHeaderInfo = jest.fn(async () => ({ version: 1, algorithmId: 1, keyIdHex: 'aabbccdd', chunkSize: 262144 }));
   const canStartDownload = jest.fn(async () => true);
   const getInstallKey = jest.fn(async () => 'install-key-base64');
+  // Plan S6 — a safe no-op baseline so every test here (unless it explicitly overrides
+  // this) never touches the media cache's real SQLite/filesystem internals; this is the
+  // "stays isolated" the plan's S6 entry calls for.
+  const onDownloadReady = jest.fn(async () => undefined);
 
   const deps: Partial<DownloadManagerDeps> = {
     db: fakeDb,
+    onDownloadReady,
     paths: makeFakePaths(),
     ensureDir: jest.fn(async () => undefined),
     deleteFile: jest.fn(async (uri: string) => {
@@ -219,6 +235,8 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
     readHeaderInfo,
     canStartDownload,
     getInstallKey,
+    onDownloadReady,
+    setThumbnailPath: fakeDb.setThumbnailPath as jest.Mock,
   };
 }
 
@@ -271,6 +289,32 @@ describe('downloadManager — happy path', () => {
       expect.arrayContaining(['file:///tmp/sermon-1.audio.tmp', 'file:///downloads/sermon-1.rpa1']),
     );
     expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+  });
+});
+
+describe('downloadManager — S6 media-cache integration ("Downloads wins")', () => {
+  it('audio path: calls onDownloadReady once the download is ready', async () => {
+    const h = makeHarness();
+    await h.manager.enqueueDownload('sermon-1', 'A Great Sermon', 'audio');
+    expect(h.onDownloadReady).toHaveBeenCalledWith('sermon-1');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+  });
+
+  it('video path: calls onDownloadReady once the download is ready', async () => {
+    const h = makeHarness();
+    await h.manager.enqueueDownload('sermon-1', 'A Great Sermon', 'video');
+    expect(h.onDownloadReady).toHaveBeenCalledWith('sermon-1');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+  });
+
+  it('a throwing onDownloadReady never fails the download — it still ends ready', async () => {
+    const onDownloadReady = jest.fn().mockRejectedValue(new Error('cache delete failed'));
+    const h = makeHarness({ onDownloadReady });
+
+    await expect(h.manager.enqueueDownload('sermon-1', 'A Great Sermon', 'audio')).resolves.toBeUndefined();
+
+    expect(onDownloadReady).toHaveBeenCalledWith('sermon-1');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready', failureReason: null });
   });
 });
 
@@ -522,8 +566,106 @@ describe('downloadManager — delete', () => {
         'file:///downloads/sermon-1.rpa1',
         'file:///downloads/sermon-1.rpa1.part',
         'file:///tmp/sermon-1.audio.tmp',
+        'file:///downloads/sermon-1.thumb',
       ]),
     );
     expect(await h.manager.getDownload('sermon-1')).toBeNull();
+  });
+});
+
+describe('downloadManager — thumbnail fetch (session 2026-10-15 fix for the 6h presigned-URL expiry)', () => {
+  it('does nothing when the sermon has no thumbnailUrl — no second downloadToFile call, no setThumbnailPath', async () => {
+    const h = makeHarness();
+
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio', null);
+
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+    expect(h.downloadToFile).toHaveBeenCalledTimes(1); // only the media fetch
+    expect(h.setThumbnailPath).not.toHaveBeenCalled();
+  });
+
+  it('fetches the thumbnail once the media download is ready, and records the local path', async () => {
+    const h = makeHarness();
+
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio', 'https://cdn.example.com/signed/thumb.jpg');
+
+    expect(h.downloadToFile).toHaveBeenCalledWith(
+      'https://cdn.example.com/signed/thumb.jpg',
+      'file:///downloads/sermon-1.thumb',
+      expect.any(Function),
+    );
+    expect(h.setThumbnailPath).toHaveBeenCalledWith('sermon-1', 'file:///downloads/sermon-1.thumb');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({
+      state: 'ready',
+      thumbnailPath: 'file:///downloads/sermon-1.thumb',
+    });
+  });
+
+  it('a failed thumbnail fetch never fails the download, never calls setThumbnailPath, and cleans up the stale file', async () => {
+    const downloadToFile = jest.fn(async (url: string, dest: string, onProgress: (p: number) => void) => {
+      if (dest.endsWith('.thumb')) {
+        throw networkError();
+      }
+      onProgress(1);
+    });
+    const h = makeHarness({ downloadToFile });
+
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio', 'https://cdn.example.com/signed/thumb.jpg');
+
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+    expect(h.setThumbnailPath).not.toHaveBeenCalled();
+    expect(h.deletedFiles).toContain('file:///downloads/sermon-1.thumb');
+  });
+
+  it('retryDownload re-fetches the thumbnail using the row\'s own thumbnailUrl, not a caller-supplied one (regression: retryDownload must keep passing thumbnailUrl through runDownload)', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'sermon-1', 'failed', {
+      failureReason: 'network',
+      failureMessage: 'dropped',
+      thumbnailUrl: 'https://cdn.example.com/signed/thumb.jpg',
+    });
+
+    await h.manager.retryDownload('sermon-1');
+
+    expect(h.downloadToFile).toHaveBeenCalledWith(
+      'https://cdn.example.com/signed/thumb.jpg',
+      'file:///downloads/sermon-1.thumb',
+      expect.any(Function),
+    );
+    expect(h.setThumbnailPath).toHaveBeenCalledWith('sermon-1', 'file:///downloads/sermon-1.thumb');
+  });
+
+  it('resumeQueuedDownloads re-fetches the thumbnail for a row that resumes from queued (regression: resumeQueuedDownloads must keep passing record.thumbnailUrl through runDownload)', async () => {
+    const canStartDownload = jest.fn(async () => false);
+    const h = makeHarness({ canStartDownload });
+
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio', 'https://cdn.example.com/signed/thumb.jpg');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'queued' });
+    expect(h.downloadToFile).not.toHaveBeenCalled();
+
+    canStartDownload.mockResolvedValue(true);
+    await h.manager.resumeQueuedDownloads();
+
+    expect(h.downloadToFile).toHaveBeenCalledWith(
+      'https://cdn.example.com/signed/thumb.jpg',
+      'file:///downloads/sermon-1.thumb',
+      expect.any(Function),
+    );
+    expect(h.setThumbnailPath).toHaveBeenCalledWith('sermon-1', 'file:///downloads/sermon-1.thumb');
+  });
+
+  it('reviewer-gilfoyle MUST-FIX regression: a download deleted while the thumbnail fetch is still in flight gets the orphaned file cleaned up, not left behind', async () => {
+    // Simulates deleteDownload winning the race against fetchThumbnailBestEffort's own
+    // network-I/O await: by the time setThumbnailPath would run, the row is already gone,
+    // so the fake (same as db.ts's real `changes > 0` check) reports `false`.
+    const setThumbnailPath = jest.fn(async () => false);
+    const h = makeHarness({ db: { ...makeFakeDb().api, setThumbnailPath } });
+
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio', 'https://cdn.example.com/signed/thumb.jpg');
+
+    expect(setThumbnailPath).toHaveBeenCalledWith('sermon-1', 'file:///downloads/sermon-1.thumb');
+    // Deleted once up front (never resume a stale file) and again after the race is
+    // detected — the orphaned file must not survive this function.
+    expect(h.deletedFiles.filter((f) => f === 'file:///downloads/sermon-1.thumb')).toHaveLength(2);
   });
 });

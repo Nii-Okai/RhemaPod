@@ -59,6 +59,16 @@ jest.mock('../../../lib/downloads/useLocalPlayback', () => ({
 const mockedUseDownloads = useDownloads as jest.Mock;
 const mockDownload = jest.fn();
 
+// Same reasoning as the `useDownloads`/`useLocalPlayback` mocks above: `useCachedSource`
+// pulls in `fill.ts` -> `downloadManager.ts` -> `modules/rpa-crypto`'s real native module
+// resolution. Mocked to the harmless "always a miss" default (`effectiveUrl: null`, which
+// `variant.url = cacheSource.effectiveUrl ?? streamedVariant.url` falls back from) so
+// every existing test here keeps exercising the plain stream URL unchanged; the cache's
+// own hit/miss/exit-fill behavior is covered by `useCachedSource.test.ts` directly.
+jest.mock('../../../lib/mediaCache/useCachedSource', () => ({
+  useCachedSource: jest.fn(() => ({ isLoading: false, effectiveUrl: null, reportExit: jest.fn() })),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));

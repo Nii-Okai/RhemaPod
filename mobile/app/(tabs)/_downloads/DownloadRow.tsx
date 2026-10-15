@@ -101,8 +101,8 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         <View style={styles.artWrap}>
-          {download.thumbnailUrl ? (
-            <Image source={{ uri: download.thumbnailUrl }} style={styles.thumbnail} resizeMode="cover" />
+          {download.thumbnailPath ?? download.thumbnailUrl ? (
+            <Image source={{ uri: download.thumbnailPath ?? download.thumbnailUrl ?? undefined }} style={styles.thumbnail} resizeMode="cover" />
           ) : (
             <View style={styles.thumbnailFallback}>
               <PlatformIcon

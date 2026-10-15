@@ -37,6 +37,7 @@ function record(overrides: Partial<DownloadRecord> = {}): DownloadRecord {
     sermonId: 'sermon-1',
     title: 'A Great Sermon',
     thumbnailUrl: null,
+    thumbnailPath: null,
     category: 'Teaching',
     mediaType: 'audio',
     state: 'ready',

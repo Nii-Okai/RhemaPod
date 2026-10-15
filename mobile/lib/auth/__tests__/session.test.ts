@@ -7,6 +7,8 @@
 import * as SecureStore from 'expo-secure-store';
 import * as authClient from '../../api/authClient';
 import { ApiError } from '../../api/errors';
+import { clearMediaCache } from '../../mediaCache/clearMediaCache';
+import * as fill from '../../mediaCache/fill';
 import * as session from '../session';
 
 jest.mock('expo-secure-store', () => {
@@ -34,7 +36,16 @@ jest.mock('../../api/authClient', () => ({
   logout: jest.fn(),
 }));
 
+// `session.ts` reaches `clearMediaCache` via a lazy `require()` inside `clearSession()`
+// (plan S7; made lazy at the S8/S9 re-check to sever a circular import, so this module is
+// no longer pulled in at require time regardless of this mock). Still mocked wholesale
+// here — not to avoid a crash, but because this suite needs to assert `clearMediaCache`
+// gets *called* on each `clearSession()` path without exercising the cache's real
+// SQLite/filesystem internals, same as it always did.
+jest.mock('../../mediaCache/clearMediaCache', () => ({ clearMediaCache: jest.fn().mockResolvedValue(undefined) }));
+
 const mockedAuthClient = authClient as jest.Mocked<typeof authClient>;
+const mockedClearMediaCache = clearMediaCache as jest.Mock;
 const mockedSecureStore = SecureStore as unknown as {
   getItemAsync: jest.Mock;
   setItemAsync: jest.Mock;
@@ -215,6 +226,94 @@ describe('session access-token storage', () => {
     expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
     expect(session.getAccessToken()).toBeNull();
     expect(session.getStatus()).toBe('signedOut');
+    // Plan S7, HUMAN_GATE G2: every clearSession() path wipes the media cache too.
+    expect(mockedClearMediaCache).toHaveBeenCalled();
+  });
+
+  it('a genuine auth rejection during refresh also wipes the media cache (the other forced sign-out path)', async () => {
+    mockedAuthClient.login.mockResolvedValueOnce({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 900,
+    });
+    await session.signIn('user@example.com', 'password123456');
+
+    mockedAuthClient.refresh.mockRejectedValueOnce(new ApiError(401, 'Invalid or expired refresh token'));
+    await expect(session.refreshAccessToken()).rejects.toBeInstanceOf(ApiError);
+
+    expect(mockedClearMediaCache).toHaveBeenCalled();
+  });
+});
+
+describe('session S7 — media cache wipe on every clearSession() path', () => {
+  it('the no-refresh-token forced path (refreshAccessToken with nothing stored) also wipes the media cache', async () => {
+    await expect(session.refreshAccessToken()).rejects.toBeInstanceOf(ApiError);
+    expect(mockedClearMediaCache).toHaveBeenCalled();
+  });
+
+  it('a throwing clearMediaCache never stops the tokens from being cleared', async () => {
+    mockedAuthClient.login.mockResolvedValueOnce({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 900,
+    });
+    await session.signIn('user@example.com', 'password123456');
+
+    mockedClearMediaCache.mockRejectedValueOnce(new Error('wipe failed'));
+
+    await expect(session.signOut()).resolves.toBeUndefined();
+
+    expect(session.getAccessToken()).toBeNull();
+    expect(session.getStatus()).toBe('signedOut');
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
+  });
+
+  it('a fresh sign-in re-opens media-cache fills via allowFillsAfterSignIn (S9 finding S1 wiring)', async () => {
+    // `fill.ts` is no longer mocked here at all (the circular-import fix means it carries
+    // no native dependency), so its real `allowFillsAfterSignIn` can be spied on directly —
+    // Gilfoyle re-check's own suggestion, closing the "verified by manual trace only" gap.
+    const spy = jest.spyOn(fill, 'allowFillsAfterSignIn');
+
+    mockedAuthClient.login.mockResolvedValueOnce({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 900 });
+    await session.signIn('user@example.com', 'password123456');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    mockedAuthClient.refresh.mockResolvedValueOnce({ access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 900 });
+    await session.refreshAccessToken();
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    spy.mockRestore();
+  });
+
+  it('applyTokenPair joins a still-draining prior wipe before re-opening fills, bounded by its own short cap', async () => {
+    const callOrder: string[] = [];
+    let resolveWipe!: () => void;
+    mockedClearMediaCache.mockImplementationOnce(() => new Promise<void>((resolve) => (resolveWipe = resolve)));
+    mockedAuthClient.login.mockResolvedValueOnce({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 900 });
+    await session.signIn('user@example.com', 'password123456');
+
+    const spy = jest.spyOn(fill, 'allowFillsAfterSignIn').mockImplementation(() => {
+      callOrder.push('allowFillsAfterSignIn');
+    });
+    await session.signOut(); // starts the (slow, not-yet-resolved) wipe
+
+    mockedAuthClient.login.mockResolvedValueOnce({ access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 900 });
+    const signInPromise = session.signIn('user2@example.com', 'password123456').then(() => {
+      callOrder.push('signInResolved');
+    });
+
+    // Let the sign-in's own promise chain actually reach the join point (login resolves
+    // instantly, saveRefreshToken resolves instantly, so a couple of microtask ticks is
+    // enough) before resolving the wipe — proves the ORDER below demonstrates the join,
+    // not coincidence.
+    await Promise.resolve();
+    await Promise.resolve();
+    callOrder.push('aboutToResolveWipe');
+    resolveWipe();
+    await signInPromise;
+
+    expect(callOrder).toEqual(['aboutToResolveWipe', 'allowFillsAfterSignIn', 'signInResolved']);
+    spy.mockRestore();
   });
 });
 

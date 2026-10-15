@@ -14,6 +14,7 @@ import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { isPlayable } from '../sermon/_detail/isPlayable';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { useLocalPlayback } from '../../lib/downloads/useLocalPlayback';
+import { useCachedSource } from '../../lib/mediaCache/useCachedSource';
 import { usePlaylist, useRemovePlaylistItem, type PlaylistItemPublic } from '../../lib/query/hooks/usePlaylists';
 import { shuffled } from '../playlist/_detail/playlistQueue';
 import { shareContent } from '../../lib/share/shareContent';
@@ -200,12 +201,38 @@ export default function PlayerScreen() {
   const localPlayback = useLocalPlayback(sermonId, Boolean(detail) && playable && isDownloaded);
   const preferences = usePlaybackPreferences();
 
+  // The variant `useStream` would otherwise hand straight to the player, before the media
+  // cache (S4) ever gets a say — computed unconditionally alongside the other hooks above
+  // so `useCachedSource` (itself a hook) can be called before any of this component's
+  // early returns below, same ordering requirement as every other hook here.
+  const streamedVariant = !isDownloaded && streamQuery.data ? selectPlaybackVariant(streamQuery.data.variants) : null;
+  const streamExpiresAt =
+    streamQuery.data && streamQuery.dataUpdatedAt ? streamQuery.dataUpdatedAt + streamQuery.data.expires_in * 1000 : null;
+  // S8/S9 review (finding B1/D11/D2): a cache hit may only ever happen once THIS mount has
+  // its own confirmed, successful `/stream` — not merely "some data exists" (which could be
+  // stale-but-cached, restored from disk, or never refreshed because the device is
+  // offline and the query sits paused). `useStream` sets `staleTime: 0` /
+  // `refetchOnMount: 'always'` specifically so `isFetchedAfterMount` is meaningful here:
+  // it stays false until a genuinely fresh fetch completes for this mount. Gating only the
+  // cache's own `enabled` (not the screen's overall loading state) means an uncached or
+  // already-fresh sermon still opens at its usual speed; a reopened one just streams
+  // normally — same as it always has — for the brief window before freshness confirms,
+  // rather than being newly held behind a round-trip it didn't need before.
+  const isStreamFreshThisMount = streamQuery.isFetchedAfterMount && !streamQuery.isError;
+  const cacheSource = useCachedSource({
+    sermonId,
+    mediaRefs: detail?.media_refs ?? [],
+    variant: streamedVariant,
+    enabled: !isDownloaded && Boolean(streamedVariant) && isStreamFreshThisMount,
+    expiresAt: streamExpiresAt,
+  });
+
   const isLoading =
     detailQuery.isLoading ||
     downloads.isLoading ||
     preferences.isLoading ||
     (playable && progressQuery.isLoading) ||
-    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading)) ||
+    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading || cacheSource.isLoading)) ||
     // Blocks on the playlist read too, when there is one — `PlayerContent` renders
     // `QueueList` only once `queueContext` is non-null (`playlistQuery.data` present),
     // otherwise it falls back to the comments panel; without this, that fallback would
@@ -268,8 +295,8 @@ export default function PlayerScreen() {
   const variant: StreamVariant | null =
     isDownloaded && downloadRecord && localPlayback.localUri
       ? { type: downloadRecord.mediaType, quality: null, url: localPlayback.localUri }
-      : !isDownloaded && streamQuery.data
-        ? selectPlaybackVariant(streamQuery.data.variants)
+      : streamedVariant
+        ? { ...streamedVariant, url: cacheSource.effectiveUrl ?? streamedVariant.url }
         : null;
   if (!variant) {
     return (
@@ -305,6 +332,7 @@ export default function PlayerScreen() {
         onChangeDefaultSpeed={preferences.setDefaultSpeed}
         onPlayToEnd={advanceToNext}
         queueContext={queueContext}
+        onExit={cacheSource.reportExit}
       />
     </KeyboardAvoidingView>
   );
@@ -340,6 +368,12 @@ interface PlayerContentProps {
   /** Renders `QueueList` in place of `CommentsPanel` when present — see `PlayerScreen`'s
    * own doc comment on "Queue list, not comments". */
   queueContext: QueueListProps | null;
+  /** Media-cache exit hook (plan S4, P1): called once, on unmount, with the final
+   * position/duration — this component remounts (`key={sermonId}`) on every sermon
+   * change and unmounts on screen exit, so its own unmount is exactly P1's "leaving a
+   * sermon" (never a mere app-background, which doesn't unmount anything). A no-op for
+   * a downloaded sermon or a cache hit — `useCachedSource`'s own `reportExit` decides. */
+  onExit: (positionSeconds: number, durationSeconds: number | null) => void;
 }
 
 /**
@@ -360,6 +394,7 @@ function PlayerContent({
   onChangeDefaultSpeed,
   onPlayToEnd,
   queueContext,
+  onExit,
 }: PlayerContentProps) {
   const player = useVideoPlayer(
     {
@@ -400,6 +435,22 @@ function PlayerContent({
   useEventListener(player, 'timeUpdate', ({ currentTime: t }) => progressFlush.reportPosition(t));
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => progressFlush.reportPlaying(playing));
   useEventListener(player, 'playToEnd', () => progressFlush.reportCompleted());
+
+  // Media-cache exit report (plan S4, P1) — a ref, not state, since nothing here should
+  // re-render on every tick; only read once, at unmount, by the cleanup effect below.
+  const exitReportRef = useRef<{ position: number; duration: number | null }>({ position: initialPositionSeconds, duration: null });
+  useEventListener(player, 'timeUpdate', ({ currentTime: t }) => {
+    exitReportRef.current = { position: t, duration: player.duration > 0 ? player.duration : null };
+  });
+  useEffect(() => {
+    return () => onExit(exitReportRef.current.position, exitReportRef.current.duration);
+    // Deliberately empty deps: this must fire exactly once, on this component's own
+    // unmount (a sermon change via its `key={sermonId}`, or the screen exiting) — never
+    // on a mere re-render — reading whatever the ref holds at that moment. `onExit` is
+    // this render's closure, which is fine: only the LAST render before unmount matters,
+    // same reasoning as the `[status]`-only effect above (no `react-hooks/exhaustive-deps`
+    // rule is installed in this project to suppress here).
+  }, []);
 
   // Seek to the resume position and start playback exactly once, the first time the
   // player reports it has enough data to play — not on every later `readyToPlay` a

@@ -17,11 +17,20 @@ export const PERSIST_BUSTER = 'sermon-comments-1';
  * authors are filtered server-side). They are never written to the on-disk cache: a stale
  * restore could show a comment the viewer has since blocked or that has since been hidden,
  * and the player shows "Comments unavailable offline" rather than serving old threads.
+ *
+ * `stream` is excluded for the same shape of reason, found at S8/S9 review (B1/D11/D2):
+ * a restored `/stream` response can be up to `MAX_AGE_MS` (24h) old, while its signed URL
+ * expires in ~6h, so a cold-started reopen could otherwise show entitlement as confirmed
+ * from a response that's actually stale or already expired. The media cache's "every hit
+ * re-validates" guarantee (`useCachedSource.ts`) depends on this response always coming
+ * from a live fetch, never a disk restore. This also keeps presigned URLs, however
+ * short-lived, out of the persisted on-disk query cache entirely.
  */
 export function shouldPersistQuery(query: Query): boolean {
   const root = query.queryKey[0];
   if (root === queryKeys.comments.all[0]) return false;
   if (root === queryKeys.me.all[0] && query.queryKey[1] === 'blocks') return false;
+  if (root === queryKeys.stream.all[0]) return false;
   return defaultShouldDehydrateQuery(query);
 }
 

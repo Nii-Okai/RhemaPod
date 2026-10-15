@@ -24,6 +24,7 @@ function downloadItem(overrides: Partial<DownloadRecord> = {}): LibraryItem {
     sermonId: 's1',
     title: 'Anchored',
     thumbnailUrl: null,
+    thumbnailPath: null,
     category: null,
     mediaType: 'audio',
     state: 'ready',

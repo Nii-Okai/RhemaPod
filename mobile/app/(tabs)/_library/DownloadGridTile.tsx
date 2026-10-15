@@ -62,8 +62,8 @@ export function DownloadGridTile({ download, width, onPlay, onRetry, onDelete }:
         style={({ pressed }) => [{ width }, pressed && styles.pressed]}
       >
         <View style={{ width, height: width }}>
-          {download.thumbnailUrl ? (
-            <Image source={{ uri: download.thumbnailUrl }} style={[styles.cover, { width, height: width }]} />
+          {download.thumbnailPath ?? download.thumbnailUrl ? (
+            <Image source={{ uri: download.thumbnailPath ?? download.thumbnailUrl ?? undefined }} style={[styles.cover, { width, height: width }]} />
           ) : (
             <View style={[styles.coverFallback, { width, height: width }]}>
               <PlatformIcon
