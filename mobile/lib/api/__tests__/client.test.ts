@@ -38,6 +38,11 @@ jest.mock('../authClient', () => ({
   logout: jest.fn(),
 }));
 
+// No mock needed for `mediaCache/clearMediaCache`: `session.ts` reaches it via a lazy
+// `require()` inside `clearSession()` (S8/S9 re-check circular-import fix), not a static
+// import, so this file never touches that module tree at require time. Confirmed
+// empirically (not assumed) by removing the earlier wholesale mock and re-running.
+
 const mockedAuthClient = authClient as jest.Mocked<typeof authClient>;
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {

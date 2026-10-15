@@ -27,6 +27,10 @@ describe('QueryProvider persistence', () => {
     expect(shouldPersistQuery(queryFor(queryKeys.me.blocks()))).toBe(false);
   });
 
+  it('never writes /stream responses to disk (S8/S9 review, B1/D11/D2 — a restored stale entitlement confirmation must not be possible)', () => {
+    expect(shouldPersistQuery(queryFor(queryKeys.stream.detail('s1')))).toBe(false);
+  });
+
   it('never dehydrates a mutation, so a paused comment-post never lands in the on-disk cache', () => {
     // No mutation shape needed: every mutation is excluded regardless of its payload.
     expect(shouldPersistMutation()).toBe(false);

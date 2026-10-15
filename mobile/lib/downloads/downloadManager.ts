@@ -5,9 +5,9 @@ import * as RpaCrypto from '../../modules/rpa-crypto';
 import { RpaCryptoError, type RpaEncryptResult } from '../../modules/rpa-crypto';
 import * as db from './db';
 import { getOrCreateInstallKey } from './installKey';
-import { canStartDownload as networkCanStartDownload } from './network';
-import { loadDownloadPreferences } from '../settings/downloadPreferences';
+import { realCanStartDownload } from './network';
 import * as paths from './paths';
+import { dropSermonFromCache } from '../mediaCache/dropSermon';
 import type { DownloadFailureReason, DownloadMediaType, DownloadRecord } from './types';
 
 /**
@@ -33,6 +33,7 @@ export interface DownloadManagerDeps {
     | 'markReady'
     | 'markFailed'
     | 'deleteDownload'
+    | 'setThumbnailPath'
   >;
   crypto: {
     encryptFile: typeof RpaCrypto.encryptFile;
@@ -43,6 +44,7 @@ export interface DownloadManagerDeps {
   paths: {
     encryptedFilePath: typeof paths.encryptedFilePath;
     videoFilePath: typeof paths.videoFilePath;
+    thumbnailFilePath: typeof paths.thumbnailFilePath;
     tmpDownloadFilePath: typeof paths.tmpDownloadFilePath;
     tmpDownloadVideoFilePath: typeof paths.tmpDownloadVideoFilePath;
     playbackTempFilePath: typeof paths.playbackTempFilePath;
@@ -63,6 +65,11 @@ export interface DownloadManagerDeps {
   getInstallKey: () => Promise<string>;
   /** True iff a download may start/resume right now (Wi-Fi-only is off, or the device is on Wi-Fi). */
   canStartDownload: () => Promise<boolean>;
+  /** Plan S6, "Downloads wins": called once a download reaches `ready`, so a stale media-
+   * cache entry for the same sermon never coexists with (or gets played ahead of) the real
+   * download. Injected so this manager's own test suite stays isolated from the cache's
+   * real SQLite/filesystem internals — a failure here must never fail the download. */
+  onDownloadReady: (sermonId: string) => Promise<void>;
 }
 
 async function realDownloadToFile(url: string, destPath: string, onProgress: (progress: number) => void): Promise<void> {
@@ -93,11 +100,6 @@ async function realFetchDownloadUrl(sermonId: string, mediaType: DownloadMediaTy
   }
 }
 
-async function realCanStartDownload(): Promise<boolean> {
-  const prefs = await loadDownloadPreferences();
-  return networkCanStartDownload(prefs.wifiOnly);
-}
-
 function defaultDeps(): DownloadManagerDeps {
   return {
     db,
@@ -119,6 +121,7 @@ function defaultDeps(): DownloadManagerDeps {
     downloadToFile: realDownloadToFile,
     getInstallKey: getOrCreateInstallKey,
     canStartDownload: realCanStartDownload,
+    onDownloadReady: dropSermonFromCache,
   };
 }
 
@@ -191,7 +194,38 @@ async function handlePlaybackDecryptError(
 export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = {}) {
   const deps: DownloadManagerDeps = { ...defaultDeps(), ...overrides };
 
-  async function runAudioDownload(sermonId: string): Promise<void> {
+  /** Session 2026-10-15 fix for the 6h-expiring presigned `thumbnail_url` going blank/403
+   * on a sermon that's sat `ready` for a while — fetches a local, permanent copy once the
+   * media download itself has already settled. Best-effort only (same convention as
+   * `excludeFromBackup`/`onDownloadReady` above) — a failure here just means the UI keeps
+   * showing the original, eventually-expiring `thumbnailUrl` instead of a local copy. Must
+   * never fail the download itself. Deletes any stale file at the destination first (never
+   * resumes/appends onto a prior attempt, same reasoning as the tmp-file deletes above).
+   *
+   * Reviewer-gilfoyle-found race (session 2026-10-15 fix): nothing gates `deleteDownload`
+   * on download state, so it can run concurrently with this function's own network-I/O
+   * await. If the row is deleted while the thumbnail fetch is still in flight,
+   * `deleteDownload`'s own `deleteFile(thumbnailFilePath)` no-ops (the file doesn't exist
+   * yet) and then removes the row — then this function's `downloadToFile` finishes and
+   * writes the file anyway. `setThumbnailPath`'s boolean return (`changes > 0`) is how this
+   * detects that: `false` means the row is already gone, so the just-written file is
+   * untracked by anything and must be deleted here rather than orphaned forever. */
+  async function fetchThumbnailBestEffort(sermonId: string, thumbnailUrl: string | null): Promise<void> {
+    if (!thumbnailUrl) return;
+    const path = deps.paths.thumbnailFilePath(sermonId);
+    try {
+      await deps.deleteFile(path);
+      await deps.downloadToFile(thumbnailUrl, path, () => {});
+      const rowStillExists = await deps.db.setThumbnailPath(sermonId, path);
+      if (!rowStillExists) {
+        await deps.deleteFile(path);
+      }
+    } catch {
+      await deps.deleteFile(path).catch(() => {});
+    }
+  }
+
+  async function runAudioDownload(sermonId: string, thumbnailUrl: string | null): Promise<void> {
     const tmpPath = deps.paths.tmpDownloadFilePath(sermonId);
     const encryptedPath = deps.paths.encryptedFilePath(sermonId);
 
@@ -223,6 +257,8 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
 
       const bytesTotal = await deps.getFileSize(encryptedPath);
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: encryptResult.keyIdHex });
+      await deps.onDownloadReady(sermonId).catch(() => {});
+      await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
     } catch (err) {
       await deps.deleteFile(tmpPath);
       // A kill strictly mid-native-encrypt leaves `encryptedPath + '.part'` behind (the
@@ -244,7 +280,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
    * no decrypt-to-temp step at playback time either (`preparePlaybackFile` below just
    * hands back this same path).
    */
-  async function runVideoDownload(sermonId: string): Promise<void> {
+  async function runVideoDownload(sermonId: string, thumbnailUrl: string | null): Promise<void> {
     const tmpPath = deps.paths.tmpDownloadVideoFilePath(sermonId);
     const finalPath = deps.paths.videoFilePath(sermonId);
 
@@ -268,6 +304,8 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
 
       const bytesTotal = await deps.getFileSize(finalPath);
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: null });
+      await deps.onDownloadReady(sermonId).catch(() => {});
+      await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
     } catch (err) {
       await deps.deleteFile(tmpPath);
       await deps.deleteFile(finalPath); // a failed moveAsync can still leave a partial file at the destination
@@ -276,15 +314,15 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     }
   }
 
-  async function runDownload(sermonId: string, mediaType: DownloadMediaType): Promise<void> {
+  async function runDownload(sermonId: string, mediaType: DownloadMediaType, thumbnailUrl: string | null): Promise<void> {
     const canStart = await deps.canStartDownload();
     if (!canStart) {
       // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
       // `useDownloads.ts` for the resume-on-reconnect trigger.
       return;
     }
-    if (mediaType === 'video') await runVideoDownload(sermonId);
-    else await runAudioDownload(sermonId);
+    if (mediaType === 'video') await runVideoDownload(sermonId, thumbnailUrl);
+    else await runAudioDownload(sermonId, thumbnailUrl);
   }
 
   /**
@@ -306,7 +344,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     const existing = await deps.db.getDownload(sermonId);
     if (!existing) {
       await deps.db.upsertQueued(sermonId, title, mediaType, thumbnailUrl, category);
-      await runDownload(sermonId, mediaType);
+      await runDownload(sermonId, mediaType, thumbnailUrl);
       return;
     }
     if (existing.state === 'failed') {
@@ -328,7 +366,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
     }
     await deps.db.upsertQueued(sermonId, existing.title, existing.mediaType, existing.thumbnailUrl, existing.category);
-    await runDownload(sermonId, existing.mediaType);
+    await runDownload(sermonId, existing.mediaType, existing.thumbnailUrl);
   }
 
   async function deleteDownload(sermonId: string): Promise<void> {
@@ -341,6 +379,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
     await deps.deleteFile(deps.paths.videoFilePath(sermonId));
     await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
+    await deps.deleteFile(deps.paths.thumbnailFilePath(sermonId));
     await deps.db.deleteDownload(sermonId);
   }
 
@@ -364,7 +403,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     const all = await deps.db.listDownloads();
     for (const record of all) {
       if (record.state === 'queued') {
-        await runDownload(record.sermonId, record.mediaType);
+        await runDownload(record.sermonId, record.mediaType, record.thumbnailUrl);
       }
     }
   }

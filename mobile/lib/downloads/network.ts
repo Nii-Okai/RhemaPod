@@ -1,4 +1,5 @@
 import * as Network from 'expo-network';
+import { loadDownloadPreferences } from '../settings/downloadPreferences';
 
 /**
  * Wi-Fi-only gating (design spec §1l, plan W4.5) — a download only starts/resumes when
@@ -15,4 +16,17 @@ export async function isOnWifi(): Promise<boolean> {
 export async function canStartDownload(wifiOnlyEnabled: boolean): Promise<boolean> {
   if (!wifiOnlyEnabled) return true;
   return isOnWifi();
+}
+
+/**
+ * The composed Wi-Fi gate (reads the user's own preference, then checks it) — lives here,
+ * not in `downloadManager.ts`, specifically so `lib/mediaCache/fill.ts` can import it
+ * without a module-graph edge back into the Downloads manager (that edge was a real
+ * circular import: `downloadManager -> mediaCache/dropSermon -> mediaCache/fill ->
+ * downloadManager`, flagged at S8/S9 review). `downloadManager.ts` now imports this same
+ * function instead of defining its own copy.
+ */
+export async function realCanStartDownload(): Promise<boolean> {
+  const prefs = await loadDownloadPreferences();
+  return canStartDownload(prefs.wifiOnly);
 }
