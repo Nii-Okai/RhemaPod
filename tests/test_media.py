@@ -772,3 +772,56 @@ async def test_delete_by_type_when_none_404(client, engine):
         f"/api/v1/sermons/{sid}/media", params={"media_type": "audio"}, headers=ed
     )
     assert r.status_code == 404
+
+
+async def test_stream_survives_unparseable_status(client, engine):
+    """Same defense-in-depth guarantee as the catalog detail read path (see
+    test_crud.test_catalog_detail_survives_unparseable_status), for the
+    stream endpoint's own Sermon load in `_authorize_stream_access`: a row
+    with a status value that isn't a valid `SermonStatus` member name must
+    404, not 500."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        # Bare raw SQL, deliberately bypassing the ORM's Enum type (which
+        # would otherwise coerce this back to "DRAFT" on the way in) —
+        # exactly the kind of write that produces this data shape in
+        # practice. Only one sermon exists in this test, so no WHERE needed.
+        await s.execute(text("UPDATE sermons SET status = 'draft'"))
+        await s.commit()
+
+    r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=ed)
+    assert r.status_code == 404
+
+
+async def test_unrelated_media_type_corruption_is_not_misreported_as_not_found(
+    client, engine
+):
+    """The targeted raw-`status` check in `_authorize_stream_access` must
+    check only `status` and must not be a blanket `except LookupError`
+    around the ORM query: `MediaRef.type` is eager-loaded by that same
+    query and is the identical kind of ORM `Enum` (no `values_callable`).
+    A corrupted `media_refs.type` is a real, different bug and must not be
+    silently relabeled as 'sermon not found' — it should surface, same as
+    any other unhandled server error would."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        # Bare raw SQL, same technique as above, this time on the sibling
+        # Enum column eager-loaded in the same query as `status`.
+        await s.execute(text("UPDATE media_refs SET type = 'bogus'"))
+        await s.commit()
+
+    with pytest.raises(LookupError):
+        await client.get(f"/api/v1/sermons/{sid}/stream", headers=ed)

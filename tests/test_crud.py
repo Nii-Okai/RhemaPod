@@ -211,3 +211,30 @@ async def test_delete_removes_from_catalog_after_unpublish(client, engine):
     await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=mgr)
     await client.delete(f"/api/v1/sermons/{sid}", headers=mgr)
     assert (await client.get("/api/v1/catalog/sermons")).json() == []
+
+
+async def test_catalog_detail_survives_unparseable_status(client, engine):
+    """`status` is only ever written via the `SermonStatus` enum member
+    (always an uppercase member name), but a row that somehow picked up a
+    raw, differently-cased value — e.g. from a hand-run SQL statement that
+    bypasses the ORM, as this test does on purpose — must not crash the
+    catalog read with an unhandled 500. It should read as not-found, same
+    as any other sermon the viewer can't see."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = await publish(client, ed, mgr, title="Corrupted")
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        # Bare raw SQL, deliberately bypassing the ORM's Enum type (which
+        # would otherwise coerce this back to "PUBLISHED" on the way in) —
+        # exactly the kind of write that produces this data shape in
+        # practice. Only one sermon exists in this test, so no WHERE needed.
+        await s.execute(text("UPDATE sermons SET status = 'published'"))
+        await s.commit()
+
+    r = await client.get(f"/api/v1/catalog/sermons/{sid}")
+    assert r.status_code == 404

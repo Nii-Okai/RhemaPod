@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, delete, func, select, type_coerce
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -554,6 +554,30 @@ async def _authorize_stream_access(
     staff. This is where `locked` stops being advisory: a locked sermon
     raises 403 upgrade_required, so the catalog can stay fully browsable.
     """
+    # Defense in depth: see the matching check in
+    # content_service._load_sermon_with_detail_rels — a targeted Core read
+    # of the raw `status` column lets us treat a row with an unparseable
+    # `status` as not-found before the full ORM query below would otherwise
+    # choke on it. `type_coerce(..., String)` is what actually bypasses the
+    # Enum type's result processor here (selecting `Sermon.__table__.c.status`
+    # directly still carries that column's Enum type and raises identically).
+    # Deliberately not a blanket `except LookupError` around that query:
+    # `media_refs` is eager-loaded here too, and `MediaRef.type` is the same
+    # kind of Enum — a blanket catch would misreport that unrelated
+    # corruption as "sermon not found" instead of surfacing it as the real,
+    # different bug it is.
+    raw_status = (await db.execute(
+        select(type_coerce(Sermon.__table__.c.status, String))
+        .where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if raw_status is not None and raw_status not in SermonStatus.__members__:
+        log.error(
+            "sermon_status_unparseable",
+            sermon_id=str(sermon_id),
+            raw_status=raw_status,
+        )
+        raise ContentError("Sermon not found", status_code=404)
+
     sermon = (await db.execute(
         select(Sermon)
         .where(Sermon.id == sermon_id)

@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import case, func, literal_column, nullslast, or_, select
+from sqlalchemy import String, case, func, literal_column, nullslast, or_, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -731,6 +731,36 @@ async def _assemble_sermon_detail(
 async def _load_sermon_with_detail_rels(
     db: AsyncSession, sermon_id: uuid.UUID
 ) -> Sermon | None:
+    # Defense in depth: `Sermon.status` is validated against `SermonStatus`'s
+    # member names by the ORM Enum type (no `values_callable`), so a row
+    # whose `status` column holds a string that isn't one of those names
+    # (reachable only by writes that bypass the ORM, e.g. raw SQL — every
+    # in-app write path sets `status` via the enum member) fails Enum
+    # deserialization with a bare `LookupError` during row hydration. A
+    # targeted Core read of the raw column lets us treat *that specific,
+    # known* failure mode as "not found" before the full ORM query runs.
+    # `type_coerce(..., String)` overrides the *result* type SQLAlchemy
+    # applies to this expression without changing the SQL (no CAST
+    # emitted), so we see the literal string instead of going through the
+    # Enum type's result processor — selecting `Sermon.__table__.c.status`
+    # directly still carries that column's Enum type and raises identically,
+    # so type_coerce is what actually bypasses it. Deliberately not a
+    # blanket `except LookupError` around the ORM query below: it also
+    # catches `KeyError`/`IndexError`, and would misreport an unrelated
+    # corruption (e.g. `MediaRef.type`, eager-loaded by the same query) as
+    # "sermon not found".
+    raw_status = (await db.execute(
+        select(type_coerce(Sermon.__table__.c.status, String))
+        .where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if raw_status is not None and raw_status not in SermonStatus.__members__:
+        log.error(
+            "sermon_status_unparseable",
+            sermon_id=str(sermon_id),
+            raw_status=raw_status,
+        )
+        raise ContentError("Sermon not found", status_code=404)
+
     stmt = (
         select(Sermon)
         .where(Sermon.id == sermon_id)
