@@ -96,7 +96,7 @@ export function AddToPlaylistSheet({
 
   const downloadRows: AddableSermon[] = downloads.downloads
     .filter((d) => !normalizedQuery || d.title.toLowerCase().includes(normalizedQuery))
-    .map((d) => ({ id: d.sermonId, title: d.title, thumbnail_url: d.thumbnailUrl, category_name: d.category }));
+    .map((d) => ({ id: d.sermonId, title: d.title, thumbnail_url: d.thumbnailPath ?? d.thumbnailUrl, category_name: d.category }));
 
   const allSermons = results.data?.pages.flatMap((page) => page.results) ?? [];
   const activeRows: AddableSermon[] =

@@ -153,6 +153,7 @@ function setOptimisticQueued(
     sermonId,
     title,
     thumbnailUrl: thumbnailUrl ?? existing?.thumbnailUrl ?? null,
+    thumbnailPath: existing?.thumbnailPath ?? null,
     category: category ?? existing?.category ?? null,
     mediaType,
     state: 'queued',

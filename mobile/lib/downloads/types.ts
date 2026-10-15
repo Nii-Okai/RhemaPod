@@ -50,6 +50,12 @@ export interface DownloadRecord {
    * redesign) reads this, not a second fetch. `null` for a sermon with no thumbnail, same
    * as `SermonListItem.thumbnail_url` upstream. */
   thumbnailUrl: string | null;
+  /** A local, permanent copy of the thumbnail image, fetched once alongside the media
+   * (session 2026-10-15 fix) — `thumbnailUrl` is a presigned S3 URL with a ~6h expiry that
+   * is never re-signed once a download is `ready`, so render this first when set; `null`
+   * until that fetch completes (or if it failed), in which case callers fall back to
+   * `thumbnailUrl` same as before this fix. */
+  thumbnailPath: string | null;
   /** The sermon's `category_name` at the moment it was queued, denormalized the same way —
    * replaces the Downloads list's old generic "Downloaded" label with the actual category
    * (session 2026-10-09 redesign). `null` for an uncategorized sermon. */

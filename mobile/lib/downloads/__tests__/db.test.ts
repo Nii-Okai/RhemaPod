@@ -19,6 +19,7 @@ import {
   markDownloading,
   markFailed,
   markReady,
+  setThumbnailPath,
   updateProgress,
   upsertQueued,
 } from '../db';
@@ -27,6 +28,7 @@ interface FakeRow {
   sermon_id: string;
   title: string;
   media_type: string;
+  thumbnail_path: string | null;
   state: string;
   progress: number;
   bytes_total: number | null;
@@ -51,6 +53,7 @@ function makeFakeDatabase() {
           sermon_id: sermonId,
           title: params.$title as string,
           media_type: existing?.media_type ?? (params.$mediaType as string),
+          thumbnail_path: existing?.thumbnail_path ?? null,
           state: 'queued',
           progress: 0,
           bytes_total: null,
@@ -83,6 +86,17 @@ function makeFakeDatabase() {
           row.failure_message = null;
           row.updated_at = params.$now as number;
         }
+      } else if (sql.includes('thumbnail_path = $path')) {
+        const row = rows.get(sermonId);
+        if (row) {
+          row.thumbnail_path = params.$path as string | null;
+          row.updated_at = params.$now as number;
+        }
+        // Unlike every other branch here, `setThumbnailPath`'s own `changes > 0` return
+        // value is load-bearing (the reviewer-gilfoyle-found orphan-file race fix in
+        // `downloadManager.ts`), so this is the one statement in this fake whose `changes`
+        // count must genuinely reflect whether a row existed, not just always report 1.
+        return { changes: row ? 1 : 0, lastInsertRowId: 0 };
       } else if (sql.includes("state = 'failed'")) {
         const row = rows.get(sermonId);
         if (row) {
@@ -216,5 +230,74 @@ describe('downloads db', () => {
 
     const active = await listActiveDownloads();
     expect(active.map((r) => r.sermonId).sort()).toEqual(['sermon-a', 'sermon-b']);
+  });
+
+  it('setThumbnailPath writes the column, and getDownload reflects it', async () => {
+    await upsertQueued('sermon-1', 'Title', 'audio');
+    const updated = await setThumbnailPath('sermon-1', '/downloads/sermon-1.thumb');
+    expect(updated).toBe(true);
+    expect((await getDownload('sermon-1'))?.thumbnailPath).toBe('/downloads/sermon-1.thumb');
+  });
+
+  it('setThumbnailPath returns false when the row no longer exists — the orphan-file race downloadManager.ts relies on this to detect', async () => {
+    const updated = await setThumbnailPath('sermon-never-existed', '/downloads/sermon-never-existed.thumb');
+    expect(updated).toBe(false);
+  });
+
+  it('setThumbnailPath(null) clears a previously-set path (the fetch-failed cleanup case)', async () => {
+    await upsertQueued('sermon-1', 'Title', 'audio');
+    await setThumbnailPath('sermon-1', '/downloads/sermon-1.thumb');
+    await setThumbnailPath('sermon-1', null);
+    expect((await getDownload('sermon-1'))?.thumbnailPath).toBeNull();
+  });
+
+  // Session 2026-10-15 fix: `thumbnail_path` is added the exact same way `media_type`/
+  // `thumbnail_url`/`category` were before it — a `PRAGMA table_info` check guarding an
+  // `ALTER TABLE ADD COLUMN`, since `CREATE TABLE IF NOT EXISTS` is a no-op against an
+  // install that already has the `downloads` table. This drives `getDb()` against a fake
+  // whose `PRAGMA table_info(downloads)` response simulates exactly that — an install that
+  // predates this fix (has `media_type`/`thumbnail_url`/`category` from the prior
+  // migrations, but not `thumbnail_path`) — and asserts the new column's `ALTER TABLE`
+  // fires while the already-present columns' migrations don't re-fire.
+  it('adds thumbnail_path via ALTER TABLE on an install that predates it, leaving already-migrated columns alone', async () => {
+    const execCalls: string[] = [];
+    const preExistingColumns = [
+      'sermon_id',
+      'title',
+      'state',
+      'progress',
+      'bytes_total',
+      'failure_reason',
+      'failure_message',
+      'key_id_hex',
+      'created_at',
+      'updated_at',
+      'media_type',
+      'thumbnail_url',
+      'category',
+      // thumbnail_path intentionally omitted — this is the pre-fix schema shape.
+    ];
+    const preExistingSchemaDb = {
+      execAsync: jest.fn(async (sql: string) => {
+        execCalls.push(sql);
+      }),
+      runAsync: jest.fn(async () => ({ changes: 0, lastInsertRowId: 0 })),
+      getFirstAsync: jest.fn(async () => null),
+      getAllAsync: jest.fn(async (sql: string) => {
+        if (sql.includes('PRAGMA table_info')) {
+          return preExistingColumns.map((name) => ({ name }));
+        }
+        return [];
+      }),
+    };
+    (SQLite.openDatabaseAsync as jest.Mock).mockResolvedValue(preExistingSchemaDb);
+    __resetConnectionForTests();
+
+    await getDownload('irrelevant'); // forces getDb() to run, including the migration block
+
+    expect(execCalls.some((sql) => sql.includes('ADD COLUMN thumbnail_path'))).toBe(true);
+    expect(execCalls.some((sql) => sql.includes('ADD COLUMN media_type'))).toBe(false);
+    expect(execCalls.some((sql) => sql.includes('ADD COLUMN thumbnail_url'))).toBe(false);
+    expect(execCalls.some((sql) => sql.includes('ADD COLUMN category'))).toBe(false);
   });
 });

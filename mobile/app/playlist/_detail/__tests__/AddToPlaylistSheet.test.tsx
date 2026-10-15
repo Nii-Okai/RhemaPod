@@ -1,4 +1,5 @@
 import React from 'react';
+import { Image } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AddToPlaylistSheet } from '../AddToPlaylistSheet';
@@ -151,6 +152,39 @@ describe('AddToPlaylistSheet — tabs', () => {
     fireEvent.press(await findByLabelText('Remove Standalone Sermon from this playlist'));
 
     expect(onRemove).toHaveBeenCalledWith('item-1');
+  });
+
+  it('Downloaded tab renders the local thumbnailPath over the presigned thumbnailUrl when both are present, and falls back to thumbnailUrl when there is no local copy yet (session 2026-10-15 thumbnail fix)', async () => {
+    mockedUseDownloads.mockReturnValue({
+      downloads: [
+        {
+          sermonId: 'dl-1',
+          title: 'Offline Sermon',
+          thumbnailUrl: 'https://cdn.example.com/signed/thumb.jpg',
+          thumbnailPath: 'file:///downloads/dl-1.thumb',
+          category: 'Teaching',
+        },
+        {
+          sermonId: 'dl-2',
+          title: 'Another Talk',
+          thumbnailUrl: 'https://cdn.example.com/signed/other.jpg',
+          thumbnailPath: null,
+          category: null,
+        },
+      ],
+    });
+    mockedGet.mockResolvedValue(searchPage([]));
+    const { findByText, getByText, UNSAFE_getAllByType } = renderSheet();
+
+    fireEvent.press(getByText('Downloaded'));
+    await findByText('Offline Sermon');
+    await findByText('Another Talk');
+
+    const images = UNSAFE_getAllByType(Image);
+    expect(images.map((image) => image.props.source)).toEqual([
+      { uri: 'file:///downloads/dl-1.thumb' },
+      { uri: 'https://cdn.example.com/signed/other.jpg' },
+    ]);
   });
 
   it('shows a downloaded cue next to a Sermons-tab row that is already on-device', async () => {

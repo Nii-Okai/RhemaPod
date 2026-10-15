@@ -22,6 +22,7 @@ interface DownloadRow {
   sermon_id: string;
   title: string;
   thumbnail_url: string | null;
+  thumbnail_path: string | null;
   category: string | null;
   media_type: string;
   state: string;
@@ -39,6 +40,7 @@ function rowToRecord(row: DownloadRow): DownloadRecord {
     sermonId: row.sermon_id,
     title: row.title,
     thumbnailUrl: row.thumbnail_url,
+    thumbnailPath: row.thumbnail_path,
     category: row.category,
     mediaType: row.media_type as DownloadMediaType,
     state: row.state as DownloadState,
@@ -93,6 +95,15 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       }
       if (!columns.some((c) => c.name === 'category')) {
         await db.execAsync('ALTER TABLE downloads ADD COLUMN category TEXT;');
+      }
+      // Migration (Isaac's ask, session 2026-10-15: fix for the 6h-expiring presigned
+      // `thumbnail_url` going blank/403 on a sermon that's been `ready` for a while).
+      // Nullable with no default, same reasoning as `thumbnail_url`/`category` above — an
+      // install that predates this fix just keeps showing the old (eventually-expiring)
+      // `thumbnailUrl` for its existing rows until re-downloaded; nothing here backfills
+      // them retroactively.
+      if (!columns.some((c) => c.name === 'thumbnail_path')) {
+        await db.execAsync('ALTER TABLE downloads ADD COLUMN thumbnail_path TEXT;');
       }
       return db;
     })();
@@ -196,6 +207,24 @@ export async function markFailed(
        WHERE sermon_id = $sermonId`,
     { $sermonId: sermonId, $reason: reason, $message: message, $now: Date.now() },
   );
+}
+
+/** Session 2026-10-15 fix — records where the locally-fetched thumbnail copy landed (or
+ * clears it back to `null` on cleanup after a failed fetch), independent of `markReady`/
+ * `markFailed` since the thumbnail fetch happens as a best-effort step after the media
+ * download has already settled. Returns whether a row was actually updated (`changes >
+ * 0`) — `downloadManager.ts`'s `fetchThumbnailBestEffort` needs this to detect the
+ * reviewer-gilfoyle-found race where `deleteDownload` removes the row while the thumbnail
+ * fetch is still in flight: a `false` here means the row is gone and the just-written file
+ * is now orphaned, not tracked by anything, and must be deleted rather than left behind. */
+export async function setThumbnailPath(sermonId: string, path: string | null): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.runAsync('UPDATE downloads SET thumbnail_path = $path, updated_at = $now WHERE sermon_id = $sermonId', {
+    $sermonId: sermonId,
+    $path: path,
+    $now: Date.now(),
+  });
+  return result.changes > 0;
 }
 
 export async function deleteDownload(sermonId: string): Promise<void> {

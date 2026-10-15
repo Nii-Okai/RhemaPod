@@ -54,6 +54,7 @@ function record(sermonId: string, overrides: Partial<DownloadRecord> = {}): Down
     sermonId,
     title: 'Title',
     thumbnailUrl: null,
+    thumbnailPath: null,
     category: null,
     mediaType: 'audio',
     state: 'ready',
@@ -158,6 +159,29 @@ describe('useDownloads', () => {
     });
 
     expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, failureReason: null });
+  });
+
+  it('retry()\'s optimistic queued placeholder carries the existing thumbnailPath forward, not just thumbnailUrl/category (session 2026-10-15 thumbnail fix: setOptimisticQueued must not blank out a local thumbnail copy a prior successful download already recorded)', async () => {
+    const manager = makeFakeManager([
+      record('sermon-1', {
+        state: 'failed',
+        failureReason: 'network',
+        thumbnailUrl: 'https://cdn.example.com/signed/thumb.jpg',
+        thumbnailPath: 'file:///downloads/sermon-1.thumb',
+      }),
+    ]);
+    manager.retryDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.retry('sermon-1');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({
+      state: 'queued',
+      thumbnailPath: 'file:///downloads/sermon-1.thumb',
+    });
   });
 
   it('retry() and remove() delegate to the manager and refresh', async () => {
