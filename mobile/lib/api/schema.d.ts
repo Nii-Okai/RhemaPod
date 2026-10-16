@@ -800,6 +800,40 @@ export interface paths {
         patch: operations["update_me_profile_api_v1_auth_me_profile_patch"];
         trace?: never;
     };
+    "/api/v1/auth/oauth/apple": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Oauth Apple */
+        post: operations["oauth_apple_api_v1_auth_oauth_apple_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Oauth Google */
+        post: operations["oauth_google_api_v1_auth_oauth_google_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1916,27 +1950,6 @@ export interface paths {
         patch: operations["update_speaker_api_v1_speakers__speaker_id__patch"];
         trace?: never;
     };
-    "/api/v1/subscriptions/checkout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start Checkout
-         * @description Begin a subscription. Returns a hosted checkout URL — card details never
-         *     touch this API.
-         */
-        post: operations["start_checkout_api_v1_subscriptions_checkout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/subscriptions/me": {
         parameters: {
             query?: never;
@@ -1948,30 +1961,6 @@ export interface paths {
         get: operations["my_subscription_api_v1_subscriptions_me_get"];
         put?: never;
         post?: never;
-        /**
-         * Cancel Subscription
-         * @description Cancel at period end — access continues until what's been paid for runs out.
-         */
-        delete: operations["cancel_subscription_api_v1_subscriptions_me_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/subscriptions/portal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Billing Portal
-         * @description Hosted billing portal for changing plan or payment method.
-         */
-        post: operations["billing_portal_api_v1_subscriptions_portal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2459,6 +2448,32 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * AppleSignInRequest
+         * @description Apple's signed identity token plus the raw nonce the client generated
+         *     for this attempt (ADR 0015) — the server re-derives `sha256(raw_nonce)`
+         *     and checks it against the token's own `nonce` claim. `given_name`/
+         *     `family_name` are Apple's one-time-only name delivery: Apple's identity
+         *     token never carries a name, so the client forwards whatever
+         *     `ASAuthorizationAppleIDCredential.fullName` returned on the FIRST
+         *     authorization only (it's None on every subsequent sign-in) — used only to
+         *     prefill a brand-new account's profile, dropped otherwise.
+         *     `authorization_code` is accepted for forward-compatibility (a future
+         *     server-side revocation flow, ADR 0015 §"Apple token revocation deferred")
+         *     but is not exchanged or used anywhere in this phase.
+         */
+        AppleSignInRequest: {
+            /** Authorization Code */
+            authorization_code?: string | null;
+            /** Family Name */
+            family_name?: string | null;
+            /** Given Name */
+            given_name?: string | null;
+            /** Identity Token */
+            identity_token: string;
+            /** Raw Nonce */
+            raw_nonce: string;
+        };
         /** ApprovalLogItem */
         ApprovalLogItem: {
             /**
@@ -2594,18 +2609,6 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
-        };
-        /** CheckoutRequest */
-        CheckoutRequest: {
-            /** @default monthly */
-            tier: components["schemas"]["SubscriptionTier"];
-        };
-        /** CheckoutResponse */
-        CheckoutResponse: {
-            /** Checkout Url */
-            checkout_url: string;
-            /** Session Id */
-            session_id: string;
         };
         /**
          * CommentAdmin
@@ -2854,6 +2857,16 @@ export interface components {
          * @enum {string}
          */
         Gender: "male" | "female";
+        /**
+         * GoogleSignInRequest
+         * @description Google's signed ID token from the mobile app's native Google Sign-In
+         *     flow (ADR 0015). Verified server-side in `app/core/oauth.py` — nothing
+         *     here is trusted until the signature, issuer, and audience all check out.
+         */
+        GoogleSignInRequest: {
+            /** Id Token */
+            id_token: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3200,11 +3213,6 @@ export interface components {
             is_public?: boolean | null;
             /** Name */
             name?: string | null;
-        };
-        /** PortalResponse */
-        PortalResponse: {
-            /** Portal Url */
-            portal_url: string;
         };
         /**
          * ProfileDetailsUpdate
@@ -3841,11 +3849,10 @@ export interface components {
          *
          *     Deliberately carries **no** monetary field — no `amount`, `price`,
          *     `currency` or MRR (resolved decision 2). No amount is stored on
-         *     `Subscription` and the webhook never parses one; there is nothing truthful
-         *     to put here and Phase 2 shows no dollar figure anywhere in the portal.
-         *     `current_period_end` is the model's `valid_until` column (null on free /
-         *     fully-lapsed rows). `provider_customer_id` is null until the member's first
-         *     payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+         *     `Subscription`; there is nothing truthful to put here and Phase 2 shows no
+         *     dollar figure anywhere in the portal. `current_period_end` is the model's
+         *     `valid_until` column (null on free / fully-lapsed rows).
+         *     `provider_customer_id` is null until a payment provider populates it.
          */
         SubscriptionAdminItem: {
             /**
@@ -5601,6 +5608,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_apple_api_v1_auth_oauth_apple_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_google_api_v1_auth_oauth_google_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
                 };
             };
             /** @description Validation Error */
@@ -7941,39 +8014,6 @@ export interface operations {
             };
         };
     };
-    start_checkout_api_v1_subscriptions_checkout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CheckoutRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckoutResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     my_subscription_api_v1_subscriptions_me_get: {
         parameters: {
             query?: never;
@@ -7990,46 +8030,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubscriptionPublic"];
-                };
-            };
-        };
-    };
-    cancel_subscription_api_v1_subscriptions_me_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubscriptionPublic"];
-                };
-            };
-        };
-    };
-    billing_portal_api_v1_subscriptions_portal_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalResponse"];
                 };
             };
         };
