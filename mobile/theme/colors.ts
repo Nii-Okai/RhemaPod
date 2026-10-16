@@ -112,6 +112,16 @@ export const primaryButton = {
  */
 export const avatarPalette = [status.slate.bg, status.sage.bg, chip.circle] as const;
 
+/**
+ * Drop shadow for a light surface raised over photographic art — `surface.app`'s own rgb
+ * at opacity (not generic black), so it reads as "shadow into this screen's own
+ * background" rather than an unrelated color. First use: onboarding's bottom card
+ * (Isaac's ask, 2026-10-16: "the bottom parts looks too flat").
+ */
+export const shadow = {
+  card: 'rgba(13, 17, 26, 0.45)',
+} as const;
+
 export const colors = {
   surface,
   border,
@@ -124,4 +134,5 @@ export const colors = {
   status,
   primaryButton,
   avatarPalette,
+  shadow,
 } as const;

@@ -10,6 +10,10 @@ function RootNavigator() {
   return (
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/* First-launch onboarding (Isaac's mockups) — pre-auth, reached only from `/`'s own
+          redirect before any account is known. See `app/onboarding.tsx`'s own doc
+          comment. */}
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       {/* W4.3 — top-level stack routes outside the tab chrome (plan L15/§A.7):
