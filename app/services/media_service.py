@@ -1100,8 +1100,8 @@ def _is_stream_webhook_ledger_violation(exc: IntegrityError) -> bool:
 
 async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     """Apply a Cloudflare Stream ready/error notification. Idempotent: a
-    redelivered event is a no-op (ProcessedWebhook ledger — same precedent
-    subscription_service.handle_webhook uses for Stripe).
+    redelivered event is a no-op (ProcessedWebhook ledger — the shared
+    dedup table any webhook consumer in this app writes to).
 
     A StorageError from the archive step (see _apply_stream_state) propagates
     uncaught: the route returns 500, Cloudflare redelivers the webhook later,
@@ -1116,7 +1116,7 @@ async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     if not uid or not state:
         raise ContentError("Webhook missing uid or status.state", status_code=400)
 
-    # Cloudflare Stream webhooks carry no event id (unlike Stripe) — the
+    # Cloudflare Stream webhooks carry no event id of their own — the
     # (uid, state) pair is the redelivery identity: two deliveries of the same
     # "ready" event for the same uid must dedupe. A later, genuinely different
     # state for the same uid is a distinct event_id and is not swallowed.

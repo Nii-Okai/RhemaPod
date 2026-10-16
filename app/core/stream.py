@@ -12,12 +12,12 @@ Two backends:
 
 Nothing outside this module makes a Cloudflare Stream API call directly, so
 swapping providers (or adding a second video backend) touches only this file
-— same seam shape as app/core/storage.py and app/core/payments.py.
+— same seam shape as app/core/storage.py.
 
-Unlike payments.py's Stripe SDK (sync, no async client available), there is no
-official Cloudflare Python SDK forcing a blocking call here, so the ingest and
-status calls are genuinely async end to end via httpx.AsyncClient rather than
-needing an asyncio.to_thread wrapper. `verify_webhook` and
+There is no official Cloudflare Python SDK forcing a blocking call here, so
+the ingest and status calls are genuinely async end to end via
+httpx.AsyncClient rather than needing an asyncio.to_thread wrapper.
+`verify_webhook` and
 `signed_playback_url` are plain sync methods — both are pure computation
 (HMAC / RSA over already-in-memory bytes), no I/O, so there is nothing to
 await.
@@ -41,9 +41,9 @@ settings = get_settings()
 log = get_logger("stream")
 
 # Bound the webhook replay window. Cloudflare does not itself expire
-# signatures (the header just carries the signing time), so this mirrors
-# Stripe's tolerance in payments.py for the same reason: a leaked
-# signature+payload pair should not be replayable forever.
+# signatures (the header just carries the signing time), so this bounds the
+# same risk any webhook signature scheme has: a leaked signature+payload
+# pair should not be replayable forever.
 _WEBHOOK_TOLERANCE_SECONDS = 300
 
 

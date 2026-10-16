@@ -631,9 +631,12 @@ def _playback_and_subscriptions(
     aggregate-over-aggregate (``MIN(first_played_at)`` then bucket) the M1
     metric needs. Bucket 5 gets no debut, so the zero-bucket path is live.
 
-    Subscriptions: all four statuses across both paid tiers, plus free, with
-    ``provider_customer_id`` set on every paid row (MockProvider never sets it,
-    so W21's "Open in Stripe" would otherwise be untestable locally).
+    Subscriptions: all four statuses across both paid tiers, plus free. Every
+    provider field (``provider``, ``provider_customer_id``,
+    ``provider_subscription_id``) stays null on every row, paid included —
+    nothing populates them until a native IAP provider lands (ADR 0016). The
+    admin portal's status/tier filtering and counting still exercise the
+    paid rows; only the provider-link affordance has nothing to point at.
     """
     now = datetime.now(timezone.utc)
     this_monday = _monday_utc(now)
@@ -721,18 +724,15 @@ def _playback_and_subscriptions(
     subscriptions: list[Subscription] = []
     for idx, listener in enumerate(listeners):
         tier, sub_status = sub_plan[idx % len(sub_plan)]
-        paid = tier in (SubscriptionTier.MONTHLY, SubscriptionTier.ANNUAL)
         subscriptions.append(Subscription(
             user_id=listener.id,
             tier=tier,
             status=sub_status,
             valid_until=None if tier == SubscriptionTier.FREE
             else _valid_until[sub_status],
-            provider="stripe" if paid else None,
-            # MockProvider never populates this; hard-code a plausible id so the
-            # "Open in Stripe" deep link is exercisable against the local stack.
-            provider_customer_id=f"cus_SEED{idx:04d}A1B2C3" if paid else None,
-            provider_subscription_id=f"sub_SEED{idx:04d}A1B2C3" if paid else None,
+            provider=None,
+            provider_customer_id=None,
+            provider_subscription_id=None,
         ))
     return playback, subscriptions
 

@@ -544,7 +544,8 @@ class Subscription(Base):
     valid_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Provider identifiers (Stripe customer/subscription). Null until they pay.
+    # Provider-neutral identifiers (customer/subscription), for a future native
+    # IAP provider. Null until one is wired up.
     provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
     provider_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider_subscription_id: Mapped[str | None] = mapped_column(
