@@ -16,15 +16,14 @@ Deleting the file from the working tree is not enough — it remains in history.
 ## 2. Configuration
 
 The app **refuses to start** in production unless every external dependency is
-real. This is deliberate: the stub payment provider accepts unsigned webhooks,
-so a silent fallback would let anyone grant themselves a subscription.
+real. This is deliberate: a silent fallback — an in-memory storage stub, a
+console email backend, debug mode left on — is the most dangerous failure
+mode in the system.
 
 Required when `ENVIRONMENT=production`:
 
 | Variable | Why |
 |---|---|
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Otherwise the mock provider accepts unsigned webhooks |
-| `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL` | Checkout cannot price a plan without them |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Otherwise uploads go to an in-memory stub |
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` | Otherwise invite and reset emails are only logged |
 | `SECRET_KEY` | 32+ chars, from a secrets manager |
@@ -161,16 +160,7 @@ out of scope here.
 
 ## 6. Stripe setup
 
-1. Create the monthly and annual prices; put their IDs in the env.
-2. Add a webhook endpoint pointing at
-   `https://<your-api>/api/v1/subscriptions/webhook`.
-3. Subscribe to: `checkout.session.completed`, `invoice.paid`,
-   `invoice.payment_failed`, `customer.subscription.updated`,
-   `customer.subscription.deleted`.
-4. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
-
-Verify locally first: `stripe listen --forward-to
-localhost:8000/api/v1/subscriptions/webhook`.
+Stripe was removed — see [ADR 0016](docs/adr/0016-remove-stripe.md).
 
 ## 7. Email (Resend)
 
