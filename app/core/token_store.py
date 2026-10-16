@@ -330,6 +330,33 @@ async def take_invite_jti(user_id: str) -> str | None:
         raise TokenStoreUnavailable("redis unavailable") from exc
 
 
+async def claim_once(key: str, ttl_seconds: int) -> bool:
+    """Atomically claim `key` for the first time, returning whether THIS call
+    is the one that claimed it (`True` the first time, `False` on replay).
+
+    Built for OAuth provider-token replay protection (ADR 0015): unlike
+    `register_single_use`/`consume_single_use` (mint-then-consume — a jti this
+    app generated, registered, and later redeems exactly once), a provider's
+    ID token is already valid the moment it arrives; there is nothing to
+    "register" ahead of time, only "has this exact already-verified token been
+    presented before". A single `SET NX EX` does the whole check-and-claim in
+    one round trip, so two concurrent presentations of the same token cannot
+    both win.
+
+    Callers pass `key=f"oauth:used:{sha256(raw_token).hexdigest()}"` and size
+    `ttl_seconds` to the token's own remaining lifetime — the claim only needs
+    to outlive the token itself; once the token is expired on its own terms it
+    can never be presented again regardless of this ledger.
+    """
+    r = get_redis()
+    try:
+        claimed = await r.set(key, "1", nx=True, ex=max(1, ttl_seconds))
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="claim_once")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+    return bool(claimed)
+
+
 async def consume_single_use(jti: str) -> bool:
     """Atomically claim a one-shot token jti.
 

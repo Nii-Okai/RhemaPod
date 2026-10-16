@@ -101,6 +101,8 @@ const ICONS = {
   list: { ios: 'list', android: 'view-list' },
   shuffle: { ios: 'shuffle', android: 'shuffle' },
   repeat: { ios: 'repeat', android: 'repeat' },
+  'eye-outline': { ios: 'eye-outline', android: 'visibility' },
+  'eye-off-outline': { ios: 'eye-off-outline', android: 'visibility-off' },
 } satisfies Record<string, { ios: IoniconsName; android: MaterialIconsName }>;
 
 export type AppIconName = keyof typeof ICONS;

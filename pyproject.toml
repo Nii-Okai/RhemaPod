@@ -46,3 +46,7 @@ extend-exclude = ["admin_portal"]
 "tests/test_comments_pg_fixtures.py" = ["F811"]
 "tests/test_migrations_comments.py" = ["F811"]
 "tests/test_purge_comment_snapshots.py" = ["F811"]
+# Same reason: tests/test_oauth.py imports its Postgres fixtures from
+# tests/comments_pg.py (ADR 0015 — Testcontainers Postgres for OAuth's
+# integration coverage).
+"tests/test_oauth.py" = ["F811"]

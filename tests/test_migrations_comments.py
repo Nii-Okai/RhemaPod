@@ -42,7 +42,7 @@ MERGE_REV = "0543034f79af"
 # chain assertions below it (MERGE_REV/COMMENTS_REV/DROP_REV/PRE_DROP_REV, all
 # further down the tree) don't change, since they describe ancestry beneath
 # MERGE_REV, not what sits on top of it.
-CURRENT_HEAD = "f3a9c7d2b4e1"
+CURRENT_HEAD = "c9b3e7a1f2d4"
 
 NEW_TABLES = {
     "sermon_comments",

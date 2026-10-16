@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSegments } from 'expo-router';
+import { configureGoogleSignIn } from './googleSignIn';
 import * as session from './session';
 import type { AuthStatus } from './types';
 
@@ -9,6 +10,14 @@ interface AuthContextValue {
   register: (email: string, password: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
   signOut: () => Promise<void>;
+  signInWithGoogle: (idToken: string) => Promise<void>;
+  signInWithApple: (
+    identityToken: string,
+    rawNonce: string,
+    authorizationCode: string | null,
+    givenName: string | null,
+    familyName: string | null,
+  ) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -23,6 +32,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(session.getStatus());
 
   useEffect(() => {
+    // One-time native setup, same spirit as `QueryProvider`/this effect's own
+    // `session.bootstrap()` call — not scattered at each `SocialSignInButton`'s own
+    // press handler.
+    configureGoogleSignIn();
     const unsubscribe = session.subscribe(setStatus);
     void session.bootstrap();
     return unsubscribe;
@@ -35,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register: session.register,
       forgotPassword: session.forgotPassword,
       signOut: session.signOut,
+      signInWithGoogle: session.signInWithGoogle,
+      signInWithApple: session.signInWithApple,
     }),
     [status],
   );

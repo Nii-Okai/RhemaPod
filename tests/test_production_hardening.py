@@ -39,6 +39,10 @@ LIVE_ENV = {
     "cf_stream_webhook_secret": "whsec_stream_x",
     "cf_stream_signing_key_id": "key_x",
     "cf_stream_signing_key_pem": "pem_x",
+    # ADR 0015: oauth_google_enabled defaults True, so a fully-configured
+    # production boot needs a real client-id allow-list or the preflight
+    # refuses (see app/core/config.py's production_preflight).
+    "google_oauth_client_ids": ["123456-abc.apps.googleusercontent.com"],
 }
 
 

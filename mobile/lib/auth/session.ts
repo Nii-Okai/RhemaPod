@@ -211,6 +211,30 @@ export function forgotPassword(email: string): Promise<{ message: string }> {
   return authClient.forgotPassword(email);
 }
 
+/**
+ * Google/Apple sign-in-or-sign-up — same three-step shape `signIn()` above already
+ * uses (fetch a token pair, apply it, flip status), just a different token-fetching call
+ * at the front. A brand-new Google/Apple identity auto-creates an account server-side,
+ * so there is no separate `registerWithGoogle`/`registerWithApple`.
+ */
+export async function signInWithGoogle(idToken: string): Promise<void> {
+  const pair = await authClient.oauthGoogle(idToken);
+  await applyTokenPair(pair);
+  setStatus('signedIn');
+}
+
+export async function signInWithApple(
+  identityToken: string,
+  rawNonce: string,
+  authorizationCode: string | null,
+  givenName: string | null,
+  familyName: string | null,
+): Promise<void> {
+  const pair = await authClient.oauthApple(identityToken, rawNonce, authorizationCode, givenName, familyName);
+  await applyTokenPair(pair);
+  setStatus('signedIn');
+}
+
 export async function signOut(): Promise<void> {
   const at = accessToken;
   const rt = refreshTokenCache;

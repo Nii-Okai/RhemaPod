@@ -159,20 +159,25 @@ async def confirm_avatar(db: AsyncSession, actor: User, key: str) -> str | None:
     return _avatar_url(key)
 
 
-async def register_user(db: AsyncSession, data: UserRegister) -> User:
-    existing = await get_user_by_email(db, data.email)
-    if existing is not None:
-        # Do not reveal whether the email exists — generic message.
-        raise AuthError("Could not complete registration")
+async def _create_viewer(db: AsyncSession, email: str, password_hash: str | None) -> User:
+    """Shared account-creation core for a fresh viewer: the user row
+    (activated immediately — a brand-new account, whether self-registered or
+    OAuth-created, is never a "pending invite") plus the FREE-tier
+    `Subscription` row every account owns from the moment it exists.
 
+    Flushes but does NOT commit — the PK is assigned so a caller can attach
+    anything else that belongs in the same transaction (e.g. ADR 0015's
+    `UserIdentity` row for an OAuth sign-in) before committing once,
+    atomically. `register_user` below and `oauth_service.sign_in_with_identity`
+    are the two callers; neither duplicates the subscription-creation logic.
+    """
     user = User(
-        email=data.email.lower(),
-        password_hash=security.hash_password(data.password),
+        email=email,
+        password_hash=password_hash,
         role=UserRole.VIEWER,
-        # Self-registration chooses its own password at creation, so the account
-        # is activated by definition. `activated_at` must be non-NULL here or
-        # `resend_invite` (which reads NULL as "invite still pending") would mint
-        # a working set-password link for a live account (CWE-620/640).
+        # `activated_at` must be non-NULL here or `resend_invite` (which reads
+        # NULL as "invite still pending") would mint a working set-password
+        # link for a live account (CWE-620/640).
         activated_at=datetime.now(timezone.utc),
     )
     db.add(user)
@@ -183,6 +188,19 @@ async def register_user(db: AsyncSession, data: UserRegister) -> User:
     from app.models.models import Subscription, SubscriptionTier
 
     db.add(Subscription(user_id=user.id, tier=SubscriptionTier.FREE))
+    return user
+
+
+async def register_user(db: AsyncSession, data: UserRegister) -> User:
+    existing = await get_user_by_email(db, data.email)
+    if existing is not None:
+        # Do not reveal whether the email exists — generic message.
+        raise AuthError("Could not complete registration")
+
+    # Self-registration chooses its own password at creation.
+    user = await _create_viewer(
+        db, data.email.lower(), security.hash_password(data.password)
+    )
 
     await db.commit()
     await db.refresh(user)
@@ -200,6 +218,11 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     if not user.is_active:
         raise AuthError("Invalid email or password")
 
+    # `password_hash` is nullable since ADR 0015 (password-less OAuth
+    # accounts), but `verify_password` above only returns True when `hashed`
+    # was a real string (its `None` branch always returns False, never
+    # matches) — reaching here proves `user.password_hash` is not None.
+    assert user.password_hash is not None
     # Transparent hash upgrade if Argon2 parameters have been raised since the
     # password was set. The user notices nothing and never resets a password.
     _, new_hash = security.verify_and_rehash(password, user.password_hash)
@@ -340,6 +363,16 @@ async def change_password(
     user = await get_user_by_id(db, user_id)
     if user is None:
         raise AuthError("User not found")
+
+    # A password-less (OAuth-only) account has nothing for "current password"
+    # to match against — `verify_password(_, None)` would just run its dummy
+    # verify and always say "incorrect", which is accurate but misleading for
+    # this account shape. Distinct message, same 400 the router already maps
+    # every AuthError from this function to.
+    if user.password_hash is None:
+        raise AuthError(
+            "No password is set on this account. Use Forgot Password to set one."
+        )
 
     if not security.verify_password(current_password, user.password_hash):
         log.warning("password_change_denied", user_id=str(user.id))

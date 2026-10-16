@@ -65,8 +65,18 @@ class FakeRedis:
         self.store[key] = value
         return True
 
-    async def set(self, key: str, value: str):
+    async def set(self, key: str, value: str, nx: bool = False, ex: int | None = None):
+        """`ex` is accepted for signature compatibility with the real
+        `redis.asyncio.Redis.set` (`claim_once`'s TTL) but, like `setex`
+        above, is not actually expired here — this fake has no TTL
+        mechanism at all (see the module docstring). `nx` mirrors real
+        Redis's return contract: `None` when the key already existed (the
+        set did not happen), a truthy value when it did — `claim_once`
+        depends on exactly that distinction to tell a first claim from a
+        replay."""
         self._guard()
+        if nx and key in self.store:
+            return None
         self.store[key] = value
         return True
 

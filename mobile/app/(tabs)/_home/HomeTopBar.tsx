@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import { Animated, Image, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton } from '../../../components';
 import { colors } from '../../../theme/colors';
@@ -75,12 +75,20 @@ export function HomeTopBar({
       <View style={styles.scrim} />
       <Animated.View style={[styles.solidFill, { opacity: solidOpacity }]} />
       <View style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
-        <AppText variant="display.row">
-          Rhema
-          <AppText variant="display.row" tone="gold">
-            Pod
+        <View style={styles.wordmark}>
+          <Image
+            source={require('../../../assets/icon-mark.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+            accessible={false}
+          />
+          <AppText variant="display.row">
+            Rhema
+            <AppText variant="display.row" tone="gold">
+              Pod
+            </AppText>
           </AppText>
-        </AppText>
+        </View>
         <View style={styles.actions}>
           <View>
             <IconButton icon="notifications-outline" accessibilityLabel="Notifications" onPress={onNotificationsPress} />
@@ -117,6 +125,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  wordmark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  logoIcon: {
+    width: 28,
+    height: 28,
   },
   actions: {
     flexDirection: 'row',

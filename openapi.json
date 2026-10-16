@@ -528,6 +528,65 @@
         "title": "AnnouncementUpdate",
         "type": "object"
       },
+      "AppleSignInRequest": {
+        "description": "Apple's signed identity token plus the raw nonce the client generated\nfor this attempt (ADR 0015) \u2014 the server re-derives `sha256(raw_nonce)`\nand checks it against the token's own `nonce` claim. `given_name`/\n`family_name` are Apple's one-time-only name delivery: Apple's identity\ntoken never carries a name, so the client forwards whatever\n`ASAuthorizationAppleIDCredential.fullName` returned on the FIRST\nauthorization only (it's None on every subsequent sign-in) \u2014 used only to\nprefill a brand-new account's profile, dropped otherwise.\n`authorization_code` is accepted for forward-compatibility (a future\nserver-side revocation flow, ADR 0015 \u00a7\"Apple token revocation deferred\")\nbut is not exchanged or used anywhere in this phase.",
+        "properties": {
+          "authorization_code": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Code"
+          },
+          "family_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Name"
+          },
+          "given_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Given Name"
+          },
+          "identity_token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Identity Token",
+            "type": "string"
+          },
+          "raw_nonce": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Raw Nonce",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_token",
+          "raw_nonce"
+        ],
+        "title": "AppleSignInRequest",
+        "type": "object"
+      },
       "ApprovalLogItem": {
         "properties": {
           "actor_id": {
@@ -1477,6 +1536,22 @@
         ],
         "title": "Gender",
         "type": "string"
+      },
+      "GoogleSignInRequest": {
+        "description": "Google's signed ID token from the mobile app's native Google Sign-In\nflow (ADR 0015). Verified server-side in `app/core/oauth.py` \u2014 nothing\nhere is trusted until the signature, issuer, and audience all check out.",
+        "properties": {
+          "id_token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Id Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id_token"
+        ],
+        "title": "GoogleSignInRequest",
+        "type": "object"
       },
       "HTTPValidationError": {
         "properties": {
@@ -7544,6 +7619,88 @@
           }
         ],
         "summary": "Update Me Profile",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/apple": {
+      "post": {
+        "operationId": "oauth_apple_api_v1_auth_oauth_apple_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Apple",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/google": {
+      "post": {
+        "operationId": "oauth_google_api_v1_auth_oauth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Google",
         "tags": [
           "auth"
         ]

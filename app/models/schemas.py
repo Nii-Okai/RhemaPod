@@ -67,6 +67,34 @@ class ResetPasswordRequest(BaseModel):
         return _validate_password_strength(v)
 
 
+class GoogleSignInRequest(BaseModel):
+    """Google's signed ID token from the mobile app's native Google Sign-In
+    flow (ADR 0015). Verified server-side in `app/core/oauth.py` — nothing
+    here is trusted until the signature, issuer, and audience all check out."""
+
+    id_token: str = Field(min_length=1, max_length=4096)
+
+
+class AppleSignInRequest(BaseModel):
+    """Apple's signed identity token plus the raw nonce the client generated
+    for this attempt (ADR 0015) — the server re-derives `sha256(raw_nonce)`
+    and checks it against the token's own `nonce` claim. `given_name`/
+    `family_name` are Apple's one-time-only name delivery: Apple's identity
+    token never carries a name, so the client forwards whatever
+    `ASAuthorizationAppleIDCredential.fullName` returned on the FIRST
+    authorization only (it's None on every subsequent sign-in) — used only to
+    prefill a brand-new account's profile, dropped otherwise.
+    `authorization_code` is accepted for forward-compatibility (a future
+    server-side revocation flow, ADR 0015 §"Apple token revocation deferred")
+    but is not exchanged or used anywhere in this phase."""
+
+    identity_token: str = Field(min_length=1, max_length=4096)
+    raw_nonce: str = Field(min_length=1, max_length=512)
+    authorization_code: str | None = Field(default=None, max_length=4096)
+    given_name: str | None = Field(default=None, max_length=100)
+    family_name: str | None = Field(default=None, max_length=100)
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=12, max_length=128)

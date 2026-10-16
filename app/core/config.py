@@ -1,10 +1,11 @@
 import ipaddress
 import os
 from functools import lru_cache
+from typing import Annotated
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Recognised deployment environments. An unrecognised value is rejected rather
 # than silently treated as non-production — landing on "not production" is what
@@ -279,6 +280,28 @@ class Settings(BaseSettings):
     trusted_proxies: list[str] = []
     # Reject request bodies larger than this before parsing (bytes).
     max_request_bytes: int = 2 * 1024 * 1024
+
+    # --- Social sign-in (ADR 0015) ---
+    # Google ships first and must be real (Isaac's decision): client IDs are
+    # supplied once he's created them in Google Cloud Console. Comma-separated
+    # (not JSON, unlike allowed_origins) — NoDecode below opts these two
+    # fields out of pydantic-settings' default JSON-decode-from-env attempt,
+    # which would otherwise reject a bare comma-separated value outright.
+    google_oauth_client_ids: Annotated[list[str], NoDecode] = []
+    # com.niitech.rhemapod is the mobile app's bundle id / Android package.
+    apple_oauth_audiences: Annotated[list[str], NoDecode] = ["com.niitech.rhemapod"]
+    oauth_google_enabled: bool = True
+    # Apple ships second — Isaac is enrolling in the Apple Developer Program
+    # on his own timeline. Flip this once that's done; not flipped here.
+    oauth_apple_enabled: bool = False
+    oauth_jwks_default_ttl_seconds: int = 3600
+
+    @field_validator("google_oauth_client_ids", "apple_oauth_audiences", mode="before")
+    @classmethod
+    def _parse_comma_separated(cls, v: object) -> list[str]:
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v  # type: ignore[return-value]
 
     @property
     def is_production(self) -> bool:
@@ -555,6 +578,18 @@ class Settings(BaseSettings):
                 "(see the field's comment above) and its S3-presigned "
                 "fallback has no quality-tier gate since FREE_TIER_MAX_QUALITY "
                 "was removed"
+            )
+        if self.oauth_google_enabled and not self.google_oauth_client_ids:
+            problems.append(
+                "GOOGLE_OAUTH_CLIENT_IDS is required while OAUTH_GOOGLE_ENABLED "
+                "is true (without it every Google ID token fails audience "
+                "verification, and /auth/oauth/google is unusable)"
+            )
+        if self.oauth_apple_enabled and not self.apple_oauth_audiences:
+            problems.append(
+                "APPLE_OAUTH_AUDIENCES is required while OAUTH_APPLE_ENABLED "
+                "is true (without it every Apple identity token fails "
+                "audience verification, and /auth/oauth/apple is unusable)"
             )
         if self.debug:
             problems.append("DEBUG must be false (it exposes API docs)")

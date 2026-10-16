@@ -150,6 +150,14 @@ class Storage(Protocol):
         self, bucket: str, key: str, content_type: str, expires_in: int
     ) -> str: ...
 
+    def put_object(self, bucket: str, key: str, data: bytes, content_type: str) -> None:
+        """Write `data` directly, server-side — no client, no presigned URL.
+        The one write path on this protocol with no ticket/PUT/confirm round
+        trip; use it only when the caller already has the bytes in hand and
+        there is no client to hand a presigned URL to (e.g. the OAuth avatar
+        sync, ADR 0015, fetching a provider's profile picture server-side)."""
+        ...
+
     def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str: ...
 
     def object_exists(self, bucket: str, key: str) -> bool: ...
@@ -194,6 +202,12 @@ class LocalStorage:
     def __init__(self) -> None:
         self._objects: set[tuple[str, str]] = set()
         self._storage_class: dict[tuple[str, str], str] = {}
+        # Unlike the presigned-upload path (which never sees real bytes —
+        # see `open_read`'s docstring), `put_object` IS handed real bytes
+        # directly, so the stub keeps them: a test asserting on the exact
+        # content-type/payload an OAuth avatar sync wrote needs somewhere to
+        # read that back from.
+        self._put_objects: dict[tuple[str, str], tuple[bytes, str]] = {}
 
     def presigned_upload_url(
         self, bucket: str, key: str, content_type: str, expires_in: int
@@ -201,6 +215,10 @@ class LocalStorage:
         # Pretend the client uploads successfully the moment it's issued.
         self._objects.add((bucket, key))
         return f"https://local-storage.invalid/{bucket}/{key}?upload=1&expires={expires_in}"
+
+    def put_object(self, bucket: str, key: str, data: bytes, content_type: str) -> None:
+        self._objects.add((bucket, key))
+        self._put_objects[(bucket, key)] = (data, content_type)
 
     def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
         return f"https://local-storage.invalid/{bucket}/{key}?expires={expires_in}"
@@ -277,6 +295,25 @@ class S3Storage:
             Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
             ExpiresIn=expires_in,
         )
+
+    def put_object(self, bucket: str, key: str, data: bytes, content_type: str) -> None:
+        """Direct server-side write of bytes already in hand — a single
+        `PutObject` call, not `Client.upload_fileobj`'s managed multipart
+        transfer (`copy_object` below / `S3ArchiveStore.put_archive_object`
+        use that instead): every caller of this method is bounded by
+        `settings.max_thumbnail_bytes` (10 MB), nowhere near the 5 GB
+        single-PUT ceiling that justifies the managed transfer elsewhere in
+        this file."""
+        from botocore.exceptions import ClientError
+
+        try:
+            self._client.put_object(
+                Bucket=bucket, Key=key, Body=data, ContentType=content_type
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            log.error("s3_put_object_failed", bucket=bucket, key=key, code=code)
+            raise StorageError(f"Could not write object (S3 error {code}).") from exc
 
     def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
         return self._client.generate_presigned_url(

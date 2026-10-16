@@ -57,6 +57,15 @@ class Gender(str, enum.Enum):
     FEMALE = "female"
 
 
+class AuthProvider(str, enum.Enum):
+    """OAuth identity provider a `UserIdentity` row is linked against. Only
+    ``viewer``-role accounts ever gain one (ADR 0015) — staff always sign in
+    via `/auth/login`."""
+
+    GOOGLE = "google"
+    APPLE = "apple"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -84,7 +93,11 @@ class User(Base):
     # the same media bucket, resolved to a URL on read via the same presigned/CDN path
     # (`auth_service._avatar_url`), never a raw public object URL.
     avatar_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable since ADR 0015: a viewer who signs in only via Google/Apple has
+    # no password at all until they explicitly set one (Forgot Password).
+    # `security.verify_password(plain, None)` already runs a dummy verify for
+    # exactly this case — see that function's docstring.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", native_enum=False, length=20),
         default=UserRole.VIEWER,
@@ -108,6 +121,48 @@ class User(Base):
     )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserIdentity(Base):
+    """One row per (user, OAuth provider) link (ADR 0015 — Google/Apple
+    sign-in). `(provider, provider_subject)` is the actual lookup key a
+    sign-in resolves against — `provider_subject` is that provider's stable
+    `sub` claim, never the email (an OAuth email can drift; `sub` doesn't).
+    `(user_id, provider)` additionally caps it to at most one Google + one
+    Apple identity per user. `email_at_link` is audit-only — never queried
+    against, so a later email change on either side can't silently break the
+    link."""
+
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_user_identities_provider_subject"),
+        UniqueConstraint("user_id", "provider", name="uq_user_identities_user_provider"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[AuthProvider] = mapped_column(
+        Enum(AuthProvider, name="auth_provider", native_enum=False, length=20),
+        nullable=False,
+    )
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_at_link: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    is_private_email: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

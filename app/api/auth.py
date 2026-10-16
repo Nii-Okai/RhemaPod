@@ -1,3 +1,6 @@
+import hashlib
+import time
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -9,14 +12,23 @@ from app.core.config import get_settings
 from app.core.dependencies import CurrentUserDep, require_role
 from app.core.logging import get_logger
 from app.core.net import client_ip
+from app.core.oauth import (
+    OAuthTokenError,
+    VerifiedIdentity,
+    unverified_exp,
+    verify_apple_identity_token,
+    verify_google_id_token,
+)
 from app.core.rate_limit import check_rate_limit
 from app.db.database import get_db
 from app.models.schemas import (
+    AppleSignInRequest,
     AvatarResponse,
     AvatarTicket,
     AvatarUploadRequest,
     ChangePasswordRequest,
     ForgotPasswordRequest,
+    GoogleSignInRequest,
     LogoutRequest,
     MessageResponse,
     ProfileDetailsUpdate,
@@ -28,9 +40,10 @@ from app.models.schemas import (
     UserPublic,
     UserRegister,
 )
-from app.services import auth_service, comments_service
+from app.services import auth_service, comments_service, oauth_service
 from app.services.auth_service import AuthError
 from app.services.content_service import ContentError
+from app.services.oauth_service import OAuthError
 
 settings = get_settings()
 log = get_logger("auth_api")
@@ -180,6 +193,120 @@ async def reset_password(data: ResetPasswordRequest, db: DbDep) -> MessageRespon
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return MessageResponse(message="Password updated. Please log in again.")
+
+
+# ── Social sign-in (ADR 0015) ─────────────────────────────────────────────────
+# Status, detail string per reason — stable/documented, not to be paraphrased.
+_OAUTH_TOKEN_ERROR_RESPONSES: dict[str, tuple[int, str]] = {
+    "invalid": (status.HTTP_401_UNAUTHORIZED, "Invalid or expired sign-in token"),
+    "replayed": (status.HTTP_401_UNAUTHORIZED, "Invalid or expired sign-in token"),
+    "audience_mismatch": (
+        status.HTTP_401_UNAUTHORIZED,
+        "Sign-in token was issued for a different app",
+    ),
+    "unavailable": (
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "Sign-in temporarily unavailable",
+    ),
+}
+
+
+def _oauth_token_error_response(exc: OAuthTokenError) -> HTTPException:
+    status_code, detail = _OAUTH_TOKEN_ERROR_RESPONSES[exc.reason]
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+# Minimum replay-guard TTL floor (seconds): a token verified right at its own
+# expiry boundary must still get a real replay window, not a near-zero one.
+_OAUTH_REPLAY_TTL_FLOOR_SECONDS = 60
+
+
+async def _claim_oauth_token_once(raw_token: str) -> None:
+    """Single-use claim on an already-verified provider token (see
+    `token_store.claim_once`'s docstring for why this is a distinct
+    primitive from the mint-then-consume single-use ledger). Sized to the
+    token's own remaining lifetime, floored so a token verified right at its
+    expiry boundary still gets a real window. Raises `OAuthTokenError(reason=
+    "replayed")` on a replay — routed through the same `_oauth_token_error_response`
+    table every other verification failure uses, rather than a one-off
+    HTTPException, so "replayed" is a real reachable branch and not a dead
+    table entry."""
+    exp = unverified_exp(raw_token)
+    ttl = _OAUTH_REPLAY_TTL_FLOOR_SECONDS
+    if exp is not None:
+        ttl = max(_OAUTH_REPLAY_TTL_FLOOR_SECONDS, exp - int(time.time()))
+    digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    claimed = await token_store.claim_once(f"oauth:used:{digest}", ttl)
+    if not claimed:
+        raise OAuthTokenError("replayed", "Sign-in token was already used")
+
+
+async def _finish_oauth_sign_in(db: AsyncSession, identity: VerifiedIdentity) -> TokenPair:
+    try:
+        user = await oauth_service.sign_in_with_identity(db, identity)
+    except OAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    access, refresh = await auth_service.issue_token_pair(user)
+    return TokenPair(access_token=access, refresh_token=refresh, expires_in=_ACCESS_TTL_SECONDS)
+
+
+async def _check_oauth_rate_limit(provider: str, request: Request) -> None:
+    client = client_ip(request)
+    allowed = await check_rate_limit(
+        f"oauth:{provider}:{client}",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again shortly.",
+        )
+
+
+@router.post("/oauth/google", response_model=TokenPair)
+async def oauth_google(data: GoogleSignInRequest, request: Request, db: DbDep) -> TokenPair:
+    if not settings.oauth_google_enabled:
+        # Don't expose a route that then 503s — a disabled feature looks like
+        # it doesn't exist.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    await _check_oauth_rate_limit("google", request)
+
+    try:
+        identity = await verify_google_id_token(data.id_token)
+        await _claim_oauth_token_once(data.id_token)
+    except OAuthTokenError as exc:
+        raise _oauth_token_error_response(exc)
+
+    return await _finish_oauth_sign_in(db, identity)
+
+
+@router.post("/oauth/apple", response_model=TokenPair)
+async def oauth_apple(data: AppleSignInRequest, request: Request, db: DbDep) -> TokenPair:
+    if not settings.oauth_apple_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    await _check_oauth_rate_limit("apple", request)
+
+    try:
+        identity = await verify_apple_identity_token(data.identity_token, data.raw_nonce)
+    except OAuthTokenError as exc:
+        raise _oauth_token_error_response(exc)
+
+    # Apple's identity token never carries a name — the client forwards it
+    # separately, and only on the first authorization ever (None on every
+    # later sign-in). Merge it onto the verified identity before it reaches
+    # the service layer, which only prefills a brand-new account's name.
+    if data.given_name or data.family_name:
+        identity = replace(identity, given_name=data.given_name, family_name=data.family_name)
+
+    try:
+        await _claim_oauth_token_once(data.identity_token)
+    except OAuthTokenError as exc:
+        raise _oauth_token_error_response(exc)
+
+    return await _finish_oauth_sign_in(db, identity)
 
 
 @router.get("/me", response_model=UserPublic)
