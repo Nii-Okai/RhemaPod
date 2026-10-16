@@ -629,7 +629,7 @@ function DataTable<Row>(props: DataTableProps<Row>) {
                     // it is display-only (no `selectable`, no `onRowClick`) the
                     // rows are not focusable and there is no roving tab stop, so
                     // attaching them would only let a keydown bubbling up from a
-                    // link inside a cell (e.g. "Open in Stripe") swallow the
+                    // link inside a cell (e.g. an external dashboard link) swallow the
                     // user's Arrow/Home/End page scroll via a `focusRowAt` that
                     // then no-ops. Leave them off entirely in that mode.
                     onFocus={

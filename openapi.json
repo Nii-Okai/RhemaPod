@@ -900,34 +900,6 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
-      "CheckoutRequest": {
-        "properties": {
-          "tier": {
-            "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "monthly"
-          }
-        },
-        "title": "CheckoutRequest",
-        "type": "object"
-      },
-      "CheckoutResponse": {
-        "properties": {
-          "checkout_url": {
-            "title": "Checkout Url",
-            "type": "string"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "checkout_url",
-          "session_id"
-        ],
-        "title": "CheckoutResponse",
-        "type": "object"
-      },
       "CommentAdmin": {
         "description": "Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who\nhid it (the moderator's id is not shown to EDITORs).",
         "properties": {
@@ -2401,19 +2373,6 @@
           }
         },
         "title": "PlaylistUpdate",
-        "type": "object"
-      },
-      "PortalResponse": {
-        "properties": {
-          "portal_url": {
-            "title": "Portal Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "portal_url"
-        ],
-        "title": "PortalResponse",
         "type": "object"
       },
       "ProfileDetailsUpdate": {
@@ -4441,7 +4400,7 @@
         "type": "object"
       },
       "SubscriptionAdminItem": {
-        "description": "One row of the staff-facing subscriptions read (plan \u00a7A.3, \u00a7W20).\n\nA staff-readable enumeration of the paying membership: `Subscription`\njoined to `User` for `user_name` / `user_email`. Manager+ only, paginated.\n\nDeliberately carries **no** monetary field \u2014 no `amount`, `price`,\n`currency` or MRR (resolved decision 2). No amount is stored on\n`Subscription` and the webhook never parses one; there is nothing truthful\nto put here and Phase 2 shows no dollar figure anywhere in the portal.\n`current_period_end` is the model's `valid_until` column (null on free /\nfully-lapsed rows). `provider_customer_id` is null until the member's first\npayment lands via webhook \u2014 the frontend hides \"Open in Stripe\" when it is.",
+        "description": "One row of the staff-facing subscriptions read (plan \u00a7A.3, \u00a7W20).\n\nA staff-readable enumeration of the paying membership: `Subscription`\njoined to `User` for `user_name` / `user_email`. Manager+ only, paginated.\n\nDeliberately carries **no** monetary field \u2014 no `amount`, `price`,\n`currency` or MRR (resolved decision 2). No amount is stored on\n`Subscription`; there is nothing truthful to put here and Phase 2 shows no\ndollar figure anywhere in the portal. `current_period_end` is the model's\n`valid_until` column (null on free / fully-lapsed rows).\n`provider_customer_id` is null until a payment provider populates it.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -11622,79 +11581,7 @@
         ]
       }
     },
-    "/api/v1/subscriptions/checkout": {
-      "post": {
-        "description": "Begin a subscription. Returns a hosted checkout URL \u2014 card details never\ntouch this API.",
-        "operationId": "start_checkout_api_v1_subscriptions_checkout_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckoutRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckoutResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Start Checkout",
-        "tags": [
-          "subscriptions"
-        ]
-      }
-    },
     "/api/v1/subscriptions/me": {
-      "delete": {
-        "description": "Cancel at period end \u2014 access continues until what's been paid for runs out.",
-        "operationId": "cancel_subscription_api_v1_subscriptions_me_delete",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SubscriptionPublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Cancel Subscription",
-        "tags": [
-          "subscriptions"
-        ]
-      },
       "get": {
         "operationId": "my_subscription_api_v1_subscriptions_me_get",
         "responses": {
@@ -11715,33 +11602,6 @@
           }
         ],
         "summary": "My Subscription",
-        "tags": [
-          "subscriptions"
-        ]
-      }
-    },
-    "/api/v1/subscriptions/portal": {
-      "post": {
-        "description": "Hosted billing portal for changing plan or payment method.",
-        "operationId": "billing_portal_api_v1_subscriptions_portal_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PortalResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Billing Portal",
         "tags": [
           "subscriptions"
         ]

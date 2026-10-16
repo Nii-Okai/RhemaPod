@@ -6,8 +6,7 @@ name: fastapi-sermon
 # localhost-only URL, which is the bug that motivated the R2 migration in
 # the first place; see ADR 0001 §4, superseded 2026-09, and plan
 # plans/plan-r2-storage.md). Credentials are per-developer and never live in
-# this file — see docker-compose.override.yml (gitignored). Stripe is still
-# the in-process MockProvider.
+# this file — see docker-compose.override.yml (gitignored).
 #
 # The `minio-data` volume below is intentionally still declared even though
 # no service uses it: it holds the pre-cutover dev media the R2 migration's

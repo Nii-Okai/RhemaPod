@@ -2,9 +2,9 @@
 
 Manager+ only (editors / viewers 403 at the dependency). **Read-only**: no
 route here makes an outbound provider call — refunds, plan changes, forced
-cancellation and dunning all stay in the Stripe dashboard (resolved decision
-4). No monetary field is exposed anywhere in the response (resolved decision
-2); see `SubscriptionAdminItem`.
+cancellation and dunning all stay with whichever provider handles billing
+(resolved decision 4). No monetary field is exposed anywhere in the response
+(resolved decision 2); see `SubscriptionAdminItem`.
 """
 from typing import Annotated
 

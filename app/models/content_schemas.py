@@ -531,26 +531,6 @@ from app.models.models import SubscriptionStatus as _SubStatus  # noqa: E402
 from app.models.models import SubscriptionTier as _SubTier  # noqa: E402
 
 
-class CheckoutRequest(BaseModel):
-    tier: _SubTier = _SubTier.MONTHLY
-
-    @field_validator("tier")
-    @classmethod
-    def must_be_paid(cls, v: _SubTier) -> _SubTier:
-        if v == _SubTier.FREE:
-            raise ValueError("Choose a paid tier to start a checkout")
-        return v
-
-
-class CheckoutResponse(BaseModel):
-    checkout_url: str
-    session_id: str
-
-
-class PortalResponse(BaseModel):
-    portal_url: str
-
-
 class SubscriptionPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -570,11 +550,10 @@ class SubscriptionAdminItem(BaseModel):
 
     Deliberately carries **no** monetary field — no `amount`, `price`,
     `currency` or MRR (resolved decision 2). No amount is stored on
-    `Subscription` and the webhook never parses one; there is nothing truthful
-    to put here and Phase 2 shows no dollar figure anywhere in the portal.
-    `current_period_end` is the model's `valid_until` column (null on free /
-    fully-lapsed rows). `provider_customer_id` is null until the member's first
-    payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+    `Subscription`; there is nothing truthful to put here and Phase 2 shows no
+    dollar figure anywhere in the portal. `current_period_end` is the model's
+    `valid_until` column (null on free / fully-lapsed rows).
+    `provider_customer_id` is null until a payment provider populates it.
     """
 
     id: uuid.UUID
