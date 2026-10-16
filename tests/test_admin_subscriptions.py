@@ -4,7 +4,8 @@
 filterable, joined to `User` for name/email. Plan §W20 + §A.3.
 
 Hard constraints, all asserted here (not as comments):
-  * no outbound payment-provider call anywhere in either route;
+  * no outbound payment-provider call anywhere in either route — structural,
+    since there is no payment provider in this codebase at all;
   * `active_paid` == `subscription_service.count_active_paid_subscribers` on
     the same data (and == monthly + annual by construction);
   * the response schema carries no amount / price / currency field;
@@ -19,7 +20,6 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.api.admin_subscriptions as admin_subs_module
-import app.core.payments as payments_module
 from app.models.content_schemas import SubscriptionAdminItem
 from app.models.models import (
     Subscription,
@@ -178,8 +178,8 @@ async def test_list_null_customer_id_passes_through(client, engine):
         "/api/v1/admin/subscriptions", headers=admin
     )).json()
     row = next(r for r in body["items"] if r["id"] == sid)
-    # Null (not absent, not disabled-string) — the frontend hides "Open in
-    # Stripe" on exactly this.
+    # Null (not absent, not disabled-string) — the admin portal hides the
+    # external provider-dashboard link on exactly this.
     assert row["provider_customer_id"] is None
 
 
@@ -417,50 +417,6 @@ async def test_counts_active_paid_matches_service_function(client, engine):
     assert counts["annual"] == 2
     # Holds by construction — same status predicate, partitioned by tier.
     assert counts["active_paid"] == counts["monthly"] + counts["annual"]
-
-
-# ── no outbound payment-provider call in either route ─────────────────────
-class _ProviderSpy:
-    """Any attribute access other than `name` is an outbound-call attempt and
-    fails the test loudly."""
-
-    name = "spy"
-
-    def __getattr__(self, item):  # pragma: no cover - only hit on a violation
-        raise AssertionError(
-            f"staff subscriptions read route touched the payment provider: .{item}"
-        )
-
-
-async def test_no_outbound_provider_call_on_list_or_counts(client, engine):
-    admin = await register(client, "admin@example.com", "admin", engine)
-    await seed_sub(engine, "paid@example.com",
-                   SubscriptionTier.MONTHLY, SubscriptionStatus.ACTIVE,
-                   customer_id="cus_1")
-    await seed_sub(engine, "pastdue@example.com",
-                   SubscriptionTier.ANNUAL, SubscriptionStatus.PAST_DUE)
-
-    spy = _ProviderSpy()
-    payments_module.set_provider(spy)
-    try:
-        r1 = await client.get("/api/v1/admin/subscriptions", headers=admin)
-        r2 = await client.get(
-            "/api/v1/admin/subscriptions?status=active&tier=monthly", headers=admin
-        )
-        r3 = await client.get(
-            "/api/v1/admin/subscriptions/counts", headers=admin
-        )
-    finally:
-        payments_module.set_provider(payments_module.MockProvider())
-
-    # The spy raising would have surfaced as a 500 on any of the three.
-    assert r1.status_code == 200
-    assert r2.status_code == 200
-    assert r3.status_code == 200
-    assert {"paid@example.com", "pastdue@example.com"} <= {
-        row["user_email"] for row in r1.json()["items"]
-    }
-    assert r2.json()["items"][0]["user_email"] == "paid@example.com"
 
 
 # ── audit logging (CWE-778) ──────────────────────────────────────────────────

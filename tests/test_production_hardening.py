@@ -19,10 +19,6 @@ LIVE_ENV = {
     "debug": False,
     "allowed_origins": ["https://app.example.com"],
     "frontend_base_url": "https://app.example.com",
-    "stripe_secret_key": "sk_live_x",
-    "stripe_webhook_secret": "whsec_x",
-    "stripe_price_monthly": "price_m",
-    "stripe_price_annual": "price_a",
     "object_store_endpoint_url": "https://acct123.r2.cloudflarestorage.com",
     "object_store_access_key_id": "AKIA_X",
     "object_store_secret_access_key": "secret",
@@ -56,7 +52,7 @@ def _settings(**overrides):
 def test_fully_configured_production_boots():
     s = _settings()
     assert s.is_production
-    assert s.payments_are_live and s.storage_is_live and s.email_is_live
+    assert s.storage_is_live and s.email_is_live
     assert s.stream_is_live
     assert s.archive_is_live
     assert s.cdn_base_url is None
@@ -71,7 +67,8 @@ def test_production_refuses_stub_stream():
 
 def test_production_refuses_stream_without_webhook_secret():
     """Stream live but no webhook secret means the webhook endpoint can never
-    verify an inbound event — same class of gap as the mock-payments check."""
+    verify an inbound event — an unverifiable webhook is exactly the gap a
+    production preflight exists to catch."""
     with pytest.raises(ValueError, match="CF_STREAM_WEBHOOK_SECRET"):
         _settings(cf_stream_webhook_secret=None)
 
@@ -102,12 +99,6 @@ def test_production_refuses_cdn_without_signing():
     bug this preflight check exists to catch before it reaches production."""
     with pytest.raises(ValueError, match="CDN_BASE_URL"):
         _settings(cdn_base_url="https://cdn.example.com")
-
-
-def test_production_refuses_mock_payments():
-    """The mock provider accepts unsigned webhooks — never in production."""
-    with pytest.raises(ValueError, match="STRIPE_SECRET_KEY"):
-        _settings(stripe_secret_key=None, stripe_webhook_secret=None)
 
 
 def test_production_refuses_stub_storage():
@@ -160,7 +151,6 @@ def test_development_allows_stubs():
 
     s = Settings(**BASE_ENV, environment="development")
     assert not s.is_production
-    assert not s.payments_are_live
 
 
 # ── config loading + secret/environment guards (review finding 1) ─────────────

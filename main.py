@@ -33,7 +33,6 @@ from app.core.middleware import (
     GlobalRateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.core.payments import get_provider
 from app.core.redis import check_redis
 from app.core.storage import get_storage
 from app.core.token_store import TokenStoreUnavailable
@@ -53,14 +52,12 @@ async def lifespan(app: FastAPI):
     # Resolve external backends at startup rather than on the first request, so
     # a misconfiguration is a failed deploy instead of a 500 for a real user.
     storage_backend = type(get_storage()).__name__
-    payment_provider = get_provider().name
 
     logger.info(
         "startup",
         app=settings.app_name,
         environment=settings.environment,
         storage=storage_backend,
-        payments=payment_provider,
         email="smtp" if settings.email_is_live else "console",
     )
     yield

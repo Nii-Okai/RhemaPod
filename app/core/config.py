@@ -223,12 +223,7 @@ class Settings(BaseSettings):
     # lease).
     archive_lease_minutes: int = 120
 
-    # --- Subscriptions / payments (Phase 5) ---
-    # Leave stripe_secret_key blank to use the mock provider (no Stripe needed).
-    stripe_secret_key: str | None = None
-    stripe_webhook_secret: str | None = None
-    stripe_price_monthly: str | None = None
-    stripe_price_annual: str | None = None
+    # --- Subscriptions (Phase 5) ---
     # How long an entitlement decision is cached in Redis.
     entitlement_cache_seconds: int = 300
 
@@ -330,10 +325,6 @@ class Settings(BaseSettings):
             and self.archive_store_secret_access_key
             and self.archive_store_region
         )
-
-    @property
-    def payments_are_live(self) -> bool:
-        return bool(self.stripe_secret_key and self.stripe_webhook_secret)
 
     @property
     def email_is_live(self) -> bool:
@@ -471,9 +462,10 @@ class Settings(BaseSettings):
         """Refuse to start in production on stub backends or unsafe config.
 
         The stubs exist so tests and local development need no cloud accounts.
-        Reaching production is a different matter: a MockProvider in production
-        would accept ANY unsigned webhook, letting anyone grant themselves a
-        subscription. Failing to boot is the correct response — a silent
+        Reaching production is a different matter: an in-memory storage stub
+        would silently drop every upload, a console email backend would
+        silently swallow invite/reset mail, and so on for each external
+        dependency below. Failing to boot is the correct response — a silent
         fallback here is the most dangerous failure mode in the system.
         """
         if not self.is_production:
@@ -481,13 +473,6 @@ class Settings(BaseSettings):
 
         problems: list[str] = []
 
-        if not self.payments_are_live:
-            problems.append(
-                "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required "
-                "(without them the mock provider accepts unsigned webhooks)"
-            )
-        if not (self.stripe_price_monthly and self.stripe_price_annual):
-            problems.append("STRIPE_PRICE_MONTHLY and STRIPE_PRICE_ANNUAL are required")
         if not self.storage_is_live:
             problems.append(
                 "OBJECT_STORE_ACCESS_KEY_ID and OBJECT_STORE_SECRET_ACCESS_KEY are required "

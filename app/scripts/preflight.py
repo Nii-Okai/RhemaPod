@@ -159,19 +159,6 @@ async def _check_stream() -> str:
     return "cloudflare"
 
 
-async def _check_payments() -> str:
-    from app.core.config import get_settings
-    from app.core.payments import MockProvider, get_provider
-
-    s = get_settings()
-    provider = get_provider()
-    if isinstance(provider, MockProvider):
-        if s.is_production:
-            raise RuntimeError("mock payment provider active in production")
-        return "mock (development)"
-    return "stripe"
-
-
 async def _check_email() -> str:
     from app.core.config import get_settings
 
@@ -236,7 +223,6 @@ async def _run() -> int:
         _check("archive", _check_archive()),
         _check("cdn", _check_cdn()),
         _check("stream", _check_stream()),
-        _check("payments", _check_payments()),
         _check("email", _check_email()),
     )
 
