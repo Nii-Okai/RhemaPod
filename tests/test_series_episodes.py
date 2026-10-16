@@ -82,21 +82,44 @@ async def publish_episode_with_null_number(client, ed, mgr, series_id, title):
 
 
 async def activate_subscription(client, engine, email):
-    """Register + entitle a viewer via the webhook path, return auth headers."""
+    """Register + entitle a viewer, return auth headers.
+
+    Entitlement is written directly onto the account's `Subscription` row
+    through the ORM (no checkout, no webhook, no provider involved) and the
+    entitlement cache is busted the same way a live activation would bust it.
+    Every account gets a FREE `Subscription` row the moment it registers
+    (`auth_service.register_user`), so this mutates that row in place rather
+    than inserting a second one — `user_id` is unique on the table.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import Subscription, SubscriptionStatus, SubscriptionTier
+    from app.services import subscription_service
+
     await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
     uid = await user_id_for(engine, email)
-    period_end = int(
-        (datetime.now(timezone.utc) + timedelta(days=30)).timestamp()
-    )
-    await client.post("/api/v1/subscriptions/webhook", json={
-        "id": f"evt_{email}",
-        "type": "checkout.session.completed",
-        "data": {"object": {
-            "metadata": {"user_id": uid, "tier": "monthly"},
-            "id": f"sub_{email}", "customer": f"cus_{email}",
-            "current_period_end": period_end,
-        }},
-    })
+    period_end = datetime.now(timezone.utc) + timedelta(days=30)
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        sub = (await s.execute(
+            select(Subscription).where(Subscription.user_id == _uuid.UUID(uid))
+        )).scalar_one()
+        sub.tier = SubscriptionTier.MONTHLY
+        sub.status = SubscriptionStatus.ACTIVE
+        sub.valid_until = period_end
+        await s.commit()
+        # Invalidate via the ORM-loaded `sub.user_id`, not the raw `uid`
+        # string: `user_id_for()` reads it back through a raw `text()`
+        # SELECT, which skips the UUID type's result processor and can come
+        # back as an undashed hex string on SQLite — a different cache key
+        # than `is_entitled()` builds from the properly-typed ORM attribute,
+        # so the delete would silently miss.
+        await subscription_service.invalidate_entitlement(sub.user_id)
+
     tokens = (await client.post(
         "/api/v1/auth/login", json={"email": email, "password": PW}
     )).json()
