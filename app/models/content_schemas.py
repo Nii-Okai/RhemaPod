@@ -935,6 +935,36 @@ class Page(BaseModel, Generic[_T]):
     offset: int
 
 
+class AuditEntry(BaseModel):
+    """One row of the unified audit feed (`GET /admin/audit`,
+    plan-admin-settings §A.5, D9): `audit_log` plus the three domain logs
+    that predate it, in one shape.
+
+    `source` names the table a row came from. Legacy rows report `outcome`
+    `success`, carry no `ip`/`user_agent`, and resolve `actor_label` from
+    the actor's current account ("Deleted account" once it is gone,
+    "System" for automatic comment hides); `audit_log` rows carry the email
+    snapshot taken at write time. `summary` is a server-built sentence."""
+
+    source: Literal[
+        "audit_log", "approval_log", "announcement_approval_log", "comment_moderation_log"
+    ]
+    id: uuid.UUID
+    created_at: datetime
+    action: str
+    outcome: Literal["success", "failure"]
+    actor_id: uuid.UUID | None
+    actor_label: str
+    actor_role: str | None
+    target_type: str | None
+    target_id: uuid.UUID | None
+    target_label: str | None
+    ip: str | None
+    user_agent: str | None
+    details: dict
+    summary: str
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Sermon comments (viewer side)
 # ═══════════════════════════════════════════════════════════════════════════════

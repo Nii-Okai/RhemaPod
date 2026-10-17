@@ -672,6 +672,162 @@
         "title": "AudioDownloadResponse",
         "type": "object"
       },
+      "AuditEntry": {
+        "description": "One row of the unified audit feed (`GET /admin/audit`,\nplan-admin-settings \u00a7A.5, D9): `audit_log` plus the three domain logs\nthat predate it, in one shape.\n\n`source` names the table a row came from. Legacy rows report `outcome`\n`success`, carry no `ip`/`user_agent`, and resolve `actor_label` from\nthe actor's current account (\"Deleted account\" once it is gone,\n\"System\" for automatic comment hides); `audit_log` rows carry the email\nsnapshot taken at write time. `summary` is a server-built sentence.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_label": {
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "outcome": {
+            "enum": [
+              "success",
+              "failure"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "audit_log",
+              "approval_log",
+              "announcement_approval_log",
+              "comment_moderation_log"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Label"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "required": [
+          "source",
+          "id",
+          "created_at",
+          "action",
+          "outcome",
+          "actor_id",
+          "actor_label",
+          "actor_role",
+          "target_type",
+          "target_id",
+          "target_label",
+          "ip",
+          "user_agent",
+          "details",
+          "summary"
+        ],
+        "title": "AuditEntry",
+        "type": "object"
+      },
+      "AuditOutcome": {
+        "enum": [
+          "success",
+          "failure"
+        ],
+        "title": "AuditOutcome",
+        "type": "string"
+      },
       "AvatarResponse": {
         "properties": {
           "avatar_url": {
@@ -1751,6 +1907,37 @@
           "offset"
         ],
         "title": "Page[AnnouncementAdminItem]",
+        "type": "object"
+      },
+      "Page_AuditEntry_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AuditEntry]",
         "type": "object"
       },
       "Page_CommentAdminForEditor_": {
@@ -5444,6 +5631,225 @@
         "summary": "Top Sermons",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/audit": {
+      "get": {
+        "description": "Newest first, `(created_at DESC, id DESC)`. `from`/`to` are half-open\n`[from, to)`. `total` is the filtered count before paging.",
+        "operationId": "list_audit_api_v1_admin_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "description": "Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`.",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Action",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "auth",
+                    "users",
+                    "settings",
+                    "reports",
+                    "sermons",
+                    "announcements",
+                    "moderation"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "description": "Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay.",
+            "in": "query",
+            "name": "staff_only",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay.",
+              "title": "Staff Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditOutcome"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "description": "Inclusive lower bound (UTC).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive lower bound (UTC).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Exclusive upper bound (UTC).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive upper bound (UTC).",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Audit",
+        "tags": [
+          "admin audit"
         ]
       }
     },
