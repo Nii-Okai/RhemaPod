@@ -5,12 +5,12 @@ This file is **shared across three steps**, landing incrementally:
 
 - S3: `sermon_play_daily` + `listener_day` (migration 1, revision
   `dbdcee764ca3`).
-- S6 (this pass): `audit_log` (migration 2, revision `8c596c67f0ae`) — adds
-  its own round-trip + CHECK/JSONB/INET + no-FK cases, and the running
-  combined chain test (currently rollups+audit; S11 extends it to all
-  three).
-- S11: `church_settings` (migration 3) — adds its own round-trip + seed cases,
-  and extends the combined chain test to cover all three.
+- S6: `audit_log` (migration 2, revision `8c596c67f0ae`) — adds its own
+  round-trip + CHECK/JSONB/INET + no-FK cases, and the running combined
+  chain test.
+- S11: `church_settings` (migration 3, revision `e5a68425e539`) — adds its
+  own round-trip + singleton + seed cases, and extends the combined chain
+  test to cover all three.
 
 Each step appends its own tests and does not rewrite another step's. The
 harness below (`throwaway_db`, `_alembic`, `_columns`) follows the pattern
@@ -54,6 +54,7 @@ _ROLLUPS_REVISION = "dbdcee764ca3"
 # REVISION` above.
 _PRE_AUDIT_REVISION = "a517c3beba93"
 _AUDIT_REVISION = "8c596c67f0ae"
+_CHURCH_SETTINGS_REVISION = "e5a68425e539"
 
 _CANDIDATE_DSNS = [
     os.environ.get("TEST_PG_DSN"),
@@ -521,12 +522,11 @@ def test_audit_migration_introduces_no_new_alembic_drift(throwaway_db):
     assert "audit_log" not in combined, combined
 
 
-def test_combined_chain_upgrade_downgrade_upgrade_rollups_and_audit(throwaway_db):
-    """The running "round-trips cleanly" chain test (DoD bullet: `alembic
-    upgrade head` -> `downgrade` past all additive migrations -> `upgrade
-    head`). Covers the two migrations that exist as of this step (rollups,
-    audit); S11 extends this same test to add `church_settings` and
-    complete the "all three" chain the plan's DoD describes.
+def test_combined_chain_upgrade_downgrade_upgrade_all_three(throwaway_db):
+    """The "round-trips cleanly" chain test (DoD bullet: `alembic upgrade
+    head` -> `downgrade` past all three additive migrations -> `upgrade
+    head`): rollups, audit and church settings, each downgrade leaving the
+    earlier ones in place.
     """
     alembic_url, inspect_dsn = throwaway_db
 
@@ -534,6 +534,11 @@ def test_combined_chain_upgrade_downgrade_upgrade_rollups_and_audit(throwaway_db
     assert _table_exists(inspect_dsn, "sermon_play_daily")
     assert _table_exists(inspect_dsn, "listener_day")
     assert _table_exists(inspect_dsn, "audit_log")
+    assert _table_exists(inspect_dsn, "church_settings")
+
+    _alembic(alembic_url, "downgrade", _AUDIT_REVISION)
+    assert not _table_exists(inspect_dsn, "church_settings")
+    assert _table_exists(inspect_dsn, "audit_log")  # unaffected
 
     _alembic(alembic_url, "downgrade", _PRE_AUDIT_REVISION)
     assert not _table_exists(inspect_dsn, "audit_log")
@@ -547,3 +552,110 @@ def test_combined_chain_upgrade_downgrade_upgrade_rollups_and_audit(throwaway_db
     assert _table_exists(inspect_dsn, "sermon_play_daily")
     assert _table_exists(inspect_dsn, "listener_day")
     assert _table_exists(inspect_dsn, "audit_log")
+    assert _table_exists(inspect_dsn, "church_settings")
+
+
+# ── S11: church_settings ─────────────────────────────────────────────────
+
+
+def _ts_comments_terms_text() -> str:
+    """`COMMENTS_TERMS_TEXT` straight out of the mobile source, so a change
+    on either side without the other fails here rather than in the app."""
+    import re
+
+    ts = (REPO_ROOT / "mobile/lib/content/commentsCompliance.ts").read_text(encoding="utf-8")
+    match = re.search(r"export const COMMENTS_TERMS_TEXT = `(.*?)`;", ts, re.S)
+    assert match, "COMMENTS_TERMS_TEXT template literal not found"
+    text = match.group(1)
+    # A template literal with escapes or interpolation would not be the
+    # literal runtime string; refuse rather than compare the wrong thing.
+    assert "\\" not in text and "${" not in text
+    return text
+
+
+def test_church_settings_migration_round_trip(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+
+    _alembic(alembic_url, "upgrade", "head")
+    cols = _columns(inspect_dsn, "church_settings")
+    assert cols["id"][:2] == ("smallint", "NO")
+    assert cols["contact_email"][:2] == ("character varying", "NO")
+    assert cols["comment_guidelines"][:2] == ("text", "NO")
+    assert cols["version"] == ("integer", "NO", "1")
+    assert cols["updated_by_id"] == ("uuid", "YES", None)
+    for nullable in ("church_name", "app_display_name", "tagline", "about",
+                     "contact_phone", "website_url", "address",
+                     "terms_of_use_url", "privacy_policy_url", "copyright_notice"):
+        assert cols[nullable][1] == "YES", nullable
+
+    _alembic(alembic_url, "downgrade", _AUDIT_REVISION)
+    assert not _table_exists(inspect_dsn, "church_settings")
+    assert _table_exists(inspect_dsn, "audit_log")
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert _columns(inspect_dsn, "church_settings") == cols
+
+
+def test_church_settings_seed_row(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, connect_timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT id, church_name, app_display_name, contact_email, "
+            "comment_guidelines, terms_of_use_url, privacy_policy_url, "
+            "tagline, about, contact_phone, website_url, address, "
+            "copyright_notice, version, updated_by_id FROM church_settings"
+        ).fetchall()
+    assert len(rows) == 1
+    (id_, church, app_name, email, guidelines, terms, privacy,
+     *others, version, updated_by) = rows[0]
+    assert (id_, church, app_name, email) == (
+        1, "Watered Garden Church", "RhemaPod", "contact@rhemapod.com",
+    )
+    assert guidelines == _ts_comments_terms_text()  # byte-for-byte
+    assert guidelines.split("\n", 1)[0] == "RhemaPod Comment Guidelines"
+    assert (terms, privacy) == (None, None)
+    assert others == [None] * 6
+    assert (version, updated_by) == (1, None)
+
+
+def test_church_settings_check_rejects_a_second_row(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                "INSERT INTO church_settings (id, contact_email, comment_guidelines) "
+                "VALUES (2, 'x@example.com', 'g')"
+            )
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            conn.execute(
+                "INSERT INTO church_settings (id, contact_email, comment_guidelines) "
+                "VALUES (1, 'x@example.com', 'g')"
+            )
+
+
+def test_church_settings_has_no_foreign_keys(throwaway_db):
+    """`updated_by_id` is deliberately FK-free (like `audit_log.actor_id`):
+    erasing the last editor's account must not touch or be blocked by the
+    settings row."""
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, connect_timeout=5) as conn:
+        fks = conn.execute(
+            "SELECT count(*) FROM information_schema.table_constraints "
+            "WHERE table_name = 'church_settings' AND constraint_type = 'FOREIGN KEY'"
+        ).fetchone()[0]
+    assert fks == 0
+
+
+def test_church_settings_migration_introduces_no_alembic_drift(throwaway_db):
+    """Since `a517c3beba93` cleaned up the pre-existing drift, the whole
+    `alembic check` is expected clean at head, not just this table."""
+    alembic_url, _inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+    out = _alembic(alembic_url, "check")
+    assert "No new upgrade operations detected" in out

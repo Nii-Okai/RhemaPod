@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, Text  # noqa: E402
+from sqlalchemy import BigInteger, ForeignKey, Integer, SmallInteger, Text  # noqa: E402
 from sqlalchemy.orm import relationship  # noqa: E402
 
 from app.db.database import Base
@@ -983,6 +983,51 @@ class AuditLog(Base):
         Index("ix_audit_log_created_at_id", created_at.desc(), id),
         Index("ix_audit_log_actor_id_created_at", "actor_id", "created_at"),
         Index("ix_audit_log_action_created_at", "action", "created_at"),
+    )
+
+
+class ChurchSettings(Base):
+    """The church profile and the app content it drives (plan-admin-settings
+    §A.4.3, D2/D2a/D3). Exactly one row: `id` is pinned to 1 by a CHECK, so
+    the table is a typed singleton, not a key/value store. Seeded by its
+    migration; never inserted at runtime.
+
+    `version` is the optimistic-concurrency token: `PATCH /admin/settings`
+    (S12) writes `... WHERE version = :v` and bumps it, so a stale editor
+    gets a 409 instead of silently overwriting. `updated_by_id` has no FK,
+    like `audit_log.actor_id`: erasing an account must not touch or be
+    blocked by this row. Legal documents are hosted elsewhere and stored as
+    URLs only (D2/D2a); `comment_guidelines` is inline text because viewers
+    accept it in-app before their first comment.
+    """
+
+    __tablename__ = "church_settings"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    church_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    app_display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tagline: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    about: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contact_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    comment_guidelines: Mapped[str] = mapped_column(Text, nullable=False)
+    terms_of_use_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    privacy_policy_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    copyright_notice: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_church_settings_singleton"),
     )
 
 
