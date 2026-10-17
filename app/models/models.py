@@ -9,13 +9,15 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Index,
+    JSON,
     String,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 from sqlalchemy import BigInteger, ForeignKey, Integer, Text  # noqa: E402
 from sqlalchemy.orm import relationship  # noqa: E402
@@ -828,6 +830,159 @@ class ListenerDay(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# System audit log (plan-admin-settings §A.3/§A.4.2)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class AuditAction(str, enum.Enum):
+    """Bounded v1 event catalog (`plan-admin-settings.md` §A.3). Stored as
+    varchar via `native_enum=False`/`values_callable` (D8), matching
+    `ModerationAction` above — never a native Postgres enum (the receipt for
+    why is migration `f3a9c7d2b4e1`). This step only defines the values and
+    the table; call sites land in S7 (staff mutations), S8 (auth), S12
+    (settings) and S13 (report export)."""
+
+    LOGIN = "auth.login"
+    LOGIN_FAILED = "auth.login_failed"
+    LOGOUT = "auth.logout"
+    PASSWORD_CHANGED = "auth.password_changed"
+    PASSWORD_RESET = "auth.password_reset"
+    STAFF_INVITED = "user.staff_invited"
+    INVITE_RESENT = "user.invite_resent"
+    ROLE_CHANGED = "user.role_changed"
+    DEACTIVATED = "user.deactivated"
+    REACTIVATED = "user.reactivated"
+    SETTINGS_UPDATED = "settings.updated"
+    REPORT_EXPORTED = "report.exported"
+
+
+class AuditOutcome(str, enum.Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
+class _InetAsString(TypeDecorator):
+    """`postgresql.INET`, normalised back to a plain `str` on read.
+
+    psycopg 3 (this app's Postgres driver) adapts a raw `inet` column to
+    `ipaddress.IPv4Address`/`IPv6Address` by default — proven against a real
+    Postgres container while building this column (S6). Left alone, that
+    makes `AuditLog.ip`'s Python-side type differ by dialect (SQLite, with
+    no such adapter, hands back a plain `str`), which would silently bite
+    whatever reads this column later (S10's `AuditEntry` DTO, JSON
+    serialization, equality checks). Binding takes a plain `str` straight
+    through on every dialect, same as before; only the read side is
+    overridden.
+    """
+
+    impl = String(45)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(INET())
+        return dialect.type_descriptor(String(45))
+
+    def process_result_value(self, value, dialect):
+        return str(value) if value is not None else None
+
+
+class AuditLog(Base):
+    """Append-only system audit trail (§A.4.2). Deliberately **FK-free** on
+    `actor_id` — unlike `ApprovalLog`/`AnnouncementApprovalLog` (actor FK
+    RESTRICT) or `CommentModerationLog` (actor FK SET NULL) — because the
+    snapshot columns (`actor_email`, `actor_role`) already carry what a join
+    would otherwise provide, and a hard account erasure must not be blocked
+    by, or silently null out, its own audit trail. `id` is a UUID (not a
+    surrogate serial) so this table can be `UNION ALL`-ed with those three
+    existing UUID-keyed domain logs by the read-time audit feed (S10, D9).
+    `record()`/`record_detached()` in `app/services/audit_service.py` are
+    the only writers; nothing else should construct this row directly.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    action: Mapped[AuditAction] = mapped_column(
+        Enum(
+            AuditAction,
+            name="audit_action",
+            native_enum=False,
+            length=40,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    outcome: Mapped[AuditOutcome] = mapped_column(
+        Enum(
+            AuditOutcome,
+            name="audit_outcome",
+            native_enum=False,
+            length=10,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    # No FK — see class docstring. These three are the snapshot that survives
+    # the actor's account being erased.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Generic target reference (e.g. "user", "church_settings"); no FK, since
+    # the referent type varies per action and some targets (church_settings)
+    # aren't even user/sermon rows.
+    target_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Postgres-only INET; every other dialect (SQLite, in the test suite)
+    # falls back to a plain varchar(45) — long enough for the longest IPv6
+    # literal. First Postgres-only column type in this codebase (§A.4
+    # preamble): `_InetAsString` (above) is the dialect-variant precedent
+    # S11 (`church_settings`) follows for `jsonb` below and its own text
+    # columns — plain `with_variant(INET, "postgresql")` would work for the
+    # DDL alone, but leaves psycopg 3 handing back `ipaddress.IPv4Address`/
+    # `IPv6Address` instead of `str` on Postgres only; see that class.
+    ip: Mapped[str | None] = mapped_column(_InetAsString(), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Postgres-only JSONB; SQLite stores the same contract as a plain JSON
+    # (TEXT-backed) column — queryable shape differs, but round-trips exactly.
+    details: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ("
+            "'auth.login', 'auth.login_failed', 'auth.logout', "
+            "'auth.password_changed', 'auth.password_reset', "
+            "'user.staff_invited', 'user.invite_resent', 'user.role_changed', "
+            "'user.deactivated', 'user.reactivated', "
+            "'settings.updated', 'report.exported')",
+            name="ck_audit_log_action",
+        ),
+        CheckConstraint(
+            "outcome IN ('success', 'failure')",
+            name="ck_audit_log_outcome",
+        ),
+        # (created_at DESC, id) — §A.4.2's own ordering, so the feed's
+        # `ORDER BY created_at DESC, id` pagination (S10) is index-covered
+        # on its leading, selective column without needing a backward scan.
+        Index("ix_audit_log_created_at_id", created_at.desc(), id),
+        Index("ix_audit_log_actor_id_created_at", "actor_id", "created_at"),
+        Index("ix_audit_log_action_created_at", "action", "created_at"),
     )
 
 

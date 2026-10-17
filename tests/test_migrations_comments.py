@@ -36,16 +36,14 @@ PRE_DROP_REV = "c7d8e9f0a1b2"
 # revision has two parents.
 MERGE_REV = "0543034f79af"
 # The actual current head — whatever's chained on top of MERGE_REV as of the most
-# recent migration (pre-existing schema-drift fix, session 2026-10-17: collapse
-# subscriptions.user_id/provider_subscription_id's separate unique constraint +
-# non-unique index into the single unique index the model has always declared,
-# `a517c3beba93`, chained on `dbdcee764ca3` — itself ADMIN-SETTINGS S3's
-# sermon_play_daily/listener_day rollup tables, chained on `c9b3e7a1f2d4`). A
-# future migration moves this constant forward again; the chain assertions
-# below it (MERGE_REV/COMMENTS_REV/DROP_REV/PRE_DROP_REV, all further down the
-# tree) don't change, since they describe ancestry beneath MERGE_REV, not what
-# sits on top of it.
-CURRENT_HEAD = "a517c3beba93"
+# recent migration (ADMIN-SETTINGS S6: `audit_log`, `8c596c67f0ae`, chained on
+# the pre-existing schema-drift fix `a517c3beba93`, itself chained on S3's
+# sermon_play_daily/listener_day rollup tables `dbdcee764ca3`, chained on
+# `c9b3e7a1f2d4`). A future migration moves this constant forward again; the
+# chain assertions below it (MERGE_REV/COMMENTS_REV/DROP_REV/PRE_DROP_REV, all
+# further down the tree) don't change, since they describe ancestry beneath
+# MERGE_REV, not what sits on top of it.
+CURRENT_HEAD = "8c596c67f0ae"
 
 NEW_TABLES = {
     "sermon_comments",

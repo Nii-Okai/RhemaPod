@@ -241,6 +241,14 @@ class Settings(BaseSettings):
     # §A.5). Read at call time, so it is tunable without a redeploy of code.
     comments_auto_hide_threshold: int = Field(default=3, ge=1)
 
+    # System audit log retention (plan-admin-settings §A.7, values Isaac
+    # approved at AS0). `auth.*` rows are hard-deleted past this age.
+    audit_auth_retention_days: int = Field(default=365, ge=1)
+    # Every other `audit_log` row keeps its row (who/what/when of a role
+    # change, a settings edit, etc.) but has `ip`/`user_agent` nulled past
+    # this age — the network identifier goes, the decision trail doesn't.
+    audit_network_retention_days: int = Field(default=365, ge=1)
+
     # Max failed logins per IP+email window (enforced via Redis)
     login_rate_limit: int = 10
     login_rate_window_seconds: int = 60

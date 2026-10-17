@@ -3,10 +3,12 @@ migrations (`plans/plan-admin-settings.md` §A.4).
 
 This file is **shared across three steps**, landing incrementally:
 
-- S3 (this pass): `sermon_play_daily` + `listener_day` (migration 1, revision
+- S3: `sermon_play_daily` + `listener_day` (migration 1, revision
   `dbdcee764ca3`).
-- S6: `audit_log` (migration 2) — adds its own round-trip + CHECK/JSONB/INET
-  cases, and the combined "all three" chain test once its revision exists.
+- S6 (this pass): `audit_log` (migration 2, revision `8c596c67f0ae`) — adds
+  its own round-trip + CHECK/JSONB/INET + no-FK cases, and the running
+  combined chain test (currently rollups+audit; S11 extends it to all
+  three).
 - S11: `church_settings` (migration 3) — adds its own round-trip + seed cases,
   and extends the combined chain test to cover all three.
 
@@ -46,6 +48,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # chain more migrations on top.
 _PRE_ROLLUPS_REVISION = "c9b3e7a1f2d4"
 _ROLLUPS_REVISION = "dbdcee764ca3"
+# Lands between rollups and audit: an unrelated pre-existing drift fix
+# (`a517c3beba93`), not part of this plan — see that migration's own
+# docstring. It is audit_log's actual immediate parent, not `_ROLLUPS_
+# REVISION` above.
+_PRE_AUDIT_REVISION = "a517c3beba93"
+_AUDIT_REVISION = "8c596c67f0ae"
 
 _CANDIDATE_DSNS = [
     os.environ.get("TEST_PG_DSN"),
@@ -368,3 +376,174 @@ def test_rollup_migration_introduces_no_new_alembic_drift(throwaway_db):
     combined = proc.stdout + proc.stderr
     assert "sermon_play_daily" not in combined, combined
     assert "listener_day" not in combined, combined
+
+
+# ── S6: audit_log ────────────────────────────────────────────────────────
+
+
+def test_audit_migration_round_trip(throwaway_db):
+    """`alembic upgrade head` -> downgrade past `8c596c67f0ae` -> `upgrade
+    head` round-trips exactly: `audit_log` appears, genuinely disappears,
+    then reappears with byte-identical column schemas. Column shapes match
+    §A.4.2 exactly, including the Postgres-only `inet`/`jsonb` types.
+    """
+    alembic_url, inspect_dsn = throwaway_db
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert _table_exists(inspect_dsn, "audit_log")
+    audit_head = _columns(inspect_dsn, "audit_log")
+    assert audit_head["id"] == ("uuid", "NO", None)
+    assert audit_head["created_at"][:2] == ("timestamp with time zone", "NO")
+    assert audit_head["action"] == ("character varying", "NO", None)
+    assert audit_head["outcome"] == ("character varying", "NO", None)
+    assert audit_head["actor_id"] == ("uuid", "YES", None)
+    assert audit_head["ip"][:2] == ("inet", "YES")
+    assert audit_head["details"][:2] == ("jsonb", "NO")
+
+    _alembic(alembic_url, "downgrade", _PRE_AUDIT_REVISION)
+    assert not _table_exists(inspect_dsn, "audit_log")
+    # The migration this one chains onto is untouched by its downgrade.
+    assert _table_exists(inspect_dsn, "sermon_play_daily")
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert _columns(inspect_dsn, "audit_log") == audit_head
+
+
+def test_audit_check_constraint_rejects_unknown_action(throwaway_db):
+    """The migration's own `CHECK`, not the ORM's `Enum` type — a raw insert
+    against the alembic-created table, bypassing SQLAlchemy entirely."""
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        with pytest.raises(Exception):
+            conn.execute(
+                "INSERT INTO audit_log (id, action, outcome) VALUES (%s, %s, %s)",
+                (str(uuid.uuid4()), "bogus.action", "success"),
+            )
+
+
+def test_audit_check_constraint_rejects_unknown_outcome(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        with pytest.raises(Exception):
+            conn.execute(
+                "INSERT INTO audit_log (id, action, outcome) VALUES (%s, %s, %s)",
+                (str(uuid.uuid4()), "auth.login", "maybe"),
+            )
+
+
+def test_audit_jsonb_and_inet_roundtrip_via_migration(throwaway_db):
+    """`details` (jsonb) and `ip` (inet) round-trip through the migration's
+    own column types, inserted and read back via raw SQL — independent of
+    the ORM's `_InetAsString`/`with_variant` wrapping, which is what
+    `tests/test_audit_log.py` already covers at the ORM layer."""
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    row_id = str(uuid.uuid4())
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        conn.execute(
+            "INSERT INTO audit_log (id, action, outcome, ip, details) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (row_id, "settings.updated", "success", "203.0.113.42",
+             '{"changed": ["contact_email"], "before": {"x": 1}, "after": {"x": 2}}'),
+        )
+        ip, details = conn.execute(
+            "SELECT ip, details FROM audit_log WHERE id = %s", (row_id,)
+        ).fetchone()
+    assert str(ip) == "203.0.113.42"
+    assert details == {
+        "changed": ["contact_email"], "before": {"x": 1}, "after": {"x": 2},
+    }
+
+
+def test_audit_log_actor_id_survives_user_deletion_no_fk(throwaway_db):
+    """§A.4.2's deliberate design: `actor_id` carries **no FK**, unlike
+    `ApprovalLog`/`AnnouncementApprovalLog` (RESTRICT) or
+    `CommentModerationLog` (SET NULL) — a hard account erasure must not be
+    blocked by, or silently null out, its own audit trail. Proven here by
+    deleting the referenced user and showing the audit row is completely
+    untouched (not nulled, not cascaded, not rejected).
+    """
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        user_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash) VALUES (%s, %s, 'x')",
+            (user_id, "audit-no-fk@example.com"),
+        )
+        row_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO audit_log (id, action, outcome, actor_id, actor_email) "
+            "VALUES (%s, 'user.role_changed', 'success', %s, %s)",
+            (row_id, user_id, "audit-no-fk@example.com"),
+        )
+
+        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))  # must not raise
+
+        actor_id, actor_email = conn.execute(
+            "SELECT actor_id, actor_email FROM audit_log WHERE id = %s", (row_id,)
+        ).fetchone()
+    assert str(actor_id) == user_id
+    assert actor_email == "audit-no-fk@example.com"
+
+
+def test_audit_migration_introduces_no_new_alembic_drift(throwaway_db):
+    """Same scoped claim `test_rollup_migration_introduces_no_new_alembic_
+    drift` makes for S3: `alembic check`'s pre-existing drift (subscriptions,
+    sermons, announcements, playback_sessions — present since before this
+    plan existed) is a separate, flagged, out-of-scope finding, not
+    something this migration fixes. What this test actually proves:
+    upgrading to head introduces **no new** drift involving `audit_log`.
+    """
+    alembic_url, _inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+
+    env = {
+        **os.environ,
+        "DATABASE_URL": alembic_url,
+        "SECRET_KEY": os.environ.get(
+            "SECRET_KEY", "test-suite-signing-key-2b9f3a7c1e4d8065af12cd93"
+        ),
+        "REDIS_URL": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        "ENVIRONMENT": "development",
+    }
+    proc = subprocess.run(
+        [sys.executable, "-m", "alembic", "check"],
+        cwd=REPO_ROOT, env=env, capture_output=True, text=True,
+    )
+    combined = proc.stdout + proc.stderr
+    assert "audit_log" not in combined, combined
+
+
+def test_combined_chain_upgrade_downgrade_upgrade_rollups_and_audit(throwaway_db):
+    """The running "round-trips cleanly" chain test (DoD bullet: `alembic
+    upgrade head` -> `downgrade` past all additive migrations -> `upgrade
+    head`). Covers the two migrations that exist as of this step (rollups,
+    audit); S11 extends this same test to add `church_settings` and
+    complete the "all three" chain the plan's DoD describes.
+    """
+    alembic_url, inspect_dsn = throwaway_db
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert _table_exists(inspect_dsn, "sermon_play_daily")
+    assert _table_exists(inspect_dsn, "listener_day")
+    assert _table_exists(inspect_dsn, "audit_log")
+
+    _alembic(alembic_url, "downgrade", _PRE_AUDIT_REVISION)
+    assert not _table_exists(inspect_dsn, "audit_log")
+    assert _table_exists(inspect_dsn, "sermon_play_daily")  # unaffected
+
+    _alembic(alembic_url, "downgrade", _PRE_ROLLUPS_REVISION)
+    assert not _table_exists(inspect_dsn, "sermon_play_daily")
+    assert not _table_exists(inspect_dsn, "listener_day")
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert _table_exists(inspect_dsn, "sermon_play_daily")
+    assert _table_exists(inspect_dsn, "listener_day")
+    assert _table_exists(inspect_dsn, "audit_log")
