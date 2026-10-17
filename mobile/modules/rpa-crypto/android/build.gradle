@@ -1,7 +1,10 @@
-plugins {
-  id 'com.android.library'
-  id 'expo-module-gradle-plugin'
-}
+apply plugin: 'com.android.library'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
 
 group = 'expo.modules.rpacrypto'
 version = '0.1.0'
