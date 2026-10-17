@@ -212,8 +212,12 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     user = await get_user_by_email(db, email)
     # verify_password runs a dummy verify when user is None, so an unknown
     # email costs the same time as a wrong password (no enumeration oracle).
+    # It must run unconditionally: `user is None or not verify_password(...)`
+    # short-circuits past the dummy verify, and unknown emails then answered
+    # ~10x faster than known ones (measured while building S8).
     stored = user.password_hash if user is not None else None
-    if user is None or not security.verify_password(password, stored):
+    password_ok = security.verify_password(password, stored)
+    if user is None or not password_ok:
         raise AuthError("Invalid email or password")
     if not user.is_active:
         raise AuthError("Invalid email or password")
