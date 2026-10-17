@@ -44,15 +44,24 @@ export interface UploadRejection {
 interface UploadContextValue {
   uploads: LocalUpload[];
   rejections: UploadRejection[];
-  /** Job ids a Retry has permanently superseded. Held for the provider's
-   *  lifetime and handed to `mergeUploadRows` so the dead `awaiting_upload`
-   *  twin can't resurrect after a reconcile. */
+  /** Job ids a Retry (or a fresh upload superseding the existing media — see
+   *  `enqueue`) has permanently superseded. Held for the provider's lifetime
+   *  and handed to `mergeUploadRows` so a dead row can't resurrect after a
+   *  reconcile. */
   supersededJobIds: ReadonlySet<string>;
   /** True while any upload is preparing / uploading / confirming. Drives the
    *  `beforeunload` guard and the caller's own nav guard. */
   hasActiveUploads: boolean;
-  /** Queue one or more freshly-picked files. Invalid ones become `rejections`. */
-  enqueue: (files: File[]) => void;
+  /** Queue one or more freshly-picked files. Invalid ones become `rejections`.
+   *
+   *  `supersedes` — job ids of whatever media the sermon already has. A
+   *  sermon has exactly one media slot (plan W9 fix, Isaac): a fresh pick or
+   *  drop always replaces the existing video/audio, never sits beside it,
+   *  even across types (video replacing audio or vice versa). Marked
+   *  superseded only once at least one file in this batch actually clears
+   *  pre-flight validation — an all-rejected pick must not blank out media
+   *  that's still good. */
+  enqueue: (files: File[], supersedes?: readonly string[]) => void;
   /** Retry a failed LOCAL row — the File is still in memory, one click. */
   retry: (clientId: string) => void;
   /** Retry a failed/stalled SERVER row — the File is gone, caller re-picks it. */
@@ -287,7 +296,7 @@ export function UploadProvider({
   );
 
   const enqueue = React.useCallback(
-    (files: File[]) => {
+    (files: File[], supersedes?: readonly string[]) => {
       const newRejections: UploadRejection[] = [];
       const toStart: string[] = [];
       let next = { ...stateRef.current };
@@ -329,9 +338,15 @@ export function UploadProvider({
       if (newRejections.length) {
         setRejections((r) => [...r, ...newRejections]);
       }
+      // One sermon, one media slot: a batch that actually added something
+      // retires whatever was already there, in the same render as the new
+      // row appears — never a tick where both are visible.
+      if (toStart.length > 0 && supersedes?.length) {
+        for (const jobId of supersedes) markSuperseded(jobId);
+      }
       for (const id of toStart) void runUpload(id);
     },
-    [commit, runUpload],
+    [commit, runUpload, markSuperseded],
   );
 
   const retry = React.useCallback(

@@ -27,6 +27,20 @@ import {
    in-flight uploads (`UploadProvider`) with the polled `UploadJobPublic[]`,
    deduped by job id (plan §A.5).
 
+   One sermon, one media slot (Isaac, item 6 fix): a plain pick/drop (not a
+   Retry) always supersedes every job already on the sermon — `handleFiles`
+   passes `serverJobs`'s ids to `upload.enqueue` as `supersedes` — so the new
+   upload's row is the only one visible, even when it's a different media
+   type than what was there before. Before this fix the old "ready" row and
+   the new "uploading" row rendered side by side indefinitely (the backend
+   keeps every `UploadJob` a sermon has ever had, and `GET .../uploads`
+   returns the full history) — two "media" sections that read as if the
+   sermon had both a video and an audio file. The supersede is session-only
+   (same limitation Retry already has, per `lib/upload/merge.ts`): a reload
+   before the new job lands in the poll will un-hide the old row again. A
+   durable fix needs a backend cancel/delete route for the superseded job —
+   tracked, not attempted here (frontend scope only).
+
    Row states:
      Uploading  — filename + mono "64% · 1.4 / 2.2 GB" + 6px clay bar +
                   "Uploading — N min remaining"       (client XHR only)
@@ -118,7 +132,14 @@ export function MediaJobsCard({
     if (retryJob) {
       upload.retryServer(retryJob, list[0]);
     } else {
-      upload.enqueue(list);
+      // Not a Retry — a plain pick/drop. One sermon, one media slot: this
+      // always replaces whatever's already attached, so every job already on
+      // the sermon is superseded the moment a new file is accepted (item 6
+      // fix — a second upload used to render alongside the first forever).
+      upload.enqueue(
+        list,
+        serverJobs.map((job) => job.id),
+      );
     }
   };
 
@@ -158,9 +179,6 @@ export function MediaJobsCard({
     <Card className="flex flex-col gap-14 p-22">
       <CardHeader>
         <CardTitle>Media</CardTitle>
-        <span className="text-mono-meta text-ink-faint">
-          pre-signed · direct to S3
-        </span>
       </CardHeader>
 
       <input

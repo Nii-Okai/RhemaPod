@@ -16,6 +16,7 @@ import { Tag } from "@/components/ui/tag";
 import { useSession } from "@/lib/auth/session-context";
 import { isFuture } from "@/lib/datetime";
 import { formatDuration } from "@/lib/format";
+import { useCategories } from "@/lib/query/hooks/use-categories";
 import { useSermonCounts, sermonCountLine } from "@/lib/query/hooks/use-sermon-counts";
 import { useSeriesList } from "@/lib/query/hooks/use-series";
 import { useSpeakers } from "@/lib/query/hooks/use-speakers";
@@ -100,6 +101,7 @@ export function SermonsScreen() {
   const counts = useSermonCounts();
   const speakers = useSpeakers();
   const series = useSeriesList();
+  const categories = useCategories();
 
   // Fixed at mount, like ReviewScreen's `now` — the "Scheduled · {date}" chip
   // only needs to be accurate for the life of the session, not re-derived on
@@ -146,6 +148,8 @@ export function SermonsScreen() {
     pushSearch(buildSermonsSearch(searchParams, { speaker }));
   const setSeries = (value: string | undefined) =>
     pushSearch(buildSermonsSearch(searchParams, { series: value }));
+  const setCategory = (value: string | undefined) =>
+    pushSearch(buildSermonsSearch(searchParams, { category: value }));
   const setTier = (tier: TierFilter | undefined) =>
     pushSearch(buildSermonsSearch(searchParams, { tier }));
   const setPage = (next: number) =>
@@ -249,12 +253,12 @@ export function SermonsScreen() {
         ),
       },
       {
-        key: "speaker",
-        header: "Speaker",
+        key: "category",
+        header: "Category",
         gridWidth: "1.1fr",
         cell: (row) => (
           <span className="truncate text-[13.5px] text-ink-muted">
-            {row.speaker_name ?? "—"}
+            {row.category_name ?? "—"}
           </span>
         ),
       },
@@ -323,12 +327,15 @@ export function SermonsScreen() {
         status={state.status}
         speakerId={state.speakerId}
         seriesId={state.seriesId}
+        categoryId={state.categoryId}
         tier={state.tier}
         speakers={speakers.data}
         series={series.data}
+        categories={categories.data}
         onStatusChange={setStatus}
         onSpeakerChange={setSpeaker}
         onSeriesChange={setSeries}
+        onCategoryChange={setCategory}
         onTierChange={setTier}
       />
 

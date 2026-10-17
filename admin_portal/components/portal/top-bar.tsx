@@ -1,18 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-
-import { Button } from "@/components/ui/button";
 
 /* =============================================================================
    TopBar — the 60px sticky header (W5).
 
    Design README "App shell" → Top bar. 60px, surface fill, bottom rule, sticky,
    z-index 5, 28px side padding. Left: the search input (max-w 340). Right: the
-   environment label in Plex Mono, then the primary "New sermon" button. Below
-   1100px a hamburger appears on the far left to open the nav drawer.
+   environment label in Plex Mono. Below 1100px a hamburger appears on the far
+   left to open the nav drawer.
+
+   No "New sermon" action here (removed per Isaac — a global top-right button
+   duplicated the Sermons list's own empty-state create affordance and read as
+   two create buttons for one action). The Sermons screen's empty state is the
+   only create entry point now; see its comment at `sermons-screen.tsx`.
 
    Search is deliberately shallow (non-goal: a global search is Phase 2). On
    submit it just pushes `?q=` onto the sermons route.
@@ -68,14 +70,6 @@ export function TopBar({ onMenuClick, navId, navOpen = false }: TopBarProps) {
       <span className="hidden font-mono text-[11.5px] text-ink-faint sm:inline">
         {ENV_LABEL}
       </span>
-
-      <Button
-        asChild
-        size="md"
-        className="h-[34px] shrink-0 rounded-9 px-14 text-[13px]"
-      >
-        <Link href="/sermons/new">New sermon</Link>
-      </Button>
     </header>
   );
 }

@@ -21,11 +21,14 @@ describe("parseSermonsParams", () => {
 
   it("reads a full valid query string", () => {
     expect(
-      parse("status=in-review&speaker=spk-1&series=ser-2&tier=paid&q=grace&page=3"),
+      parse(
+        "status=in-review&speaker=spk-1&series=ser-2&category=cat-3&tier=paid&q=grace&page=3",
+      ),
     ).toEqual({
       status: "in-review",
       speakerId: "spk-1",
       seriesId: "ser-2",
+      categoryId: "cat-3",
       tier: "paid",
       q: "grace",
       page: 3,
@@ -46,7 +49,7 @@ describe("parseSermonsParams", () => {
 
   it("drops a junk tier and empty/whitespace text params", () => {
     expect(parse("tier=premium").tier).toBeUndefined();
-    expect(parse("speaker=&series=%20&q=%20%20")).toEqual({
+    expect(parse("speaker=&series=%20&category=%20&q=%20%20")).toEqual({
       status: "all",
       page: 1,
     });
@@ -85,6 +88,16 @@ describe("buildSermonsSearch", () => {
     expect(
       build("status=published&speaker=spk-1&tier=paid", { page: 2 }),
     ).toBe("page=2&speaker=spk-1&status=published&tier=paid");
+  });
+
+  it("writes and clears the category filter the same way as speaker/series", () => {
+    expect(build("", { category: "cat-1" })).toBe("category=cat-1");
+    expect(build("status=drafts&page=4", { category: "cat-1" })).toBe(
+      "category=cat-1&status=drafts",
+    );
+    expect(
+      build("category=cat-1&status=drafts", { category: undefined }),
+    ).toBe("status=drafts");
   });
 
   it("drops page=1 rather than writing it", () => {

@@ -17,6 +17,7 @@ import { server } from "../msw/server";
 import { SessionProvider } from "@/lib/auth/session-context";
 import { SermonsScreen } from "@/components/sermons/sermons-screen";
 import { SermonRowMenu } from "@/components/sermons/sermon-row-menu";
+import type { Category } from "@/lib/query/hooks/use-categories";
 import type { SermonListItem } from "@/lib/query/hooks/use-sermons";
 
 /* W7 — the Sermons list, rendered (happy-dom). Every backend call is MSW, never
@@ -119,15 +120,23 @@ interface ListHandlerOptions {
       `rows.length`. Set it higher than `rows.length` to model a page deep in a
       large list without listing every row. */
   total?: number;
+  /** `GET /api/bff/categories` response — defaults to empty. */
+  categories?: Category[];
   onList?: (query: URLSearchParams) => void;
 }
 
 /** One `/api/bff/sermons` handler that serves BOTH the list query and the
-    `limit=1` count probes, plus empty speakers/series. */
-function backend({ rows = [draftRow], total, onList }: ListHandlerOptions = {}) {
+    `limit=1` count probes, plus empty speakers/series/categories. */
+function backend({
+  rows = [draftRow],
+  total,
+  categories = [],
+  onList,
+}: ListHandlerOptions = {}) {
   server.use(
     http.get("*/api/bff/speakers", () => HttpResponse.json([])),
     http.get("*/api/bff/series", () => HttpResponse.json([])),
+    http.get("*/api/bff/categories", () => HttpResponse.json(categories)),
     http.get("*/api/bff/sermons", ({ request }) => {
       const query = new URL(request.url).searchParams;
       if (query.get("limit") === "1") {
@@ -216,6 +225,74 @@ describe("SermonsScreen — filter bar writes the URL", () => {
     const href = nav.replace.mock.calls[0][0];
     expect(href).toContain("status=published");
     expect(href).not.toContain("page=");
+  });
+
+  it("changing the category writes ?category= and resets the page", async () => {
+    nav.search = new URLSearchParams("status=drafts&page=3");
+    backend({
+      total: 100,
+      categories: [
+        { id: "cat-1", name: "Expository", slug: "expository", sermon_count: 4 },
+      ],
+    });
+
+    renderScreen();
+    await screen.findByText("The Prodigal Son");
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Filter by category" }),
+      "Expository",
+    );
+
+    expect(nav.replace).toHaveBeenCalledTimes(1);
+    const href = nav.replace.mock.calls[0][0];
+    expect(href).toContain("category=cat-1");
+    expect(href).not.toContain("page=");
+  });
+});
+
+describe("SermonsScreen — table shows Category, not Speaker", () => {
+  it("renders the sermon's category name in the table instead of its speaker", async () => {
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          id: "s-cat",
+          title: "Categorized sermon",
+          speaker_name: "Ada Grace",
+          category_id: "cat-1",
+          category_name: "Expository",
+        },
+      ],
+    });
+    renderScreen();
+
+    await screen.findByText("Categorized sermon");
+    expect(screen.queryByRole("columnheader", { name: "Speaker" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
+    expect(screen.getByText("Expository")).toBeInTheDocument();
+    expect(screen.queryByText("Ada Grace")).not.toBeInTheDocument();
+  });
+
+  it("shows an em dash when the sermon has no category", async () => {
+    // Series is set (and duration/tier/status all render non-dash content) so
+    // the one "—" in the row is unambiguously the Category cell.
+    backend({
+      rows: [
+        {
+          ...draftRow,
+          category_id: null,
+          category_name: null,
+          series_id: "ser-1",
+          series_title: "Grace Series",
+        },
+      ],
+    });
+    renderScreen();
+
+    const title = await screen.findByText(draftRow.title);
+    const row = title.closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByText("—")).toBeInTheDocument();
   });
 });
 
@@ -406,6 +483,7 @@ describe("SermonsScreen — optimistic bulk submit + rollback", () => {
     server.use(
       http.get("*/api/bff/speakers", () => HttpResponse.json([])),
       http.get("*/api/bff/series", () => HttpResponse.json([])),
+      http.get("*/api/bff/categories", () => HttpResponse.json([])),
       http.get("*/api/bff/sermons", ({ request }) => {
         const query = new URL(request.url).searchParams;
         if (query.get("limit") === "1") return HttpResponse.json(page([], 0));

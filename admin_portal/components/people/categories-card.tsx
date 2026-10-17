@@ -11,10 +11,11 @@ import { CategoryForm } from "./category-form";
 /* =============================================================================
    CategoriesCard — the right column's upper card (design Screen 7).
 
-   A wrapping set of count-bearing pills plus a dashed "+ new"; a mono
-   "flat · one level" note in the header (categories are deliberately
-   non-hierarchical — there is no nesting affordance anywhere). Clicking a pill
-   opens the same name + slug form the "+ new" pill reveals, in edit mode.
+   A wrapping set of count-bearing pills plus a dashed "+ new" (categories are
+   deliberately non-hierarchical — there is no nesting affordance anywhere, the
+   "flat · one level" header note that used to say so was removed per Isaac).
+   Clicking a pill opens the same name + slug form the "+ new" pill reveals, in
+   edit mode.
    Failures that are not a 409 duplicate-slug surface as a card-top `<Alert>`.
    ========================================================================== */
 
@@ -66,9 +67,6 @@ export function CategoriesCard() {
         <h2 id="categories-heading" className="text-section-title text-ink">
           Categories
         </h2>
-        <span className="font-mono text-[11px] tracking-[0.06em] text-ink-faint">
-          flat · one level
-        </span>
       </div>
 
       {alert ? (
