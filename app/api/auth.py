@@ -213,6 +213,7 @@ _OAUTH_TOKEN_ERROR_RESPONSES: dict[str, tuple[int, str]] = {
 
 def _oauth_token_error_response(exc: OAuthTokenError) -> HTTPException:
     status_code, detail = _OAUTH_TOKEN_ERROR_RESPONSES[exc.reason]
+    log.info("oauth_token_rejected", reason=exc.reason, detail=str(exc))
     return HTTPException(status_code=status_code, detail=detail)
 
 
@@ -238,6 +239,7 @@ async def _claim_oauth_token_once(raw_token: str) -> None:
     digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     claimed = await token_store.claim_once(f"oauth:used:{digest}", ttl)
     if not claimed:
+        log.info("oauth_token_replay_digest", digest_prefix=digest[:12])
         raise OAuthTokenError("replayed", "Sign-in token was already used")
 
 

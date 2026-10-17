@@ -43,6 +43,20 @@ export async function performGoogleSignIn(): Promise<string | null> {
   // library throws in non-production builds if it's omitted.
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+  // Our backend treats every Google ID token as single-use (replay protection, by
+  // design — see ADR 0015). `signOut()` alone was not enough on Android — confirmed
+  // on-device (2026-10-16) that Play Services still silently handed back the exact
+  // same cached ID token across repeated `signIn()` calls even after `signOut()`.
+  // `revokeAccess()` actually drops the app's grant for the account, which forces a
+  // genuinely fresh token on the next `signIn()`. Best-effort: throws when there's
+  // nothing to revoke (first-ever sign-in on this device), which must never block
+  // the real attempt that follows.
+  try {
+    await GoogleSignin.revokeAccess();
+  } catch {
+    // No prior grant to revoke — fine, signIn() below proceeds either way.
+  }
+
   const response = await GoogleSignin.signIn();
   if (response.type === 'cancelled') return null;
 
