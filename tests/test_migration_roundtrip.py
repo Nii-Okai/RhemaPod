@@ -105,6 +105,36 @@ def _columns(dsn: str, table: str) -> dict[str, tuple]:
     return {name: (dtype, nullable, default) for name, dtype, nullable, default in rows}
 
 
+def _index_names(dsn: str, table: str) -> set[str]:
+    with psycopg.connect(dsn, connect_timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT indexname FROM pg_indexes WHERE tablename = %s", (table,)
+        ).fetchall()
+    return {name for (name,) in rows}
+
+
+def _unique_index_names(dsn: str, table: str) -> set[str]:
+    with psycopg.connect(dsn, connect_timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT c.relname FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "JOIN pg_class t ON t.oid = i.indrelid "
+            "WHERE t.relname = %s AND i.indisunique",
+            (table,),
+        ).fetchall()
+    return {name for (name,) in rows}
+
+
+def _constraint_names(dsn: str, table: str, *, type_: str) -> set[str]:
+    with psycopg.connect(dsn, connect_timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT constraint_name FROM information_schema.table_constraints "
+            "WHERE table_name = %s AND constraint_type = %s",
+            (table, type_),
+        ).fetchall()
+    return {name for (name,) in rows}
+
+
 @pytest.fixture
 def throwaway_db():
     parts = conninfo_to_dict(_ADMIN_DSN)
@@ -174,3 +204,91 @@ def test_a6b7c8d9e0f1_backfills_pre_migration_rows_with_created_at(throwaway_db)
 
     assert activated_at is not None, "pre-migration row left NULL — resendable"
     assert activated_at == created_at, "backfill must use the row's own created_at"
+
+
+def test_a517c3beba93_collapses_subscriptions_unique_indexes(throwaway_db):
+    """Pre-existing drift fix (found during ADMIN-SETTINGS S3's `alembic check`,
+    unrelated to that plan): `a7b8c9d0e1f2` (the original subscriptions
+    migration) created `user_id`/`provider_subscription_id` uniqueness as a
+    separate non-unique index *plus* a separate unnamed unique constraint, but
+    `Subscription.user_id`/`.provider_subscription_id` have declared
+    `unique=True, index=True` — a single unique index — since the class was
+    first written. `a517c3beba93` collapses each pair into the one unique
+    index the model has always asked for, without renaming anything or
+    touching data.
+
+    Round-trips: pre-fix shape -> post-fix shape -> back to pre-fix shape on
+    downgrade -> post-fix shape again on re-upgrade, and uniqueness is
+    actually enforced (not just structurally present) at every stage.
+    """
+    alembic_url, inspect_dsn = throwaway_db
+
+    # Schema as it stood before this fix: separate unique constraint + plain index.
+    _alembic(alembic_url, "upgrade", "dbdcee764ca3")
+    assert _constraint_names(inspect_dsn, "subscriptions", type_="UNIQUE") == {
+        "subscriptions_user_id_key",
+        "subscriptions_provider_subscription_id_key",
+    }
+    pre_fix_indexes = _index_names(inspect_dsn, "subscriptions")
+    assert {
+        "ix_subscriptions_user_id", "ix_subscriptions_provider_subscription_id",
+    } <= pre_fix_indexes
+    assert _unique_index_names(inspect_dsn, "subscriptions") == {
+        "subscriptions_pkey",
+        "subscriptions_user_id_key",
+        "subscriptions_provider_subscription_id_key",
+    }
+
+    # Applying the fix: the unique constraints (and the index that backed
+    # each one) are gone, and the two surviving plain indexes (same names
+    # as before) are now unique themselves.
+    _alembic(alembic_url, "upgrade", "head")
+    assert _constraint_names(inspect_dsn, "subscriptions", type_="UNIQUE") == set()
+    assert _index_names(inspect_dsn, "subscriptions") == pre_fix_indexes - {
+        "subscriptions_user_id_key", "subscriptions_provider_subscription_id_key",
+    }
+    assert _unique_index_names(inspect_dsn, "subscriptions") == {
+        "subscriptions_pkey",
+        "ix_subscriptions_user_id",
+        "ix_subscriptions_provider_subscription_id",
+    }
+
+    # Uniqueness is still actually enforced post-fix, not just reshaped away.
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        user_id = conn.execute(
+            "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
+            ("drift-fix@example.com", "argon2-placeholder"),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO subscriptions (id, user_id, tier, status) "
+            "VALUES (gen_random_uuid(), %s, 'FREE', 'ACTIVE')",
+            (user_id,),
+        )
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            conn.execute(
+                "INSERT INTO subscriptions (id, user_id, tier, status) "
+                "VALUES (gen_random_uuid(), %s, 'FREE', 'ACTIVE')",
+                (user_id,),
+            )
+
+    # Downgrade restores the original two-object shape exactly.
+    _alembic(alembic_url, "downgrade", "dbdcee764ca3")
+    assert _constraint_names(inspect_dsn, "subscriptions", type_="UNIQUE") == {
+        "subscriptions_user_id_key",
+        "subscriptions_provider_subscription_id_key",
+    }
+    assert _index_names(inspect_dsn, "subscriptions") == pre_fix_indexes
+    assert _unique_index_names(inspect_dsn, "subscriptions") == {
+        "subscriptions_pkey",
+        "subscriptions_user_id_key",
+        "subscriptions_provider_subscription_id_key",
+    }
+
+    # Re-upgrading lands on the fixed shape again.
+    _alembic(alembic_url, "upgrade", "head")
+    assert _constraint_names(inspect_dsn, "subscriptions", type_="UNIQUE") == set()
+    assert _unique_index_names(inspect_dsn, "subscriptions") == {
+        "subscriptions_pkey",
+        "ix_subscriptions_user_id",
+        "ix_subscriptions_provider_subscription_id",
+    }

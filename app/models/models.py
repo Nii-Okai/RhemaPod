@@ -1,10 +1,11 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Index,
@@ -320,6 +321,26 @@ class Sermon(Base):
     )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        # Weighted full-text GIN index backing `search_service._search_filter`
+        # (title weight 'A', description weight 'B' — must stay byte-identical
+        # to that function's `_weighted_vector` call, or Postgres won't use
+        # this index for the query's `@@` expression). Restores a declaration
+        # silently dropped from this class after the index itself was created
+        # (`d3e4f5a6b7c8_add_search_and_analytics.py`); the index was never
+        # removed from the database, only from the ORM's view of it.
+        # Postgres-only: SQLite (the default test suite) has neither GIN nor
+        # `to_tsvector`, and `search_service` falls back to `LIKE` there.
+        Index(
+            "ix_sermons_fts",
+            text(
+                "(setweight(to_tsvector('english', coalesce(title, '')), 'A') || "
+                "setweight(to_tsvector('english', coalesce(description, '')), 'B'))"
+            ),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
     )
 
     series: Mapped["Series | None"] = relationship("Series", back_populates="sermons")
@@ -656,6 +677,15 @@ class Announcement(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    __table_args__ = (
+        # The public list (`announcement_service.list_visible`) filters on
+        # all three of these every request — restores a declaration that was
+        # silently dropped from this class after the index itself was created
+        # (`c2d3e4f5a6b7_add_announcements.py`); the index was never removed
+        # from the database, only from the ORM's view of it.
+        Index("ix_announcements_visible", "status", "publish_at", "expires_at"),
+    )
+
 
 class AnnouncementApprovalLog(Base):
     """Append-only audit trail of every announcement status transition.
@@ -736,6 +766,68 @@ class PlaybackSession(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "sermon_id", name="uq_playback_user_sermon"),
+        # `continue_watching` and `history` (analytics_service.py) both filter
+        # on `user_id` and order by `last_played_at` — restores a declaration
+        # silently dropped from this class after the index itself was created
+        # (`d3e4f5a6b7c8_add_search_and_analytics.py`); the index was never
+        # removed from the database, only from the ORM's view of it.
+        Index("ix_playback_recent", "user_id", "last_played_at"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Usage rollups (plan-admin-settings §A.4.1) — forward-only daily aggregates
+# written by `record_progress` (ADMIN-SETTINGS S4), read by the admin reports
+# API. Not an event log and not derived from `PlaybackSession` history: both
+# tables have a genuine composite primary key (the first in this codebase —
+# every other table so far uses a surrogate UUID `id` plus a UniqueConstraint
+# for its natural key), because the whole point is an upsert keyed on that
+# natural key, not a surrogate row per ping. See §A.2 for why no backfill is
+# possible: `PlaybackSession` keeps one cumulative row per (user, sermon),
+# with no history to rebuild a per-day series from.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class SermonPlayDaily(Base):
+    """One row per (day, sermon), incremented in the same transaction as the
+    `PlaybackSession` upsert. `sermon_id` is `ON DELETE CASCADE`, matching
+    `PlaybackSession.sermon_id` (L718-723 above): a hard-deleted sermon takes
+    its past counts with it.
+    """
+
+    __tablename__ = "sermon_play_daily"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    sermon_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sermons.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    plays: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    watched_seconds: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+
+
+class ListenerDay(Base):
+    """One row per (day, user) that user was active on — lets reports count
+    distinct listeners per period from `COUNT(DISTINCT user_id)` over this
+    table instead of summing per-bucket counts (a listener active on two days
+    of one week must count once for that week, not twice). `user_id` is
+    `ON DELETE CASCADE`, matching `PlaybackSession.user_id` (L712-717 above).
+    Indexed on `user_id` alone, beyond the composite PK, so that cascade
+    doesn't have to scan the whole table to find a deleted user's rows.
+    """
+
+    __tablename__ = "listener_day"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
     )
 
 
