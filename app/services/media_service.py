@@ -276,6 +276,12 @@ async def process_upload(db: AsyncSession, job_id: uuid.UUID) -> UploadJob:
     """Transcode a confirmed upload into renditions and create MediaRef rows.
 
     Idempotent per job: re-running replaces that job's previous MediaRefs.
+
+    Single-media-slot guarantee: a sermon has exactly one media attachment
+    (video OR audio) at a time. A successful transcode here replaces EVERY
+    existing MediaRef for the sermon, not just same-type ones, so uploading
+    audio over an existing video (or vice versa) fully replaces it instead of
+    leaving both as separate playable variants.
     """
     job = await db.get(UploadJob, job_id)
     if job is None:
@@ -293,11 +299,15 @@ async def process_upload(db: AsyncSession, job_id: uuid.UUID) -> UploadJob:
         log.warning("transcode_failed", job_id=str(job.id), error=str(exc))
         return job
 
-    # Replace any renditions from a previous run of this job.
+    # Replace every existing MediaRef for this sermon, regardless of type —
+    # not just same-type ones. A sermon has exactly one media attachment at a
+    # time, so a new VIDEO upload must displace an existing AUDIO MediaRef
+    # (and vice versa), the same way a same-type re-upload already displaces
+    # its own previous renditions. Deliberately after _transcode succeeds
+    # (see the try/except above): a failed new upload must never destroy the
+    # sermon's existing working media.
     existing = (await db.execute(
-        select(MediaRef).where(
-            MediaRef.sermon_id == job.sermon_id, MediaRef.type == job.media_type
-        )
+        select(MediaRef).where(MediaRef.sermon_id == job.sermon_id)
     )).scalars().all()
     for ref in existing:
         await db.delete(ref)
