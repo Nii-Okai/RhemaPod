@@ -10,8 +10,14 @@ jest.mock('../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), delete: jest.fn() },
 }));
 jest.mock('@expo/vector-icons');
+
+const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
+  useRouter: () => ({ back: mockBack }),
+}));
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 const mockedGet = api.get as jest.Mock;
@@ -30,6 +36,7 @@ function renderScreen() {
 beforeEach(() => {
   mockedGet.mockReset();
   mockedDelete.mockReset();
+  mockBack.mockClear();
   blocks = [
     { id: 'b1', display_name: 'Pat Q.', created_at: '2026-10-01T00:00:00Z' },
     { id: 'b2', display_name: 'Lee R.', created_at: '2026-10-01T00:00:00Z' },
@@ -38,6 +45,13 @@ beforeEach(() => {
 });
 
 describe('BlockedUsersScreen', () => {
+  it('renders the established bare-chevron + centered-title header, and the chevron goes back', async () => {
+    const { getByText, getByLabelText } = renderScreen();
+    expect(getByText('Blocked users')).toBeTruthy();
+    fireEvent.press(getByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
   it('lists the blocked authors with an Unblock control each', async () => {
     const { findByText, getByLabelText } = renderScreen();
     expect(await findByText('Pat Q.')).toBeTruthy();

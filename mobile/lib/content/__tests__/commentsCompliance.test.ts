@@ -1,8 +1,9 @@
 import { COMMENTS_TERMS_TEXT, CONTACT_EMAIL, isComplianceContentPending } from '../commentsCompliance';
 
 describe('commentsCompliance', () => {
-  it('still flags the unsupplied I1 contact email as pending', () => {
-    expect(isComplianceContentPending(CONTACT_EMAIL)).toBe(true);
+  it('no longer flags I1 — the real contact email shipped 2026-10-16', () => {
+    expect(isComplianceContentPending(CONTACT_EMAIL)).toBe(false);
+    expect(CONTACT_EMAIL).toBe('contact@rhemapod.com');
   });
 
   it('no longer flags I2 — the real comment guidelines text shipped 2026-10-08', () => {

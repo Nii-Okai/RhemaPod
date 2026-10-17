@@ -146,7 +146,6 @@ describe('MeScreen — layout', () => {
     await findByText('ada@example.com');
     expect(getByText('Playback')).toBeTruthy();
     expect(getByText('Blocked users')).toBeTruthy();
-    expect(getByText('History')).toBeTruthy();
     expect(getByText('Announcements')).toBeTruthy();
     expect(getByText('Sign out')).toBeTruthy();
     expect(getByTestId('me-layout')).toBeTruthy();
@@ -162,7 +161,7 @@ describe('MeScreen — layout', () => {
     expect(queryByText(/past due/i)).toBeNull();
   });
 
-  it('navigates to Blocked users, /history, and the Announcements tab from their rows', async () => {
+  it('navigates to Blocked users and the Announcements tab from their rows', async () => {
     mockRoutes();
     const { getByText, findByText } = renderMeScreen();
     await findByText('ada@example.com');
@@ -170,11 +169,15 @@ describe('MeScreen — layout', () => {
     fireEvent.press(getByText('Blocked users'));
     expect(mockPush).toHaveBeenCalledWith('/blocked-users');
 
-    fireEvent.press(getByText('History'));
-    expect(mockPush).toHaveBeenCalledWith('/history');
-
     fireEvent.press(getByText('Announcements'));
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/announcements');
+  });
+
+  it('no longer offers a History row (the page was removed, session 2026-10-16)', async () => {
+    mockRoutes();
+    const { findByText, queryByText } = renderMeScreen();
+    await findByText('ada@example.com');
+    expect(queryByText('History')).toBeNull();
   });
 
   it('calls the per-device sign-out when "Sign out" is pressed', async () => {
@@ -349,14 +352,14 @@ describe('MeScreen — profile edit', () => {
 });
 
 describe('MeScreen — help and safety', () => {
-  it('shows the contact address (a flagged placeholder until I1 is supplied) and never opens a mailto: for it', async () => {
+  it('shows the real contact address (I1 shipped 2026-10-16) and opens a mailto: for it', async () => {
     mockRoutes();
     const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
     const { findByLabelText, getByText } = renderMeScreen();
 
     expect(getByText('Help and safety')).toBeTruthy();
     fireEvent.press(await findByLabelText(`Contact us at ${CONTACT_EMAIL}`));
-    expect(openURL).not.toHaveBeenCalled();
+    expect(openURL).toHaveBeenCalledWith(`mailto:${CONTACT_EMAIL}`);
     openURL.mockRestore();
   });
 

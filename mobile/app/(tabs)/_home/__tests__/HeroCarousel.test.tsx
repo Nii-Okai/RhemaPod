@@ -66,11 +66,31 @@ describe('HeroCarousel', () => {
   it('renders a paged carousel with one dot per sermon when given several', () => {
     const onPress = jest.fn();
     const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' }), makeSermon({ id: 's3' })];
-    const { getAllByLabelText, getByLabelText } = renderCarousel(sermons, onPress);
+    const { getAllByLabelText, getByLabelText, getByTestId } = renderCarousel(sermons, onPress);
+
+    fireEvent(getByTestId('hero-carousel'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
 
     // All three cards' Watch CTAs are mounted in the horizontal ScrollView.
     expect(getAllByLabelText('Watch, 31:02')).toHaveLength(3);
     expect(getByLabelText('Featured sermons, 1 of 3')).toBeTruthy();
+  });
+
+  // Regression (fixed 2026-10-16, Isaac's report — "hero grows in height, then snaps
+  // back"): before `onLayout` reports a real pixel width, the carousel renders nothing
+  // at all rather than a page sized off a `width: '100%'` guess.
+  it('renders no pages until onLayout reports a real width', () => {
+    const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' })];
+    const { queryAllByLabelText, getByTestId } = renderCarousel(sermons, jest.fn());
+
+    expect(queryAllByLabelText(/Watch,/)).toHaveLength(0);
+    expect(queryAllByLabelText(/Featured sermons/)).toHaveLength(0);
+
+    fireEvent(getByTestId('hero-carousel'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    expect(queryAllByLabelText(/Watch,/)).toHaveLength(2);
   });
 
   it('fires onPress with the id of the specific sermon pressed', () => {
@@ -79,7 +99,11 @@ describe('HeroCarousel', () => {
       makeSermon({ id: 's1', duration_seconds: 60 }),
       makeSermon({ id: 's2', duration_seconds: 120 }),
     ];
-    const { getByLabelText } = renderCarousel(sermons, onPress);
+    const { getByLabelText, getByTestId } = renderCarousel(sermons, onPress);
+
+    fireEvent(getByTestId('hero-carousel'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
 
     fireEvent.press(getByLabelText('Watch, 2:00'));
     expect(onPress).toHaveBeenCalledWith('s2');

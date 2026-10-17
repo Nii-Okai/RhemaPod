@@ -255,6 +255,33 @@ describe('SearchScreen — no results', () => {
 
     await findByText('No results match your search.');
   });
+
+  it('does not show the no-results copy alongside live suggestions (bug: both rendered at once)', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/search/suggest'
+        ? Promise.resolve(['storms of life'])
+        : Promise.resolve({
+            query: 'storm',
+            total: 0,
+            limit: 20,
+            offset: 0,
+            results: [],
+            series: [],
+            series_total: 0,
+            speakers: [],
+            speakers_total: 0,
+          }),
+    );
+
+    const { getByLabelText, findByText, queryByText } = renderSearch();
+    fireEvent.changeText(getByLabelText('Search'), 'storm');
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    await findByText(/storms of life/);
+    expect(queryByText('No results match your search.')).toBeNull();
+  });
 });
 
 describe('SearchScreen — grouped results (Decision 4)', () => {

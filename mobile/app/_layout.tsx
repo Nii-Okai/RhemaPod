@@ -145,11 +145,12 @@ function RootNavigator() {
           report, same session: "Use previously established style for navigation page")
           left the native default header showing on top of this screen's own custom one. */}
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
-      {/* W4.6 — Profile & Settings' Library rows (design spec 1n, P8: no counts, plain
-          navigating rows). Each screen sets its own title via `Stack.Screen options`. */}
-      <Stack.Screen name="history" />
-      {/* Sermon comments — Me > Blocked users (design spec comments-and-player §3.2). */}
-      <Stack.Screen name="blocked-users" />
+      {/* Sermon comments — Me > Blocked users (design spec comments-and-player §3.2).
+          Bare-chevron + centered-title header, same "native Stack header disabled"
+          pattern `category/[id]`/`speaker/[id]`/`notifications` established (Isaac's
+          report, session 2026-10-16: "use preestablish navigation style" — this had no
+          `options` at all, same gap `speaker/[id]` had session 2026-10-11). */}
+      <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -314,7 +314,17 @@ export default function PlayerScreen() {
     progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0;
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    // Android needs no `behavior` at all here — same convention `(auth)/_components/
+    // auth-screen.tsx` already established: `android:windowSoftInputMode="adjustResize"`
+    // (AndroidManifest.xml) already shrinks the whole window when the keyboard opens, so
+    // the composer (flex:1 below the fixed-aspect-ratio video surface) naturally ends up
+    // in the smaller space without any JS-driven resize. `behavior="height"` (fixed
+    // 2026-10-16, Isaac's report: the keyboard covered the comment input on Android) had
+    // this screen double-handling the resize — the OS's own `adjustResize` shrink *and*
+    // `KeyboardAvoidingView`'s own height adjustment stacked on top of it, measured off
+    // `Keyboard`'s event frame rather than the window the OS had already resized, which
+    // is what actually left the composer covered rather than pushed clear.
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <PlayerHeader onBack={goBack} title={detail.title} />
       {/* Mounted only once detail/progress/stream/preferences have all resolved — see
           `PlayerContent`'s own docstring for why that ordering matters (it seeds
@@ -525,6 +535,8 @@ function PlayerContent({
         isBuffering={status === 'loading'}
         isPlaying={isPlaying}
         isEnded={isEnded}
+        isAudio={variant.type === 'audio'}
+        artworkUrl={detail.thumbnail_url}
         overlay={overlay}
         isFullscreen={isFullscreen}
         onFullscreenChange={setIsFullscreen}

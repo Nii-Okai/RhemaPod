@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Image, Pressable, StyleSheet, View } from 'react-native';
 import { VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 import { colors } from '../../../theme/colors';
@@ -19,6 +19,17 @@ export interface VideoSurfaceProps {
   isBuffering: boolean;
   isPlaying: boolean;
   isEnded: boolean;
+  /** True for an audio-only sermon — renders the sermon's artwork behind the controls
+   * instead of (visually, atop) the `VideoView`, so the surface isn't just a flat dark
+   * rectangle while audio plays. `VideoView` itself still mounts either way: the player
+   * needs it for playback regardless of media type, it just never shows visible frames
+   * for an audio-only source. */
+  isAudio: boolean;
+  /** The sermon's thumbnail — same URL the lock-screen/Control-Center metadata already
+   * uses (`detail.thumbnail_url`, `PlayerContent`'s own `artwork` metadata field).
+   * `null`/`undefined` falls back to the plain dark surface, same as before this prop
+   * existed. */
+  artworkUrl?: string | null;
   overlay: ControlsOverlay;
   isFullscreen: boolean;
   onFullscreenChange: (fullscreen: boolean) => void;
@@ -58,6 +69,8 @@ export function VideoSurface({
   isBuffering,
   isPlaying,
   isEnded,
+  isAudio,
+  artworkUrl,
   overlay,
   isFullscreen,
   onFullscreenChange,
@@ -112,6 +125,21 @@ export function VideoSurface({
         onFullscreenExit={() => onFullscreenChange(false)}
         contentFit="contain"
       />
+      {isAudio && artworkUrl ? (
+        // Audio has no visible video frames — without this the surface is just the flat
+        // dark `colors.surface.app` rectangle the whole time audio plays, with nothing to
+        // show playback is active (Isaac's report). Rendered *over* `VideoView` (which
+        // still mounts regardless — the player needs it to actually play the audio, and
+        // the fullscreen control still targets it) rather than behind it: a native video
+        // surface's own paint behavior for a track-less audio source isn't guaranteed
+        // transparent on every platform, so stacking the artwork on top is the only
+        // layering that reliably shows it either way. `pointerEvents="none"` (on the
+        // wrapping `View` — `Image` itself has no such prop) so it never intercepts the
+        // tap-to-toggle `Pressable` below, which still needs the touch.
+        <View style={styles.artwork} pointerEvents="none">
+          <Image testID="player-artwork" source={{ uri: artworkUrl }} style={styles.artworkImage} resizeMode="cover" accessible={false} />
+        </View>
+      ) : null}
       <Pressable
         style={StyleSheet.absoluteFillObject}
         accessibilityRole="button"
@@ -181,6 +209,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface.app,
   },
   video: {
+    width: '100%',
+    height: '100%',
+  },
+  artwork: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  artworkImage: {
     width: '100%',
     height: '100%',
   },

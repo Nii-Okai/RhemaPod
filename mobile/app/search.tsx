@@ -162,7 +162,17 @@ export default function SearchScreen() {
                 isLoading={results.isLoading}
                 isError={results.isError}
                 error={results.error}
-                isEmpty={!results.isLoading && !results.isError && totalMatches === 0}
+                // Suggestions render as their own flat `SearchRow`s directly above this
+                // block (same component, same styling, no heading distinguishing the
+                // two — Decision 4/session 2026-10-02). Without the `suggestions.length
+                // === 0` guard, a query with live suggestions but zero actual
+                // sermon/series/speaker matches showed real rows (the suggestions) AND
+                // "No results match your search." at once — indistinguishable to the
+                // user from "results and no-results shown simultaneously" (Isaac's
+                // report). Suggestions alone count as "something to show," so the empty
+                // state is reserved for when there's truly nothing — not even a
+                // suggestion — to offer.
+                isEmpty={!results.isLoading && !results.isError && totalMatches === 0 && suggestions.length === 0}
                 emptyTitle="No results match your search."
                 emptyDescription="Try a different title, speaker, or topic."
                 onRetry={() => results.refetch()}

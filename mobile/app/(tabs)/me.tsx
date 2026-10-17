@@ -148,7 +148,6 @@ export default function MeScreen() {
           Library
         </AppText>
         <LibraryRow label="Blocked users" onPress={() => router.push('/blocked-users')} />
-        <LibraryRow label="History" onPress={() => router.push('/history')} />
         <LibraryRow label="Announcements" onPress={() => router.push('/(tabs)/announcements')} />
       </Card>
 

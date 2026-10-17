@@ -71,6 +71,24 @@ function renderHome() {
   );
 }
 
+/**
+ * `HeroCarousel` (fixed 2026-10-16 — Isaac's "hero grows in height, then snaps back"
+ * report) renders no pages until its wrapping View's own `onLayout` reports a real pixel
+ * width — true on a real device almost immediately after mount, but RNTL never fires
+ * native layout events on its own. The wrapping `testID="hero-carousel"` View itself
+ * renders unconditionally the moment `useHeroSermons` resolves with 2+ items (only its
+ * *children* wait on `onLayout`), so `findByTestId` resolves as soon as hero data lands
+ * — simulate the layout event right there, synchronously, before anything awaits the
+ * carousel's own content (`Watch, ...` / `Featured sermons, ...`). Call this again after
+ * any later remount of the carousel in the same test (e.g. the error screen's own Retry
+ * below) — each mount gets its own fresh `onLayout`.
+ */
+async function settleHeroLayout(result: ReturnType<typeof render>) {
+  fireEvent(await result.findByTestId('hero-carousel'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+  });
+}
+
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
@@ -79,7 +97,9 @@ beforeEach(() => {
 describe('HomeScreen — populated', () => {
   it('renders the hero carousel (all items the endpoint returns, already capped/ordered server-side), continue-watching shelf, and series shelf', async () => {
     mockRoutes();
-    const { getAllByText, getByText, findByLabelText } = renderHome();
+    const screen = renderHome();
+    const { getAllByText, getByText, findByLabelText } = screen;
+    await settleHeroLayout(screen);
 
     // No separate hero title or meta line renders (the art carries the title; duration is
     // already in the Watch label) — the Watch button is each hero card's own unique,
@@ -97,7 +117,9 @@ describe('HomeScreen — populated', () => {
 
   it('navigates to the sermon detail route when the hero Watch CTA is pressed', async () => {
     mockRoutes();
-    const { findByLabelText } = renderHome();
+    const screen = renderHome();
+    const { findByLabelText } = screen;
+    await settleHeroLayout(screen);
 
     const watchButton = await findByLabelText('Watch, 31:02');
     fireEvent.press(watchButton);
@@ -160,7 +182,9 @@ describe('HomeScreen — populated', () => {
 describe('HomeScreen — recommended/trending omitted when empty', () => {
   it('does not render either shelf when both resolve empty', async () => {
     mockRoutes({ recommended: [], trending: [] });
-    const { findByLabelText, queryByText, queryByLabelText } = renderHome();
+    const screen = renderHome();
+    const { findByLabelText, queryByText, queryByLabelText } = screen;
+    await settleHeroLayout(screen);
 
     await findByLabelText('Watch, 31:02');
     expect(queryByText('recommended for you')).toBeNull();
@@ -173,7 +197,9 @@ describe('HomeScreen — recommended/trending omitted when empty', () => {
 describe('HomeScreen — new releases/prophet\'s catalog omitted when empty', () => {
   it('does not render either shelf when both resolve empty', async () => {
     mockRoutes({ newReleases: [], prophetsCatalog: [] });
-    const { findByLabelText, queryByText } = renderHome();
+    const screen = renderHome();
+    const { findByLabelText, queryByText } = screen;
+    await settleHeroLayout(screen);
 
     await findByLabelText('Watch, 31:02');
     expect(queryByText('new releases')).toBeNull();
@@ -186,7 +212,9 @@ describe('HomeScreen — new releases/prophet\'s catalog omitted when empty', ()
 describe('HomeScreen — continue watching omitted when empty', () => {
   it('does not render a "continue watching" section when the list is empty', async () => {
     mockRoutes({ continueWatching: [] });
-    const { findByLabelText, queryByText } = renderHome();
+    const screen = renderHome();
+    const { findByLabelText, queryByText } = screen;
+    await settleHeroLayout(screen);
 
     await findByLabelText('Watch, 31:02');
     expect(queryByText('continue watching')).toBeNull();
@@ -235,7 +263,8 @@ describe('HomeScreen — error', () => {
       throw new Error(`unexpected path: ${path}`);
     });
 
-    const { findAllByText, findByText, findByLabelText, getAllByText } = renderHome();
+    const screen = renderHome();
+    const { findAllByText, findByText, findByLabelText, getAllByText } = screen;
 
     await findAllByText('Something went wrong. Try again.');
     await findByText('Storms');
@@ -253,6 +282,7 @@ describe('HomeScreen — error', () => {
     fireEvent.press(getAllByText('Retry')[0]);
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/catalog/sermons/hero', expect.anything()));
+    await settleHeroLayout(screen);
     await findByLabelText('Watch, 31:02');
   });
 });

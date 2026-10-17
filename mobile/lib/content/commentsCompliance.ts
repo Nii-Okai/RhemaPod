@@ -8,10 +8,10 @@
  * `isComplianceContentPending` lets a caller show or hide a surface that would
  * otherwise ship a placeholder.
  *
- * I2 (comment guidelines) shipped 2026-10-08. I1 (contact email) is still pending —
- * `CONTACT_EMAIL` is a deliberate, visibly-flagged placeholder until Isaac supplies it.
+ * I2 (comment guidelines) shipped 2026-10-08. I1 (contact email) shipped 2026-10-16 —
+ * Isaac supplied `contact@rhemapod.com`.
  */
-export const CONTACT_EMAIL = '[I1 PENDING — contact email from Isaac]';
+export const CONTACT_EMAIL = 'contact@rhemapod.com';
 
 export const COMMENTS_TERMS_TEXT = `RhemaPod Comment Guidelines
 
