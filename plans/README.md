@@ -17,6 +17,6 @@ separately in the append-only `status.md` at the repo root — not in the plan.
 | `plan-r2-storage.md` | R2 live storage + AWS S3 Deep Archive cold tier (cross-vendor archive, delete pass, dev cutover) | approved at R0; R1.1/R1.2 done, R1.3 landed informally; R1.7–R1.10 (incl. the smoke-test script itself) and R2.1–R2.4 not started — more remaining than "smoke owed" suggested, see status.md 2026-10-15 |
 | `plan-sermon-comments.md` | Sermon Comments replacing Notes: backend, moderation, admin queue, mobile player restyle + comments (gates C1–C5) | shipped — `[HUMAN_GATE C1]`–`[HUMAN_GATE C5]` all approved, merged to `dev`; Isaac confirmed closed 2026-10-15 |
 | `plan-media-cache.md` | Mobile media cache Phase 1 — silent LRU disk cache for streamed non-HLS audio, `/stream` re-validated, sign-out wiped (gates G0–G3) | shipped — merged to `dev` 2026-10-15 (`2e01215`), `[HUMAN_GATE G3]` crossed |
-| `plan-stripe-removal.md` | Remove Stripe entirely (endpoints, service, DTOs, payment seam, config, dependency, admin portal link); no IAP replacement yet (gates SR0–SR4) | in progress — `[HUMAN_GATE SR0]`–`[HUMAN_GATE SR3]` crossed, S0–S8 done on `feat/stripe-removal`; S9 review and `[HUMAN_GATE SR4]` merge remain. ADR 0016 written |
+| `plan-stripe-removal.md` | Remove Stripe entirely (endpoints, service, DTOs, payment seam, config, dependency, admin portal link); no IAP replacement yet (gates SR0–SR4) | shipped — all gates (SR0–SR4) crossed, S0–S9 done, merged into `dev` (`f7b5b55`). ADR 0016 written |
 
 New plans go here.
