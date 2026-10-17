@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import email as email_module
 from app.core.config import get_settings
-from app.core.dependencies import CurrentUser, require_role
+from app.core.dependencies import AuditCtx, CurrentUser, require_role
 from app.db.database import get_db
 
 from app.models.models import UserRole
@@ -90,7 +90,7 @@ async def role_counts(user: ManagerPlus, db: DbDep) -> RoleCounts:
 
 @router.post("", response_model=StaffCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_staff(
-    data: StaffCreateRequest, user: ManagerPlus, db: DbDep
+    data: StaffCreateRequest, user: ManagerPlus, db: DbDep, ctx: AuditCtx
 ) -> StaffCreateResponse:
     """Create an editor/manager/admin account. A temporary password is set
     server-side; the user receives an email invite to set their own password."""
@@ -98,7 +98,7 @@ async def create_staff(
     try:
         created, invite_token = await auth_service.create_staff(
             db, data.email, data.full_name, data.role, actor,
-            send_invite=email_module.send_staff_invite,
+            send_invite=email_module.send_staff_invite, ctx=ctx,
         )
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
@@ -127,11 +127,15 @@ async def create_staff(
 
 @router.patch("/{user_id}/role", response_model=UserPublic)
 async def change_role(
-    user_id: uuid.UUID, data: RoleUpdateRequest, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID,
+    data: RoleUpdateRequest,
+    user: ManagerPlus,
+    db: DbDep,
+    ctx: AuditCtx,
 ) -> UserPublic:
     actor = await _actor(db, user)
     try:
-        updated = await auth_service.change_role(db, user_id, data.role, actor)
+        updated = await auth_service.change_role(db, user_id, data.role, actor, ctx=ctx)
     except ContentError as exc:
         # The last-admin invariant (409) surfaces as a typed ContentError from
         # the shared guard; everything else here is still AuthError -> 400.
@@ -143,7 +147,11 @@ async def change_role(
 
 @router.patch("/{user_id}/active", response_model=UserActiveResponse)
 async def set_active(
-    user_id: uuid.UUID, data: ActiveUpdateRequest, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID,
+    data: ActiveUpdateRequest,
+    user: ManagerPlus,
+    db: DbDep,
+    ctx: AuditCtx,
 ) -> UserActiveResponse:
     """Deactivate (`is_active=false`) or reactivate a staff account.
 
@@ -156,7 +164,7 @@ async def set_active(
     actor = await _actor(db, user)
     try:
         updated, revocation_deferred = await auth_service.set_active(
-            db, user_id, data.is_active, actor
+            db, user_id, data.is_active, actor, ctx=ctx
         )
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
@@ -170,7 +178,7 @@ async def set_active(
 
 @router.post("/{user_id}/resend-invite", response_model=StaffCreateResponse)
 async def resend_invite(
-    user_id: uuid.UUID, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx
 ) -> StaffCreateResponse:
     """Re-issue the invite for a staff account that has not finished
     set-password. Same authz as `PATCH /users/{id}/active`. A 409 means the
@@ -182,6 +190,7 @@ async def resend_invite(
     try:
         target, invite_token = await auth_service.resend_invite(
             db, user_id, actor, send_invite=email_module.send_staff_invite,
+            ctx=ctx,
         )
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)

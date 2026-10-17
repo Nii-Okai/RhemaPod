@@ -4,13 +4,15 @@ from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import email as email_module
 from app.core import security, token_store
 from app.core.config import get_settings
-from app.core.dependencies import CurrentUserDep, require_role
-from app.core.logging import get_logger
+from app.core.dependencies import AuditCtx, CurrentUserDep, require_role
+from app.core.logging import correlation_id, get_logger
 from app.core.net import client_ip
 from app.core.oauth import (
     OAuthTokenError,
@@ -21,6 +23,7 @@ from app.core.oauth import (
 )
 from app.core.rate_limit import check_rate_limit
 from app.db.database import get_db
+from app.models.models import AuditAction, AuditOutcome
 from app.models.schemas import (
     AppleSignInRequest,
     AvatarResponse,
@@ -40,7 +43,8 @@ from app.models.schemas import (
     UserPublic,
     UserRegister,
 )
-from app.services import auth_service, comments_service, oauth_service
+from app.services import audit_service, auth_service, comments_service, oauth_service
+from app.services.audit_service import AuditContext
 from app.services.auth_service import AuthError
 from app.services.content_service import ContentError
 from app.services.oauth_service import OAuthError
@@ -68,8 +72,21 @@ async def register(data: UserRegister, db: DbDep) -> UserPublic:
     return auth_service.to_user_public(user)
 
 
+async def _audit_login(user, ctx: AuditContext, details: dict) -> None:
+    """`auth.login`, fail-open in its own session (§A.3): tokens are already
+    issued, so a broken audit insert logs `audit_write_failed` and nothing
+    else."""
+    await audit_service.record_detached(
+        AuditAction.LOGIN,
+        actor=user, target=None, details=details,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+
+
 @router.post("/login", response_model=TokenPair)
-async def login(data: UserLogin, request: Request, db: DbDep) -> TokenPair:
+async def login(
+    data: UserLogin, request: Request, db: DbDep, ctx: AuditCtx
+) -> TokenPair | JSONResponse:
     client = client_ip(request)
     rl_key = f"login:{client}:{data.email.lower()}"
     allowed = await check_rate_limit(
@@ -84,11 +101,22 @@ async def login(data: UserLogin, request: Request, db: DbDep) -> TokenPair:
     try:
         user = await auth_service.authenticate(db, data.email, data.password)
     except AuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message
+        # Same status and body the HTTPException handler would produce, but
+        # returned directly so it can carry a background task — FastAPI drops
+        # injected BackgroundTasks when the handler raises. `auth.login_failed`
+        # needs an account lookup, and doing it here would undo
+        # `authenticate`'s equal-cost guarantee for unknown vs known emails;
+        # after the response it costs the caller nothing (§A.3).
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": exc.message, "correlation_id": correlation_id.get()},
+            background=BackgroundTask(
+                audit_service.record_login_failed, data.email, ctx=ctx
+            ),
         )
 
     access, refresh = await auth_service.issue_token_pair(user)
+    await _audit_login(user, ctx, {"method": "password"})
     return TokenPair(
         access_token=access, refresh_token=refresh, expires_in=_ACCESS_TTL_SECONDS
     )
@@ -112,23 +140,30 @@ async def refresh(data: RefreshRequest, db: DbDep) -> TokenPair:
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(data: LogoutRequest, user: CurrentUserDep) -> MessageResponse:
+async def logout(
+    data: LogoutRequest, user: CurrentUserDep, ctx: AuditCtx
+) -> MessageResponse:
     """Per-device: revokes only the session the presented refresh token
     identifies, not every device the caller is signed in on (plan §A.3 #4).
     Public API contract change from the pre-rework body-less version — see
     status.md "W0.4 multi-session refresh"."""
     await auth_service.logout(str(user.id), data.refresh_token)
+    await audit_service.record_detached(
+        AuditAction.LOGOUT,
+        actor=user, target=None, details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     return MessageResponse(message="Logged out")
 
 
 @router.post("/change-password", response_model=MessageResponse)
 async def change_password(
-    data: ChangePasswordRequest, user: CurrentUserDep, db: DbDep
+    data: ChangePasswordRequest, user: CurrentUserDep, db: DbDep, ctx: AuditCtx
 ) -> MessageResponse:
     """Requires the current password — an access token alone is not enough."""
     try:
         await auth_service.change_password(
-            db, user.id, data.current_password, data.new_password
+            db, user.id, data.current_password, data.new_password, ctx=ctx
         )
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
@@ -187,9 +222,11 @@ async def forgot_password(
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-async def reset_password(data: ResetPasswordRequest, db: DbDep) -> MessageResponse:
+async def reset_password(
+    data: ResetPasswordRequest, db: DbDep, ctx: AuditCtx
+) -> MessageResponse:
     try:
-        await auth_service.reset_password(db, data.token, data.new_password)
+        await auth_service.reset_password(db, data.token, data.new_password, ctx=ctx)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return MessageResponse(message="Password updated. Please log in again.")
@@ -243,12 +280,17 @@ async def _claim_oauth_token_once(raw_token: str) -> None:
         raise OAuthTokenError("replayed", "Sign-in token was already used")
 
 
-async def _finish_oauth_sign_in(db: AsyncSession, identity: VerifiedIdentity) -> TokenPair:
+async def _finish_oauth_sign_in(
+    db: AsyncSession, identity: VerifiedIdentity, ctx: AuditContext
+) -> TokenPair:
     try:
-        user = await oauth_service.sign_in_with_identity(db, identity)
+        user, new_account = await oauth_service.sign_in_with_identity(db, identity)
     except OAuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     access, refresh = await auth_service.issue_token_pair(user)
+    await _audit_login(
+        user, ctx, {"method": identity.provider.value, "new_account": new_account}
+    )
     return TokenPair(access_token=access, refresh_token=refresh, expires_in=_ACCESS_TTL_SECONDS)
 
 
@@ -267,7 +309,9 @@ async def _check_oauth_rate_limit(provider: str, request: Request) -> None:
 
 
 @router.post("/oauth/google", response_model=TokenPair)
-async def oauth_google(data: GoogleSignInRequest, request: Request, db: DbDep) -> TokenPair:
+async def oauth_google(
+    data: GoogleSignInRequest, request: Request, db: DbDep, ctx: AuditCtx
+) -> TokenPair:
     if not settings.oauth_google_enabled:
         # Don't expose a route that then 503s — a disabled feature looks like
         # it doesn't exist.
@@ -281,11 +325,13 @@ async def oauth_google(data: GoogleSignInRequest, request: Request, db: DbDep) -
     except OAuthTokenError as exc:
         raise _oauth_token_error_response(exc)
 
-    return await _finish_oauth_sign_in(db, identity)
+    return await _finish_oauth_sign_in(db, identity, ctx)
 
 
 @router.post("/oauth/apple", response_model=TokenPair)
-async def oauth_apple(data: AppleSignInRequest, request: Request, db: DbDep) -> TokenPair:
+async def oauth_apple(
+    data: AppleSignInRequest, request: Request, db: DbDep, ctx: AuditCtx
+) -> TokenPair:
     if not settings.oauth_apple_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
 
@@ -308,7 +354,7 @@ async def oauth_apple(data: AppleSignInRequest, request: Request, db: DbDep) -> 
     except OAuthTokenError as exc:
         raise _oauth_token_error_response(exc)
 
-    return await _finish_oauth_sign_in(db, identity)
+    return await _finish_oauth_sign_in(db, identity, ctx)
 
 
 @router.get("/me", response_model=UserPublic)

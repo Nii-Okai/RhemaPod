@@ -17,16 +17,16 @@ Two entry points, matching §A.3's two transaction shapes:
 
 Routers build an `AuditContext` from request-derived fields (correlation id,
 client IP, `User-Agent`) and pass it in; services never read `Request`
-themselves (§A.3). No call site uses either function yet — that lands in
-S7 (staff mutations), S8 (auth), S12 (settings) and S13 (report export),
-each behind its own `[HUMAN_GATE]`. This step only builds the schema and
-this service.
+themselves (§A.3). Call sites: staff mutations in `auth_service` (S7);
+login/logout/password events in `app/api/auth.py` and `auth_service` (S8);
+settings (S12) and report export (S13) are still to come.
 """
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -128,3 +128,39 @@ async def record_detached(
             correlation_id=ctx.correlation_id,
             error=type(exc).__name__,
         )
+
+
+async def record_login_failed(email: str, *, ctx: AuditContext) -> None:
+    """`auth.login_failed` for a password login (§A.3). Runs as a
+    `BackgroundTasks` job **after** the 401 has been sent, so the account
+    lookup it needs adds nothing to the request path: `authenticate`'s
+    equal-cost guarantee for unknown vs known emails stays intact.
+
+    Writes a row only when `email` matches an account (an unknown email
+    identifies no one, so there is nothing to attribute); the account is
+    recorded as the actor. `reason` is `inactive` for a deactivated account,
+    else `bad_password`. Fail-open exactly like `record_detached`.
+    """
+    try:
+        async with PrimarySession() as db:
+            user = (
+                await db.execute(select(User).where(User.email == email.lower()))
+            ).scalar_one_or_none()
+            if user is None:
+                return
+            reason = "bad_password" if user.is_active else "inactive"
+            await record(
+                db, AuditAction.LOGIN_FAILED,
+                actor=user, target=None,
+                details={"method": "password", "reason": reason},
+                outcome=AuditOutcome.FAILURE, ctx=ctx,
+            )
+            await db.commit()
+    except Exception as exc:
+        log.error(
+            "audit_write_failed",
+            action=AuditAction.LOGIN_FAILED.value,
+            correlation_id=ctx.correlation_id,
+            error=type(exc).__name__,
+        )
+

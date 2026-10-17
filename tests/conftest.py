@@ -84,6 +84,22 @@ def _no_real_object_storage_credentials():
     )
 
 
+def _point_audit_sessions_at(session_factory):
+    """The fail-open audit writers (`record_detached`, `record_login_failed`)
+    open their own session from `audit_service.PrimarySession`, which
+    `get_db`'s dependency override never reaches. Point it at the test
+    database for the life of a client fixture; returns the restore call."""
+    import app.services.audit_service as audit_service_module
+
+    original = audit_service_module.PrimarySession
+    audit_service_module.PrimarySession = session_factory
+
+    def _restore() -> None:
+        audit_service_module.PrimarySession = original
+
+    return _restore
+
+
 @pytest_asyncio.fixture
 async def engine():
     eng = create_async_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
@@ -158,10 +174,12 @@ async def pg_client(pg_engine) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_read_db] = override_get_db
+    restore_audit = _point_audit_sessions_at(TestSession)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    restore_audit()
 
 
 @pytest_asyncio.fixture
@@ -186,7 +204,9 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     # Catalog reads use the replica session; in tests point it at the same
     # in-memory DB so there's no separate (unavailable) replica to reach.
     app.dependency_overrides[get_read_db] = override_get_db
+    restore_audit = _point_audit_sessions_at(TestSession)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    restore_audit()

@@ -1,15 +1,13 @@
 """`audit_log` schema, `audit_service`, and the retention purge script
 (`plans/plan-admin-settings.md` §A.4.2/§A.6/§A.7, step S6).
 
-Named per `status.md`'s S1 test strategy, scoped to what S6 actually builds.
-S1's own DoD-4 block in this file (`test_staff_invited_writes_audit_row_...`,
-the three audit-insert-failure-rollback cases, etc.) instruments real call
-sites in `auth_service.py`/`admin_auth.py` — that's S7's and S8's work, not
-this step's (S6 "only builds the schema and the service, nothing calls it").
-Those cases land here once S7/S8 exist; see this step's `status.md` entry
-for the explicit accounting. What *is* S6's own verification (quoting the
-plan): "the round-trip passes. CHECK rejects an unknown action on Postgres.
-`details` JSONB and `ip` INET round-trip on Postgres, and SQLite still
+Named per `status.md`'s S1 test strategy. The S6 cases come first; S1's
+DoD-4 block for staff mutations (one row per mutation, audit-insert
+failure rolls the mutation back) is the S7 section at the end of this file.
+Auth-path events (S8) live in `tests/test_audit_auth_events.py`.
+
+S6's own verification (quoting the plan): "the round-trip passes. CHECK
+rejects an unknown action on Postgres. `details` JSONB and `ip` INET round-trip on Postgres, and SQLite still
 boots. The purge deletes or nulls exactly at the boundary." Plus K8's own
 named case and two minimal direct tests of `record`/`record_detached`
 (the units this step actually writes), per the usual "happy path + one
@@ -30,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.models import AuditAction, AuditLog, AuditOutcome
@@ -360,3 +358,268 @@ async def test_purge_halts_if_retention_values_unset():
         Settings(**_SETTINGS_BASE_ENV, audit_auth_retention_days=0)
     with pytest.raises(ValidationError):
         Settings(**_SETTINGS_BASE_ENV, audit_network_retention_days=-1)
+
+
+# ── S7: staff mutations, same transaction (§A.3) ────────────────────────────
+#
+# Driven through the real HTTP routes on `pg_client`, so the router-built
+# `AuditContext` (IP, user agent, correlation id) is exercised too. Users are
+# registered through the API and promoted with a direct UPDATE, the same way
+# `tests/test_user_lifecycle.py` does on SQLite.
+
+_PW = "correct-horse-battery"
+_UA = "Mozilla/5.0 (audit-test)"
+
+
+async def _staff(pg_client, sessions, email: str, role: str) -> dict:
+    from sqlalchemy import text
+
+    await pg_client.post("/api/v1/auth/register", json={"email": email, "password": _PW})
+    if role != "viewer":
+        async with sessions() as s:
+            await s.execute(
+                text("UPDATE users SET role = :r WHERE email = :e"),
+                {"r": role.upper(), "e": email},
+            )
+            await s.commit()
+    tokens = (await pg_client.post(
+        "/api/v1/auth/login", json={"email": email, "password": _PW}
+    )).json()
+    return {"Authorization": f"Bearer {tokens['access_token']}", "User-Agent": _UA}
+
+
+async def _user_id(sessions, email: str) -> uuid.UUID:
+    from app.models.models import User
+
+    async with sessions() as s:
+        return (await s.execute(select(User.id).where(User.email == email))).scalar_one()
+
+
+async def _rows(sessions, action: AuditAction) -> list[AuditLog]:
+    async with sessions() as s:
+        return list((await s.execute(
+            select(AuditLog).where(AuditLog.action == action).order_by(AuditLog.created_at)
+        )).scalars())
+
+
+def _break_audit_insert(monkeypatch) -> None:
+    """Make the next staff-mutation audit insert fail for real on Postgres: a
+    target label longer than `audit_log.target_label`'s varchar(200) raises
+    `StringDataRightTruncation` at flush. No session or ORM mocking — the
+    failure is the database's own. The test transport re-raises it rather
+    than rendering the catch-all 500, hence `pytest.raises(DBAPIError)`."""
+    import app.services.auth_service as auth_service_module
+
+    def _oversized(user):
+        return AuditTarget(type="user", id=user.id, label="x" * 500)
+
+    monkeypatch.setattr(auth_service_module, "_user_target", _oversized)
+
+
+async def test_staff_invited_writes_one_audit_row(pg_client, sessions):
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    r = await pg_client.post(
+        "/api/v1/users",
+        json={"email": "new.editor@example.com", "full_name": "New Ed", "role": "editor"},
+        headers={**admin, "X-Correlation-ID": "corr-invite"},
+    )
+    assert r.status_code == 201
+
+    rows = await _rows(sessions, AuditAction.STAFF_INVITED)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.outcome == AuditOutcome.SUCCESS
+    assert row.actor_id == await _user_id(sessions, "admin@example.com")
+    assert row.actor_email == "admin@example.com"
+    assert row.actor_role == "admin"
+    assert row.target_type == "user"
+    assert row.target_id == await _user_id(sessions, "new.editor@example.com")
+    assert row.target_label == "new.editor@example.com"
+    assert row.details == {"role": "editor"}
+    assert row.ip == "127.0.0.1"
+    assert row.user_agent == _UA
+    assert row.correlation_id == "corr-invite"
+
+
+async def test_role_changed_records_before_and_after(pg_client, sessions):
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+
+    r = await pg_client.patch(
+        f"/api/v1/users/{target}/role", json={"role": "manager"}, headers=admin
+    )
+    assert r.status_code == 200
+
+    rows = await _rows(sessions, AuditAction.ROLE_CHANGED)
+    assert len(rows) == 1
+    assert rows[0].target_id == target
+    assert rows[0].details == {"from": "editor", "to": "manager"}
+
+
+async def test_deactivate_then_reactivate_write_one_row_each(pg_client, sessions):
+    mgr = await _staff(pg_client, sessions, "mgr@example.com", "manager")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+
+    for flag in (False, True):
+        r = await pg_client.patch(
+            f"/api/v1/users/{target}/active", json={"is_active": flag}, headers=mgr
+        )
+        assert r.status_code == 200
+
+    deactivated = await _rows(sessions, AuditAction.DEACTIVATED)
+    reactivated = await _rows(sessions, AuditAction.REACTIVATED)
+    assert [r.target_id for r in deactivated] == [target]
+    assert [r.target_id for r in reactivated] == [target]
+    assert deactivated[0].actor_role == "manager"
+    # `revocation_deferred` is structlog-only (§A.3) — never on the row.
+    assert deactivated[0].details == {}
+
+
+async def test_idempotent_set_active_writes_no_row(pg_client, sessions):
+    mgr = await _staff(pg_client, sessions, "mgr@example.com", "manager")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+
+    r = await pg_client.patch(
+        f"/api/v1/users/{target}/active", json={"is_active": True}, headers=mgr
+    )
+    assert r.status_code == 200
+    assert await _rows(sessions, AuditAction.REACTIVATED) == []
+
+
+async def test_invite_resent_writes_one_row(pg_client, sessions):
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    created = (await pg_client.post(
+        "/api/v1/users",
+        json={"email": "pending@example.com", "role": "editor"},
+        headers=admin,
+    )).json()
+    target = uuid.UUID(created["user"]["id"])
+
+    r = await pg_client.post(f"/api/v1/users/{target}/resend-invite", headers=admin)
+    assert r.status_code == 200
+
+    rows = await _rows(sessions, AuditAction.INVITE_RESENT)
+    assert len(rows) == 1
+    assert rows[0].target_id == target
+
+
+async def test_refused_mutation_writes_no_row(pg_client, sessions):
+    mgr = await _staff(pg_client, sessions, "mgr@example.com", "manager")
+    await _staff(pg_client, sessions, "other.mgr@example.com", "manager")
+    target = await _user_id(sessions, "other.mgr@example.com")
+
+    r = await pg_client.patch(
+        f"/api/v1/users/{target}/role", json={"role": "editor"}, headers=mgr
+    )
+    assert r.status_code == 400
+    assert await _rows(sessions, AuditAction.ROLE_CHANGED) == []
+
+
+async def test_failed_audit_insert_rolls_back_role_change(pg_client, sessions, monkeypatch):
+    from app.models.models import User, UserRole
+
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+    _break_audit_insert(monkeypatch)
+
+    with pytest.raises(DBAPIError):
+        await pg_client.patch(
+            f"/api/v1/users/{target}/role", json={"role": "manager"}, headers=admin
+        )
+
+    async with sessions() as s:
+        role = (await s.execute(select(User.role).where(User.id == target))).scalar_one()
+    assert role == UserRole.EDITOR
+    assert await _rows(sessions, AuditAction.ROLE_CHANGED) == []
+
+
+async def test_failed_audit_insert_rolls_back_deactivation(pg_client, sessions, monkeypatch):
+    from app.models.models import User
+
+    mgr = await _staff(pg_client, sessions, "mgr@example.com", "manager")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+    _break_audit_insert(monkeypatch)
+
+    with pytest.raises(DBAPIError):
+        await pg_client.patch(
+            f"/api/v1/users/{target}/active", json={"is_active": False}, headers=mgr
+        )
+
+    async with sessions() as s:
+        active = (await s.execute(select(User.is_active).where(User.id == target))).scalar_one()
+    assert active is True
+
+
+async def test_failed_audit_insert_creates_no_account_and_sends_no_invite(
+    pg_client, sessions, monkeypatch,
+):
+    from unittest.mock import AsyncMock
+
+    from app.core import email as email_module
+    from app.models.models import User
+
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    sender = AsyncMock()
+    monkeypatch.setattr(email_module, "send_staff_invite", sender)
+    _break_audit_insert(monkeypatch)
+
+    with pytest.raises(DBAPIError):
+        await pg_client.post(
+            "/api/v1/users",
+            json={"email": "never@example.com", "role": "editor"},
+            headers=admin,
+        )
+    assert sender.await_count == 0
+
+    async with sessions() as s:
+        created = (await s.execute(
+            select(User).where(User.email == "never@example.com")
+        )).scalar_one_or_none()
+    assert created is None
+
+
+async def test_failed_audit_insert_aborts_resend_before_any_email(
+    pg_client, sessions, monkeypatch,
+):
+    from unittest.mock import AsyncMock
+
+    from app.core import email as email_module
+
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    created = (await pg_client.post(
+        "/api/v1/users",
+        json={"email": "pending@example.com", "role": "editor"},
+        headers=admin,
+    )).json()
+    sender = AsyncMock()
+    monkeypatch.setattr(email_module, "send_staff_invite", sender)
+    _break_audit_insert(monkeypatch)
+
+    with pytest.raises(DBAPIError):
+        await pg_client.post(
+            f"/api/v1/users/{created['user']['id']}/resend-invite", headers=admin
+        )
+    assert sender.await_count == 0
+    assert await _rows(sessions, AuditAction.INVITE_RESENT) == []
+
+
+async def test_oversized_correlation_id_is_truncated_not_fatal(pg_client, sessions):
+    """`X-Correlation-ID` is client-settable and unbounded; the column is
+    varchar(64). An over-long header must not fail the audited mutation."""
+    admin = await _staff(pg_client, sessions, "admin@example.com", "admin")
+    await _staff(pg_client, sessions, "ed@example.com", "editor")
+    target = await _user_id(sessions, "ed@example.com")
+
+    r = await pg_client.patch(
+        f"/api/v1/users/{target}/role",
+        json={"role": "manager"},
+        headers={**admin, "X-Correlation-ID": "c" * 300},
+    )
+    assert r.status_code == 200
+    rows = await _rows(sessions, AuditAction.ROLE_CHANGED)
+    assert rows[0].correlation_id == "c" * 64
