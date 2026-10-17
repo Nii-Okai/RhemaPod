@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.models.models import (
     PAID_TIERS,
+    ListenerDay,
     PlaybackSession,
     Sermon,
+    SermonPlayDaily,
     SermonStatus,
     Series,
     Subscription,
@@ -120,65 +122,161 @@ async def record_progress(
         marks_completed = False
 
     now = _now()
+    today = now.date()
 
-    # A single INSERT ... ON CONFLICT (user_id, sermon_id) DO UPDATE. There is no
-    # dialect-neutral upsert in SQLAlchemy 2.0, so the insert() function is
-    # chosen on the dialect (same shape as search_service._is_postgres);
-    # production runs the postgresql arm, the suite exercises the sqlite arm.
-    # One `set_` clause is built and handed to whichever construct was picked so
-    # the two arms cannot drift in their update semantics.
-    insert_fn = (
-        pg_insert if db.bind.dialect.name == "postgresql" else sqlite_insert
-    )
-    stmt = insert_fn(PlaybackSession).values(
-        user_id=user.id,
-        sermon_id=sermon_id,
-        position_seconds=position_seconds,
-        watched_seconds=watched_delta,
-        completed=marks_completed,
-        play_count=1,
-        last_played_at=now,
-    )
-    col = PlaybackSession
-    incoming = stmt.excluded
-    # A large backward jump (>60s) is a deliberate restart, not a scrub:
-    #   * play_count increments;
-    #   * position follows the viewer back to the start (wins outright).
-    # Any other ping takes the max against the stored position, which discards
-    # an out-of-order or concurrent late ping. GREATEST / max(a, b) is spelled
-    # differently across the two dialects, so this is a case() instead.
-    is_restart = incoming.position_seconds < col.position_seconds - 60
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["user_id", "sermon_id"],
-        set_={
-            # SQL-side accumulation — a Python read-modify-write here loses
-            # increments under concurrency, which is the bug being fixed.
-            "watched_seconds": col.watched_seconds + watched_delta,
-            "play_count": case(
-                (is_restart, col.play_count + 1), else_=col.play_count
-            ),
-            "position_seconds": case(
-                (is_restart, incoming.position_seconds),
-                (col.position_seconds > incoming.position_seconds,
-                 col.position_seconds),
-                else_=incoming.position_seconds,
-            ),
-            # Sticky: once true, stays true.
-            "completed": col.completed | incoming.completed,
-            "last_played_at": now,
-        },
-    )
-    await db.execute(stmt)
-    await db.commit()
+    # There is no dialect-neutral upsert in SQLAlchemy 2.0, so the insert()
+    # function is chosen on the dialect (same shape as
+    # search_service._is_postgres); production runs the postgresql arm, the
+    # suite exercises the sqlite arm.
+    is_postgres = db.bind.dialect.name == "postgresql"
+    insert_fn = pg_insert if is_postgres else sqlite_insert
 
-    # RETURNING is not portable across both dialects here; re-read the row and
-    # return that. One extra round-trip buys a single code path.
-    return (await db.execute(
-        select(PlaybackSession).where(
+    # Usage-rollup deltas (plan-admin-settings §A.4.1/S4): this ping's effect
+    # on sermon_play_daily/listener_day needs the *prior* state of the
+    # playback_sessions row — was this the first-ever ping for (user,
+    # sermon), a restart, and did `completed` just flip false -> true. The
+    # original single on_conflict_do_update statement computes all of that
+    # SQL-side already (restart threshold, max-position, sticky completion —
+    # unchanged below) but a RETURNING clause can't portably expose a row's
+    # *prior* values across both dialects, so a second mechanism is needed to
+    # derive the delta without a Python read-modify-write on any counter.
+    #
+    # Chosen: a locked pre-read (SELECT ... FOR UPDATE), not a RETURNING/CTE
+    # trick on the upsert itself. A `(xmax = 0)`-style RETURNING would still
+    # need the *prior* `completed` value to detect the false->true
+    # transition on the update path, and the only way to get that value atomically
+    # is a locked read anyway — so this doesn't avoid a locked read, it just
+    # hides it inside a CTE whose execution-order relative to a sibling
+    # INSERT CTE is not guaranteed by Postgres for independent (non
+    # data-dependent) CTEs. A `FOR UPDATE` SELECT can't lock a row that
+    # doesn't exist yet, though, so the pre-read is split in two: first a
+    # cheap `INSERT ... ON CONFLICT DO NOTHING`, whose own conflict
+    # detection is Postgres's native atomic arbiter (the same mechanism that
+    # already makes the old on_conflict_do_update safe for concurrent first
+    # writes — see test_concurrent_first_progress_writes_do_not_500) tells
+    # us unambiguously whether *this* ping was the row's genuine creation.
+    # Only when it isn't do we fall back to a locked read — joined into the
+    # UPDATE itself via a CTE in its FROM clause (a real data dependency,
+    # not a sibling), so the lock and the write happen in the same
+    # statement with no gap between them.
+    first_write = (await db.execute(
+        insert_fn(PlaybackSession)
+        .values(
+            user_id=user.id,
+            sermon_id=sermon_id,
+            position_seconds=position_seconds,
+            watched_seconds=watched_delta,
+            completed=marks_completed,
+            play_count=1,
+            last_played_at=now,
+        )
+        .on_conflict_do_nothing(index_elements=["user_id", "sermon_id"])
+        .returning(PlaybackSession)
+    )).scalar_one_or_none()
+
+    if first_write is not None:
+        # Genuinely the first row ever for this (user, sermon): one play,
+        # and a completion iff this very first ping already clears the
+        # threshold.
+        session_row = first_write
+        play_delta = 1
+        completion_delta = 1 if marks_completed else 0
+    else:
+        # A row already exists — ours from an earlier ping, or a
+        # concurrent racer's that just won the insert above (Postgres's
+        # conflict check waits for an in-flight conflicting insert to
+        # finish before reporting the conflict, so by the time we're here
+        # the row is guaranteed to be visible). Lock it and read its
+        # pre-update state as part of the same statement that updates it:
+        # `prior` is a real FROM-dependency of the UPDATE (not a sibling
+        # CTE), so the lock acquisition and the write are one atomic unit —
+        # nothing else can touch this row between the read and the write.
+        # SQLite has no row locking to speak of (`with_for_update()` is a
+        # no-op there); that's fine — the plan's correctness bar is
+        # Postgres, SQLite only needs to keep the suite's existing
+        # dialect-neutral behaviour.
+        prior_select = select(
+            PlaybackSession.user_id,
+            PlaybackSession.sermon_id,
+            PlaybackSession.completed,
+            PlaybackSession.position_seconds,
+        ).where(
             PlaybackSession.user_id == user.id,
             PlaybackSession.sermon_id == sermon_id,
         )
-    )).scalar_one()
+        if is_postgres:
+            prior_select = prior_select.with_for_update()
+        prior = prior_select.cte("prior")
+
+        # A large backward jump (>60s) is a deliberate restart, not a scrub:
+        #   * play_count increments;
+        #   * position follows the viewer back to the start (wins outright).
+        # Any other ping takes the max against the stored position, which
+        # discards an out-of-order or concurrent late ping. GREATEST /
+        # max(a, b) is spelled differently across the two dialects, so this
+        # is a case() instead. Semantics identical to the pre-S4 code.
+        is_restart = literal(position_seconds) < prior.c.position_seconds - 60
+        upd = (
+            update(PlaybackSession)
+            .where(
+                PlaybackSession.user_id == prior.c.user_id,
+                PlaybackSession.sermon_id == prior.c.sermon_id,
+            )
+            .values(
+                # SQL-side accumulation — a Python read-modify-write here
+                # loses increments under concurrency, which is the bug the
+                # original on_conflict_do_update was written to fix.
+                watched_seconds=PlaybackSession.watched_seconds + watched_delta,
+                play_count=case(
+                    (is_restart, PlaybackSession.play_count + 1),
+                    else_=PlaybackSession.play_count,
+                ),
+                position_seconds=case(
+                    (is_restart, literal(position_seconds)),
+                    (prior.c.position_seconds > literal(position_seconds),
+                     prior.c.position_seconds),
+                    else_=literal(position_seconds),
+                ),
+                # Sticky: once true, stays true.
+                completed=prior.c.completed | literal(marks_completed),
+                last_played_at=now,
+            )
+            .returning(PlaybackSession, prior.c.completed, prior.c.position_seconds)
+        )
+        session_row, prior_completed, prior_position = (await db.execute(upd)).one()
+        play_delta = 1 if position_seconds < prior_position - 60 else 0
+        completion_delta = 1 if (not prior_completed and session_row.completed) else 0
+
+    # sermon_play_daily / listener_day: both SQL-side accumulation again, for
+    # the same reason — this is the hot row under concurrent load (many
+    # listeners, one popular sermon, one (day, sermon_id) key), and a
+    # Python-computed absolute value would silently lose increments.
+    await db.execute(
+        insert_fn(SermonPlayDaily)
+        .values(
+            day=today,
+            sermon_id=sermon_id,
+            plays=play_delta,
+            completions=completion_delta,
+            watched_seconds=watched_delta,
+        )
+        .on_conflict_do_update(
+            index_elements=["day", "sermon_id"],
+            set_={
+                "plays": SermonPlayDaily.plays + play_delta,
+                "completions": SermonPlayDaily.completions + completion_delta,
+                "watched_seconds": SermonPlayDaily.watched_seconds + watched_delta,
+            },
+        )
+    )
+    await db.execute(
+        insert_fn(ListenerDay)
+        .values(day=today, user_id=user.id)
+        .on_conflict_do_nothing(index_elements=["day", "user_id"])
+    )
+
+    await db.commit()
+    return session_row
 
 
 async def get_progress(
