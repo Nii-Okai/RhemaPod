@@ -146,9 +146,9 @@ One more runs **daily** (plan-admin-settings §A.7, ADR 0018):
 ```bash
 # Daily — audit-log retention as Isaac approved it: deletes auth.* rows
 # older than AUDIT_AUTH_RETENTION_DAYS (365) and nulls ip/user_agent on every
-# other row older than AUDIT_NETWORK_RETENTION_DAYS (365). Refuses to run if
-# either variable is unset. Without it, login IPs are kept indefinitely,
-# contradicting the published retention.
+# other row older than AUDIT_NETWORK_RETENTION_DAYS (365). Both default to
+# the approved 365; a value below 1 stops the app from starting. Without this
+# job, login IPs are kept indefinitely, contradicting the published retention.
 uv run python -m app.scripts.purge_audit_log
 ```
 

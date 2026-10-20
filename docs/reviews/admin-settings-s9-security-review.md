@@ -118,8 +118,8 @@ limit (10/min) and the global limiter. Rows expire with the 365-day
 `purge_audit_log.py` deletes `auth.*` rows older than
 `AUDIT_AUTH_RETENTION_DAYS` and nulls `ip`/`user_agent` on every other row
 older than `AUDIT_NETWORK_RETENTION_DAYS`, both 365 days per Isaac's AS0
-decision. It refuses to run if either value is unset, and the S6 tests pin
-both boundaries. Scheduling it is S14's deploy concern.
+decision. Both settings default to 365 and reject a value below 1 at
+startup, and the S6 tests pin both boundaries. Scheduling it is S14's deploy concern.
 
 ## 9. Low — duplicate `client_ip_fallback` warnings
 

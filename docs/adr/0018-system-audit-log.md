@@ -83,8 +83,8 @@ Verified end to end: with both set, rows carry the browser's IP and UA and a spo
 
 `purge_audit_log.py`, run daily: `auth.*` rows are deleted after 365 days
 (`AUDIT_AUTH_RETENTION_DAYS`); every other row keeps its who/what/when but has `ip` and
-`user_agent` nulled after 365 days (`AUDIT_NETWORK_RETENTION_DAYS`). The script refuses to run
-if either value is unset.
+`user_agent` nulled after 365 days (`AUDIT_NETWORK_RETENTION_DAYS`). Both settings default to
+the approved 365, and a value below 1 is rejected when the app starts.
 
 ## Consequences
 
