@@ -33,7 +33,8 @@ import { cn } from "cn";
    ========================================================================== */
 
 export type BarChartDatum = {
-  /** Short axis label, e.g. "W28". Rendered verbatim under the bar. */
+  /** Short axis label, e.g. "W28". Rendered verbatim under the bar; may be
+      empty to leave a dense axis readable. Need not be unique. */
   label: string;
   /** Non-negative count for the bucket. Negatives are treated as 0. */
   value: number;
@@ -138,7 +139,9 @@ export function BarChart({
                 const x = i * (barW + GAP);
                 return (
                   <path
-                    key={d.label}
+                    // Index, not label: labels may repeat ("Oct" in two years)
+                    // or be blank when a caller thins a dense axis.
+                    key={i}
                     data-slot="bar-chart-bar"
                     data-value={value}
                     data-height={barH}
@@ -158,9 +161,9 @@ export function BarChart({
             </svg>
           </div>
           <div className="flex gap-[10px] font-mono text-[10.5px] text-ink-faint">
-            {data.map((d) => (
+            {data.map((d, i) => (
               <span
-                key={d.label}
+                key={i}
                 data-slot="bar-chart-label"
                 className="min-w-0 flex-1 text-center"
               >

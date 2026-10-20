@@ -46,6 +46,16 @@ export type SubscriptionListParams = NonNullable<
   operations["list_subscriptions_api_v1_admin_subscriptions_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/admin/audit` (admin-settings S10). */
+export type AuditListParams = NonNullable<
+  operations["list_audit_api_v1_admin_audit_get"]["parameters"]["query"]
+>;
+
+/** Query params accepted by `GET /api/v1/admin/analytics/report` (S13). */
+export type UsageReportParams = NonNullable<
+  operations["usage_report_api_v1_admin_analytics_report_get"]["parameters"]["query"]
+>;
+
 /** Query params accepted by `GET /api/v1/admin/comments` (S12). */
 export type AdminCommentListParams = NonNullable<
   operations["list_admin_comments_api_v1_admin_comments_get"]["parameters"]["query"]
@@ -179,6 +189,19 @@ export const queryKeys = {
       [...queryKeys.comments.lists(), params] as const,
     sermonCounts: (sermonId: string) =>
       [...queryKeys.comments.all(), "sermon-counts", sermonId] as const,
+  },
+  /** Settings (plan-admin-settings S17). The church profile is one row, so
+      `profile()` is a single key that a successful PATCH overwrites with
+      the server's response. The audit feed and usage report are read-only
+      lists keyed on their full query params. */
+  settings: {
+    all: () => ["settings"] as const,
+    profile: () => [...queryKeys.settings.all(), "profile"] as const,
+    auditLists: () => [...queryKeys.settings.all(), "audit"] as const,
+    audit: (params: AuditListParams) =>
+      [...queryKeys.settings.auditLists(), params] as const,
+    report: (params: UsageReportParams) =>
+      [...queryKeys.settings.all(), "report", params] as const,
   },
   session: {
     all: () => ["session"] as const,
