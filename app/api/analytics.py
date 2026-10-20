@@ -1,11 +1,12 @@
 """Playback progress (per user) and platform analytics (manager/admin)."""
 import uuid
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, CurrentUserDep, require_role
+from app.core.dependencies import AuditCtx, CurrentUser, CurrentUserDep, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     ContinueWatchingItem,
@@ -15,9 +16,11 @@ from app.models.content_schemas import (
     ProgressUpdate,
     SermonListItem,
     TopSermonStat,
+    UsageReport,
 )
-from app.models.models import User, UserRole
-from app.services import analytics_service, auth_service, content_service
+from app.models.models import AuditAction, AuditOutcome, User, UserRole
+from app.services import analytics_service, audit_service, auth_service, content_service
+from app.services.audit_service import AuditTarget
 from app.services.content_service import ContentError
 
 router = APIRouter(tags=["analytics"])
@@ -27,6 +30,7 @@ ReadDbDep = Annotated[AsyncSession, Depends(get_read_db)]
 ManagerPlus = Annotated[
     CurrentUser, Depends(require_role(UserRole.MANAGER, UserRole.ADMIN))
 ]
+AdminOnly = Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))]
 
 
 async def _actor(db: AsyncSession, current: CurrentUser) -> User:
@@ -137,3 +141,79 @@ async def new_listeners(
     """
     rows = await analytics_service.new_listeners_weekly(db)
     return [NewListenersBucket(**r) for r in rows]
+
+
+# ── Usage reports (plan-admin-settings §A.5, D1) ─────────────────────────────
+Granularity = Literal["day", "week", "month"]
+FromDate = Annotated[
+    date, Query(alias="from", description="First day of the period (UTC), inclusive.")
+]
+ToDate = Annotated[
+    date,
+    Query(description="Day after the period ends (UTC), exclusive. At most 366 days after `from`."),
+]
+
+
+@router.get("/admin/analytics/report", response_model=UsageReport, response_model_by_alias=True)
+async def usage_report(
+    user: ManagerPlus,
+    db: ReadDbDep,
+    from_: FromDate,
+    to: ToDate,
+    granularity: Granularity = Query(default="week"),
+) -> UsageReport:
+    """KPIs, a bucketed series and top sermons for `[from, to)`. Managers
+    may view; only admins may export (D1)."""
+    try:
+        report = await analytics_service.usage_report(db, from_, to, granularity)
+    except ContentError as exc:
+        raise _err(exc)
+    return UsageReport.model_validate(report)
+
+
+@router.get(
+    "/admin/analytics/report/export",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {}}, "description": "UTF-8 CSV with BOM."}},
+)
+async def export_usage_report(
+    user: AdminOnly,
+    db: DbDep,
+    ctx: AuditCtx,
+    from_: FromDate,
+    to: ToDate,
+    kind: Literal["timeseries", "top_sermons"],
+    granularity: Granularity = Query(default="week"),
+) -> Response:
+    """The report as CSV, admin only. Fail-closed: the `report.exported`
+    audit row is committed before the file is returned, so a failed audit
+    insert means no file. Every cell passes the spreadsheet formula guard
+    (sermon titles are editor-controlled)."""
+    try:
+        report = await analytics_service.usage_report(db, from_, to, granularity)
+    except ContentError as exc:
+        raise _err(exc)
+    body = analytics_service.report_csv(report, kind)
+
+    actor = await _actor(db, user)
+    await audit_service.record(
+        db, AuditAction.REPORT_EXPORTED,
+        actor=actor,
+        target=AuditTarget(type="report", label=f"{kind} {from_}..{to}"),
+        details={
+            "kind": kind, "from": from_.isoformat(), "to": to.isoformat(),
+            "granularity": granularity,
+        },
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    await db.commit()
+
+    filename = f"rhemapod-{kind.replace('_', '-')}-{from_}-to-{to}.csv"
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )

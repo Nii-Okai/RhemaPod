@@ -27,6 +27,7 @@ from app.models.models import (
     Subscription,
     SubscriptionStatus,
     User,
+    UserRole,
 )
 from app.services.content_service import ContentError, effective_tier, load_ref_names, to_list_item
 
@@ -530,3 +531,243 @@ async def new_listeners_weekly(
         {"week_start": edges[i].date(), "count": int(row[i] or 0)}
         for i in range(weeks)
     ]
+
+
+# ── Usage reports (plan-admin-settings §A.5, step S13) ─────────────────────
+#
+# Plays, completions and watch time come from the forward-only daily
+# rollups (`sermon_play_daily`, written by `record_progress` since S4);
+# distinct listeners from `listener_day`; new listeners and signups from the
+# full-history tables, so those two are accurate for any period. Periods
+# are half-open `[from, to)` UTC dates (Ghana is UTC+0, no DST). Bucket edges
+# are computed here in Python and every measure is one conditional-aggregate
+# query over those edges — the `new_listeners_weekly` pattern, and no
+# `date_trunc`, because the suite runs on SQLite.
+
+REPORT_MAX_DAYS = 366
+REPORT_GRANULARITIES = ("day", "week", "month")
+REPORT_TOP_SERMONS = 10
+
+
+def report_edges(start: date, end: date, granularity: str) -> list[date]:
+    """Half-open bucket edges covering exactly `[start, end)`, oldest first.
+
+    `day` gives one bucket per date. `week` cuts at ISO Mondays and `month`
+    at the 1st; the first and last buckets are clipped to the period, so the
+    buckets always add up to the period's totals. Pure, no DB.
+    """
+    if end <= start:
+        raise ValueError("end must be after start")
+    edges = [start]
+    cursor = start
+    while True:
+        if granularity == "day":
+            cursor = cursor + timedelta(days=1)
+        elif granularity == "week":
+            cursor = cursor + timedelta(days=7 - cursor.weekday())
+        elif granularity == "month":
+            cursor = (
+                date(cursor.year + 1, 1, 1) if cursor.month == 12
+                else date(cursor.year, cursor.month + 1, 1)
+            )
+        else:
+            raise ValueError(f"unknown granularity {granularity!r}")
+        if cursor >= end:
+            break
+        edges.append(cursor)
+    edges.append(end)
+    return edges
+
+
+def _midnight(d: date) -> datetime:
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+
+
+def _in(col, lo, hi):
+    return and_(col >= lo, col < hi)
+
+
+async def _bucket_sums(db: AsyncSession, value, day_col, edges: list[date]) -> list[int]:
+    """SUM(value) per bucket, one row back. `value` is a column of the table
+    `day_col` belongs to; the WHERE limits the scan to the period."""
+    cols = [
+        func.sum(case((_in(day_col, edges[i], edges[i + 1]), value), else_=0))
+        for i in range(len(edges) - 1)
+    ]
+    row = (
+        await db.execute(select(*cols).where(_in(day_col, edges[0], edges[-1])))
+    ).one()
+    return [int(v or 0) for v in row]
+
+
+async def _bucket_distinct_listeners(db: AsyncSession, edges: list[date]) -> list[int]:
+    """Distinct users per bucket from `listener_day` — a COUNT(DISTINCT) per
+    bucket, never a sum of daily counts (someone active on two days of one
+    week is one listener for that week)."""
+    d = ListenerDay.day
+    cols = [
+        func.count(func.distinct(case((_in(d, edges[i], edges[i + 1]), ListenerDay.user_id))))
+        for i in range(len(edges) - 1)
+    ]
+    row = (await db.execute(select(*cols).where(_in(d, edges[0], edges[-1])))).one()
+    return [int(v or 0) for v in row]
+
+
+async def _bucket_counts_at(db: AsyncSession, ts_col, from_, edges: list[date]) -> list[int]:
+    """COUNT(*) per bucket of a timestamp column (`from_` is the subquery or
+    table it lives on), bucketed on UTC midnights."""
+    bounds = [_midnight(e) for e in edges]
+    cols = [
+        func.sum(case((_in(ts_col, bounds[i], bounds[i + 1]), 1), else_=0))
+        for i in range(len(bounds) - 1)
+    ]
+    row = (
+        await db.execute(select(*cols).select_from(from_).where(_in(ts_col, bounds[0], bounds[-1])))
+    ).one()
+    return [int(v or 0) for v in row]
+
+
+def _hours(seconds: int) -> float:
+    return round(seconds / 3600, 1)
+
+
+async def usage_report(
+    db: AsyncSession,
+    start: date,
+    end: date,
+    granularity: str,
+    *,
+    top_limit: int = REPORT_TOP_SERMONS,
+) -> dict:
+    """The `GET /admin/analytics/report` body. Raises `ContentError(422)` for
+    an empty, inverted or over-366-day period."""
+    if end <= start:
+        raise ContentError("`to` must be after `from`.", status_code=422)
+    if (end - start).days > REPORT_MAX_DAYS:
+        raise ContentError(
+            f"A report covers at most {REPORT_MAX_DAYS} days.", status_code=422
+        )
+    if granularity not in REPORT_GRANULARITIES:
+        raise ContentError("Unknown granularity.", status_code=422)
+
+    edges = report_edges(start, end, granularity)
+    whole = [start, end]
+    spd = SermonPlayDaily
+    first_ever = (
+        select(func.min(PlaybackSession.first_played_at).label("first_ever"))
+        .group_by(PlaybackSession.user_id)
+        .subquery()
+    )
+    viewers = select(User.created_at.label("created_at")).where(
+        User.role == UserRole.VIEWER
+    ).subquery()
+
+    plays = await _bucket_sums(db, spd.plays, spd.day, edges)
+    completions = await _bucket_sums(db, spd.completions, spd.day, edges)
+    watched = await _bucket_sums(db, spd.watched_seconds, spd.day, edges)
+    listeners = await _bucket_distinct_listeners(db, edges)
+    new_listeners = await _bucket_counts_at(db, first_ever.c.first_ever, first_ever, edges)
+    signups = await _bucket_counts_at(db, viewers.c.created_at, viewers, edges)
+    (period_listeners,) = await _bucket_distinct_listeners(db, whole)
+
+    data_from = (await db.execute(select(func.min(spd.day)))).scalar_one_or_none()
+
+    top_rows = (
+        await db.execute(
+            select(
+                Sermon.id,
+                Sermon.title,
+                func.sum(spd.plays).label("plays"),
+                func.sum(spd.completions).label("completions"),
+                func.sum(spd.watched_seconds).label("watched"),
+            )
+            .join(Sermon, Sermon.id == spd.sermon_id)
+            .where(_in(spd.day, start, end))
+            .group_by(Sermon.id, Sermon.title)
+            .order_by(func.sum(spd.plays).desc(), Sermon.title)
+            .limit(top_limit)
+        )
+    ).all()
+
+    series = [
+        {
+            "start": edges[i],
+            "end": edges[i + 1],
+            "plays": plays[i],
+            "completions": completions[i],
+            "watch_hours": _hours(watched[i]),
+            "listeners": listeners[i],
+            "new_listeners": new_listeners[i],
+            "signups": signups[i],
+        }
+        for i in range(len(edges) - 1)
+    ]
+    return {
+        "period": {"from": start, "to": end, "granularity": granularity},
+        "data_available_from": data_from,
+        "kpis": {
+            "plays": sum(plays),
+            "completions": sum(completions),
+            "watch_hours": _hours(sum(watched)),
+            "listeners": period_listeners,
+            "new_listeners": sum(new_listeners),
+            "signups": sum(signups),
+        },
+        "series": series,
+        "top_sermons": [
+            {
+                "sermon_id": sid,
+                "title": title,
+                "plays": int(p or 0),
+                "completions": int(c or 0),
+                "watch_hours": _hours(int(w or 0)),
+            }
+            for sid, title, p, c, w in top_rows
+        ],
+    }
+
+
+# Excel / Sheets treat a cell starting with any of these as a formula. Same
+# set as the admin portal's own CSV export
+# (`components/subscriptions/subscriptions-csv.ts`).
+_FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
+
+TIMESERIES_COLUMNS = (
+    "period_start", "period_end", "plays", "completions", "watch_hours",
+    "listeners", "new_listeners", "signups",
+)
+TOP_SERMONS_COLUMNS = ("sermon_id", "title", "plays", "completions", "watch_hours")
+
+
+def csv_cell(value) -> str:
+    """One CSV field: OWASP formula guard first (leading `'` when the value
+    would otherwise be read as a formula), then RFC 4180 quoting."""
+    text = "" if value is None else str(value)
+    if text.startswith(_FORMULA_LEAD):
+        text = "'" + text
+    if any(c in text for c in ',"\r\n'):
+        text = '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def report_csv(report: dict, kind: str) -> str:
+    """The export body: UTF-8 BOM (so Excel opens it as UTF-8), CRLF line
+    endings, every cell through `csv_cell`."""
+    if kind == "timeseries":
+        header = TIMESERIES_COLUMNS
+        rows = [
+            (b["start"], b["end"], b["plays"], b["completions"], b["watch_hours"],
+             b["listeners"], b["new_listeners"], b["signups"])
+            for b in report["series"]
+        ]
+    elif kind == "top_sermons":
+        header = TOP_SERMONS_COLUMNS
+        rows = [
+            (t["sermon_id"], t["title"], t["plays"], t["completions"], t["watch_hours"])
+            for t in report["top_sermons"]
+        ]
+    else:
+        raise ValueError(f"unknown export kind {kind!r}")
+    lines = [",".join(csv_cell(c) for c in header)]
+    lines += [",".join(csv_cell(c) for c in row) for row in rows]
+    return "﻿" + "\r\n".join(lines) + "\r\n"

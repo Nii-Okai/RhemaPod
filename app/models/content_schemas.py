@@ -765,6 +765,64 @@ class OverviewStats(BaseModel):
     plays_last_7_days: int
 
 
+class ReportPeriod(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: date = Field(alias="from", serialization_alias="from")
+    to: date
+    granularity: Literal["day", "week", "month"]
+
+
+class ReportKpis(BaseModel):
+    """Period totals. `listeners` is distinct accounts over the whole period
+    (not a sum of bucket counts). `new_listeners` and `signups` (viewer
+    accounts created) are accurate for any period; the other measures exist
+    only from `data_available_from` on."""
+
+    plays: int
+    completions: int
+    watch_hours: float
+    listeners: int
+    new_listeners: int
+    signups: int
+
+
+class ReportBucket(BaseModel):
+    """One bucket, half-open `[start, end)`. Weekly buckets cut at ISO
+    Mondays and monthly at the 1st; the first and last are clipped to the
+    period."""
+
+    start: date
+    end: date
+    plays: int
+    completions: int
+    watch_hours: float
+    listeners: int
+    new_listeners: int
+    signups: int
+
+
+class ReportTopSermon(BaseModel):
+    sermon_id: uuid.UUID
+    title: str
+    plays: int
+    completions: int
+    watch_hours: float
+
+
+class UsageReport(BaseModel):
+    """`GET /admin/analytics/report` (plan-admin-settings §A.5).
+    `data_available_from` is the earliest day with any rollup data: plays,
+    completions and watch time are forward-only from then (§A.2). Null when
+    there is no rollup data yet."""
+
+    period: ReportPeriod
+    data_available_from: date | None
+    kpis: ReportKpis
+    series: list[ReportBucket]
+    top_sermons: list[ReportTopSermon]
+
+
 class NewListenersBucket(BaseModel):
     """One week in the "New listeners" series (plan §A.2, M1).
 

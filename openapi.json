@@ -3214,6 +3214,160 @@
         "title": "RejectRequest",
         "type": "object"
       },
+      "ReportBucket": {
+        "description": "One bucket, half-open `[start, end)`. Weekly buckets cut at ISO\nMondays and monthly at the 1st; the first and last are clipped to the\nperiod.",
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "listeners": {
+            "title": "Listeners",
+            "type": "integer"
+          },
+          "new_listeners": {
+            "title": "New Listeners",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "signups": {
+            "title": "Signups",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "plays",
+          "completions",
+          "watch_hours",
+          "listeners",
+          "new_listeners",
+          "signups"
+        ],
+        "title": "ReportBucket",
+        "type": "object"
+      },
+      "ReportKpis": {
+        "description": "Period totals. `listeners` is distinct accounts over the whole period\n(not a sum of bucket counts). `new_listeners` and `signups` (viewer\naccounts created) are accurate for any period; the other measures exist\nonly from `data_available_from` on.",
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "listeners": {
+            "title": "Listeners",
+            "type": "integer"
+          },
+          "new_listeners": {
+            "title": "New Listeners",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "signups": {
+            "title": "Signups",
+            "type": "integer"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "plays",
+          "completions",
+          "watch_hours",
+          "listeners",
+          "new_listeners",
+          "signups"
+        ],
+        "title": "ReportKpis",
+        "type": "object"
+      },
+      "ReportPeriod": {
+        "properties": {
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "granularity": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Granularity",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity"
+        ],
+        "title": "ReportPeriod",
+        "type": "object"
+      },
+      "ReportTopSermon": {
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sermon_id",
+          "title",
+          "plays",
+          "completions",
+          "watch_hours"
+        ],
+        "title": "ReportTopSermon",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "new_password": {
@@ -5536,6 +5690,52 @@
         "title": "UploadTicket",
         "type": "object"
       },
+      "UsageReport": {
+        "description": "`GET /admin/analytics/report` (plan-admin-settings \u00a7A.5).\n`data_available_from` is the earliest day with any rollup data: plays,\ncompletions and watch time are forward-only from then (\u00a7A.2). Null when\nthere is no rollup data yet.",
+        "properties": {
+          "data_available_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Available From"
+          },
+          "kpis": {
+            "$ref": "#/components/schemas/ReportKpis"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReportPeriod"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBucket"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "top_sermons": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTopSermon"
+            },
+            "title": "Top Sermons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "data_available_from",
+          "kpis",
+          "series",
+          "top_sermons"
+        ],
+        "title": "UsageReport",
+        "type": "object"
+      },
       "UserActiveResponse": {
         "description": "The updated account, plus a flag set when a Redis outage forced\nrefresh-token revocation to be deferred (plan \u00a7W18, GATE 6 = commit-first).\nSet on **deactivation** when the lockout committed but the token revoke could\nnot be recorded, and on **reactivation** when the best-effort revoke of any\nstill-live pre-deactivation refresh token could not be recorded (CWE-613).\nThe state change still committed and every request re-checks `is_active`, so\nthe flag only tells an operator a Redis-backed revoke did not land.",
         "properties": {
@@ -6030,6 +6230,171 @@
           }
         ],
         "summary": "Analytics Overview",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/report": {
+      "get": {
+        "description": "KPIs, a bucketed series and top sermons for `[from, to)`. Managers\nmay view; only admins may export (D1).",
+        "operationId": "usage_report_api_v1_admin_analytics_report_get",
+        "parameters": [
+          {
+            "description": "First day of the period (UTC), inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "First day of the period (UTC), inclusive.",
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "default": "week",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Granularity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Usage Report",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/report/export": {
+      "get": {
+        "description": "The report as CSV, admin only. Fail-closed: the `report.exported`\naudit row is committed before the file is returned, so a failed audit\ninsert means no file. Every cell passes the spreadsheet formula guard\n(sermon titles are editor-controlled).",
+        "operationId": "export_usage_report_api_v1_admin_analytics_report_export_get",
+        "parameters": [
+          {
+            "description": "First day of the period (UTC), inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "First day of the period (UTC), inclusive.",
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "timeseries",
+                "top_sermons"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "default": "week",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Granularity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "UTF-8 CSV with BOM."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Usage Report",
         "tags": [
           "analytics"
         ]
