@@ -11,8 +11,8 @@ Reviewer note: done by the agent that wrote S7–S18; no independent `reviewer-g
 ## Verdict
 
 **No open blocking findings in this plan's code.** One real defect was found and fixed in S18
-(finding 1). Two pre-existing mobile problems unrelated to this plan keep "mobile jest green" and
-"lint green" from being literally true (finding 6).
+(finding 1). Two pre-existing mobile problems unrelated to this plan were found and have since been fixed
+(finding 6).
 
 ---
 
@@ -74,7 +74,7 @@ download link for no confidentiality gain.
 | Contract and clients regenerated, additions only | S10/S12/S13/S15 commits |
 | Portal `/settings` redirect, per-route guards, admin-only export | `admin_portal/tests/settings/*`, `tests/portal/settings-page.test.tsx` |
 | Mobile server values, fallbacks, rows hidden when unset | `mobile/lib/query/hooks/__tests__/useChurchSettings.test.ts`, `me.test.tsx`, `TermsSheetServerText.test.tsx` |
-| Suites green | Backend 1793 passed / 1 skipped (S16, against real Postgres and Redis; S17–S18 changed no backend code). Portal `npm run verify` green (822). Mobile `tsc` green; jest see finding 6. |
+| Suites green | Backend 1793 passed / 1 skipped (S16, against real Postgres and Redis; S17–S18 changed no backend code). Portal `npm run verify` green (822). Mobile `tsc`, jest (1010) and lint green after the finding 6 fixes. |
 | ADRs 0017–0019, plans index row | S14 |
 
 **Gaps, not blocking:** restoring a persisted settings response after an app restart relies on
@@ -87,13 +87,15 @@ No client change outside the plan's file list except `admin_portal/components/ch
 (index keys, finding 2) and `admin_portal/tests/portal/settings-page.test.tsx`, which tested the
 placeholder S17 replaced. `nav-config.ts` is untouched.
 
-## 6. Pre-existing, outside this plan
+## 6. Pre-existing, outside this plan — since fixed
 
-- **Mobile jest:** `app/(tabs)/__tests__/announcements.test.tsx` fails to parse
-  (`expo-linking` ships ESM that Jest doesn't transform). It fails identically with S18 reverted.
-  The other 153 suites (1002 tests) pass.
-- **Mobile lint:** 19 `no-undef` errors (`require`, globals) in files this plan doesn't touch,
-  present without S18. The S18 files lint clean.
+- **Mobile jest:** `app/(tabs)/__tests__/announcements.test.tsx` failed to parse because the
+  screen had gained `useRouter`/`useSafeAreaInsets` after the test was written, so the real
+  `expo-router` (and `expo-linking`'s ESM build) loaded. Fixed in a follow-up commit by mocking
+  both, as `me.test.tsx` does. All 154 suites (1010 tests) now pass.
+- **Mobile lint:** 19 errors, now 0. Metro asset `require()` is allowed by config, `require()`
+  inside `jest.mock` factories is allowed in tests, two disable comments for an uninstalled
+  `react-hooks` rule became plain comments, and four genuinely unused variables were removed.
 - **`pre-commit run --all-files`:** the repo has no `.pre-commit-config.yaml` and no `pre-commit`
   install, so this step can't run as written. The repo's actual hook was applied to the branch
   diff instead (§3).

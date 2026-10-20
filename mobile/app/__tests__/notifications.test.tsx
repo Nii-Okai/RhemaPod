@@ -21,8 +21,8 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: mockBack }),
 }));
 
-const mockedGetItem = jest.fn(async (_key: string) => null as string | null);
-const mockedSetItem = jest.fn(async (_key: string, _value: string) => undefined);
+const mockedGetItem = jest.fn<Promise<string | null>, [string]>(async () => null);
+const mockedSetItem = jest.fn<Promise<undefined>, [string, string]>(async () => undefined);
 jest.mock('expo-sqlite/kv-store', () => ({
   AsyncStorage: {
     getItem: (key: string) => mockedGetItem(key),

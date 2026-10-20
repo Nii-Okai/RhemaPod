@@ -35,7 +35,7 @@ export function StaggerItem({ index, children }: StaggerItemProps) {
     });
     animation.start();
     return () => animation.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only; see the doc comment above.
+    // Intentionally mount-only (empty deps); see the doc comment above.
   }, []);
 
   return (

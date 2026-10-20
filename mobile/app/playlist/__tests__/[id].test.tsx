@@ -213,7 +213,7 @@ describe('PlaylistDetailScreen', () => {
   it('opens Name & details from the options menu and deletes the playlist', async () => {
     mockPlaylistGet(detail());
     mockedDelete.mockResolvedValue(undefined);
-    const { findByLabelText, getByLabelText, getByText } = renderScreen();
+    const { findByLabelText, getByLabelText } = renderScreen();
 
     fireEvent.press(await findByLabelText('More options'));
     fireEvent.press(getByLabelText('Name & details'));
