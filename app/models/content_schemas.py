@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.text_safety import normalise_text, raw_length_exceeded
 from app.models.models import (
@@ -933,6 +933,140 @@ class Page(BaseModel, Generic[_T]):
     total: int
     limit: int
     offset: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Church settings (plan-admin-settings §A.4.3 / §A.5)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SETTINGS_URL_MAX = 2048
+COMMENT_GUIDELINES_MAX = 10_000
+
+# Editable text fields: name -> (max length, multiline). Lengths match the
+# `church_settings` columns; `comment_guidelines` is the plan's 1–10,000.
+SETTINGS_TEXT_FIELDS: dict[str, tuple[int, bool]] = {
+    "church_name": (200, False),
+    "app_display_name": (100, False),
+    "tagline": (200, False),
+    "about": (5000, True),
+    "contact_phone": (40, False),
+    "address": (500, True),
+    "comment_guidelines": (COMMENT_GUIDELINES_MAX, True),
+    "copyright_notice": (300, False),
+}
+SETTINGS_URL_FIELDS = ("website_url", "terms_of_use_url", "privacy_policy_url")
+# Columns that are NOT NULL: a PATCH may change them but never clear them.
+SETTINGS_REQUIRED_FIELDS = ("contact_email", "comment_guidelines")
+SETTINGS_EDITABLE_FIELDS = (
+    *SETTINGS_TEXT_FIELDS, *SETTINGS_URL_FIELDS, "contact_email",
+)
+
+
+class ChurchSettingsPublic(BaseModel):
+    """`GET /settings/public` — what the mobile app reads, unauthenticated.
+    No `updated_by_id` or `updated_at`. `version` is also the weak ETag.
+    The mobile app renders contact email, comment guidelines and the two
+    legal URLs in v1; the other fields are returned but not yet shown."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    church_name: str | None
+    app_display_name: str | None
+    tagline: str | None
+    about: str | None
+    contact_email: str
+    contact_phone: str | None
+    website_url: str | None
+    address: str | None
+    comment_guidelines: str
+    terms_of_use_url: str | None
+    privacy_policy_url: str | None
+    copyright_notice: str | None
+    version: int
+
+
+class ChurchSettingsAdmin(ChurchSettingsPublic):
+    """`GET/PATCH /admin/settings` — the public fields plus who last saved
+    and when. `updated_by` is that account's email, `"Deleted account"` once
+    it is gone, or null before the first edit."""
+
+    updated_at: datetime
+    updated_by: str | None
+
+
+class ChurchSettingsUpdate(BaseModel):
+    """Partial update. Omit a field to leave it unchanged; send `null` to
+    clear an optional one (`contact_email` and `comment_guidelines` can be
+    changed but never cleared). `version` must be the one the editor loaded:
+    a stale value is a 409, never a silent overwrite.
+
+    Text is normalised like comments (NFC, control characters stripped,
+    whitespace trimmed); an optional field left empty after that is stored
+    as null. URLs must be absolute `https`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    church_name: str | None = None
+    app_display_name: str | None = None
+    tagline: str | None = None
+    about: str | None = None
+    contact_email: EmailStr | None = None
+    contact_phone: str | None = None
+    website_url: str | None = None
+    address: str | None = None
+    comment_guidelines: str | None = None
+    terms_of_use_url: str | None = None
+    privacy_policy_url: str | None = None
+    copyright_notice: str | None = None
+
+    @field_validator(*SETTINGS_TEXT_FIELDS)
+    @classmethod
+    def _clean_text(cls, v: str | None, info) -> str | None:
+        if v is None:
+            return None
+        cap, multiline = SETTINGS_TEXT_FIELDS[info.field_name]
+        if raw_length_exceeded(v, cap):
+            raise ValueError(f"Must be at most {cap} characters")
+        cleaned = normalise_text(v, multiline=multiline)
+        if len(cleaned) > cap:
+            raise ValueError(f"Must be at most {cap} characters")
+        return cleaned or None
+
+    @field_validator(*SETTINGS_URL_FIELDS)
+    @classmethod
+    def _https_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        from urllib.parse import urlsplit
+
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > SETTINGS_URL_MAX:
+            raise ValueError(f"Must be at most {SETTINGS_URL_MAX} characters")
+        if any(c.isspace() or ord(c) < 0x20 or ord(c) == 0x7F for c in v):
+            raise ValueError("Must not contain spaces or control characters")
+        parts = urlsplit(v)
+        if parts.scheme != "https" or not parts.hostname:
+            raise ValueError("Must be an absolute https:// URL")
+        return v
+
+    @model_validator(mode="after")
+    def _required_fields_not_cleared(self) -> "ChurchSettingsUpdate":
+        for name in SETTINGS_REQUIRED_FIELDS:
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be empty")
+        return self
+
+    def changes(self) -> dict[str, str | None]:
+        """The fields the caller actually sent, `version` excluded."""
+        return {
+            name: (str(getattr(self, name)) if getattr(self, name) is not None else None)
+            for name in SETTINGS_EDITABLE_FIELDS
+            if name in self.model_fields_set
+        }
 
 
 class AuditEntry(BaseModel):
