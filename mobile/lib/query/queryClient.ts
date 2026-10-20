@@ -87,6 +87,12 @@ export const queryKeys = {
     all: ['verses'] as const,
     today: () => [...queryKeys.verses.all, 'today'] as const,
   },
+  /** `GET /settings/public` — church contact email, comment guidelines and legal links
+      (plan-admin-settings S18). One public, unauthenticated read. */
+  settings: {
+    all: ['settings'] as const,
+    public: () => [...queryKeys.settings.all, 'public'] as const,
+  },
   /**
    * The caller's own `/me/*` reads, folded into one domain rather than split across
    * `me` and a standalone `continueWatching` (W4.1/W4.4 reconciliation — both are reads
