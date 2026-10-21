@@ -30,7 +30,7 @@ export type UiVariant =
   | 'badge'
   | 'avatarInitials'
   | 'actionLabel';
-export type MonoVariant = 'meta' | 'tight';
+export type MonoVariant = 'meta' | 'tight' | 'counter';
 
 interface TypeStyle {
   fontFamily: string;
@@ -79,6 +79,8 @@ export const uiScale: Record<UiVariant, TypeStyle> = {
 export const monoScale: Record<MonoVariant, TypeStyle> = {
   meta: { fontFamily: fontFamily.mono, fontSize: 11, lineHeightRatio: 1.4 },
   tight: { fontFamily: fontFamily.mono, fontSize: 13, lineHeightRatio: 1 },
+  /** Large ticking numbers — Signature Home's countdown to the next message. */
+  counter: { fontFamily: fontFamily.mono, fontSize: 24, lineHeightRatio: 1.1 },
 };
 
 /**

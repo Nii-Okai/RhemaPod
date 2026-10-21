@@ -45,7 +45,12 @@ const sermon = (id: string, title: string, extra: object = {}) => ({
 });
 
 const routes: Record<string, unknown> = {
-  '/verses/today': { text: 'O taste and see that the LORD is good', reference: 'Psalms 34:8', translation: 'kjv' },
+  '/verses/today': {
+    text: 'O taste and see that the LORD is good: blessed\nis\n the man  that trusteth in him.',
+    reference: 'Psalms 34:8',
+    translation: 'kjv',
+  },
+  '/catalog/sermons/upcoming': null,
   '/catalog/sermons/hero': [sermon('h1', 'God the Holy Spirit', { speaker_name: 'Prophet Prince Manasseh Atsu' })],
   '/me/continue-watching': [
     sermon('e2', 'Divine Patterns · Part 2', {
@@ -130,13 +135,43 @@ describe('SignatureHomeScreen', () => {
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/sermon/[id]', params: { id: 'e2' } });
   });
 
-  it("opens the prophet's page from the catalog header", async () => {
+  it('flows the verse onto one line however it was entered', async () => {
     const screen = renderSignature();
-    fireEvent.press(await screen.findByLabelText('Prophet\'s Catalog'));
-    expect(mockPush).toHaveBeenLastCalledWith({
-      pathname: '/speaker/[id]',
-      params: { id: 'sp1', name: 'Prophet Prince Manasseh Atsu' },
+    expect(
+      await screen.findByText('“O taste and see that the LORD is good: blessed is the man that trusteth in him.”'),
+    ).toBeTruthy();
+  });
+
+  it('captions shelf cards with titles, not categories', async () => {
+    const screen = renderSignature();
+    await screen.findByText('Pick up where you left off');
+    expect(screen.getAllByText('Divine Patterns · Part 2').length).toBeGreaterThan(0);
+    expect(screen.getByText('FAITH · 20:00 LEFT')).toBeTruthy();
+    expect(screen.getAllByText('Sunday Service').length).toBeGreaterThan(0);
+    expect(screen.getByText('The Word Life')).toBeTruthy();
+    expect(screen.getByText('The Eyes to See')).toBeTruthy();
+    expect(screen.getByText('2 episodes')).toBeTruthy();
+  });
+
+  it("keeps the Prophet's Catalog header as a plain heading", async () => {
+    const screen = renderSignature();
+    const heading = await screen.findByText('Prophet’s Catalog');
+    fireEvent.press(heading);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('counts down to the next scheduled message', async () => {
+    const inThreeDays = new Date(Date.now() + ((3 * 24 + 4) * 60 + 30) * 60 * 1000 - 1000).toISOString();
+    const screen = renderSignature({
+      '/catalog/sermons/upcoming': { id: 'u1', title: 'The Destiny of the Church · Part 4', publish_at: inThreeDays },
     });
+    expect(await screen.findByLabelText(/The Destiny of the Church · Part 4\. 3 days 4 hours 30 minutes to go$/)).toBeTruthy();
+  });
+
+  it('leaves the countdown out when nothing is scheduled', async () => {
+    const screen = renderSignature();
+    await screen.findByText('Trending');
+    expect(screen.queryByLabelText(/^Next message/)).toBeNull();
   });
 
   it('hides empty shelves and the walk when nothing in progress belongs to a series', async () => {

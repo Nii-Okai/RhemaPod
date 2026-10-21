@@ -100,6 +100,30 @@ async def test_trending_requires_no_auth(client, engine):
     assert len(r.json()) == 1
 
 
+async def test_trending_ranks_by_viewers_not_one_viewers_replays(client, engine):
+    """One person replaying a sermon many times must not outrank a sermon that
+    several people watched — `play_count` is per-viewer restarts, not reach."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    replayed = await publish(client, ed, mgr, title="Replayed by one")
+    shared = await publish(client, ed, mgr, title="Watched by three")
+
+    fan = await make_viewer(client, "fan@example.com")
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    await play(client, replayed, fan)
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        await s.execute(text("UPDATE playback_sessions SET play_count = 40"))
+        await s.commit()
+    for email in ["a@example.com", "b@example.com", "c@example.com"]:
+        await play(client, shared, await make_viewer(client, email))
+
+    titles = [r["title"] for r in (await client.get("/api/v1/catalog/sermons/trending")).json()]
+    assert titles.index("Watched by three") < titles.index("Replayed by one")
+
+
 # ── recommended ───────────────────────────────────────────────────────────────
 async def test_recommended_surfaces_unwatched_sermon_by_same_speaker(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
@@ -113,11 +137,46 @@ async def test_recommended_surfaces_unwatched_sermon_by_same_speaker(client, eng
     await play(client, watched, v)
 
     rows = (await client.get("/api/v1/me/recommended", headers=v)).json()
-    titles = {r["title"] for r in rows}
-    assert "Unwatched, same speaker" in titles
+    titles = [r["title"] for r in rows]
     assert "Watched" not in titles
-    assert "Unrelated speaker" not in titles
+    # The affinity match leads; the unrelated sermon only tops the shelf up after it.
+    assert titles.index("Unwatched, same speaker") < titles.index("Unrelated speaker")
     assert unwatched and unrelated  # ids created, not unused
+
+
+async def test_recommended_ranks_a_played_category_above_a_speaker_only_match(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    spk = await speaker(client, ed, "Prophet")
+    cat = (await client.post("/api/v1/categories", json={"name": "Faith", "slug": "faith"}, headers=ed)).json()["id"]
+    watched = await publish(client, ed, mgr, title="Watched", speaker_id=spk, category_id=cat)
+    await publish(client, ed, mgr, title="Same category", speaker_id=spk, category_id=cat)
+    await publish(client, ed, mgr, title="Same speaker only", speaker_id=spk)
+
+    v = await make_viewer(client)
+    await play(client, watched, v)
+
+    titles = [r["title"] for r in (await client.get("/api/v1/me/recommended", headers=v)).json()]
+    assert titles.index("Same category") < titles.index("Same speaker only")
+
+
+async def test_recommended_fills_the_shelf_beyond_affinity_matches(client, engine):
+    """Nii's phone test showed a one-card shelf: the old version stopped at the
+    affinity matches. It now tops up with trending, then the newest unplayed."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    spk = await speaker(client, ed, "Pastor A")
+    watched = await publish(client, ed, mgr, title="Watched", speaker_id=spk)
+    await publish(client, ed, mgr, title="Match", speaker_id=spk)
+    for i in range(4):
+        await publish(client, ed, mgr, title=f"Other {i}")
+
+    v = await make_viewer(client)
+    await play(client, watched, v)
+
+    rows = (await client.get("/api/v1/me/recommended", headers=v)).json()
+    assert rows[0]["title"] == "Match"
+    assert len(rows) == 5
 
 
 async def test_recommended_falls_back_to_trending_with_no_watch_history(client, engine):

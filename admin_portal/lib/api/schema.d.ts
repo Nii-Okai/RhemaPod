@@ -1105,6 +1105,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/sermons/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming Sermon
+         * @description The next scheduled sermon (Home's "next message" countdown), or null when
+         *     nothing is scheduled. Public, like every other `/catalog` read, and carries only
+         *     the title, release time and names — see `UpcomingSermon`. Registered ahead of
+         *     `/sermons/{sermon_id}` so "upcoming" is never captured as a sermon-id path
+         *     parameter.
+         */
+        get: operations["upcoming_sermon_api_v1_catalog_sermons_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/sermons/{sermon_id}": {
         parameters: {
             query?: never;
@@ -4367,6 +4391,33 @@ export interface components {
             unique_viewers: number;
         };
         /**
+         * UpcomingSermon
+         * @description The next scheduled sermon — PUBLISHED with a future `publish_at` — for Home's
+         *     "next message" countdown. Deliberately thin: the title, when it goes live, and
+         *     the names a card needs. No thumbnail, description or media, so nothing playable
+         *     or previewable leaks ahead of the release; only that it is coming, and when.
+         */
+        UpcomingSermon: {
+            /** Episode Number */
+            episode_number?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Publish At
+             * Format: date-time
+             */
+            publish_at: string;
+            /** Series Title */
+            series_title?: string | null;
+            /** Speaker Name */
+            speaker_name?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
          * UploadConfirm
          * @description Sent when the client finishes its PUT.
          *
@@ -6510,6 +6561,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upcoming_sermon_api_v1_catalog_sermons_upcoming_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingSermon"] | null;
                 };
             };
         };

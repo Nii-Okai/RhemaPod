@@ -23,23 +23,24 @@ export function isNewRelease(publishAt: string | null | undefined, now: number =
   return Number.isFinite(published) && now - published >= 0 && now - published < NEW_FOR_MS;
 }
 
-function MetaRow({ left, right }: { left?: string | null; right?: string | null }) {
-  if (!left && !right) return null;
+/** Title under the art (the art carries it too, but at shelf size it's often cut off),
+ * with an optional mono meta line below. */
+function Caption({ title, meta }: { title: string; meta?: string | null }) {
   return (
-    <View style={styles.metaRow}>
-      <AppText variant="ui.label" numberOfLines={1} style={styles.metaLeft}>
-        {left ?? ''}
+    <View style={styles.caption}>
+      <AppText variant="ui.label" numberOfLines={2}>
+        {title}
       </AppText>
-      {right ? (
-        <AppText variant="mono.meta" tone="tertiary">
-          {right}
+      {meta ? (
+        <AppText variant="mono.meta" tone="tertiary" numberOfLines={1}>
+          {meta}
         </AppText>
       ) : null}
     </View>
   );
 }
 
-/** "Pick up where you left off": art with the progress line along its foot, then category and time left. */
+/** "Pick up where you left off": art with the progress line along its foot, then the title and "CATEGORY · 1:58 LEFT". */
 export function ResumeCard({ item, onPress }: { item: ContinueWatchingItem; onPress: () => void }) {
   const left =
     item.duration_seconds !== null
@@ -61,14 +62,13 @@ export function ResumeCard({ item, onPress }: { item: ContinueWatchingItem; onPr
           </View>
         ) : null}
       </ArtTile>
-      <MetaRow left={item.category_name} right={left} />
+      <Caption title={item.title} meta={[item.category_name?.toUpperCase(), left].filter(Boolean).join(' · ')} />
     </View>
   );
 }
 
-/** "New releases": wide art, a "New" chip during a release's first week, then category and length. */
+/** "New releases": wide art, a "New" chip during a release's first week, then the title. */
 export function ReleaseCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
-  const duration = sermon.duration_seconds ? formatDuration(sermon.duration_seconds) : null;
   return (
     <View style={[styles.column, { width: 240 }]}>
       <ArtTile thumbnailUrl={sermon.thumbnail_url} onPress={onPress} accessibilityLabel={sermon.title} width={240} aspectRatio={16 / 9}>
@@ -80,7 +80,7 @@ export function ReleaseCard({ sermon, onPress }: { sermon: SermonListItem; onPre
           </View>
         ) : null}
       </ArtTile>
-      <MetaRow left={sermon.category_name} right={duration} />
+      <Caption title={sermon.title} />
     </View>
   );
 }
@@ -102,38 +102,35 @@ export function PickCard({ sermon, onPress }: { sermon: SermonListItem; onPress:
   );
 }
 
-/** Series grid tile: portrait art and an episode count. */
+/** Series grid tile: portrait art, then the title and episode count. */
 export function SeriesTile({ series, onPress }: { series: SeriesPublic; onPress: () => void }) {
-  const eps = `${series.episode_count} ${series.episode_count === 1 ? 'EP' : 'EPS'}`;
+  const episodes = `${series.episode_count} ${series.episode_count === 1 ? 'episode' : 'episodes'}`;
   return (
     <View style={styles.column}>
       <ArtTile
         thumbnailUrl={series.thumbnail_url}
         onPress={onPress}
-        accessibilityLabel={`${series.title}, ${series.episode_count} ${series.episode_count === 1 ? 'episode' : 'episodes'}`}
+        accessibilityLabel={`${series.title}, ${episodes}`}
         aspectRatio={3 / 4}
       />
-      <AppText variant="mono.meta" tone="tertiary">
-        {eps}
-      </AppText>
+      <View style={styles.caption}>
+        <AppText variant="ui.label" numberOfLines={2}>
+          {series.title}
+        </AppText>
+        <AppText variant="ui.badge" tone="tertiary">
+          {episodes}
+        </AppText>
+      </View>
     </View>
   );
 }
 
-/** Prophet's Catalog: square art, then category and length. */
+/** Prophet's Catalog: square art, then the title. */
 export function CatalogCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
-  const meta = [sermon.category_name, sermon.duration_seconds ? formatDuration(sermon.duration_seconds) : null]
-    .filter(Boolean)
-    .join(' · ')
-    .toUpperCase();
   return (
     <View style={[styles.column, { width: 150 }]}>
       <ArtTile thumbnailUrl={sermon.thumbnail_url} onPress={onPress} accessibilityLabel={sermon.title} width={150} aspectRatio={1} />
-      {meta ? (
-        <AppText variant="mono.meta" tone="tertiary" numberOfLines={1}>
-          {meta}
-        </AppText>
-      ) : null}
+      <Caption title={sermon.title} />
     </View>
   );
 }
@@ -183,14 +180,8 @@ const styles = StyleSheet.create({
   column: {
     gap: spacing.sm,
   },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  metaLeft: {
-    flexShrink: 1,
+  caption: {
+    gap: 2,
   },
   progress: {
     position: 'absolute',

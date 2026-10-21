@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUserDep, get_optional_user
 from app.db.database import get_db, get_read_db
-from app.models.content_schemas import CategoryPublic, LikeState, SermonDetail, SermonListItem
+from app.models.content_schemas import (
+    CategoryPublic,
+    LikeState,
+    SermonDetail,
+    SermonListItem,
+    UpcomingSermon,
+)
 from app.models.models import User
 from app.services import content_service, likes_service
 from app.services.content_service import ContentError
@@ -64,6 +70,16 @@ async def new_release_sermons(
     read. Registered ahead of `/sermons/{sermon_id}` so "new-releases" is never
     captured as a sermon-id path parameter."""
     return await content_service.list_new_release_sermons(db, user, limit)
+
+
+@router.get("/sermons/upcoming", response_model=UpcomingSermon | None)
+async def upcoming_sermon(db: ReadDbDep) -> UpcomingSermon | None:
+    """The next scheduled sermon (Home's "next message" countdown), or null when
+    nothing is scheduled. Public, like every other `/catalog` read, and carries only
+    the title, release time and names — see `UpcomingSermon`. Registered ahead of
+    `/sermons/{sermon_id}` so "upcoming" is never captured as a sermon-id path
+    parameter."""
+    return await content_service.next_scheduled_sermon(db)
 
 
 @router.get("/sermons/prophets-catalog", response_model=list[SermonListItem])

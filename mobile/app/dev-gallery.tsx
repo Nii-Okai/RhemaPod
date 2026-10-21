@@ -127,7 +127,7 @@ export default function DevGalleryScreen() {
       </Section>
 
       <Section title="Typography — mono (IBM Plex Mono, numeric/temporal only)">
-        {(['meta', 'tight'] as MonoVariant[]).map((variant) => (
+        {(['meta', 'tight', 'counter'] as MonoVariant[]).map((variant) => (
           <AppText key={variant} variant={`mono.${variant}`} tone="tertiary" style={styles.stack}>
             {variant} — 42:18 · Sep 4 · Ep. 05
           </AppText>

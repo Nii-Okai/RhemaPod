@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { AppText, Avatar, PlatformIcon, StaggerItem } from '../../../../components';
+import { AppText, Avatar, StaggerItem } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { userMessageFor } from '../../../../lib/api/errors';
@@ -14,12 +14,14 @@ import { useProphetsCatalog } from '../../../../lib/query/hooks/useProphetsCatal
 import { useRecommended } from '../../../../lib/query/hooks/useRecommended';
 import { useTrending } from '../../../../lib/query/hooks/useTrending';
 import { useSeriesList } from '../../../../lib/query/hooks/useSeries';
+import { useUpcomingSermon } from '../../../../lib/query/hooks/useUpcomingSermon';
 import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
 import { SectionError } from '../../../../components/SectionError';
 import { ShelfSkeleton } from '../../../../components/ShelfSkeleton';
 import { HeroCarousel } from '../HeroCarousel';
 import { HeroSkeleton } from '../HeroSkeleton';
 import { HomeTopBar } from '../HomeTopBar';
+import { CountdownCard } from './CountdownCard';
 import { SignatureHeroCard } from './SignatureHeroCard';
 import { SeriesWalkCard } from './SeriesWalkCard';
 import { VerseCard } from './VerseCard';
@@ -34,8 +36,8 @@ import {
 } from './shelfCards';
 import { useSeriesWalk } from './useSeriesWalk';
 
-/** The Series grid: three columns, at most two rows; "See all" opens the full list. */
-const SERIES_COLUMNS = 3;
+/** The Series grid: two columns, at most two rows; "See all" opens the full list. */
+const SERIES_COLUMNS = 2;
 const SERIES_GRID_MAX = SERIES_COLUMNS * 2;
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -120,16 +122,13 @@ function Shelf<T extends { id: string }>({
 
 /**
  * Home, Signature redesign (Nii's approved mockup "RhemaPod — Signature", 2026-10-21),
- * behind `SIGNATURE_HOME_ENABLED`. Same data and destinations as the classic Home — only
- * the layout and look change:
+ * behind `SIGNATURE_HOME_ENABLED`. Same data and destinations as the classic Home, plus
+ * the countdown to the next scheduled message (`GET /catalog/sermons/upcoming`):
  *
  *  verse of the day → "New this week" hero → pick up where you left off → new releases →
- *  Prophet's Pick → Series ("your walk" above a grid of the other series) → Prophet's
- *  Catalog → recommended for you → trending.
- *
- * The mockup's countdown to the next scheduled message is not here: members can't see
- * scheduled sermons yet (every catalogue read hides an item until its `publish_at`), so
- * there is nothing true to count down to. It needs a backend read first.
+ *  next message countdown (only while one is scheduled) → Prophet's Pick → Series ("your
+ *  walk" above a two-column grid of the other series) → Prophet's Catalog → recommended
+ *  for you → trending.
  *
  * The top bar sits above the scroll in normal flow (not over the art, as on the classic
  * Home) because the verse, not the hero, now opens the page.
@@ -145,6 +144,7 @@ export function SignatureHomeScreen() {
   const recommended = useRecommended();
   const trending = useTrending();
   const series = useSeriesList();
+  const upcoming = useUpcomingSermon();
   const notificationsBadge = useNotificationsBadge();
   const seriesWalk = useSeriesWalk(continueWatching.data ?? []);
 
@@ -156,17 +156,12 @@ export function SignatureHomeScreen() {
   const otherSeries = seriesItems.filter((item) => item.id !== walk?.seriesId).slice(0, SERIES_GRID_MAX);
   const walkThumbnail =
     seriesItems.find((item) => item.id === walk?.seriesId)?.thumbnail_url ?? walk?.current.thumbnail_url;
-  // The catalogue is one speaker's; the header opens that speaker's page.
-  const speakerItem = catalogItems.find((item) => item.speaker_id && item.speaker_name);
-  const catalogSpeaker =
-    speakerItem?.speaker_id && speakerItem.speaker_name
-      ? { id: speakerItem.speaker_id, name: speakerItem.speaker_name }
-      : null;
+  // The catalogue is one speaker's; the header shows their avatar.
+  const catalogSpeaker = catalogItems.find((item) => item.speaker_id && item.speaker_name) ?? null;
 
   const goToSermon = (id: string) => router.push({ pathname: '/sermon/[id]', params: { id } });
   const goToSeries = (id: string) => router.push({ pathname: '/series/[id]', params: { id } });
   const goToSeriesList = () => router.push(pathnameFor(routeByKey('series')));
-  const goToSpeaker = (id: string, name: string) => router.push({ pathname: '/speaker/[id]', params: { id, name } });
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -179,6 +174,7 @@ export function SignatureHomeScreen() {
       recommended.refetch(),
       trending.refetch(),
       series.refetch(),
+      upcoming.refetch(),
       seriesWalk.refetch(),
     ]);
     setRefreshing(false);
@@ -243,6 +239,20 @@ export function SignatureHomeScreen() {
           renderItem={(item) => <ReleaseCard sermon={item} onPress={() => goToSermon(item.id)} />}
         />
 
+        {upcoming.data ? (
+          <View style={styles.gutter}>
+            <CountdownCard
+              key={upcoming.data.id}
+              sermon={upcoming.data}
+              onReleased={() => {
+                void upcoming.refetch();
+                void newReleases.refetch();
+                void hero.refetch();
+              }}
+            />
+          </View>
+        ) : null}
+
         {prophetsCatalog.isLoading || prophetsCatalog.isError || pick ? (
           <View style={[styles.section, styles.gutter]}>
             <SectionTitle>
@@ -301,25 +311,20 @@ export function SignatureHomeScreen() {
 
         {catalogItems.length > 0 ? (
           <View style={styles.section}>
-            <Pressable
-              onPress={catalogSpeaker ? () => goToSpeaker(catalogSpeaker.id, catalogSpeaker.name) : undefined}
-              disabled={!catalogSpeaker}
-              accessibilityRole={catalogSpeaker ? 'button' : 'header'}
-              accessibilityLabel="Prophet's Catalog"
-              style={[styles.gutter, styles.catalogHeader]}
-            >
-              {catalogSpeaker ? (
+            <View style={[styles.gutter, styles.catalogHeader]}>
+              {catalogSpeaker?.speaker_name ? (
                 <View style={styles.avatarRing}>
-                  <Avatar name={catalogSpeaker.name} seed={catalogSpeaker.id} size={48} />
+                  <Avatar
+                    name={catalogSpeaker.speaker_name}
+                    seed={catalogSpeaker.speaker_id ?? catalogSpeaker.speaker_name}
+                    size={48}
+                  />
                 </View>
               ) : null}
-              <AppText variant="display.section" style={styles.catalogTitle}>
+              <AppText variant="display.section" accessibilityRole="header" style={styles.catalogTitle}>
                 Prophet&rsquo;s Catalog
               </AppText>
-              {catalogSpeaker ? (
-                <PlatformIcon name="chevron-forward" size={20} color={colors.text.tertiary} />
-              ) : null}
-            </Pressable>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
               {catalogItems.map((item, index) => (
                 <StaggerItem key={item.id} index={index}>
