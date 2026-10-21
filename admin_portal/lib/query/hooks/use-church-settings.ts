@@ -87,6 +87,23 @@ export function useChurchSettings() {
   });
 }
 
+export type ChurchSettingsPublic = components["schemas"]["ChurchSettingsPublic"];
+
+/**
+ * The public, unauthenticated church name/display name — for chrome every
+ * role sees (the TopBar), not the Settings › Profile editor itself. Hits
+ * `GET /settings/public`, not the admin-gated `GET /admin/settings`, so an
+ * Editor doesn't 403 just rendering the header.
+ */
+export function usePublicChurchSettings() {
+  return useQuery({
+    queryKey: queryKeys.settings.public(),
+    queryFn: (): Promise<ChurchSettingsPublic> =>
+      unwrap(api.GET("/api/v1/settings/public")),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useUpdateChurchSettings() {
   const qc = useQueryClient();
   return useMutation<ChurchSettings, Error, ChurchSettingsUpdate>({

@@ -197,6 +197,10 @@ export const queryKeys = {
   settings: {
     all: () => ["settings"] as const,
     profile: () => [...queryKeys.settings.all(), "profile"] as const,
+    /** The unauthenticated public read (church name for the TopBar — every
+        role, not just manager+). Separate key from `profile()`, which hits
+        the admin-only GET and would 403 for an Editor. */
+    public: () => [...queryKeys.settings.all(), "public"] as const,
     auditLists: () => [...queryKeys.settings.all(), "audit"] as const,
     audit: (params: AuditListParams) =>
       [...queryKeys.settings.auditLists(), params] as const,

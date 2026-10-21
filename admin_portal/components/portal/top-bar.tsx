@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { usePublicChurchSettings } from "@/lib/query/hooks/use-church-settings";
+
 /* =============================================================================
    TopBar — the 60px sticky header (W5).
 
@@ -20,9 +22,12 @@ import { useState, type FormEvent } from "react";
    submit it just pushes `?q=` onto the sermons route.
    ========================================================================== */
 
-// TODO(settings): source the church name + environment from `GET /settings`
-// once that screen exists (Phase 2). Hardcoded for now.
-const ENV_LABEL = "Grace Chapel · development";
+// Fallback only — shown while the public settings fetch is loading, or if it
+// fails, so the header never renders blank. The real name now comes from
+// `GET /settings/public` (plan-admin-settings), fetched via
+// `usePublicChurchSettings()` so every role (not just manager+) can render
+// this chrome without a 403.
+const FALLBACK_CHURCH_NAME = "RhemaPod";
 
 export interface TopBarProps {
   /** Opens the mobile nav drawer. Button is hidden ≥1100px. */
@@ -36,6 +41,8 @@ export interface TopBarProps {
 export function TopBar({ onMenuClick, navId, navOpen = false }: TopBarProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const { data: settings } = usePublicChurchSettings();
+  const envLabel = `${settings?.church_name ?? FALLBACK_CHURCH_NAME} · ${process.env.NODE_ENV}`;
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,7 +75,7 @@ export function TopBar({ onMenuClick, navId, navOpen = false }: TopBarProps) {
       </form>
 
       <span className="hidden font-mono text-[11.5px] text-ink-faint sm:inline">
-        {ENV_LABEL}
+        {envLabel}
       </span>
     </header>
   );
