@@ -15,6 +15,8 @@ import { useDownloads } from '../../lib/downloads/useDownloads';
 import { DownloadsSection } from './_me/DownloadsSection';
 import { LibraryRow } from './_me/LibraryRow';
 import { PlaybackSection } from './_me/PlaybackSection';
+import { AppearanceSection } from './_me/AppearanceSection';
+import { useTheme } from '../../theme/ThemeContext';
 import { ProfileAvatarPicker } from './_me/ProfileAvatarPicker';
 import { ProfileDetailsSheet } from './_me/ProfileDetailsSheet';
 import { TermsSheet } from '../player/_comments/TermsSheet';
@@ -52,6 +54,8 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  */
 export default function MeScreen() {
   const router = useRouter();
+  const { lightModeAvailable } = useTheme();
+  const [appearanceError, setAppearanceError] = React.useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
 
@@ -135,6 +139,13 @@ export default function MeScreen() {
           error={playbackError}
         />
       </Card>
+
+      {/* Hidden until every screen reads the theme (light-mode rollout flag). */}
+      {lightModeAvailable ? (
+        <Card style={styles.card}>
+          <AppearanceSection error={appearanceError} onError={setAppearanceError} />
+        </Card>
+      ) : null}
 
       <Card style={styles.card}>
         <DownloadsSection
