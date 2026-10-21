@@ -11,3 +11,6 @@ export const SIGNATURE_HOME_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_HOME ===
 
 /** Signature Notifications (`app/_notifications/`). Turn on with `EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS=1`. */
 export const SIGNATURE_NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS === '1';
+
+/** Signature Browse (`app/(tabs)/_browse/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_BROWSE=1`. */
+export const SIGNATURE_BROWSE_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_BROWSE === '1';
