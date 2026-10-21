@@ -36,6 +36,7 @@ from app.models.content_schemas import (
     SermonDetail,
     SermonListItem,
     SermonUpdate,
+    UpcomingSermon,
 )
 from app.models.models import (
     VIEWER_VISIBLE_STATUSES,
@@ -393,33 +394,40 @@ TRENDING_WINDOW_DAYS = 30
 async def list_trending_sermons(
     db: AsyncSession, user: User | None, limit: int = 10
 ) -> list[SermonListItem]:
-    """Published, publicly-visible sermons ranked by total `play_count` across
-    all viewers' sessions in the last 30 days, most-played first (Isaac's
-    call: a 30-day window, matching the shape of the admin dashboard's
-    existing `plays_last_7_days` stat but wider).
+    """Published, publicly-visible sermons ranked by how many people played them in
+    the last 30 days (Isaac's call: a 30-day window), most-watched first.
+
+    Ranked by viewers, not by summed `play_count` (reviewed 2026-10-21 against Nii's
+    phone test): a `PlaybackSession` is one row per user per sermon and its
+    `play_count` is that user's lifetime restart count, so summing it let a single
+    viewer who replayed one sermon outrank a sermon many people watched, and counted
+    replays from before the window whenever the row was touched inside it. Rows whose
+    `last_played_at` falls in the window are distinct viewers active in it, which is
+    the honest "trending" signal the table holds. Summed plays, then newest-published,
+    break ties so the order is stable between refetches.
 
     Deliberately uncached, unlike `list_published_sermons` — that function
     caches the *entire* catalog because it's identical for everyone and
     expensive to rebuild per request; this is a rolling-window aggregate over
     a catalog this app's actual scale (tens, not millions, of sermons) makes
-    cheap to just query directly. Caching a moving 30-day window adds
-    invalidation complexity (when does yesterday's data age out of the cache
-    key?) for a query that isn't actually slow — not a case for it yet.
+    cheap to just query directly.
     """
     has_sub = await _has_subscription(db, user)
     since = datetime.now(timezone.utc) - timedelta(days=TRENDING_WINDOW_DAYS)
     capped_limit = max(1, min(limit, 50))
 
+    viewers = func.count(PlaybackSession.id)
+    plays = func.coalesce(func.sum(PlaybackSession.play_count), 0)
     stmt = (
-        select(Sermon, func.coalesce(func.sum(PlaybackSession.play_count), 0).label("plays"))
+        select(Sermon)
         .join(PlaybackSession, PlaybackSession.sermon_id == Sermon.id)
         .where(*sermon_visibility_clause(), PlaybackSession.last_played_at >= since)
         .group_by(Sermon.id)
-        .order_by(func.coalesce(func.sum(PlaybackSession.play_count), 0).desc())
+        .order_by(viewers.desc(), plays.desc(), Sermon.published_at.desc().nullslast(), Sermon.id)
         .limit(_over_fetch(capped_limit))
     )
-    rows = (await db.execute(stmt)).all()
-    sermons = _cap_one_per_series([row[0] for row in rows], capped_limit)
+    rows = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(list(rows), capped_limit)
     series_map = await _series_map(db, sermons)
     names = await load_ref_names(db, sermons)
 
@@ -429,22 +437,34 @@ async def list_trending_sermons(
     ]
 
 
+# Affinity weights: a category the viewer keeps returning to says more about taste than
+# the speaker does — the church has one main speaker, so a speaker match alone ranks
+# nearly the whole catalogue equally.
+CATEGORY_AFFINITY_WEIGHT = 2
+SPEAKER_AFFINITY_WEIGHT = 1
+# Candidate pool for recommendations — the whole visible catalogue at this app's scale.
+RECOMMENDATION_POOL = 500
+
+
 async def list_recommended_sermons(
     db: AsyncSession, user: User, limit: int = 10
 ) -> list[SermonListItem]:
-    """Published sermons in the categories/speakers the user has actually
-    watched (any `PlaybackSession` row, finished or not), excluding sermons
-    they've already played, newest-published first.
+    """Published sermons the caller hasn't played yet, best match first, always
+    filled to `limit` when the catalogue has that many unplayed sermons.
 
-    No collaborative-filtering or content-similarity model — this derives
-    entirely from `PlaybackSession`, which already exists; it needed no new
-    tracking to build (Isaac's call). Falls back to `list_trending_sermons`
-    whenever personalization has nothing to work with: a user with zero
-    playback history, or one whose entire history has no category/speaker on
-    it, or a category/speaker match that happens to return nothing (e.g.
-    they've already watched everything currently published in their own
-    lanes). An empty "Recommended for you" shelf is a worse experience than a
-    non-personalized-but-populated one.
+    Ranking (reviewed 2026-10-21 against Nii's phone test, which showed a one-card
+    shelf): each unplayed sermon scores by how often the caller has played its
+    category (weight 2) and its speaker (weight 1), from their own
+    `PlaybackSession` rows. Matches come first, highest score first, with a daily
+    seeded shuffle only among equal scores (`_daily_shuffle`, so the shelf doesn't
+    mirror New Releases yet doesn't jitter on refetch). The shelf is then topped up
+    with what's trending, then with the newest remaining unplayed sermons — the old
+    version stopped at the matches, so a viewer who had sampled most of a small
+    catalogue saw a single card. A viewer with no history gets trending, then newest.
+
+    Anything the caller has ever started is excluded: unfinished ones already sit in
+    "Pick up where you left off", finished ones aren't a recommendation. Capped to one
+    episode per series, like the other discovery shelves.
     """
     has_sub = await _has_subscription(db, user)
     capped_limit = max(1, min(limit, 50))
@@ -454,33 +474,46 @@ async def list_recommended_sermons(
         .join(Sermon, Sermon.id == PlaybackSession.sermon_id)
         .where(PlaybackSession.user_id == user.id)
     )).all()
-    watched_sermon_ids = {row[2] for row in watched}
+    watched_ids = {row[2] for row in watched}
+    category_plays: dict[uuid.UUID, int] = {}
+    speaker_plays: dict[uuid.UUID, int] = {}
+    for category_id, speaker_id, _ in watched:
+        if category_id is not None:
+            category_plays[category_id] = category_plays.get(category_id, 0) + 1
+        if speaker_id is not None:
+            speaker_plays[speaker_id] = speaker_plays.get(speaker_id, 0) + 1
 
-    if not watched:
-        return await _trending_excluding(db, user, watched_sermon_ids, limit)
-
-    category_ids = {row[0] for row in watched if row[0] is not None}
-    speaker_ids = {row[1] for row in watched if row[1] is not None}
-
-    if not category_ids and not speaker_ids:
-        return await _trending_excluding(db, user, watched_sermon_ids, limit)
-
-    stmt = (
+    pool_stmt = (
         select(Sermon)
-        .where(
-            *sermon_visibility_clause(),
-            Sermon.id.notin_(watched_sermon_ids),
-            or_(Sermon.category_id.in_(category_ids), Sermon.speaker_id.in_(speaker_ids)),
-        )
-        .order_by(Sermon.published_at.desc().nullslast())
-        .limit(_over_fetch(capped_limit))
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast(), Sermon.id)
+        .limit(RECOMMENDATION_POOL)
     )
-    sermons = (await db.execute(stmt)).scalars().all()
-    if not sermons:
-        return await _trending_excluding(db, user, watched_sermon_ids, limit)
+    if watched_ids:
+        pool_stmt = pool_stmt.where(Sermon.id.notin_(watched_ids))
+    pool = list((await db.execute(pool_stmt)).scalars().all())
 
-    sermons = _cap_one_per_series(sermons, capped_limit)
-    sermons = _daily_shuffle(sermons, salt=f"recommended:{user.id}")
+    def score(sermon: Sermon) -> int:
+        return (
+            CATEGORY_AFFINITY_WEIGHT * category_plays.get(sermon.category_id, 0)
+            + SPEAKER_AFFINITY_WEIGHT * speaker_plays.get(sermon.speaker_id, 0)
+        )
+
+    matches = sorted(
+        _daily_shuffle([s for s in pool if score(s) > 0], salt=f"recommended:{user.id}"),
+        key=score,
+        reverse=True,
+    )
+    by_id = {s.id: s for s in pool}
+    trending_ids = [item.id for item in await list_trending_sermons(db, user, 50)]
+    ordered: list[Sermon] = []
+    seen: set[uuid.UUID] = set()
+    for sermon in [*matches, *(by_id[i] for i in trending_ids if i in by_id), *pool]:
+        if sermon.id not in seen:
+            seen.add(sermon.id)
+            ordered.append(sermon)
+
+    sermons = _cap_one_per_series(ordered, capped_limit)
     series_map = await _series_map(db, sermons)
     names = await load_ref_names(db, sermons)
     return [
@@ -535,16 +568,34 @@ def _daily_shuffle(items: list[Sermon], salt: str) -> list[Sermon]:
     return shuffled
 
 
-async def _trending_excluding(
-    db: AsyncSession, user: User, exclude_ids: set[uuid.UUID], limit: int
-) -> list[SermonListItem]:
-    """`list_trending_sermons`, minus whatever the caller has already watched — every
-    `list_recommended_sermons` fallback path routes through this rather than the bare
-    trending list, so falling back to a non-personalized signal still never recommends
-    something the user has literally already seen. Over-fetches before excluding so a
-    fallback with matches to drop still returns up to `limit` results, not fewer."""
-    candidates = await list_trending_sermons(db, user, limit + len(exclude_ids))
-    return [item for item in candidates if item.id not in exclude_ids][:limit]
+async def next_scheduled_sermon(db: AsyncSession) -> UpcomingSermon | None:
+    """The soonest sermon that is PUBLISHED but not yet visible (`publish_at` still in
+    the future) — Home's "next message" countdown (Nii's ask, 2026-10-21). None when
+    nothing is scheduled. Only the fields in `UpcomingSermon` leave the server; the
+    sermon itself stays invisible to every catalogue read until its time passes."""
+    now = datetime.now(timezone.utc)
+    stmt = (
+        select(Sermon)
+        .where(
+            Sermon.status == SermonStatus.PUBLISHED,
+            Sermon.publish_at.is_not(None),
+            Sermon.publish_at > now,
+        )
+        .order_by(Sermon.publish_at.asc(), Sermon.id)
+        .limit(1)
+    )
+    sermon = (await db.execute(stmt)).scalars().first()
+    if sermon is None or sermon.publish_at is None:
+        return None
+    names = await load_ref_names(db, [sermon])
+    return UpcomingSermon(
+        id=sermon.id,
+        title=sermon.title,
+        publish_at=sermon.publish_at,
+        speaker_name=names.speakers.get(sermon.speaker_id) if sermon.speaker_id else None,
+        series_title=names.series.get(sermon.series_id) if sermon.series_id else None,
+        episode_number=sermon.episode_number,
+    )
 
 
 async def list_new_release_sermons(

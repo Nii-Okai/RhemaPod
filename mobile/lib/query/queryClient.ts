@@ -37,6 +37,7 @@ export const queryKeys = {
     newReleases: () => [...queryKeys.sermons.all, 'new-releases'] as const,
     prophetsCatalog: () => [...queryKeys.sermons.all, 'prophets-catalog'] as const,
     hero: () => [...queryKeys.sermons.all, 'hero'] as const,
+    upcoming: () => [...queryKeys.sermons.all, 'upcoming'] as const,
   },
   // W4.3 — mirrors the `sermons` shape above per this factory's own doc comment.
   categories: {

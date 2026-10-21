@@ -264,6 +264,20 @@ class SermonListItem(BaseModel):
     media_type: Literal["audio", "video"] | None = None
 
 
+class UpcomingSermon(BaseModel):
+    """The next scheduled sermon — PUBLISHED with a future `publish_at` — for Home's
+    "next message" countdown. Deliberately thin: the title, when it goes live, and
+    the names a card needs. No thumbnail, description or media, so nothing playable
+    or previewable leaks ahead of the release; only that it is coming, and when."""
+
+    id: uuid.UUID
+    title: str
+    publish_at: datetime
+    speaker_name: str | None = None
+    series_title: str | None = None
+    episode_number: int | None = None
+
+
 class SermonAdminListItem(SermonListItem):
     """Staff-facing card. Carries the workflow fields a CMS table needs, which
     the public card deliberately omits (created_by would leak staff identity)."""

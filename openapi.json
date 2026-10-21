@@ -5500,6 +5500,65 @@
         "title": "TopSermonStat",
         "type": "object"
       },
+      "UpcomingSermon": {
+        "description": "The next scheduled sermon \u2014 PUBLISHED with a future `publish_at` \u2014 for Home's\n\"next message\" countdown. Deliberately thin: the title, when it goes live, and\nthe names a card needs. No thumbnail, description or media, so nothing playable\nor previewable leaks ahead of the release; only that it is coming, and when.",
+        "properties": {
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "publish_at": {
+            "format": "date-time",
+            "title": "Publish At",
+            "type": "string"
+          },
+          "series_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Title"
+          },
+          "speaker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Name"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "publish_at"
+        ],
+        "title": "UpcomingSermon",
+        "type": "object"
+      },
       "UploadConfirm": {
         "description": "Sent when the client finishes its PUT.\n\nThe browser can read duration from the file before uploading, which is the\nonly practical source for it while transcoding is passthrough \u2014 nothing\nserver-side opens the media.",
         "properties": {
@@ -9361,6 +9420,36 @@
           }
         ],
         "summary": "Trending Sermons",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/sermons/upcoming": {
+      "get": {
+        "description": "The next scheduled sermon (Home's \"next message\" countdown), or null when\nnothing is scheduled. Public, like every other `/catalog` read, and carries only\nthe title, release time and names \u2014 see `UpcomingSermon`. Registered ahead of\n`/sermons/{sermon_id}` so \"upcoming\" is never captured as a sermon-id path\nparameter.",
+        "operationId": "upcoming_sermon_api_v1_catalog_sermons_upcoming_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UpcomingSermon"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Upcoming Sermon Api V1 Catalog Sermons Upcoming Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Upcoming Sermon",
         "tags": [
           "catalog"
         ]

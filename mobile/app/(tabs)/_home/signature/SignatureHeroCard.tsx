@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { AppText, PlatformIcon, PressableScale } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { radius } from '../../../../theme/radius';
@@ -35,10 +36,19 @@ export function SignatureHeroCard({ sermon, onPress }: SignatureHeroCardProps) {
         {sermon.thumbnail_url ? (
           <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : null}
+        {/* A true gradient, not stacked bands — flat bands showed as visible stripes
+            over light artwork on a phone (Nii's test, 2026-10-21). */}
         <View style={styles.scrim} pointerEvents="none">
-          {onArt.overlay.scrimLayers.map((color) => (
-            <View key={color} style={[styles.scrimBand, { backgroundColor: color }]} />
-          ))}
+          <Svg width="100%" height="100%" preserveAspectRatio="none">
+            <Defs>
+              <LinearGradient id="heroScrim" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={onArt.surface.app} stopOpacity={0} />
+                <Stop offset="0.5" stopColor={onArt.surface.app} stopOpacity={0.45} />
+                <Stop offset="1" stopColor={onArt.surface.app} stopOpacity={1} />
+              </LinearGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#heroScrim)" />
+          </Svg>
         </View>
         <View style={styles.chip} pointerEvents="none">
           <Flame width={8} fill={onArt.accent.goldText} />
@@ -111,9 +121,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '45%',
-  },
-  scrimBand: {
-    flex: 1,
   },
   chip: {
     position: 'absolute',
