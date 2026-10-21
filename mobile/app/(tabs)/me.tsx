@@ -8,7 +8,8 @@ import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { useCurrentUser } from '../../lib/query/hooks/useProfile';
 import { previewDisplayName } from '../../lib/format/displayName';
-import { CONTACT_EMAIL, isComplianceContentPending } from '../../lib/content/commentsCompliance';
+import { isComplianceContentPending } from '../../lib/content/commentsCompliance';
+import { useChurchContent } from '../../lib/query/hooks/useChurchSettings';
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { DownloadsSection } from './_me/DownloadsSection';
@@ -66,7 +67,9 @@ export default function MeScreen() {
   const profile = profileQuery.data;
   const currentName = (profile?.full_name ?? '').trim();
   const publicName = previewDisplayName(currentName);
-  const contactPending = isComplianceContentPending(CONTACT_EMAIL);
+  // Server values when available; the shipped constants otherwise (offline, error, first launch).
+  const { contactEmail, termsOfUseUrl, privacyPolicyUrl } = useChurchContent();
+  const contactPending = isComplianceContentPending(contactEmail);
 
   const handleChangeAutoplay = (enabled: boolean) => {
     setPlaybackError(null);
@@ -157,15 +160,22 @@ export default function MeScreen() {
         </AppText>
         <LibraryRow
           label="Contact us"
-          detail={CONTACT_EMAIL}
-          accessibilityLabel={`Contact us at ${CONTACT_EMAIL}`}
+          detail={contactEmail}
+          accessibilityLabel={`Contact us at ${contactEmail}`}
           hideChevron
           onPress={() => {
             // A placeholder (Isaac's input I1 not yet supplied) must never become a mailto: link.
-            if (!contactPending) void Linking.openURL(`mailto:${CONTACT_EMAIL}`);
+            if (!contactPending) void Linking.openURL(`mailto:${contactEmail}`);
           }}
         />
         <LibraryRow label="Comment guidelines" onPress={() => setGuidelinesOpen(true)} />
+        {/* Hosted elsewhere (ADR 0017 D2); each row exists only once its link is set. */}
+        {termsOfUseUrl ? (
+          <LibraryRow label="Terms of use" onPress={() => void Linking.openURL(termsOfUseUrl)} />
+        ) : null}
+        {privacyPolicyUrl ? (
+          <LibraryRow label="Privacy policy" onPress={() => void Linking.openURL(privacyPolicyUrl)} />
+        ) : null}
       </Card>
 
       <Pressable

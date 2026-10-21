@@ -36,13 +36,15 @@ PRE_DROP_REV = "c7d8e9f0a1b2"
 # revision has two parents.
 MERGE_REV = "0543034f79af"
 # The actual current head — whatever's chained on top of MERGE_REV as of the most
-# recent migration (session 2026-10-15: fix sermon/series status server_default
-# casing, `f3a9c7d2b4e1`, itself chained on the playlists migration,
-# `37a5ca59a2cc`). A future migration moves this constant forward again; the
+# recent migration (ADMIN-SETTINGS S11: `church_settings`, `e5a68425e539`,
+# chained on S6's `audit_log`, `8c596c67f0ae`, chained on
+# the pre-existing schema-drift fix `a517c3beba93`, itself chained on S3's
+# sermon_play_daily/listener_day rollup tables `dbdcee764ca3`, chained on
+# `c9b3e7a1f2d4`). A future migration moves this constant forward again; the
 # chain assertions below it (MERGE_REV/COMMENTS_REV/DROP_REV/PRE_DROP_REV, all
 # further down the tree) don't change, since they describe ancestry beneath
 # MERGE_REV, not what sits on top of it.
-CURRENT_HEAD = "c9b3e7a1f2d4"
+CURRENT_HEAD = "e5a68425e539"
 
 NEW_TABLES = {
     "sermon_comments",

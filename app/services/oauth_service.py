@@ -242,13 +242,18 @@ async def _load_by_identity(db: AsyncSession, identity: VerifiedIdentity) -> Use
     return user
 
 
-async def sign_in_with_identity(db: AsyncSession, identity: VerifiedIdentity) -> User:
+async def sign_in_with_identity(
+    db: AsyncSession, identity: VerifiedIdentity
+) -> tuple[User, bool]:
+    """Returns `(user, new_account)`. `new_account` is True only when this call
+    created the account; the router records it on the `auth.login` audit row
+    (`plan-admin-settings.md` §A.3)."""
     provider_name = _PROVIDER_DISPLAY_NAME[identity.provider]
 
     user = await _load_by_identity(db, identity)
     if user is not None:
         log.info("oauth_sign_in", provider=identity.provider.value, user_id=str(user.id))
-        return user
+        return user, False
 
     if not identity.email or not identity.email_verified:
         raise OAuthError("Email not verified by provider", 403)
@@ -284,7 +289,7 @@ async def sign_in_with_identity(db: AsyncSession, identity: VerifiedIdentity) ->
                     provider=identity.provider.value,
                     user_id=str(resolved.id),
                 )
-                return resolved
+                return resolved, False
             # Should not happen (see module docstring: the winner's full
             # transaction, identity row included, commits atomically before
             # the loser's commit can fail) — but never fall through silently.
@@ -301,7 +306,7 @@ async def sign_in_with_identity(db: AsyncSession, identity: VerifiedIdentity) ->
         if identity.picture:
             await _sync_avatar_from_provider_picture(db, user, identity.picture)
 
-        return user
+        return user, True
 
     if existing_user.role != UserRole.VIEWER:
         raise OAuthError(_STAFF_MUST_USE_PASSWORD_MESSAGE, 403)
@@ -355,7 +360,7 @@ async def sign_in_with_identity(db: AsyncSession, identity: VerifiedIdentity) ->
                 provider=identity.provider.value,
                 user_id=str(resolved.id),
             )
-            return resolved
+            return resolved, False
         log.warning("oauth_link_race_unresolved", provider=identity.provider.value)
         raise OAuthError(_RACE_LOST_MESSAGE, 409) from None
 
@@ -378,4 +383,4 @@ async def sign_in_with_identity(db: AsyncSession, identity: VerifiedIdentity) ->
             error=type(exc).__name__,
         )
 
-    return existing_user
+    return existing_user, False

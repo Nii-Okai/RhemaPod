@@ -10,6 +10,17 @@ import { createTestQueryClient } from '../../../lib/query/testUtils';
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
+// The screen gained a back button (`useRouter`) and safe-area padding after this file
+// was written. Mocked the same way `me.test.tsx` does: the real `expo-router` pulls in
+// `expo-linking`'s ESM build, which this Jest config doesn't transform, and there is no
+// `SafeAreaProvider` in a unit render.
+const mockBack = jest.fn();
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: mockBack }),
+}));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 const mockedGet = api.get as jest.Mock;
 

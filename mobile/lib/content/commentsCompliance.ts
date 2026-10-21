@@ -10,6 +10,12 @@
  *
  * I2 (comment guidelines) shipped 2026-10-08. I1 (contact email) shipped 2026-10-16 —
  * Isaac supplied `contact@rhemapod.com`.
+ *
+ * Since plan-admin-settings S18 both are editable by staff and served by
+ * `GET /settings/public` (`useChurchContent()`); these constants are now the FALLBACK,
+ * used offline, on error and on first launch. Do not delete them: App Store guideline
+ * 1.2 needs the contact address available without a network. The server row was seeded
+ * from these exact values, and a backend test fails if the two drift apart.
  */
 export const CONTACT_EMAIL = 'contact@rhemapod.com';
 

@@ -3,15 +3,19 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, LinkButton, PlatformIcon, PrimaryButton } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
-import { COMMENTS_TERMS_TEXT, isComplianceContentPending } from '../../../lib/content/commentsCompliance';
+import { isComplianceContentPending } from '../../../lib/content/commentsCompliance';
+import { useChurchContent } from '../../../lib/query/hooks/useChurchSettings';
 import { useAcceptCommentsTerms } from '../../../lib/query/hooks/useProfile';
 import { Sheet } from '../../../components/Sheet';
 
-// `COMMENTS_TERMS_TEXT` opens with its own title line ("RhemaPod Comment Guidelines")
-// followed by a blank line, then the body — split once so the title can render bold
-// (the sheet's own "Comment guidelines" label header was removed as redundant with it).
-const [TERMS_TITLE, ...TERMS_BODY_LINES] = COMMENTS_TERMS_TEXT.split('\n\n');
-const TERMS_BODY = TERMS_BODY_LINES.join('\n\n');
+// The guidelines open with their own title line ("RhemaPod Comment Guidelines") followed
+// by a blank line, then the body — split once so the title can render bold (the sheet's
+// own "Comment guidelines" label header was removed as redundant with it). Staff edit the
+// text in the admin portal, whose hint says the first line is the title.
+export function splitTerms(text: string): { title: string; body: string } {
+  const [title, ...bodyParts] = text.split('\n\n');
+  return { title, body: bodyParts.join('\n\n') };
+}
 
 export interface TermsSheetProps {
   visible: boolean;
@@ -24,8 +28,9 @@ export interface TermsSheetProps {
 
 /**
  * The comment guidelines sheet (design spec §2.7) — a hard gate before the first post. The
- * body is `COMMENTS_TERMS_TEXT` (Isaac's input I2; see `lib/content/commentsCompliance.ts`),
- * never drafted here. The agree control is a checkbox row and "Agree and continue" stays
+ * text is the server's `comment_guidelines` (`GET /settings/public`), falling back to
+ * `COMMENTS_TERMS_TEXT` (Isaac's input I2; see `lib/content/commentsCompliance.ts`) offline,
+ * on error or on first launch — never drafted here. The agree control is a checkbox row and "Agree and continue" stays
  * disabled until it is ticked. Reading to the end is deliberately not forced. "Not now"
  * closes without posting; the caller's draft is untouched.
  */
@@ -33,10 +38,11 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const accept = useAcceptCommentsTerms();
-  // Release gate: COMMENTS_TERMS_TEXT is still Isaac's placeholder (I2) on this build.
-  // Accepting placeholder legal text would record consent to nothing, so the button
-  // stays disabled until the real text ships.
-  const termsPending = isComplianceContentPending(COMMENTS_TERMS_TEXT);
+  const { commentGuidelines } = useChurchContent();
+  const { title, body } = splitTerms(commentGuidelines);
+  // Release gate: if the text in use is still a placeholder, accepting it would record
+  // consent to nothing, so the button stays disabled until real text ships.
+  const termsPending = isComplianceContentPending(commentGuidelines);
 
   useEffect(() => {
     if (visible) {
@@ -57,10 +63,10 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
     <Sheet visible={visible} onClose={onClose}>
       <View style={styles.terms}>
         <AppText variant="ui.bodyBold" accessibilityRole="header">
-          {TERMS_TITLE}
+          {title}
         </AppText>
         <AppText variant="ui.body" tone="secondary">
-          {TERMS_BODY}
+          {body}
         </AppText>
       </View>
       {readOnly ? (

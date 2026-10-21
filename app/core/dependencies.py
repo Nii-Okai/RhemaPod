@@ -1,17 +1,20 @@
+import ipaddress
 import uuid
 from typing import Annotated
 from dataclasses import dataclass
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
-from app.core.logging import get_logger
+from app.core.logging import correlation_id, get_logger
+from app.core.net import client_ip
 from app.db.database import get_db
 from app.models.models import User, UserRole
 from app.services import auth_service
+from app.services.audit_service import AuditContext
 
 log = get_logger("auth_deps")
 
@@ -107,3 +110,40 @@ def require_role(*allowed: UserRole):
         return user
 
     return _guard
+
+
+# `audit_log.user_agent` is varchar(512) and `correlation_id` varchar(64)
+# (§A.4.2). Both come from client-settable headers, so both are cut to fit:
+# an over-long value must never fail the insert, and with it the audited
+# mutation.
+_UA_MAX = 512
+_CORRELATION_ID_MAX = 64
+
+
+def get_audit_context(request: Request) -> AuditContext:
+    """Request-derived fields for an audit row (`plan-admin-settings.md` §A.3):
+    the correlation id the middleware set, the trusted-proxy-aware client IP,
+    and the `User-Agent` header with CR/LF stripped, each cut to its column.
+    Built here so services never read `Request` themselves."""
+    ua = request.headers.get("user-agent")
+    if ua is not None:
+        ua = ua.replace("\r", "").replace("\n", "")[:_UA_MAX] or None
+    # `client_ip` never raises and can answer a non-address ("unknown" with no
+    # peer), or a scoped IPv6 literal (`fe80::1%eth0`) that Python accepts and
+    # Postgres INET does not; `audit_log.ip` records NULL rather than fail the
+    # insert.
+    ip: str | None = client_ip(request)
+    try:
+        ipaddress.ip_address(ip)
+        if "%" in ip:
+            ip = None
+    except ValueError:
+        ip = None
+    return AuditContext(
+        correlation_id=(correlation_id.get() or "")[:_CORRELATION_ID_MAX] or None,
+        ip=ip,
+        user_agent=ua,
+    )
+
+
+AuditCtx = Annotated[AuditContext, Depends(get_audit_context)]

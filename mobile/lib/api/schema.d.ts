@@ -46,6 +46,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/analytics/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage Report
+         * @description KPIs, a bucketed series and top sermons for `[from, to)`. Managers
+         *     may view; only admins may export (D1).
+         */
+        get: operations["usage_report_api_v1_admin_analytics_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/analytics/report/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Usage Report
+         * @description The report as CSV, admin only. Fail-closed: the `report.exported`
+         *     audit row is committed before the file is returned, so a failed audit
+         *     insert means no file. Every cell passes the spreadsheet formula guard
+         *     (sermon titles are editor-controlled).
+         */
+        get: operations["export_usage_report_api_v1_admin_analytics_report_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/analytics/top-sermons": {
         parameters: {
             query?: never;
@@ -55,6 +99,27 @@ export interface paths {
         };
         /** Top Sermons */
         get: operations["top_sermons_api_v1_admin_analytics_top_sermons_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description Newest first, `(created_at DESC, id DESC)`. `from`/`to` are half-open
+         *     `[from, to)`. `total` is the filtered count before paging.
+         */
+        get: operations["list_audit_api_v1_admin_audit_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -153,6 +218,28 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_admin_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description Send only the fields you changed, plus the `version` you loaded. A
+         *     409 means someone else saved first: reload and reapply.
+         */
+        patch: operations["update_settings_api_v1_admin_settings_patch"];
         trace?: never;
     };
     "/api/v1/admin/subscriptions": {
@@ -1913,6 +2000,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Settings */
+        get: operations["public_settings_api_v1_settings_public_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/speakers": {
         parameters: {
             query?: never;
@@ -2513,6 +2617,69 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * AuditEntry
+         * @description One row of the unified audit feed (`GET /admin/audit`,
+         *     plan-admin-settings §A.5, D9): `audit_log` plus the three domain logs
+         *     that predate it, in one shape.
+         *
+         *     `source` names the table a row came from. Legacy rows report `outcome`
+         *     `success`, carry no `ip`/`user_agent`, and resolve `actor_label` from
+         *     the actor's current account ("Deleted account" once it is gone,
+         *     "System" for automatic comment hides); `audit_log` rows carry the email
+         *     snapshot taken at write time. `summary` is a server-built sentence.
+         */
+        AuditEntry: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Label */
+            actor_label: string;
+            /** Actor Role */
+            actor_role: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip */
+            ip: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "audit_log" | "approval_log" | "announcement_approval_log" | "comment_moderation_log";
+            /** Summary */
+            summary: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Label */
+            target_label: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /**
+         * AuditOutcome
+         * @enum {string}
+         */
+        AuditOutcome: "success" | "failure";
         /** AvatarResponse */
         AvatarResponse: {
             /** Avatar Url */
@@ -2609,6 +2776,121 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /**
+         * ChurchSettingsAdmin
+         * @description `GET/PATCH /admin/settings` — the public fields plus who last saved
+         *     and when. `updated_by` is that account's email, `"Deleted account"` once
+         *     it is gone, or null before the first edit.
+         */
+        ChurchSettingsAdmin: {
+            /** About */
+            about: string | null;
+            /** Address */
+            address: string | null;
+            /** App Display Name */
+            app_display_name: string | null;
+            /** Church Name */
+            church_name: string | null;
+            /** Comment Guidelines */
+            comment_guidelines: string;
+            /** Contact Email */
+            contact_email: string;
+            /** Contact Phone */
+            contact_phone: string | null;
+            /** Copyright Notice */
+            copyright_notice: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url: string | null;
+            /** Tagline */
+            tagline: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url: string | null;
+        };
+        /**
+         * ChurchSettingsPublic
+         * @description `GET /settings/public` — what the mobile app reads, unauthenticated.
+         *     No `updated_by_id` or `updated_at`. `version` is also the weak ETag.
+         *     The mobile app renders contact email, comment guidelines and the two
+         *     legal URLs in v1; the other fields are returned but not yet shown.
+         */
+        ChurchSettingsPublic: {
+            /** About */
+            about: string | null;
+            /** Address */
+            address: string | null;
+            /** App Display Name */
+            app_display_name: string | null;
+            /** Church Name */
+            church_name: string | null;
+            /** Comment Guidelines */
+            comment_guidelines: string;
+            /** Contact Email */
+            contact_email: string;
+            /** Contact Phone */
+            contact_phone: string | null;
+            /** Copyright Notice */
+            copyright_notice: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url: string | null;
+            /** Tagline */
+            tagline: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url: string | null;
+        };
+        /**
+         * ChurchSettingsUpdate
+         * @description Partial update. Omit a field to leave it unchanged; send `null` to
+         *     clear an optional one (`contact_email` and `comment_guidelines` can be
+         *     changed but never cleared). `version` must be the one the editor loaded:
+         *     a stale value is a 409, never a silent overwrite.
+         *
+         *     Text is normalised like comments (NFC, control characters stripped,
+         *     whitespace trimmed); an optional field left empty after that is stored
+         *     as null. URLs must be absolute `https`.
+         */
+        ChurchSettingsUpdate: {
+            /** About */
+            about?: string | null;
+            /** Address */
+            address?: string | null;
+            /** App Display Name */
+            app_display_name?: string | null;
+            /** Church Name */
+            church_name?: string | null;
+            /** Comment Guidelines */
+            comment_guidelines?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+            /** Copyright Notice */
+            copyright_notice?: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url?: string | null;
+            /** Tagline */
+            tagline?: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url?: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url?: string | null;
         };
         /**
          * CommentAdmin
@@ -2978,6 +3260,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[AuditEntry] */
+        Page_AuditEntry_: {
+            /** Items */
+            items: components["schemas"]["AuditEntry"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[CommentAdminForEditor] */
         Page_CommentAdminForEditor_: {
             /** Items */
@@ -3307,6 +3600,91 @@ export interface components {
         RejectRequest: {
             /** Note */
             note: string;
+        };
+        /**
+         * ReportBucket
+         * @description One bucket, half-open `[start, end)`. Weekly buckets cut at ISO
+         *     Mondays and monthly at the 1st; the first and last are clipped to the
+         *     period.
+         */
+        ReportBucket: {
+            /** Completions */
+            completions: number;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Listeners */
+            listeners: number;
+            /** New Listeners */
+            new_listeners: number;
+            /** Plays */
+            plays: number;
+            /** Signups */
+            signups: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Watch Hours */
+            watch_hours: number;
+        };
+        /**
+         * ReportKpis
+         * @description Period totals. `listeners` is distinct accounts over the whole period
+         *     (not a sum of bucket counts). `new_listeners` and `signups` (viewer
+         *     accounts created) are accurate for any period; the other measures exist
+         *     only from `data_available_from` on.
+         */
+        ReportKpis: {
+            /** Completions */
+            completions: number;
+            /** Listeners */
+            listeners: number;
+            /** New Listeners */
+            new_listeners: number;
+            /** Plays */
+            plays: number;
+            /** Signups */
+            signups: number;
+            /** Watch Hours */
+            watch_hours: number;
+        };
+        /** ReportPeriod */
+        ReportPeriod: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Granularity
+             * @enum {string}
+             */
+            granularity: "day" | "week" | "month";
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /** ReportTopSermon */
+        ReportTopSermon: {
+            /** Completions */
+            completions: number;
+            /** Plays */
+            plays: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Title */
+            title: string;
+            /** Watch Hours */
+            watch_hours: number;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -4071,6 +4449,23 @@ export interface components {
             upload_url: string;
         };
         /**
+         * UsageReport
+         * @description `GET /admin/analytics/report` (plan-admin-settings §A.5).
+         *     `data_available_from` is the earliest day with any rollup data: plays,
+         *     completions and watch time are forward-only from then (§A.2). Null when
+         *     there is no rollup data yet.
+         */
+        UsageReport: {
+            /** Data Available From */
+            data_available_from: string | null;
+            kpis: components["schemas"]["ReportKpis"];
+            period: components["schemas"]["ReportPeriod"];
+            /** Series */
+            series: components["schemas"]["ReportBucket"][];
+            /** Top Sermons */
+            top_sermons: components["schemas"]["ReportTopSermon"][];
+        };
+        /**
          * UserActiveResponse
          * @description The updated account, plus a flag set when a Redis outage forced
          *     refresh-token revocation to be deferred (plan §W18, GATE 6 = commit-first).
@@ -4302,6 +4697,77 @@ export interface operations {
             };
         };
     };
+    usage_report_api_v1_admin_analytics_report_get: {
+        parameters: {
+            query: {
+                /** @description First day of the period (UTC), inclusive. */
+                from: string;
+                /** @description Day after the period ends (UTC), exclusive. At most 366 days after `from`. */
+                to: string;
+                granularity?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_usage_report_api_v1_admin_analytics_report_export_get: {
+        parameters: {
+            query: {
+                /** @description First day of the period (UTC), inclusive. */
+                from: string;
+                /** @description Day after the period ends (UTC), exclusive. At most 366 days after `from`. */
+                to: string;
+                kind: "timeseries" | "top_sermons";
+                granularity?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description UTF-8 CSV with BOM. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     top_sermons_api_v1_admin_analytics_top_sermons_get: {
         parameters: {
             query?: {
@@ -4320,6 +4786,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopSermonStat"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_api_v1_admin_audit_get: {
+        parameters: {
+            query?: {
+                actor_id?: string | null;
+                /** @description Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`. */
+                action?: string[];
+                category?: ("auth" | "users" | "settings" | "reports" | "sermons" | "announcements" | "moderation") | null;
+                /** @description Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay. */
+                staff_only?: boolean;
+                target_type?: string | null;
+                target_id?: string | null;
+                outcome?: components["schemas"]["AuditOutcome"] | null;
+                /** @description Inclusive lower bound (UTC). */
+                from?: string | null;
+                /** @description Exclusive upper bound (UTC). */
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditEntry_"];
                 };
             };
             /** @description Validation Error */
@@ -4492,6 +5003,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_admin_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_admin_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChurchSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
                 };
             };
             /** @description Validation Error */
@@ -7854,6 +8418,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_settings_api_v1_settings_public_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsPublic"];
+                };
+            };
+            /** @description Not modified (matching If-None-Match). */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

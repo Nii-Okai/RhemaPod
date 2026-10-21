@@ -374,3 +374,67 @@ describe('MeScreen — help and safety', () => {
     expect(queryByText('Agree and continue')).toBeNull();
   });
 });
+
+// plan-admin-settings S18: contact email and legal links come from GET /settings/public,
+// with the shipped constants as fallback.
+describe('MeScreen — server settings', () => {
+  function mockRoutesWithSettings(settings: Record<string, unknown>) {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/auth/me') return Promise.resolve(profile);
+      if (path === '/settings/public') return Promise.resolve(settings);
+      throw new Error(`unexpected path: ${path}`);
+    });
+  }
+
+  const SETTINGS = {
+    contact_email: 'hello@wateredgarden.org',
+    comment_guidelines: 'Guidelines\n\nBe kind.',
+    terms_of_use_url: 'https://wateredgarden.org/terms',
+    privacy_policy_url: 'https://wateredgarden.org/privacy',
+  };
+
+  it('shows the server contact address and mails it', async () => {
+    mockRoutesWithSettings(SETTINGS);
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const { findByLabelText } = renderMeScreen();
+    fireEvent.press(await findByLabelText('Contact us at hello@wateredgarden.org'));
+    expect(openURL).toHaveBeenCalledWith('mailto:hello@wateredgarden.org');
+    openURL.mockRestore();
+  });
+
+  it('opens the server legal links', async () => {
+    mockRoutesWithSettings(SETTINGS);
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const { findByText, getByText } = renderMeScreen();
+    fireEvent.press(await findByText('Terms of use'));
+    expect(openURL).toHaveBeenCalledWith('https://wateredgarden.org/terms');
+    fireEvent.press(getByText('Privacy policy'));
+    expect(openURL).toHaveBeenCalledWith('https://wateredgarden.org/privacy');
+    openURL.mockRestore();
+  });
+
+  it('hides each legal row while its link is not set', async () => {
+    mockRoutesWithSettings({ ...SETTINGS, terms_of_use_url: null, privacy_policy_url: null });
+    const { findByLabelText, queryByText } = renderMeScreen();
+    await findByLabelText('Contact us at hello@wateredgarden.org');
+    expect(queryByText('Terms of use')).toBeNull();
+    expect(queryByText('Privacy policy')).toBeNull();
+  });
+
+  it('never opens a non-https legal link', async () => {
+    mockRoutesWithSettings({ ...SETTINGS, terms_of_use_url: 'javascript:alert(1)', privacy_policy_url: null });
+    const { findByLabelText, queryByText } = renderMeScreen();
+    await findByLabelText('Contact us at hello@wateredgarden.org');
+    expect(queryByText('Terms of use')).toBeNull();
+  });
+
+  it('falls back to the shipped address when the settings read fails', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/auth/me') return Promise.resolve(profile);
+      return Promise.reject(new Error('Network request failed'));
+    });
+    const { findByLabelText, queryByText } = renderMeScreen();
+    expect(await findByLabelText(`Contact us at ${CONTACT_EMAIL}`)).toBeTruthy();
+    expect(queryByText('Terms of use')).toBeNull();
+  });
+});

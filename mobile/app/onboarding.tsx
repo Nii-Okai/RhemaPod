@@ -79,7 +79,7 @@ export default function OnboardingScreen() {
     );
     loop.start();
     return () => loop.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only loop, see doc comment above.
+    // Mount-only loop (empty deps on purpose), see doc comment above.
   }, []);
 
   const kenBurnsScale = kenBurns.interpolate({ inputRange: [0, 1], outputRange: [1, KEN_BURNS_MAX_SCALE] });

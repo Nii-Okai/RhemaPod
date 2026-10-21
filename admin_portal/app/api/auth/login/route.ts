@@ -16,6 +16,7 @@ import { clientIpFrom } from "@/lib/auth/client-ip";
 import { setAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
+import { userAgentFrom } from "@/lib/auth/user-agent";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -43,7 +44,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const remember = payload.remember !== false;
   const clientIp = clientIpFrom(req);
 
-  const upstream = await postUpstream("/auth/login", { email, password }, clientIp);
+  const upstream = await postUpstream(
+    "/auth/login",
+    { email, password },
+    clientIp,
+    userAgentFrom(req.headers),
+  );
   if (!upstream.ok) {
     return relayUpstreamError(upstream);
   }

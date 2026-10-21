@@ -1,22 +1,25 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Index,
+    JSON,
     String,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, Text  # noqa: E402
+from sqlalchemy import BigInteger, ForeignKey, Integer, SmallInteger, Text  # noqa: E402
 from sqlalchemy.orm import relationship  # noqa: E402
 
 from app.db.database import Base
@@ -320,6 +323,26 @@ class Sermon(Base):
     )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        # Weighted full-text GIN index backing `search_service._search_filter`
+        # (title weight 'A', description weight 'B' — must stay byte-identical
+        # to that function's `_weighted_vector` call, or Postgres won't use
+        # this index for the query's `@@` expression). Restores a declaration
+        # silently dropped from this class after the index itself was created
+        # (`d3e4f5a6b7c8_add_search_and_analytics.py`); the index was never
+        # removed from the database, only from the ORM's view of it.
+        # Postgres-only: SQLite (the default test suite) has neither GIN nor
+        # `to_tsvector`, and `search_service` falls back to `LIKE` there.
+        Index(
+            "ix_sermons_fts",
+            text(
+                "(setweight(to_tsvector('english', coalesce(title, '')), 'A') || "
+                "setweight(to_tsvector('english', coalesce(description, '')), 'B'))"
+            ),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
     )
 
     series: Mapped["Series | None"] = relationship("Series", back_populates="sermons")
@@ -656,6 +679,15 @@ class Announcement(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    __table_args__ = (
+        # The public list (`announcement_service.list_visible`) filters on
+        # all three of these every request — restores a declaration that was
+        # silently dropped from this class after the index itself was created
+        # (`c2d3e4f5a6b7_add_announcements.py`); the index was never removed
+        # from the database, only from the ORM's view of it.
+        Index("ix_announcements_visible", "status", "publish_at", "expires_at"),
+    )
+
 
 class AnnouncementApprovalLog(Base):
     """Append-only audit trail of every announcement status transition.
@@ -736,6 +768,266 @@ class PlaybackSession(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "sermon_id", name="uq_playback_user_sermon"),
+        # `continue_watching` and `history` (analytics_service.py) both filter
+        # on `user_id` and order by `last_played_at` — restores a declaration
+        # silently dropped from this class after the index itself was created
+        # (`d3e4f5a6b7c8_add_search_and_analytics.py`); the index was never
+        # removed from the database, only from the ORM's view of it.
+        Index("ix_playback_recent", "user_id", "last_played_at"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Usage rollups (plan-admin-settings §A.4.1) — forward-only daily aggregates
+# written by `record_progress` (ADMIN-SETTINGS S4), read by the admin reports
+# API. Not an event log and not derived from `PlaybackSession` history: both
+# tables have a genuine composite primary key (the first in this codebase —
+# every other table so far uses a surrogate UUID `id` plus a UniqueConstraint
+# for its natural key), because the whole point is an upsert keyed on that
+# natural key, not a surrogate row per ping. See §A.2 for why no backfill is
+# possible: `PlaybackSession` keeps one cumulative row per (user, sermon),
+# with no history to rebuild a per-day series from.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class SermonPlayDaily(Base):
+    """One row per (day, sermon), incremented in the same transaction as the
+    `PlaybackSession` upsert. `sermon_id` is `ON DELETE CASCADE`, matching
+    `PlaybackSession.sermon_id` (L718-723 above): a hard-deleted sermon takes
+    its past counts with it.
+    """
+
+    __tablename__ = "sermon_play_daily"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    sermon_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sermons.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    plays: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    watched_seconds: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+
+
+class ListenerDay(Base):
+    """One row per (day, user) that user was active on — lets reports count
+    distinct listeners per period from `COUNT(DISTINCT user_id)` over this
+    table instead of summing per-bucket counts (a listener active on two days
+    of one week must count once for that week, not twice). `user_id` is
+    `ON DELETE CASCADE`, matching `PlaybackSession.user_id` (L712-717 above).
+    Indexed on `user_id` alone, beyond the composite PK, so that cascade
+    doesn't have to scan the whole table to find a deleted user's rows.
+    """
+
+    __tablename__ = "listener_day"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# System audit log (plan-admin-settings §A.3/§A.4.2)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class AuditAction(str, enum.Enum):
+    """Bounded v1 event catalog (`plan-admin-settings.md` §A.3). Stored as
+    varchar via `native_enum=False`/`values_callable` (D8), matching
+    `ModerationAction` above — never a native Postgres enum (the receipt for
+    why is migration `f3a9c7d2b4e1`). This step only defines the values and
+    the table; call sites land in S7 (staff mutations), S8 (auth), S12
+    (settings) and S13 (report export)."""
+
+    LOGIN = "auth.login"
+    LOGIN_FAILED = "auth.login_failed"
+    LOGOUT = "auth.logout"
+    PASSWORD_CHANGED = "auth.password_changed"
+    PASSWORD_RESET = "auth.password_reset"
+    STAFF_INVITED = "user.staff_invited"
+    INVITE_RESENT = "user.invite_resent"
+    ROLE_CHANGED = "user.role_changed"
+    DEACTIVATED = "user.deactivated"
+    REACTIVATED = "user.reactivated"
+    SETTINGS_UPDATED = "settings.updated"
+    REPORT_EXPORTED = "report.exported"
+
+
+class AuditOutcome(str, enum.Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
+class _InetAsString(TypeDecorator):
+    """`postgresql.INET`, normalised back to a plain `str` on read.
+
+    psycopg 3 (this app's Postgres driver) adapts a raw `inet` column to
+    `ipaddress.IPv4Address`/`IPv6Address` by default — proven against a real
+    Postgres container while building this column (S6). Left alone, that
+    makes `AuditLog.ip`'s Python-side type differ by dialect (SQLite, with
+    no such adapter, hands back a plain `str`), which would silently bite
+    whatever reads this column later (S10's `AuditEntry` DTO, JSON
+    serialization, equality checks). Binding takes a plain `str` straight
+    through on every dialect, same as before; only the read side is
+    overridden.
+    """
+
+    impl = String(45)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(INET())
+        return dialect.type_descriptor(String(45))
+
+    def process_result_value(self, value, dialect):
+        return str(value) if value is not None else None
+
+
+class AuditLog(Base):
+    """Append-only system audit trail (§A.4.2). Deliberately **FK-free** on
+    `actor_id` — unlike `ApprovalLog`/`AnnouncementApprovalLog` (actor FK
+    RESTRICT) or `CommentModerationLog` (actor FK SET NULL) — because the
+    snapshot columns (`actor_email`, `actor_role`) already carry what a join
+    would otherwise provide, and a hard account erasure must not be blocked
+    by, or silently null out, its own audit trail. `id` is a UUID (not a
+    surrogate serial) so this table can be `UNION ALL`-ed with those three
+    existing UUID-keyed domain logs by the read-time audit feed (S10, D9).
+    `record()`/`record_detached()` in `app/services/audit_service.py` are
+    the only writers; nothing else should construct this row directly.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    action: Mapped[AuditAction] = mapped_column(
+        Enum(
+            AuditAction,
+            name="audit_action",
+            native_enum=False,
+            length=40,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    outcome: Mapped[AuditOutcome] = mapped_column(
+        Enum(
+            AuditOutcome,
+            name="audit_outcome",
+            native_enum=False,
+            length=10,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    # No FK — see class docstring. These three are the snapshot that survives
+    # the actor's account being erased.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Generic target reference (e.g. "user", "church_settings"); no FK, since
+    # the referent type varies per action and some targets (church_settings)
+    # aren't even user/sermon rows.
+    target_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Postgres-only INET; every other dialect (SQLite, in the test suite)
+    # falls back to a plain varchar(45) — long enough for the longest IPv6
+    # literal. First Postgres-only column type in this codebase (§A.4
+    # preamble): `_InetAsString` (above) is the dialect-variant precedent
+    # S11 (`church_settings`) follows for `jsonb` below and its own text
+    # columns — plain `with_variant(INET, "postgresql")` would work for the
+    # DDL alone, but leaves psycopg 3 handing back `ipaddress.IPv4Address`/
+    # `IPv6Address` instead of `str` on Postgres only; see that class.
+    ip: Mapped[str | None] = mapped_column(_InetAsString(), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Postgres-only JSONB; SQLite stores the same contract as a plain JSON
+    # (TEXT-backed) column — queryable shape differs, but round-trips exactly.
+    details: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ("
+            "'auth.login', 'auth.login_failed', 'auth.logout', "
+            "'auth.password_changed', 'auth.password_reset', "
+            "'user.staff_invited', 'user.invite_resent', 'user.role_changed', "
+            "'user.deactivated', 'user.reactivated', "
+            "'settings.updated', 'report.exported')",
+            name="ck_audit_log_action",
+        ),
+        CheckConstraint(
+            "outcome IN ('success', 'failure')",
+            name="ck_audit_log_outcome",
+        ),
+        # (created_at DESC, id) — §A.4.2's own ordering, so the feed's
+        # `ORDER BY created_at DESC, id` pagination (S10) is index-covered
+        # on its leading, selective column without needing a backward scan.
+        Index("ix_audit_log_created_at_id", created_at.desc(), id),
+        Index("ix_audit_log_actor_id_created_at", "actor_id", "created_at"),
+        Index("ix_audit_log_action_created_at", "action", "created_at"),
+    )
+
+
+class ChurchSettings(Base):
+    """The church profile and the app content it drives (plan-admin-settings
+    §A.4.3, D2/D2a/D3). Exactly one row: `id` is pinned to 1 by a CHECK, so
+    the table is a typed singleton, not a key/value store. Seeded by its
+    migration; never inserted at runtime.
+
+    `version` is the optimistic-concurrency token: `PATCH /admin/settings`
+    (S12) writes `... WHERE version = :v` and bumps it, so a stale editor
+    gets a 409 instead of silently overwriting. `updated_by_id` has no FK,
+    like `audit_log.actor_id`: erasing an account must not touch or be
+    blocked by this row. Legal documents are hosted elsewhere and stored as
+    URLs only (D2/D2a); `comment_guidelines` is inline text because viewers
+    accept it in-app before their first comment.
+    """
+
+    __tablename__ = "church_settings"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    church_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    app_display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tagline: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    about: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contact_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    comment_guidelines: Mapped[str] = mapped_column(Text, nullable=False)
+    terms_of_use_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    privacy_policy_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    copyright_notice: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_church_settings_singleton"),
     )
 
 

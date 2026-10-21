@@ -1,4 +1,4 @@
-/* global require, __DEV__, console */
+/* global __DEV__, console */
 import * as authClient from '../api/authClient';
 import { ApiError } from '../api/errors';
 import * as secureStore from './secureStore';

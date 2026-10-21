@@ -10,8 +10,10 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import check_rate_limit
 from app.core.token_store import TokenStoreUnavailable
-from app.models.models import Gender, User, UserRole
+from app.models.models import AuditAction, AuditOutcome, Gender, User, UserRole
 from app.models.schemas import AvatarTicket, UserPublic, UserRegister
+from app.services import audit_service
+from app.services.audit_service import AuditContext, AuditTarget
 from app.services.content_service import ALLOWED_IMAGE_TYPES, ContentError
 
 import secrets  # noqa: E402
@@ -29,6 +31,15 @@ _ASSIGNABLE_BY: dict[_UserRole, set[_UserRole]] = {
     _UserRole.MANAGER: {_UserRole.EDITOR},
     _UserRole.ADMIN: {_UserRole.EDITOR, _UserRole.MANAGER, _UserRole.ADMIN},
 }
+
+# Default for callers with no request (scripts, direct service tests): the
+# audit row is still written, just without ip / user agent / correlation id.
+_NO_CTX = AuditContext()
+
+
+def _user_target(user: User) -> AuditTarget:
+    return AuditTarget(type="user", id=user.id, label=user.email)
+
 
 class AuthError(Exception):
     """Raised for expected auth failures; carries a public-safe message."""
@@ -212,8 +223,12 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     user = await get_user_by_email(db, email)
     # verify_password runs a dummy verify when user is None, so an unknown
     # email costs the same time as a wrong password (no enumeration oracle).
+    # It must run unconditionally: `user is None or not verify_password(...)`
+    # short-circuits past the dummy verify, and unknown emails then answered
+    # ~10x faster than known ones (measured while building S8).
     stored = user.password_hash if user is not None else None
-    if user is None or not security.verify_password(password, stored):
+    password_ok = security.verify_password(password, stored)
+    if user is None or not password_ok:
         raise AuthError("Invalid email or password")
     if not user.is_active:
         raise AuthError("Invalid email or password")
@@ -323,7 +338,9 @@ async def logout(user_id: str, refresh_token: str) -> None:
     log.info("logout", user_id=user_id, sid=sid)
 
 
-async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:
+async def reset_password(
+    db: AsyncSession, token: str, new_password: str, ctx: AuditContext = _NO_CTX
+) -> None:
     payload = security.decode_token(token, {security.RESET, security.INVITE})
     if payload is None:
         raise AuthError("Invalid or expired reset token")
@@ -349,6 +366,14 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
     # timestamp untouched. `resend_invite` reads this column, not Redis.
     if user.activated_at is None:
         user.activated_at = datetime.now(timezone.utc)
+    # The account holder is the actor: whoever held the emailed link set this
+    # password. `token_type` tells a forgot-password reset from an invite's
+    # first set-password.
+    await audit_service.record(
+        db, AuditAction.PASSWORD_RESET,
+        actor=user, target=None, details={"token_type": payload.get("type")},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     # Force re-login everywhere after a password change.
     await token_store.revoke_refresh(str(user.id))
@@ -356,7 +381,11 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
 
 
 async def change_password(
-    db: AsyncSession, user_id: uuid.UUID, current_password: str, new_password: str
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    current_password: str,
+    new_password: str,
+    ctx: AuditContext = _NO_CTX,
 ) -> None:
     """Change an authenticated user's password. Requires the current password —
     an access token alone is not enough."""
@@ -391,6 +420,12 @@ async def change_password(
     # TokenStoreUnavailable -> 503 and the pending hash change rolls back with
     # the session — rather than persisting a new password whose old sessions
     # were never cut while telling the caller "unavailable, retry".
+    # Audit flush first, so a failed insert aborts before any session is cut.
+    await audit_service.record(
+        db, AuditAction.PASSWORD_CHANGED,
+        actor=user, target=None, details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await token_store.revoke_refresh(str(user.id))
     await db.commit()
     log.info("password_changed", user_id=str(user.id))
@@ -403,6 +438,7 @@ async def create_staff(
     role: _UserRole,
     actor: User,
     send_invite: Callable[[str, str | None, str], Awaitable[None]],
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, str]:
     """Create a staff account and send its invite atomically.
 
@@ -440,6 +476,14 @@ async def create_staff(
     from app.models.models import Subscription, SubscriptionTier
 
     db.add(Subscription(user_id=user.id, tier=SubscriptionTier.FREE))
+
+    # Same transaction as the account: if the audit insert fails, nothing is
+    # created and no invite is minted or sent.
+    await audit_service.record(
+        db, AuditAction.STAFF_INVITED,
+        actor=actor, target=_user_target(user), details={"role": role.value},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
 
     invite_token, invite_jti = security.create_invite_token(str(user.id))
     invite_ttl_seconds = settings.invite_token_expire_hours * 60 * 60
@@ -522,7 +566,11 @@ async def _assert_not_last_active_admin(db: AsyncSession, target: User) -> None:
 
 
 async def change_role(
-    db: AsyncSession, target_id: uuid.UUID, new_role: _UserRole, actor: User
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    new_role: _UserRole,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
 ) -> User:
     if not _may_assign(actor.role, new_role):
         raise AuthError(f"You are not permitted to assign the '{new_role.value}' role")
@@ -560,6 +608,12 @@ async def change_role(
 
     old_role = target.role
     target.role = new_role
+    await audit_service.record(
+        db, AuditAction.ROLE_CHANGED,
+        actor=actor, target=_user_target(target),
+        details={"from": old_role.value, "to": new_role.value},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     await db.refresh(target)
     log.info(
@@ -573,7 +627,11 @@ async def change_role(
 
 
 async def set_active(
-    db: AsyncSession, target_id: uuid.UUID, is_active: bool, actor: User
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    is_active: bool,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, bool]:
     """Deactivate (`is_active=False`) or reactivate a staff account.
 
@@ -609,6 +667,13 @@ async def set_active(
         # Would deactivating this account strand the admin role?
         await _assert_not_last_active_admin(db, target)
         target.is_active = False
+        # `revocation_deferred` is only known after this commit, so it goes to
+        # structlog below, not into the row (§A.3).
+        await audit_service.record(
+            db, AuditAction.DEACTIVATED,
+            actor=actor, target=_user_target(target), details=None,
+            outcome=AuditOutcome.SUCCESS, ctx=ctx,
+        )
         await db.commit()
         await db.refresh(target)
 
@@ -644,6 +709,11 @@ async def set_active(
     # first, then the revoke; a Redis outage still returns 200 with
     # `revocation_deferred=true` rather than 503.
     target.is_active = True
+    await audit_service.record(
+        db, AuditAction.REACTIVATED,
+        actor=actor, target=_user_target(target), details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     await db.refresh(target)
 
@@ -672,6 +742,7 @@ async def resend_invite(
     target_id: uuid.UUID,
     actor: User,
     send_invite: Callable[[str, str | None, str], Awaitable[None]],
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, str]:
     """Re-issue the invite for a staff account that has not finished
     set-password: a fresh single-use jti and a fresh invite email.
@@ -719,6 +790,15 @@ async def resend_invite(
             status_code=429,
         )
 
+    # Flushed before any Redis or email work and committed only after the send
+    # succeeds: a failed audit insert retires and mints nothing, and a failed
+    # send leaves no row claiming a resend happened.
+    await audit_service.record(
+        db, AuditAction.INVITE_RESENT,
+        actor=actor, target=_user_target(target), details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+
     # Retire the previously *pointed* invite link BEFORE minting a new one, so
     # the fan-out of live links stays bounded (CWE-770). take_invite_jti pops the
     # pointer; consume_single_use kills the jti. This does NOT guarantee "exactly
@@ -755,6 +835,8 @@ async def resend_invite(
             "Could not send the invite email. Please try again."
         )
 
+    await db.commit()
+    await db.refresh(target)
     log.info("staff_invite_resent", user_id=str(target.id), by=str(actor.id))
     return target, invite_token
 

@@ -141,6 +141,20 @@ uv run python -m app.scripts.sweep_uploads
 uv run python -m app.scripts.sweep_stream_jobs
 ```
 
+One more runs **daily** (plan-admin-settings §A.7, ADR 0018):
+
+```bash
+# Daily — audit-log retention as Isaac approved it: deletes auth.* rows
+# older than AUDIT_AUTH_RETENTION_DAYS (365) and nulls ip/user_agent on every
+# other row older than AUDIT_NETWORK_RETENTION_DAYS (365). Both default to
+# the approved 365; a value below 1 stops the app from starting. Without this
+# job, login IPs are kept indefinitely, contradicting the published retention.
+uv run python -m app.scripts.purge_audit_log
+```
+
+It is not part of the compose `sweeps` loop; schedule it on the same real
+scheduler as the jobs above.
+
 **Local / self-host:** the compose `sweeps` profile runs all three on a
 1-hour `sleep` loop:
 
@@ -411,3 +425,29 @@ after Stream did report ready. Both are retried automatically on the hourly
 sweep; neither is a silent failure — failed archive attempts log at `ERROR`
 (`stream_sweep_archive_failed` / a propagated `StorageError` on the webhook
 path, surfaced as a 500 so Cloudflare redelivers).
+
+## 13. Client IP and User-Agent for the audit trail
+
+The audit log (ADR 0018) records the client IP and User-Agent of every login,
+logout and staff change. Behind the admin portal's BFF, every backend request
+comes from the BFF itself, so two settings are required for staff rows to
+record the **browser's** IP:
+
+| Where | Variable | Value |
+|---|---|---|
+| Admin portal | `CLIENT_IP_HEADER` | The header your edge (nginx, load balancer) **sets from the TCP peer**, e.g. `x-real-ip`. It must be overwritten by the edge on every request, never passed through from the client, or clients can choose their recorded IP. |
+| Backend | `TRUSTED_PROXIES` | The BFF's address or narrow subnet, as a JSON list, e.g. `["10.0.3.12"]`. IPv4 entries must be /8 or narrower (the app refuses to boot otherwise). |
+
+With both set, the BFF forwards one validated `X-Forwarded-For` and the backend
+trusts it only from the BFF. A browser-supplied `X-Forwarded-For` is ignored.
+Without `CLIENT_IP_HEADER`, staff rows record the BFF's own IP and the backend
+logs `client_ip_fallback` on every request; that warning's volume is the sign
+the chain is misconfigured. The same two settings also make the login rate
+limiter key per staff member instead of per BFF.
+
+The User-Agent needs no configuration: the BFF forwards the browser's,
+stripped of control characters and cut to 512 characters.
+
+`docker-compose.yml` has no admin portal service and sets neither variable;
+plain `npm run dev` against a local backend records `127.0.0.1`, which is
+expected.

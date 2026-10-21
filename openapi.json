@@ -672,6 +672,162 @@
         "title": "AudioDownloadResponse",
         "type": "object"
       },
+      "AuditEntry": {
+        "description": "One row of the unified audit feed (`GET /admin/audit`,\nplan-admin-settings \u00a7A.5, D9): `audit_log` plus the three domain logs\nthat predate it, in one shape.\n\n`source` names the table a row came from. Legacy rows report `outcome`\n`success`, carry no `ip`/`user_agent`, and resolve `actor_label` from\nthe actor's current account (\"Deleted account\" once it is gone,\n\"System\" for automatic comment hides); `audit_log` rows carry the email\nsnapshot taken at write time. `summary` is a server-built sentence.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_label": {
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "outcome": {
+            "enum": [
+              "success",
+              "failure"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "audit_log",
+              "approval_log",
+              "announcement_approval_log",
+              "comment_moderation_log"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Label"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "required": [
+          "source",
+          "id",
+          "created_at",
+          "action",
+          "outcome",
+          "actor_id",
+          "actor_label",
+          "actor_role",
+          "target_type",
+          "target_id",
+          "target_label",
+          "ip",
+          "user_agent",
+          "details",
+          "summary"
+        ],
+        "title": "AuditEntry",
+        "type": "object"
+      },
+      "AuditOutcome": {
+        "enum": [
+          "success",
+          "failure"
+        ],
+        "title": "AuditOutcome",
+        "type": "string"
+      },
       "AvatarResponse": {
         "properties": {
           "avatar_url": {
@@ -898,6 +1054,461 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "ChurchSettingsAdmin": {
+        "description": "`GET/PATCH /admin/settings` \u2014 the public fields plus who last saved\nand when. `updated_by` is that account's email, `\"Deleted account\"` once\nit is gone, or null before the first edit.",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "app_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Display Name"
+          },
+          "church_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Church Name"
+          },
+          "comment_guidelines": {
+            "title": "Comment Guidelines",
+            "type": "string"
+          },
+          "contact_email": {
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "contact_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Phone"
+          },
+          "copyright_notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copyright Notice"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "terms_of_use_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Of Use Url"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "church_name",
+          "app_display_name",
+          "tagline",
+          "about",
+          "contact_email",
+          "contact_phone",
+          "website_url",
+          "address",
+          "comment_guidelines",
+          "terms_of_use_url",
+          "privacy_policy_url",
+          "copyright_notice",
+          "version",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "ChurchSettingsAdmin",
+        "type": "object"
+      },
+      "ChurchSettingsPublic": {
+        "description": "`GET /settings/public` \u2014 what the mobile app reads, unauthenticated.\nNo `updated_by_id` or `updated_at`. `version` is also the weak ETag.\nThe mobile app renders contact email, comment guidelines and the two\nlegal URLs in v1; the other fields are returned but not yet shown.",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "app_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Display Name"
+          },
+          "church_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Church Name"
+          },
+          "comment_guidelines": {
+            "title": "Comment Guidelines",
+            "type": "string"
+          },
+          "contact_email": {
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "contact_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Phone"
+          },
+          "copyright_notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copyright Notice"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "terms_of_use_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Of Use Url"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "church_name",
+          "app_display_name",
+          "tagline",
+          "about",
+          "contact_email",
+          "contact_phone",
+          "website_url",
+          "address",
+          "comment_guidelines",
+          "terms_of_use_url",
+          "privacy_policy_url",
+          "copyright_notice",
+          "version"
+        ],
+        "title": "ChurchSettingsPublic",
+        "type": "object"
+      },
+      "ChurchSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "Partial update. Omit a field to leave it unchanged; send `null` to\nclear an optional one (`contact_email` and `comment_guidelines` can be\nchanged but never cleared). `version` must be the one the editor loaded:\na stale value is a 409, never a silent overwrite.\n\nText is normalised like comments (NFC, control characters stripped,\nwhitespace trimmed); an optional field left empty after that is stored\nas null. URLs must be absolute `https`.",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "app_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Display Name"
+          },
+          "church_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Church Name"
+          },
+          "comment_guidelines": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Guidelines"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "contact_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Phone"
+          },
+          "copyright_notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copyright Notice"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "terms_of_use_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Of Use Url"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ChurchSettingsUpdate",
         "type": "object"
       },
       "CommentAdmin": {
@@ -1753,6 +2364,37 @@
         "title": "Page[AnnouncementAdminItem]",
         "type": "object"
       },
+      "Page_AuditEntry_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AuditEntry]",
+        "type": "object"
+      },
       "Page_CommentAdminForEditor_": {
         "properties": {
           "items": {
@@ -2570,6 +3212,160 @@
           "note"
         ],
         "title": "RejectRequest",
+        "type": "object"
+      },
+      "ReportBucket": {
+        "description": "One bucket, half-open `[start, end)`. Weekly buckets cut at ISO\nMondays and monthly at the 1st; the first and last are clipped to the\nperiod.",
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "listeners": {
+            "title": "Listeners",
+            "type": "integer"
+          },
+          "new_listeners": {
+            "title": "New Listeners",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "signups": {
+            "title": "Signups",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "plays",
+          "completions",
+          "watch_hours",
+          "listeners",
+          "new_listeners",
+          "signups"
+        ],
+        "title": "ReportBucket",
+        "type": "object"
+      },
+      "ReportKpis": {
+        "description": "Period totals. `listeners` is distinct accounts over the whole period\n(not a sum of bucket counts). `new_listeners` and `signups` (viewer\naccounts created) are accurate for any period; the other measures exist\nonly from `data_available_from` on.",
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "listeners": {
+            "title": "Listeners",
+            "type": "integer"
+          },
+          "new_listeners": {
+            "title": "New Listeners",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "signups": {
+            "title": "Signups",
+            "type": "integer"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "plays",
+          "completions",
+          "watch_hours",
+          "listeners",
+          "new_listeners",
+          "signups"
+        ],
+        "title": "ReportKpis",
+        "type": "object"
+      },
+      "ReportPeriod": {
+        "properties": {
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "granularity": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Granularity",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity"
+        ],
+        "title": "ReportPeriod",
+        "type": "object"
+      },
+      "ReportTopSermon": {
+        "properties": {
+          "completions": {
+            "title": "Completions",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "watch_hours": {
+            "title": "Watch Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sermon_id",
+          "title",
+          "plays",
+          "completions",
+          "watch_hours"
+        ],
+        "title": "ReportTopSermon",
         "type": "object"
       },
       "ResetPasswordRequest": {
@@ -4894,6 +5690,52 @@
         "title": "UploadTicket",
         "type": "object"
       },
+      "UsageReport": {
+        "description": "`GET /admin/analytics/report` (plan-admin-settings \u00a7A.5).\n`data_available_from` is the earliest day with any rollup data: plays,\ncompletions and watch time are forward-only from then (\u00a7A.2). Null when\nthere is no rollup data yet.",
+        "properties": {
+          "data_available_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Available From"
+          },
+          "kpis": {
+            "$ref": "#/components/schemas/ReportKpis"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReportPeriod"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBucket"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "top_sermons": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTopSermon"
+            },
+            "title": "Top Sermons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "data_available_from",
+          "kpis",
+          "series",
+          "top_sermons"
+        ],
+        "title": "UsageReport",
+        "type": "object"
+      },
       "UserActiveResponse": {
         "description": "The updated account, plus a flag set when a Redis outage forced\nrefresh-token revocation to be deferred (plan \u00a7W18, GATE 6 = commit-first).\nSet on **deactivation** when the lockout committed but the token revoke could\nnot be recorded, and on **reactivation** when the best-effort revoke of any\nstill-live pre-deactivation refresh token could not be recorded (CWE-613).\nThe state change still committed and every request re-checks `is_active`, so\nthe flag only tells an operator a Redis-backed revoke did not land.",
         "properties": {
@@ -5393,6 +6235,171 @@
         ]
       }
     },
+    "/api/v1/admin/analytics/report": {
+      "get": {
+        "description": "KPIs, a bucketed series and top sermons for `[from, to)`. Managers\nmay view; only admins may export (D1).",
+        "operationId": "usage_report_api_v1_admin_analytics_report_get",
+        "parameters": [
+          {
+            "description": "First day of the period (UTC), inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "First day of the period (UTC), inclusive.",
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "default": "week",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Granularity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Usage Report",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/report/export": {
+      "get": {
+        "description": "The report as CSV, admin only. Fail-closed: the `report.exported`\naudit row is committed before the file is returned, so a failed audit\ninsert means no file. Every cell passes the spreadsheet formula guard\n(sermon titles are editor-controlled).",
+        "operationId": "export_usage_report_api_v1_admin_analytics_report_export_get",
+        "parameters": [
+          {
+            "description": "First day of the period (UTC), inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "First day of the period (UTC), inclusive.",
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "Day after the period ends (UTC), exclusive. At most 366 days after `from`.",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "timeseries",
+                "top_sermons"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "default": "week",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Granularity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "UTF-8 CSV with BOM."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Usage Report",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/admin/analytics/top-sermons": {
       "get": {
         "operationId": "top_sermons_api_v1_admin_analytics_top_sermons_get",
@@ -5444,6 +6451,225 @@
         "summary": "Top Sermons",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/admin/audit": {
+      "get": {
+        "description": "Newest first, `(created_at DESC, id DESC)`. `from`/`to` are half-open\n`[from, to)`. `total` is the filtered count before paging.",
+        "operationId": "list_audit_api_v1_admin_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "description": "Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`.",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Action",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "auth",
+                    "users",
+                    "settings",
+                    "reports",
+                    "sermons",
+                    "announcements",
+                    "moderation"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "description": "Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay.",
+            "in": "query",
+            "name": "staff_only",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay.",
+              "title": "Staff Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditOutcome"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "description": "Inclusive lower bound (UTC).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive lower bound (UTC).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Exclusive upper bound (UTC).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive upper bound (UTC).",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Audit",
+        "tags": [
+          "admin audit"
         ]
       }
     },
@@ -5799,6 +7025,77 @@
         "summary": "Restore Comment",
         "tags": [
           "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "operationId": "get_settings_api_v1_admin_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChurchSettingsAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "admin settings"
+        ]
+      },
+      "patch": {
+        "description": "Send only the fields you changed, plus the `version` you loaded. A\n409 means someone else saved first: reload and reapply.",
+        "operationId": "update_settings_api_v1_admin_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChurchSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChurchSettingsAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Settings",
+        "tags": [
+          "admin settings"
         ]
       }
     },
@@ -11361,6 +12658,58 @@
         "summary": "Withdraw",
         "tags": [
           "sermons"
+        ]
+      }
+    },
+    "/api/v1/settings/public": {
+      "get": {
+        "operationId": "public_settings_api_v1_settings_public_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChurchSettingsPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "Not modified (matching If-None-Match)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Settings",
+        "tags": [
+          "settings"
         ]
       }
     },

@@ -25,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { logWarn } from "../log";
 import { clientIpFrom, setForwardedFor } from "./client-ip";
+import { setUserAgent, userAgentFrom } from "./user-agent";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 import {
   clearedUnauthorized,
@@ -215,6 +216,8 @@ async function forward(
   // X-Forwarded-For. Absent that config, nothing is forwarded and the backend
   // rate-limits per-BFF (and logs the fallback).
   setForwardedFor(headers, clientIpFrom(req));
+  // Browser UA for the backend audit trail (staff mutations write it).
+  setUserAgent(headers, userAgentFrom(req.headers));
 
   return fetch(targetUrl, {
     method: req.method,

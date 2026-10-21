@@ -7,7 +7,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.sermon_approval import router as sermon_approval_router
+from app.api.admin_audit import router as admin_audit_router
 from app.api.admin_auth import router as admin_router
+from app.api.admin_settings import public_router as settings_public_router
+from app.api.admin_settings import router as admin_settings_router
 from app.api.admin_comments import router as admin_comments_router
 from app.api.admin_subscriptions import router as admin_subscriptions_router
 from app.api.announcements import router as announcements_router
@@ -197,6 +200,9 @@ for _router in (
     admin_router,
     admin_comments_router,
     admin_subscriptions_router,
+    admin_audit_router,
+    admin_settings_router,
+    settings_public_router,
     announcement_approvals_router,
     sermon_approval_router,
     verses_router,
