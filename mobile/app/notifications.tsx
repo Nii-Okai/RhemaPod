@@ -11,8 +11,15 @@ import { groupByRecency } from '../lib/format/notificationGroups';
 import { useNewReleases } from '../lib/query/hooks/useNewReleases';
 import { useNotificationsBadge } from '../lib/query/hooks/useNotificationsBadge';
 import type { SermonListItem } from '../lib/query/hooks/useSermons';
+import { SIGNATURE_NOTIFICATIONS_ENABLED } from '../lib/featureFlags';
+import { SignatureNotificationsScreen } from './_notifications/SignatureNotifications';
 
 const THUMBNAIL_SIZE = 56;
+
+export default function NotificationsScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): a build-time constant, like Home's.
+  return SIGNATURE_NOTIFICATIONS_ENABLED ? <SignatureNotificationsScreen /> : <ClassicNotificationsScreen />;
+}
 
 /**
  * Notifications (Isaac's ask, session 2026-10-11: "Notification icon should open
@@ -34,7 +41,7 @@ const THUMBNAIL_SIZE = 56;
  * dot marks an unread row, cleared the moment that specific sermon is actually opened
  * (`useNotificationsBadge`'s own `markRead`), not just by having the list on screen.
  */
-export default function NotificationsScreen() {
+function ClassicNotificationsScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();

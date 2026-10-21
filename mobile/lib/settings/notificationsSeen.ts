@@ -30,9 +30,14 @@ export async function getReadNotificationIds(userId: string): Promise<Set<string
 }
 
 export async function markNotificationRead(userId: string, sermonId: string): Promise<void> {
+  await markNotificationsRead(userId, [sermonId]);
+}
+
+/** Marks several at once — the Signature screen's "Mark all read". One read, one write. */
+export async function markNotificationsRead(userId: string, sermonIds: string[]): Promise<void> {
   try {
     const current = await getReadNotificationIds(userId);
-    current.add(sermonId);
+    for (const id of sermonIds) current.add(id);
     const trimmed = Array.from(current).slice(-MAX_STORED_IDS);
     await SQLiteAsyncStorage.setItem(keyFor(userId), JSON.stringify(trimmed));
   } catch {
