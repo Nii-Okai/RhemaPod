@@ -99,6 +99,7 @@ const ICONS = {
   'musical-note': { ios: 'musical-note', android: 'music-note' },
   'swap-vertical': { ios: 'swap-vertical', android: 'swap-vert' },
   list: { ios: 'list', android: 'view-list' },
+  'chatbubble-outline': { ios: 'chatbubble-outline', android: 'chat-bubble-outline' },
   shuffle: { ios: 'shuffle', android: 'shuffle' },
   repeat: { ios: 'repeat', android: 'repeat' },
   'eye-outline': { ios: 'eye-outline', android: 'visibility' },
