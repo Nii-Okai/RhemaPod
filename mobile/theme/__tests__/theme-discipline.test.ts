@@ -26,6 +26,8 @@ const ALLOWED = new Set([
   // pin only the chips and play buttons drawn on the art.
   'app/(tabs)/_home/signature/SignatureHeroCard.tsx',
   'app/(tabs)/_home/signature/shelfCards.tsx',
+  // Signature Browse: the Prophet's Catalog card's text sits on a photo.
+  'app/(tabs)/_browse/signature/CatalogCollectionCard.tsx',
   'app/(tabs)/_downloads/DownloadRow.tsx',
   'app/(tabs)/_library/DownloadGridTile.tsx',
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',

@@ -9,6 +9,8 @@ import { useCategories } from '../../lib/query/hooks/useCategories';
 import { useSpeakers } from '../../lib/query/hooks/useSpeakers';
 import { BrowseSearchEntry } from './_browse/BrowseSearchEntry';
 import { CategoryCard } from './_browse/CategoryCard';
+import { SignatureBrowseScreen } from './_browse/signature/SignatureBrowse';
+import { SIGNATURE_BROWSE_ENABLED } from '../../lib/featureFlags';
 
 const GRID_COLUMNS = 2;
 // Isaac's ask, session 2026-10-02: more breathing room between category tiles.
@@ -17,6 +19,12 @@ const GRID_PADDING = spacing.lg;
 // Prime Video reference (Isaac's ask, session 2026-10-02): a short grid with a "See
 // more" toggle underneath, not every category laid out at once.
 const COLLAPSED_CATEGORY_COUNT = 6;
+
+export default function BrowseScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): the flag is a build-time
+  // constant, so this never switches between the two within one run.
+  return SIGNATURE_BROWSE_ENABLED ? <SignatureBrowseScreen /> : <ClassicBrowseScreen />;
+}
 
 /**
  * Design spec 1i/2d: flat categories and speakers — "the two axes people
@@ -30,7 +38,7 @@ const COLLAPSED_CATEGORY_COUNT = 6;
  * Each `CategoryPublic`/`SpeakerPublic` already carries its `sermon_count` computed
  * server-side — this screen never fans out a per-row count request.
  */
-export default function BrowseScreen() {
+function ClassicBrowseScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
