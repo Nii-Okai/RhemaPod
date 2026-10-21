@@ -105,7 +105,6 @@ const ICONS = {
   'eye-outline': { ios: 'eye-outline', android: 'visibility' },
   'eye-off-outline': { ios: 'eye-off-outline', android: 'visibility-off' },
   'mail-outline': { ios: 'mail-outline', android: 'mail-outline' },
-  'chatbubble-outline': { ios: 'chatbubble-outline', android: 'chat-bubble-outline' },
   'document-text-outline': { ios: 'document-text-outline', android: 'description' },
   'shield-checkmark-outline': { ios: 'shield-checkmark-outline', android: 'verified-user' },
 } satisfies Record<string, { ios: IoniconsName; android: MaterialIconsName }>;
