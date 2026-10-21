@@ -36,9 +36,9 @@ import {
 } from './shelfCards';
 import { useSeriesWalk } from './useSeriesWalk';
 
-/** The Series grid: two columns, at most two rows; "See all" opens the full list. */
+/** The Series grid: one row of two (Nii's call, 2026-10-21); "See all" opens the full list. */
 const SERIES_COLUMNS = 2;
-const SERIES_GRID_MAX = SERIES_COLUMNS * 2;
+const SERIES_GRID_MAX = 2;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const rows: T[][] = [];

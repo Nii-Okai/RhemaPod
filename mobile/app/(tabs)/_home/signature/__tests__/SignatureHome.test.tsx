@@ -71,6 +71,8 @@ const routes: Record<string, unknown> = {
   '/series': [
     { id: 'se1', title: 'Divine Patterns', episode_count: 4, thumbnail_url: null },
     { id: 'se2', title: 'The Eyes to See', episode_count: 2, thumbnail_url: null },
+    { id: 'se3', title: 'The Glory', episode_count: 3, thumbnail_url: null },
+    { id: 'se4', title: 'Five Days of Glory', episode_count: 5, thumbnail_url: null },
   ],
   '/series/{series_id}/episodes': [1, 2, 3, 4].map((n) => ({ id: `e${n}`, title: `Part ${n}`, episode_number: n })),
   '/me/history': [{ sermon_id: 'e1', completed: true }],
@@ -128,6 +130,9 @@ describe('SignatureHomeScreen', () => {
     expect(screen.getByText('2 OF 4 · 20:00 LEFT')).toBeTruthy();
     expect(screen.getByLabelText('The Eyes to See, 2 episodes')).toBeTruthy();
     expect(screen.queryByLabelText('Divine Patterns, 4 episodes')).toBeNull();
+    // Two tiles only, beside each other.
+    expect(screen.getByLabelText('The Glory, 3 episodes')).toBeTruthy();
+    expect(screen.queryByLabelText('Five Days of Glory, 5 episodes')).toBeNull();
 
     fireEvent.press(walk);
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/series/[id]', params: { id: 'se1' } });
