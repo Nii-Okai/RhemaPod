@@ -81,6 +81,20 @@ export const status = {
 export const overlay = {
   chipFill: 'rgba(13, 17, 26, 0.55)',
   chipBorder: 'rgba(238, 241, 246, 0.22)',
+  /**
+   * Bottom-of-art fade into the dark hero panel — `surface.app`'s rgb at rising, eased
+   * alpha, stacked top-to-bottom as flat bands (no gradient dependency, same technique as
+   * `fade` below). Dark in both themes: it sits on the art, not the chrome. Used by the
+   * Signature Notifications latest-release card.
+   */
+  scrimLayers: [
+    'rgba(13, 17, 26, 0)',
+    'rgba(13, 17, 26, 0.15)',
+    'rgba(13, 17, 26, 0.35)',
+    'rgba(13, 17, 26, 0.6)',
+    'rgba(13, 17, 26, 0.82)',
+    'rgba(13, 17, 26, 0.95)',
+  ],
 } as const;
 
 /**
