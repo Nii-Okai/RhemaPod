@@ -3,6 +3,7 @@ import { Image, StyleSheet, View } from 'react-native';
 import { AppText, PressableScale } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { spacing } from '../../../../theme/spacing';
+import { ArtScrim } from '../../_home/signature/ArtScrim';
 import { LEAF } from '../../_home/signature/leaf';
 
 // A congregation photo from onboarding — the catalogue has no cover art of its own.
@@ -32,11 +33,7 @@ export function CatalogCollectionCard({ onPress, leadTitle }: CatalogCollectionC
       style={[styles.card, LEAF]}
     >
       <Image source={CATALOG_PHOTO} style={styles.photo} resizeMode="cover" />
-      <View style={styles.scrim} pointerEvents="none">
-        {onArt.overlay.scrimLayers.map((color) => (
-          <View key={color} style={[styles.scrimBand, { backgroundColor: color }]} />
-        ))}
-      </View>
+      <ArtScrim height="70%" />
       <View style={styles.label} pointerEvents="none">
         <AppText variant="ui.badge" style={styles.eyebrow}>
           Collection
@@ -59,17 +56,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
-  },
-  // The bands fill the lower 70% of the card, clear at the top and near-solid at the foot.
-  scrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '70%',
-  },
-  scrimBand: {
-    flex: 1,
   },
   label: {
     position: 'absolute',
