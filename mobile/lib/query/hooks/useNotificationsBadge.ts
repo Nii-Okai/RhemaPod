@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useCurrentUser } from './useProfile';
 import { useNewReleases } from './useNewReleases';
-import { getReadNotificationIds, markNotificationRead } from '../../settings/notificationsSeen';
+import { getReadNotificationIds, markNotificationRead, markNotificationsRead } from '../../settings/notificationsSeen';
 
 /**
  * Backs `HomeTopBar`'s bell badge and the `/notifications` screen it opens (Isaac's
@@ -44,7 +44,15 @@ export function useNotificationsBadge() {
     if (userId) void markNotificationRead(userId, sermonId);
   };
 
+  // "Mark all read" on the Signature Notifications screen: everything currently listed.
+  const markAllRead = () => {
+    const ids = (newReleases.data ?? []).map((sermon) => sermon.id).filter((id) => !readIds.has(id));
+    if (ids.length === 0) return;
+    setReadIds((current) => new Set([...current, ...ids]));
+    if (userId) void markNotificationsRead(userId, ids);
+  };
+
   const unseenCount = (newReleases.data ?? []).filter((sermon) => !readIds.has(sermon.id)).length;
 
-  return { unseenCount, isRead, markRead };
+  return { unseenCount, isRead, markRead, markAllRead };
 }
