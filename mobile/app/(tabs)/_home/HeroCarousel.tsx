@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   LayoutChangeEvent,
   NativeScrollEvent,
@@ -17,6 +17,9 @@ export interface HeroCarouselProps {
   /** Forwarded to every `HeroCard` — clears the overlaid, scroll-fading `HomeTopBar`
       (Isaac's ask, session 2026-09-30). See `HeroCard`'s own `topInset` doc comment. */
   topInset?: number;
+  /** Draws each page instead of the classic `HeroCard` — Signature Home's own hero card
+      reuses this paging/auto-advance machinery rather than duplicating it. */
+  renderCard?: (sermon: SermonListItem, onPress: () => void) => ReactNode;
 }
 
 const AUTO_ADVANCE_MS = 6000;
@@ -65,7 +68,13 @@ const AUTO_ADVANCE_MS = 6000;
  * auto-advance) when there's only one sermon — a one-item "carousel" has nothing to
  * page between.
  */
-export function HeroCarousel({ sermons, onPress, topInset = 0 }: HeroCarouselProps) {
+export function HeroCarousel({ sermons, onPress, topInset = 0, renderCard }: HeroCarouselProps) {
+  const card = (sermon: SermonListItem) =>
+    renderCard ? (
+      renderCard(sermon, () => onPress(sermon.id))
+    ) : (
+      <HeroCard sermon={sermon} onPress={() => onPress(sermon.id)} topInset={topInset} />
+    );
   const styles = useStyles();
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
@@ -95,7 +104,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0 }: HeroCarouselPro
 
   if (sermons.length <= 1) {
     const only = sermons[0];
-    return only ? <HeroCard sermon={only} onPress={() => onPress(only.id)} topInset={topInset} /> : null;
+    return only ? <>{card(only)}</> : null;
   }
 
   return (
@@ -119,7 +128,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0 }: HeroCarouselPro
           >
             {sermons.map((sermon) => (
               <View key={sermon.id} style={[styles.page, { width }]}>
-                <HeroCard sermon={sermon} onPress={() => onPress(sermon.id)} topInset={topInset} />
+                {card(sermon)}
               </View>
             ))}
           </ScrollView>

@@ -26,6 +26,8 @@ import { SermonCard } from '../../components/sermon/SermonCard';
 import { ShelfSkeleton } from '../../components/ShelfSkeleton';
 import { SpotlightCard } from './_home/SpotlightCard';
 import { VerseStrip } from './_home/VerseStrip';
+import { SignatureHomeScreen } from './_home/signature/SignatureHome';
+import { SIGNATURE_HOME_ENABLED } from '../../lib/featureFlags';
 
 // Shared sizing for both image-only discovery shelves (Isaac's ask: "a little
 // slimmer but taller" than `ImageOnlyCard`'s own 160×16:9 default, applied to
@@ -51,6 +53,12 @@ function chunkPairs<T>(items: T[]): T[][] {
     pairs.push(items.slice(i, i + 2));
   }
   return pairs;
+}
+
+export default function HomeScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): the flag is a build-time
+  // constant, so this never switches between the two within one run.
+  return SIGNATURE_HOME_ENABLED ? <SignatureHomeScreen /> : <ClassicHomeScreen />;
 }
 
 /**
@@ -136,7 +144,7 @@ function chunkPairs<T>(items: T[]): T[][] {
  * wordmark/icons) and into the three non-hero branches (`HeroSkeleton`, `SectionError`,
  * the empty state) as plain `paddingTop`.
  */
-export default function HomeScreen() {
+function ClassicHomeScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();

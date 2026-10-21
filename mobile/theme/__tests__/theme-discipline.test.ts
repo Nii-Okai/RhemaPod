@@ -22,6 +22,10 @@ const ALLOWED = new Set([
   'app/(tabs)/_home/HeroCard.tsx',
   'app/(tabs)/_home/HomeTopBar.tsx',
   'app/(tabs)/_home/SpotlightCard.tsx',
+  // Signature Home: the hero is a dark frame for the art in both themes; the shelf cards
+  // pin only the chips and play buttons drawn on the art.
+  'app/(tabs)/_home/signature/SignatureHeroCard.tsx',
+  'app/(tabs)/_home/signature/shelfCards.tsx',
   'app/(tabs)/_downloads/DownloadRow.tsx',
   'app/(tabs)/_library/DownloadGridTile.tsx',
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
