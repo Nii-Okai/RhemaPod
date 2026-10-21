@@ -28,6 +28,10 @@ export interface DownloadPillButtonProps {
   /** Idle-state label — "Download" (sermon detail) vs "Download all episodes" (series
    * detail). Defaults to "Download" for a single item. */
   label?: string;
+  /** Small outlined pill that sits in a row beside other action pills (the Signature
+   * player's Like / My List / Share row) instead of the full-width dark pill. Same states,
+   * shorter visible text; the accessibility labels don't change. */
+  compact?: boolean;
 }
 
 type AggregateStatus =
@@ -87,9 +91,12 @@ function aggregate(items: DownloadPillItem[], records: (DownloadRecord | undefin
  * too passive; the ring is the one piece of real-time feedback a user watches fill up to
  * the completed checkmark), not a separate progress affordance of its own.
  */
-export function DownloadPillButton({ items, label = 'Download' }: DownloadPillButtonProps) {
+export function DownloadPillButton({ items, label = 'Download', compact = false }: DownloadPillButtonProps) {
   const { colors } = useTheme();
   const styles = useStyles();
+  const shell = compact ? styles.compactShell : styles.pillShell;
+  const textVariant = compact ? ('ui.label' as const) : ('ui.button' as const);
+  const iconSize = compact ? 16 : 18;
   const downloads = useDownloads();
   if (items.length === 0) return null;
 
@@ -98,10 +105,10 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
 
   if (status.kind === 'queued') {
     return (
-      <View style={[styles.pillShell, styles.pillRow]}>
+      <View style={[shell, styles.pillRow]}>
         <ActivityIndicator size="small" color={colors.text.primary} />
-        <AppText variant="ui.button" tone="primary">
-          Queued…
+        <AppText variant={textVariant} tone="primary">
+          {compact ? 'Queued' : 'Queued…'}
         </AppText>
       </View>
     );
@@ -132,15 +139,15 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
       status.total > 1 ? `Downloading ${status.doneCount} of ${status.total}… ${percent}%` : `Downloading… ${percent}%`;
     return (
       <View
-        style={[styles.pillShell, styles.pillRow]}
+        style={[shell, styles.pillRow]}
         accessibilityRole="progressbar"
         accessibilityLabel={progressLabel}
       >
         <CircularProgress progress={status.progress} size={20} strokeWidth={2.5} spinning>
           <PlatformIcon name="arrow-down" size={10} color={colors.text.primary} />
         </CircularProgress>
-        <AppText variant="ui.button" tone="primary">
-          {progressLabel}
+        <AppText variant={textVariant} tone="primary">
+          {compact ? `${percent}%` : progressLabel}
         </AppText>
       </View>
     );
@@ -153,10 +160,10 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
           onPress={removeAll}
           accessibilityRole="button"
           accessibilityLabel={items.length > 1 ? 'Delete downloaded episodes' : `Delete downloaded ${items[0].title}`}
-          style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
+          style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
         >
-          <PlatformIcon name="checkmark-circle" size={18} color={colors.accent.gold} />
-          <AppText variant="ui.button" tone="gold">
+          <PlatformIcon name="checkmark-circle" size={iconSize} color={colors.accent.gold} />
+          <AppText variant={textVariant} tone="gold">
             Downloaded
           </AppText>
         </Pressable>
@@ -170,11 +177,11 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
         onPress={retryFailed}
         accessibilityRole="button"
         accessibilityLabel="Retry download"
-        style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
+        style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
       >
-        <PlatformIcon name="refresh" size={18} color={colors.status.rose.text} />
-        <AppText variant="ui.button" style={styles.failureText}>
-          {status.message}
+        <PlatformIcon name="refresh" size={iconSize} color={colors.status.rose.text} />
+        <AppText variant={textVariant} style={styles.failureText}>
+          {compact ? 'Retry' : status.message}
         </AppText>
       </Pressable>
     );
@@ -185,10 +192,10 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
       onPress={startAll}
       accessibilityRole="button"
       accessibilityLabel={items.length > 1 ? label : `Download ${items[0].title}`}
-      style={({ pressed }) => [styles.pillShell, styles.pillRow, pressed && styles.pressed]}
+      style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
     >
-      <PlatformIcon name="download-outline" size={18} color={colors.text.primary} />
-      <AppText variant="ui.button" tone="primary">
+      <PlatformIcon name="download-outline" size={iconSize} color={colors.text.primary} />
+      <AppText variant={textVariant} tone="primary">
         {label}
       </AppText>
     </Pressable>
@@ -202,6 +209,13 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xxl,
+  },
+  compactShell: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md + 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border.card,
   },
   pillRow: {
     flexDirection: 'row',

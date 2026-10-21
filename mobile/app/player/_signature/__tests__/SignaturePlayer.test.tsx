@@ -32,8 +32,9 @@ jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest
 jest.mock('../../../../lib/hooks/useIsOnline', () => ({ useIsOnline: jest.fn(() => true) }));
 
 // Same native-module reasons as the classic player test.
+const mockDownload = jest.fn();
 jest.mock('../../../../lib/downloads/useDownloads', () => ({
-  useDownloads: jest.fn(() => ({ isLoading: false, find: jest.fn(() => undefined), download: jest.fn() })),
+  useDownloads: jest.fn(() => ({ isLoading: false, find: jest.fn(() => undefined), download: mockDownload })),
 }));
 jest.mock('../../../../lib/downloads/useLocalPlayback', () => ({
   useLocalPlayback: jest.fn(() => ({ localUri: null, isPreparing: false, error: null })),
@@ -168,6 +169,7 @@ beforeEach(() => {
   mockedPut.mockReset();
   mockBack.mockClear();
   mockSetParams.mockClear();
+  mockDownload.mockClear();
   mockParams = { id: 'sermon-1' };
   mockedLoadTheme.mockResolvedValue('dark');
   mockReads();
@@ -205,6 +207,20 @@ describe('Signature player', () => {
       expect(mockedPut).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}/like', expect.anything()),
     );
     expect(await screen.findByLabelText('Unlike, 4 likes')).toBeTruthy();
+  });
+
+  it('downloads the sermon from its pill, beside Like, My List and Share', async () => {
+    const screen = renderPlayer();
+    fireEvent.press(await screen.findByLabelText('Download The Destiny of the Church'));
+    expect(mockDownload).toHaveBeenCalledWith(
+      'sermon-1',
+      'The Destiny of the Church',
+      'video',
+      'https://cdn.example.com/art.jpg',
+      'Prophetic',
+    );
+    expect(screen.getByLabelText('Add to My List')).toBeTruthy();
+    expect(screen.getByLabelText('Share this sermon')).toBeTruthy();
   });
 
   it('cycles speed and opens the sleep timer from the toolbar', async () => {

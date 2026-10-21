@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { AppText, PlatformIcon, type AppIconName } from '../../../components';
+import { DownloadPillButton } from '../../../components/DownloadPillButton';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -13,10 +14,11 @@ export interface NowPlayingDetailsProps {
 }
 
 /**
- * The Signature player's title block: serif title, speaker · category, then Like, My List
- * and Share as pills — the same three actions (and the same hooks) as sermon detail's
- * action row. Download stays off the player (Isaac, 2026-10-09: it duplicated the detail
- * page's own pill), so the mockup's Download pill is left out.
+ * The Signature player's title block: serif title, speaker · category, then Like, My List,
+ * Download and Share as pills — the same actions (and the same hooks) as sermon detail.
+ * Download is back on the player at Nii's ask (2026-10-21), as the detail page's own
+ * `DownloadPillButton` in its compact skin; a finished download plays from the local file
+ * the next time the player opens.
  */
 export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
   const styles = useStyles();
@@ -66,6 +68,20 @@ export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
           selected={inMyList}
           onPress={() => myList.toggleSermon(detail.id)}
         />
+        {detail.media_type ? (
+          <DownloadPillButton
+            compact
+            items={[
+              {
+                sermonId: detail.id,
+                title: detail.title,
+                mediaType: detail.media_type,
+                thumbnailUrl: detail.thumbnail_url,
+                category: detail.category_name,
+              },
+            ]}
+          />
+        ) : null}
         <Pill icon="share-outline" accessibilityLabel="Share this sermon" onPress={onShare} />
       </View>
     </View>

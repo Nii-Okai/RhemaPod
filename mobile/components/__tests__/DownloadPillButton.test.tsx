@@ -96,4 +96,18 @@ describe('DownloadPillButton', () => {
     fireEvent.press(getByLabelText('Retry download'));
     expect(retry).toHaveBeenCalledWith('e1');
   });
+
+  it('keeps the compact pill short while keeping the full accessibility labels', () => {
+    mockedUseDownloads.mockReturnValue(hook({ find: jest.fn(() => record({ state: 'downloading', progress: 0.65 })) }));
+    const { getByText, getByLabelText, rerender } = render(<DownloadPillButton items={items} compact />);
+    expect(getByText('65%')).toBeTruthy();
+    expect(getByLabelText('Downloading… 65%')).toBeTruthy();
+
+    mockedUseDownloads.mockReturnValue(
+      hook({ find: jest.fn(() => record({ state: 'failed', failureMessage: 'Download failed.' })) }),
+    );
+    rerender(<DownloadPillButton items={items} compact />);
+    expect(getByText('Retry')).toBeTruthy();
+    expect(getByLabelText('Retry download')).toBeTruthy();
+  });
 });
