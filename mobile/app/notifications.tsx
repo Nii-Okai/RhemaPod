@@ -1,9 +1,9 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, PlatformIcon, QueryState } from '../components';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { formatRelativeTime } from '../lib/format/relativeTime';
@@ -35,6 +35,8 @@ const THUMBNAIL_SIZE = 56;
  * (`useNotificationsBadge`'s own `markRead`), not just by having the list on screen.
  */
 export default function NotificationsScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const newReleases = useNewReleases();
@@ -120,7 +122,7 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -192,4 +194,4 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-});
+}));

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { SORT_MODE_LABEL, type LibrarySortMode } from './librarySort';
 
@@ -21,6 +21,7 @@ export interface LibrarySortRowProps {
  * utility row sitting under the bolder filter pills, not a heading; the
  * reference's own "Recents" row reads as muted gray, not bright white. */
 export function LibrarySortRow({ sortMode, onSortPress, layout, onToggleLayout }: LibrarySortRowProps) {
+  const { colors } = useTheme();
   return (
     <View style={styles.row}>
       <Pressable

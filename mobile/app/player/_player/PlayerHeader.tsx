@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { usePlatformOS } from '../../../components/navigation/platform';
 
@@ -21,6 +21,7 @@ export interface PlayerHeaderProps {
  * (share-clip is cut, L5; download lives in its own row under the bottom bar).
  */
 export function PlayerHeader({ onBack, title }: PlayerHeaderProps) {
+  const styles = useStyles();
   const os = usePlatformOS();
   const insets = useSafeAreaInsets();
 
@@ -39,7 +40,7 @@ export function PlayerHeader({ onBack, title }: PlayerHeaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -51,4 +52,4 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: spacing.sm,
   },
-});
+}));

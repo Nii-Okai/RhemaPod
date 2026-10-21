@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
 import { LinkButton } from './Button';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -21,6 +21,7 @@ export interface ConfirmDialogProps {
  * destructive-button token and the spec deliberately avoids a fourth button style.
  */
 export function ConfirmDialog({ visible, title, body, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
+  const styles = useStyles();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.root}>
@@ -58,7 +59,7 @@ export function ConfirmDialog({ visible, title, body, confirmLabel, onConfirm, o
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
     alignItems: 'center',
@@ -94,4 +95,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
-});
+}));

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../lib/auth/AuthContext';
 import { hasSeenOnboarding } from '../lib/settings/onboardingSeen';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 
 /**
  * The app's root route (plan L2). No content preview: an unauthenticated
@@ -19,6 +19,8 @@ import { colors } from '../theme/colors';
  * resolved, so neither check jumps the gun on the other.
  */
 export default function Index() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { status } = useAuth();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
@@ -50,11 +52,11 @@ export default function Index() {
   return <Redirect href={status === 'signedIn' ? '/(tabs)/home' : '/(auth)/sign-in'} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface.app,
   },
-});
+}));

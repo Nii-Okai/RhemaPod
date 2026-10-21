@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Avatar, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -48,6 +48,8 @@ export function CommentComposer({
   onGate,
   onSubmit,
 }: CommentComposerProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [draft, setDraft] = useState('');
   // CSS `maxHeight` on a multiline `TextInput` is unreliable as a growth cap — both
   // platforms can report a native content size past it, which then stretches this pill
@@ -147,7 +149,7 @@ export function CommentComposer({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     gap: spacing.sm,
     backgroundColor: colors.surface.raised,
@@ -199,4 +201,4 @@ const styles = StyleSheet.create({
   counterFull: {
     color: colors.status.rose.text,
   },
-});
+}));

@@ -1,10 +1,10 @@
 import React from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, QueryState } from '../../components';
 import { SermonCard } from '../../components/sermon/SermonCard';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSearchResults } from '../../lib/query/hooks/useSearch';
 
@@ -36,6 +36,7 @@ const GRID_PADDING = spacing.lg;
  * bare chevron.
  */
 export default function CategoryDrillDownScreen() {
+  const styles = useStyles();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -80,7 +81,7 @@ export default function CategoryDrillDownScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -111,4 +112,4 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: GRID_GAP,
   },
-});
+}));

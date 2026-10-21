@@ -2,7 +2,8 @@ import React from 'react';
 import { Animated, Image, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -49,6 +50,14 @@ const DEFAULT_FADE_DISTANCE = 180;
  *  - A scroll-driven solid fill on top of that, fading in from fully transparent to
  *    fully opaque as `scrollY` advances toward `fadeDistance` — this is the part
  *    that actually changes as you scroll.
+ *
+ * Light mode: at rest the bar sits on the dark scrim over art, so its glyphs must be
+ * light; once the solid fill fades in they must be the theme's dark ink. The bar's
+ * content is therefore drawn twice in light mode — the theme-following, interactive copy
+ * underneath, and a light-on-art copy on top whose opacity is the inverse of the solid
+ * fill's. The on-art copy is purely visual: it takes no touches and is hidden from
+ * screen readers, so there is still exactly one set of controls. In dark mode the two
+ * copies would be identical, so only the interactive one renders.
  */
 export function HomeTopBar({
   onSearchPress,
@@ -58,6 +67,8 @@ export function HomeTopBar({
   fadeDistance = DEFAULT_FADE_DISTANCE,
   onHeight,
 }: HomeTopBarProps) {
+  const styles = useStyles();
+  const { scheme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const solidOpacity = scrollY
@@ -69,45 +80,83 @@ export function HomeTopBar({
     : 1;
 
   const handleLayout = (e: LayoutChangeEvent) => onHeight?.(e.nativeEvent.layout.height);
+  const paddingTop = Math.max(insets.top, spacing.sm);
+  const content = { onSearchPress, onNotificationsPress, unseenNotificationsCount };
 
   return (
     <View testID="home-top-bar" style={styles.root} onLayout={handleLayout}>
       <View style={styles.scrim} />
       <Animated.View style={[styles.solidFill, { opacity: solidOpacity }]} />
-      <View style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
-        <View style={styles.wordmark}>
-          <Image
-            source={require('../../../assets/icon-mark.png')}
-            style={styles.logoIcon}
-            resizeMode="contain"
-            accessible={false}
-          />
-          <AppText variant="display.row">
-            Rhema
-            <AppText variant="display.row" tone="gold">
-              Pod
-            </AppText>
+      <BarContent {...content} paddingTop={paddingTop} />
+      {scheme === 'light' && scrollY ? (
+        <Animated.View
+          style={[styles.onArtLayer, { opacity: Animated.subtract(1, solidOpacity) }]}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <BarContent {...content} paddingTop={paddingTop} onArt />
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+function BarContent({
+  onSearchPress,
+  onNotificationsPress,
+  unseenNotificationsCount,
+  paddingTop,
+  onArt: drawnOnArt = false,
+}: {
+  onSearchPress: () => void;
+  onNotificationsPress: () => void;
+  unseenNotificationsCount: number;
+  paddingTop: number;
+  /** Light-on-dark glyphs for the at-rest, over-the-art state (light mode only). */
+  onArt?: boolean;
+}) {
+  const styles = useStyles();
+  const iconColor = drawnOnArt ? onArt.text.primary : undefined;
+  return (
+    <View style={[styles.bar, { paddingTop }]}>
+      <View style={styles.wordmark}>
+        <Image
+          source={require('../../../assets/icon-mark.png')}
+          style={styles.logoIcon}
+          resizeMode="contain"
+          accessible={false}
+        />
+        <AppText variant="display.row" style={drawnOnArt ? styles.onArtText : undefined}>
+          Rhema
+          <AppText variant="display.row" tone="gold" style={drawnOnArt ? styles.onArtGold : undefined}>
+            Pod
           </AppText>
+        </AppText>
+      </View>
+      <View style={styles.actions}>
+        <View>
+          <IconButton
+            icon="notifications-outline"
+            accessibilityLabel="Notifications"
+            onPress={onNotificationsPress}
+            color={iconColor}
+          />
+          {unseenNotificationsCount > 0 ? (
+            <View style={styles.badge} pointerEvents="none">
+              <AppText variant="ui.label" tone="inverse" style={styles.badgeText}>
+                {unseenNotificationsCount > 9 ? '9+' : String(unseenNotificationsCount)}
+              </AppText>
+            </View>
+          ) : null}
         </View>
-        <View style={styles.actions}>
-          <View>
-            <IconButton icon="notifications-outline" accessibilityLabel="Notifications" onPress={onNotificationsPress} />
-            {unseenNotificationsCount > 0 ? (
-              <View style={styles.badge} pointerEvents="none">
-                <AppText variant="ui.label" tone="inverse" style={styles.badgeText}>
-                  {unseenNotificationsCount > 9 ? '9+' : String(unseenNotificationsCount)}
-                </AppText>
-              </View>
-            ) : null}
-          </View>
-          <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearchPress} />
-        </View>
+        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearchPress} color={iconColor} />
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     position: 'relative',
   },
@@ -118,6 +167,15 @@ const styles = StyleSheet.create({
   solidFill: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.surface.app,
+  },
+  onArtLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  onArtText: {
+    color: onArt.text.primary,
+  },
+  onArtGold: {
+    color: onArt.accent.goldText,
   },
   bar: {
     flexDirection: 'row',
@@ -156,4 +214,4 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 12,
   },
-});
+}));

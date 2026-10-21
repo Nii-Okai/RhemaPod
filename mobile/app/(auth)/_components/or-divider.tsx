@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 /**
@@ -10,6 +10,7 @@ import { spacing } from '../../../theme/spacing';
  * "organise the page to look better").
  */
 export function OrDivider({ label = 'or continue with' }: { label?: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <View style={styles.line} />
@@ -21,7 +22,7 @@ export function OrDivider({ label = 'or continue with' }: { label?: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -32,4 +33,4 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border.default,
   },
-});
+}));

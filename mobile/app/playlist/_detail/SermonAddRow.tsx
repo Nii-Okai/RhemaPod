@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { metaLineFor } from './sermonMeta';
@@ -67,6 +67,8 @@ export function SermonAddRow({
   onAdd,
   onRemove,
 }: SermonAddRowProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const metaLine = metaLineFor(sermon);
 
   return (
@@ -117,7 +119,7 @@ export function SermonAddRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -166,4 +168,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

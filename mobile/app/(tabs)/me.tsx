@@ -1,9 +1,9 @@
 import React from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Card, LinkButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { useCurrentUser } from '../../lib/query/hooks/useProfile';
@@ -53,6 +53,7 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  * panel, which is gone with Notes.
  */
 export default function MeScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const { lightModeAvailable } = useTheme();
   const [appearanceError, setAppearanceError] = React.useState<string | null>(null);
@@ -216,7 +217,7 @@ export default function MeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -258,4 +259,4 @@ const styles = StyleSheet.create({
   signOutText: {
     color: colors.status.rose.text,
   },
-});
+}));

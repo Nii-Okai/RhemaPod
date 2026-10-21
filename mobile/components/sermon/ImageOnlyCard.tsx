@@ -1,7 +1,7 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { PressableScale } from '../PressableScale';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import type { SermonListItem } from '../../lib/query/hooks/useSermons';
 
@@ -42,6 +42,7 @@ export function ImageOnlyCard({
   width = DEFAULT_CARD_WIDTH,
   aspectRatio = DEFAULT_ASPECT_RATIO,
 }: ImageOnlyCardProps) {
+  const styles = useStyles();
   return (
     <PressableScale
       onPress={onPress}
@@ -58,7 +59,7 @@ export function ImageOnlyCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.sm,
     overflow: 'hidden',
@@ -72,4 +73,4 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: colors.surface.sunken,
   },
-});
+}));

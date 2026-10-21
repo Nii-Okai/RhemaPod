@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { AppText } from '../Text';
 import { NavIcon } from './NavIcon';
@@ -21,6 +21,8 @@ import { PHONE_NAV_KEYS, isRouteActive, routeByKey } from './routes';
  * `PHONE_NAV_KEYS` list Android does (plan L15: routes never fork).
  */
 export function PhoneTabBarIOS() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -50,7 +52,7 @@ export function PhoneTabBarIOS() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     backgroundColor: colors.surface.nav,
@@ -70,4 +72,4 @@ const styles = StyleSheet.create({
   label: {
     marginTop: 2,
   },
-});
+}));

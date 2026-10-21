@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   TextInput,
   useWindowDimensions,
   View,
@@ -12,7 +11,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon, SectionError, ShelfSkeleton } from '../../components';
 import { ContinueWatchingCard } from '../../components/sermon/ContinueWatchingCard';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { fontFamily } from '../../theme/typography';
@@ -77,6 +76,8 @@ import { libraryItemTitle, sortLibraryItems, type LibraryItem, type LibrarySortM
  * of this shelf — no empty-state card for a shelf that has nothing to show.
  */
 export default function LibraryScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -264,7 +265,7 @@ export default function LibraryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -318,4 +319,4 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: GRID_GAP,
   },
-});
+}));

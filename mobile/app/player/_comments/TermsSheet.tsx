@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, LinkButton, PlatformIcon, PrimaryButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { isComplianceContentPending } from '../../../lib/content/commentsCompliance';
 import { useChurchContent } from '../../../lib/query/hooks/useChurchSettings';
@@ -35,6 +35,8 @@ export interface TermsSheetProps {
  * closes without posting; the caller's draft is untouched.
  */
 export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: TermsSheetProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const accept = useAcceptCommentsTerms();
@@ -111,7 +113,7 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   terms: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -134,4 +136,4 @@ const styles = StyleSheet.create({
   cancel: {
     alignItems: 'center',
   },
-});
+}));

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { SeriesPublic } from '../../../lib/query/hooks/useSeries';
@@ -24,6 +24,7 @@ function episodeLabel(count: number): string {
  * card does not import or render anything from that screen.
  */
 export function SeriesCard({ series, onPress }: SeriesCardProps) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -48,7 +49,7 @@ export function SeriesCard({ series, onPress }: SeriesCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     width: CARD_WIDTH,
     borderRadius: radius.lg,
@@ -71,4 +72,4 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-});
+}));

@@ -1,10 +1,10 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, QueryState } from '../../components';
 import { AnnouncementCard } from '../../components/announcements/AnnouncementCard';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAnnouncements } from '../../lib/query/hooks/useAnnouncements';
 import { sortPinnedFirst } from '../../lib/format/pinnedFirst';
@@ -31,6 +31,7 @@ import { useDeviceClass } from '../../components/navigation/useDeviceClass';
  * same reasoning `series.tsx`'s own doc comment gives.
  */
 export default function AnnouncementsScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const announcements = useAnnouncements();
   const items = sortPinnedFirst(announcements.data ?? []);
@@ -73,7 +74,7 @@ export default function AnnouncementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -102,4 +103,4 @@ const styles = StyleSheet.create({
   heading: {
     marginBottom: spacing.lg,
   },
-});
+}));

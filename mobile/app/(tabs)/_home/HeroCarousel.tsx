@@ -4,10 +4,9 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
-  StyleSheet,
   View,
 } from 'react-native';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
 import { HeroCard } from './HeroCard';
@@ -67,6 +66,7 @@ const AUTO_ADVANCE_MS = 6000;
  * page between.
  */
 export function HeroCarousel({ sermons, onPress, topInset = 0 }: HeroCarouselProps) {
+  const styles = useStyles();
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -134,7 +134,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0 }: HeroCarouselPro
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     backgroundColor: colors.surface.app,
   },
@@ -160,4 +160,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.gold,
     width: 16,
   },
-});
+}));

@@ -1,9 +1,9 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, QueryState, SeriesListCard } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSeriesList } from '../../lib/query/hooks/useSeries';
 import { useDeviceClass } from '../../components/navigation/useDeviceClass';
@@ -21,6 +21,7 @@ import { useDeviceClass } from '../../components/navigation/useDeviceClass';
  * of it) — a back arrow there would be redundant chrome next to chrome that never moves.
  */
 export default function SeriesScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const series = useSeriesList();
   const insets = useSafeAreaInsets();
@@ -66,7 +67,7 @@ export default function SeriesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -95,4 +96,4 @@ const styles = StyleSheet.create({
   heading: {
     marginBottom: spacing.lg,
   },
-});
+}));

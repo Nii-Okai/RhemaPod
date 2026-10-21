@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActionButton, AppText, CastCloseHeader, DetailError, PrimaryButton, Tag } from '../../components';
 import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
 import { EpisodeRow } from '../../components/series/EpisodeRow';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
@@ -74,6 +74,7 @@ import { SeriesDetailSkeleton } from './_detail/Skeleton';
  * never a placeholder digit (see `EpisodeRow`'s own doc comment).
  */
 export default function SeriesDetailScreen() {
+  const styles = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -280,7 +281,7 @@ export default function SeriesDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -334,4 +335,4 @@ const styles = StyleSheet.create({
   relatedSection: {
     paddingTop: spacing.md,
   },
-});
+}));

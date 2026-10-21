@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, Card, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 export interface AnnouncementsEntryProps {
@@ -16,6 +16,7 @@ export interface AnnouncementsEntryProps {
  * treatment is called for anywhere in the spec for this row).
  */
 export function AnnouncementsEntry({ onPress }: AnnouncementsEntryProps) {
+  const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Announcements">
       {({ pressed }) => (

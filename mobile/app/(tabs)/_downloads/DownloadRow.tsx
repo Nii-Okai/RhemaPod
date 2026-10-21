@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, CircularProgress, ConfirmDialog, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { DownloadRecord } from '../../../lib/downloads/types';
@@ -68,6 +69,8 @@ function metaLineFor(download: DownloadRecord): string {
  * used to expose — parity, not a downgrade, for screen-reader users.
  */
 export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRowProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isReady = download.state === 'ready';
   const isFailed = download.state === 'failed';
@@ -115,12 +118,12 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
           <View style={styles.overlayWrap} pointerEvents="none">
             {isReady ? (
               <View style={styles.overlayChip}>
-                <PlatformIcon name="play" size={OVERLAY_ICON_SIZE} color={colors.text.primary} />
+                <PlatformIcon name="play" size={OVERLAY_ICON_SIZE} color={onArt.text.primary} />
               </View>
             ) : null}
             {isFailed ? (
               <View style={styles.overlayChip}>
-                <PlatformIcon name="refresh" size={OVERLAY_ICON_SIZE} color={colors.status.rose.text} />
+                <PlatformIcon name="refresh" size={OVERLAY_ICON_SIZE} color={onArt.status.rose.text} />
               </View>
             ) : null}
             {isActive ? (
@@ -128,9 +131,11 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
                 progress={download.state === 'downloading' ? download.progress : 0}
                 size={PROGRESS_RING_SIZE}
                 strokeWidth={2.5}
+                trackColor={onArt.track.default}
+                fillColor={onArt.accent.gold}
                 spinning
               >
-                <PlatformIcon name="arrow-down" size={12} color={colors.text.secondary} />
+                <PlatformIcon name="arrow-down" size={12} color={onArt.text.secondary} />
               </CircularProgress>
             ) : null}
           </View>
@@ -171,7 +176,7 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -223,4 +228,4 @@ const styles = StyleSheet.create({
   failureText: {
     color: colors.status.rose.text,
   },
-});
+}));

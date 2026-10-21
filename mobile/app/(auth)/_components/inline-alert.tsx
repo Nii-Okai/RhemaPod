@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import type { ColorTokens } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -14,11 +15,16 @@ export type AlertVariant = 'error' | 'warning' | 'success';
  * `theme/colors.ts` — its dot color doubles as its text color, same pairing
  * the spec uses for wheat notice surfaces elsewhere.
  */
-const variantStyle: Record<AlertVariant, { bg: string; border: string; text: string }> = {
-  error: { bg: colors.status.rose.bg, border: colors.status.rose.border, text: colors.status.rose.text },
-  warning: { bg: colors.status.wheat.bg, border: colors.status.wheat.border, text: colors.accent.goldText },
-  success: { bg: colors.status.sage.bg, border: colors.status.sage.bg, text: colors.status.sage.text },
-};
+function variantStyle(colors: ColorTokens, variant: AlertVariant): { bg: string; border: string; text: string } {
+  switch (variant) {
+    case 'error':
+      return { bg: colors.status.rose.bg, border: colors.status.rose.border, text: colors.status.rose.text };
+    case 'warning':
+      return { bg: colors.status.wheat.bg, border: colors.status.wheat.border, text: colors.accent.goldText };
+    case 'success':
+      return { bg: colors.status.sage.bg, border: colors.status.sage.bg, text: colors.status.sage.text };
+  }
+}
 
 export function InlineAlert({
   variant,
@@ -29,7 +35,8 @@ export function InlineAlert({
   title: string;
   children?: React.ReactNode;
 }) {
-  const c = variantStyle[variant];
+  const { colors } = useTheme();
+  const c = variantStyle(colors, variant);
   return (
     <View style={[styles.base, { backgroundColor: c.bg, borderColor: c.border }]}>
       <AppText variant="ui.label" style={{ color: c.text }}>

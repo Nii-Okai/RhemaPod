@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { useVerseOfTheDay } from '../../../lib/query/hooks/useVerseOfTheDay';
@@ -20,6 +20,7 @@ import { useVerseOfTheDay } from '../../../lib/query/hooks/useVerseOfTheDay';
  * that a real shelf wouldn't.
  */
 export function VerseStrip() {
+  const styles = useStyles();
   const { data: verse } = useVerseOfTheDay();
 
   if (!verse) return null;
@@ -36,7 +37,7 @@ export function VerseStrip() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   strip: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -49,4 +50,4 @@ const styles = StyleSheet.create({
   reference: {
     textTransform: 'uppercase',
   },
-});
+}));

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorTokens } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import {
   displayScale,
   monoScale,
@@ -20,14 +21,22 @@ export interface AppTextProps extends RNTextProps {
   tone?: AppTextTone;
 }
 
-const toneColor: Record<AppTextTone, string> = {
-  primary: colors.text.primary,
-  secondary: colors.text.secondary,
-  tertiary: colors.text.tertiary,
-  gold: colors.accent.goldText,
-  goldHover: colors.accent.goldHover,
-  inverse: colors.primaryButton.text,
-};
+function toneColor(colors: ColorTokens, tone: AppTextTone): string {
+  switch (tone) {
+    case 'primary':
+      return colors.text.primary;
+    case 'secondary':
+      return colors.text.secondary;
+    case 'tertiary':
+      return colors.text.tertiary;
+    case 'gold':
+      return colors.accent.goldText;
+    case 'goldHover':
+      return colors.accent.goldHover;
+    case 'inverse':
+      return colors.primaryButton.text;
+  }
+}
 
 function resolveTypeStyle(variant: AppTextVariant) {
   const separatorIndex = variant.indexOf('.');
@@ -49,6 +58,7 @@ function resolveTypeStyle(variant: AppTextVariant) {
  */
 export function AppText({ variant = 'ui.body', tone = 'primary', style, ...rest }: AppTextProps) {
   const typeStyle = resolveTypeStyle(variant);
+  const { colors } = useTheme();
 
   return (
     <RNText
@@ -58,7 +68,7 @@ export function AppText({ variant = 'ui.body', tone = 'primary', style, ...rest 
           fontFamily: typeStyle.fontFamily,
           fontSize: typeStyle.fontSize,
           lineHeight: scaledLineHeight(typeStyle.fontSize, typeStyle.lineHeightRatio),
-          color: toneColor[tone],
+          color: toneColor(colors, tone),
         },
         style,
       ]}

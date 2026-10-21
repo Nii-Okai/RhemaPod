@@ -1,9 +1,9 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { AppText } from './Text';
 import { PlatformIcon, type AppIconName } from './PlatformIcon';
 import { PopIn } from './PopIn';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -65,6 +65,8 @@ export function ActionButton({
   selected = false,
   badgeCount,
 }: ActionButtonProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const showBadge = Boolean(badgeCount && badgeCount > 0);
   return (
     <Pressable
@@ -107,7 +109,7 @@ export function ActionButton({
 const ICON_SIZE = 28;
 const BADGE_MIN_SIZE = 18;
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   button: {
     alignItems: 'center',
     gap: spacing.xs,
@@ -146,4 +148,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
-});
+}));

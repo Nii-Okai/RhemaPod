@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon, PrimaryButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { fontFamily } from '../../theme/typography';
 import { useCreatePlaylist, usePlaylists } from '../../lib/query/hooks/usePlaylists';
@@ -21,6 +21,8 @@ const NAME_MAX = 100;
  * Library, not to this now-pointless create screen.
  */
 export default function CreatePlaylistScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const existing = usePlaylists();
@@ -103,7 +105,7 @@ export default function CreatePlaylistScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -137,4 +139,4 @@ const styles = StyleSheet.create({
   createButton: {
     marginTop: spacing.lg,
   },
-});
+}));

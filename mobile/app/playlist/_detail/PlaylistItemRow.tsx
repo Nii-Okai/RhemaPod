@@ -1,7 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon, SwipeToDelete } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { PlaylistItemPublic } from '../../../lib/query/hooks/usePlaylists';
@@ -46,6 +47,8 @@ export function PlaylistItemRow({
   isPreviewLoading,
   onTogglePreview,
 }: PlaylistItemRowProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const sermon = item.sermon;
   const metaLine = metaLineFor(sermon);
 
@@ -77,11 +80,11 @@ export function PlaylistItemRow({
           >
             {isPreviewLoading ? (
               <View style={styles.overlayChip}>
-                <ActivityIndicator size="small" color={colors.text.primary} />
+                <ActivityIndicator size="small" color={onArt.text.primary} />
               </View>
             ) : (
               <View style={styles.overlayChip}>
-                <PlatformIcon name={isPreviewPlaying ? 'pause' : 'play'} size={OVERLAY_ICON_SIZE} color={colors.text.primary} />
+                <PlatformIcon name={isPreviewPlaying ? 'pause' : 'play'} size={OVERLAY_ICON_SIZE} color={onArt.text.primary} />
               </View>
             )}
           </Pressable>
@@ -103,7 +106,7 @@ export function PlaylistItemRow({
 
 const THUMBNAIL_SIZE = 48;
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -149,4 +152,4 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-});
+}));

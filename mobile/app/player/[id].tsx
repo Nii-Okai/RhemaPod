@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, type VideoView } from 'expo-video';
 import { AppText, PrimaryButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSermonDetail, type SermonDetail } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
@@ -84,6 +84,7 @@ import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
  * having left the screen.
  */
 export default function PlayerScreen() {
+  const styles = useStyles();
   const { id: sermonId, queue, queueIndex, playlistId, repeat } = useLocalSearchParams<{
     id: string;
     queue?: string;
@@ -354,6 +355,7 @@ interface PlayerErrorProps {
 }
 
 function PlayerError({ message, onRetry }: PlayerErrorProps) {
+  const styles = useStyles();
   return (
     <View style={styles.centered}>
       <AppText variant="ui.body" tone="secondary" style={styles.errorText}>
@@ -574,7 +576,7 @@ function PlayerContent({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -589,4 +591,4 @@ const styles = StyleSheet.create({
   errorText: {
     textAlign: 'center',
   },
-});
+}));

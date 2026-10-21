@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, PlatformIcon, PrimaryButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -38,6 +38,8 @@ export interface ReportSheetProps {
  * `self_harm` is an ordinary reason with no special UI.
  */
 export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, errorMessage }: ReportSheetProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [reason, setReason] = useState<CommentReportReason | null>(null);
   const [detail, setDetail] = useState('');
   const [step, setStep] = useState<'choose' | 'done'>('choose');
@@ -153,7 +155,7 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   heading: {
     textTransform: 'uppercase',
   },
@@ -207,4 +209,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
-});
+}));

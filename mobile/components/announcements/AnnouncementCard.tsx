@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { AppText } from '../Text';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import type { AnnouncementListItem } from '../../lib/query/hooks/useAnnouncements';
@@ -32,6 +32,7 @@ export interface AnnouncementCardProps {
  * open-ended announcement (`expires_at` null).
  */
 export function AnnouncementCard({ announcement }: AnnouncementCardProps) {
+  const styles = useStyles();
   const pinned = announcement.pinned;
   const dateRange = formatAnnouncementDateRange(announcement.publish_at, announcement.expires_at);
 
@@ -69,7 +70,7 @@ export function AnnouncementCard({ announcement }: AnnouncementCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -113,4 +114,4 @@ const styles = StyleSheet.create({
   summary: {
     marginTop: 0,
   },
-});
+}));

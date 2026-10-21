@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { AppText, LinkButton, PrimaryButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -32,6 +32,8 @@ export interface NamePromptProps {
  * its message is shown as-is.
  */
 export function NamePrompt({ visible, initialName, title, saveLabel, onClose, onSaved }: NamePromptProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [name, setName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
   const update = useUpdateFullName();
@@ -96,7 +98,7 @@ export function NamePrompt({ visible, initialName, title, saveLabel, onClose, on
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   heading: {
     textTransform: 'uppercase',
   },
@@ -120,4 +122,4 @@ const styles = StyleSheet.create({
   cancel: {
     alignItems: 'center',
   },
-});
+}));

@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { usePlatformOS } from '../../../components/navigation/platform';
 
@@ -19,6 +19,7 @@ export interface DetailHeaderProps {
  * populates it on this screen — share/clip-share is cut, L5).
  */
 export function DetailHeader({ onBack }: DetailHeaderProps) {
+  const styles = useStyles();
   const os = usePlatformOS();
   const insets = useSafeAreaInsets();
 
@@ -41,7 +42,7 @@ export function DetailHeader({ onBack }: DetailHeaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   androidBar: {
     backgroundColor: colors.surface.nav,
     paddingHorizontal: spacing.xs,
@@ -52,4 +53,4 @@ const styles = StyleSheet.create({
     left: spacing.xs,
     zIndex: 10,
   },
-});
+}));

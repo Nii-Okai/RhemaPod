@@ -1,8 +1,8 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { AppText } from './Text';
 import { Card } from './Card';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { spacing } from '../theme/spacing';
 import type { SeriesPublic } from '../lib/query/hooks/useSeries';
 
@@ -22,6 +22,7 @@ function countLabel(count: number): string {
  * art needs; the text block below pads itself.
  */
 export function SeriesListCard({ series, onPress }: SeriesListCardProps) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -46,7 +47,7 @@ export function SeriesListCard({ series, onPress }: SeriesListCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   pressable: {
     marginBottom: spacing.lg,
   },
@@ -68,4 +69,4 @@ const styles = StyleSheet.create({
   meta: {
     marginTop: spacing.xs,
   },
-});
+}));

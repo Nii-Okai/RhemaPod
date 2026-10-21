@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { scaledLineHeight } from '../../../theme/typography';
 
@@ -27,6 +27,7 @@ const TABS: { key: DetailTab; label: string }[] = [
  * already made for those two.
  */
 export function DetailTabs({ active, onChange }: DetailTabsProps) {
+  const styles = useStyles();
   return (
     <View style={styles.row} accessibilityRole="tablist">
       {TABS.map((tab) => {
@@ -51,7 +52,7 @@ export function DetailTabs({ active, onChange }: DetailTabsProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     gap: spacing.lg,
@@ -74,4 +75,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.gold,
     borderRadius: 1,
   },
-});
+}));

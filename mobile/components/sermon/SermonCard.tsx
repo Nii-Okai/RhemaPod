@@ -1,9 +1,9 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { AppText } from '../Text';
 import { FadeTitle } from '../FadeTitle';
 import { PressableScale } from '../PressableScale';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { formatDuration } from '../../lib/format/duration';
@@ -54,6 +54,7 @@ export function SermonCard({
   showMeta = true,
   highlighted = false,
 }: SermonCardProps) {
+  const styles = useStyles();
   const meta = metaLabel(sermon);
   const titleWidth = width - spacing.md * 2;
 
@@ -81,7 +82,7 @@ export function SermonCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.sm,
     overflow: 'hidden',
@@ -105,4 +106,4 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-});
+}));

@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
-import { colors } from '../theme/colors';
+import { ActivityIndicator, Pressable, View, type PressableProps } from 'react-native';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { AppText } from './Text';
@@ -23,6 +23,8 @@ export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'chil
  * button. Gold is reserved for accents/links/progress, never a general primary action.
  */
 export function PrimaryButton({ label, loading = false, disabled, icon, fullWidth = false, ...rest }: PrimaryButtonProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const isDisabled = Boolean(disabled) || loading;
 
   return (
@@ -62,6 +64,7 @@ export interface LinkButtonProps extends Omit<PressableProps, 'style' | 'childre
  * admin portal's existing ghost-button convention rather than being invented fresh.
  */
 export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="button"
@@ -79,7 +82,7 @@ export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   primaryBase: {
     backgroundColor: colors.primaryButton.bg,
     borderRadius: radius.pill,
@@ -105,4 +108,4 @@ const styles = StyleSheet.create({
   linkDisabled: {
     opacity: 0.4,
   },
-});
+}));

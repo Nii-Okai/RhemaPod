@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { IconNavItem } from './IconNavItem';
 import { PHONE_NAV_KEYS, isRouteActive, routeByKey } from './routes';
@@ -13,6 +13,7 @@ import { PHONE_NAV_KEYS, isRouteActive, routeByKey } from './routes';
  * the chrome differs.
  */
 export function PhoneTabBarAndroid() {
+  const styles = useStyles();
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -36,7 +37,7 @@ export function PhoneTabBarAndroid() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     backgroundColor: colors.surface.nav,
@@ -44,4 +45,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.default,
     paddingTop: spacing.sm,
   },
-});
+}));

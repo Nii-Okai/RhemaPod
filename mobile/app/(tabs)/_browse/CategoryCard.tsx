@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { Category } from '../../../lib/query/hooks/useCategories';
@@ -39,6 +39,7 @@ const TILE_MIN_HEIGHT = 96;
  * use).
  */
 export function CategoryCard({ category, onPress, width }: CategoryCardProps) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -53,7 +54,7 @@ export function CategoryCard({ category, onPress, width }: CategoryCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   tile: {
     minHeight: TILE_MIN_HEIGHT,
     alignItems: 'center',
@@ -70,4 +71,4 @@ const styles = StyleSheet.create({
   title: {
     textAlign: 'center',
   },
-});
+}));

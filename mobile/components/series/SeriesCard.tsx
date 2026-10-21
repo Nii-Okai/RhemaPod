@@ -1,9 +1,9 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { AppText } from '../Text';
 import { FadeTitle } from '../FadeTitle';
 import { PressableScale } from '../PressableScale';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import type { SeriesPublic } from '../../lib/query/hooks/useSeries';
@@ -33,6 +33,7 @@ function episodeLabel(count: number): string {
  * centering logic of its own.
  */
 export function SeriesCard({ series, onPress }: SeriesCardProps) {
+  const styles = useStyles();
   return (
     <PressableScale
       onPress={onPress}
@@ -55,7 +56,7 @@ export function SeriesCard({ series, onPress }: SeriesCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     width: CARD_WIDTH,
     borderRadius: radius.sm,
@@ -75,4 +76,4 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-});
+}));

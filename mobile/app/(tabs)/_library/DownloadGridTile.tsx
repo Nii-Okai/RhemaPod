@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, CircularProgress, ConfirmDialog, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { DownloadRecord } from '../../../lib/downloads/types';
@@ -31,6 +32,8 @@ const PROGRESS_RING_SIZE = 22;
  * all, via the same `accessibilityActions` "Delete" entry `SwipeToDelete`
  * exposes — parity, not a downgrade, for screen-reader users. */
 export function DownloadGridTile({ download, width, onPlay, onRetry, onDelete }: DownloadGridTileProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isReady = download.state === 'ready';
   const isFailed = download.state === 'failed';
@@ -82,20 +85,22 @@ export function DownloadGridTile({ download, width, onPlay, onRetry, onDelete }:
               // "downloaded" is the more useful thing to communicate at a glance than
               // "tappable" (every tile already is).
               <View style={styles.badge}>
-                <PlatformIcon name="checkmark-circle" size={BADGE_ICON_SIZE} color={colors.status.sage.text} />
+                <PlatformIcon name="checkmark-circle" size={BADGE_ICON_SIZE} color={onArt.status.sage.text} />
               </View>
             ) : isFailed ? (
               <View style={styles.badge}>
-                <PlatformIcon name="refresh" size={BADGE_ICON_SIZE} color={colors.status.rose.text} />
+                <PlatformIcon name="refresh" size={BADGE_ICON_SIZE} color={onArt.status.rose.text} />
               </View>
             ) : isActive ? (
               <CircularProgress
                 progress={download.state === 'downloading' ? download.progress : 0}
                 size={PROGRESS_RING_SIZE}
                 strokeWidth={2}
+                trackColor={onArt.track.default}
+                fillColor={onArt.accent.gold}
                 spinning
               >
-                <PlatformIcon name="arrow-down" size={10} color={colors.text.secondary} />
+                <PlatformIcon name="arrow-down" size={10} color={onArt.text.secondary} />
               </CircularProgress>
             ) : null}
           </View>
@@ -120,7 +125,7 @@ export function DownloadGridTile({ download, width, onPlay, onRetry, onDelete }:
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.7,
   },
@@ -151,4 +156,4 @@ const styles = StyleSheet.create({
   title: {
     marginTop: spacing.sm,
   },
-});
+}));
