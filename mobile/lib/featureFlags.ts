@@ -14,3 +14,6 @@ export const SIGNATURE_NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE
 
 /** Signature Browse (`app/(tabs)/_browse/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_BROWSE=1`. */
 export const SIGNATURE_BROWSE_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_BROWSE === '1';
+
+/** Signature You page (`app/(tabs)/_me/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_YOU=1`. */
+export const SIGNATURE_YOU_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_YOU === '1';
