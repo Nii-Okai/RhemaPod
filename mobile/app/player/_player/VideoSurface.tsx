@@ -4,6 +4,7 @@ import { VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
+import { PlatformIcon } from '../../../components';
 import { PlaybackOverlayControls, PlayerBottomBar } from './TransportControls';
 import type { ControlsOverlay } from './useControlsOverlay';
 import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
@@ -50,6 +51,12 @@ export interface VideoSurfaceProps {
   onCycleSpeed: () => void;
   onOpenSleepTimer: () => void;
   onToggleFullscreen: () => void;
+  /**
+   * `'full'` (default): every control lives on the overlay. `'centre'` (Signature player):
+   * the overlay keeps only rewind / play-pause / forward and a corner full-screen button;
+   * the screen draws the seek row, speed and sleep timer below the video itself.
+   */
+  controlsLayout?: 'full' | 'centre';
 }
 
 /**
@@ -87,6 +94,7 @@ export function VideoSurface({
   onCycleSpeed,
   onOpenSleepTimer,
   onToggleFullscreen,
+  controlsLayout = 'full',
 }: VideoSurfaceProps) {
   const { visible, reduceMotion } = overlay;
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -174,28 +182,42 @@ export function VideoSurface({
               }}
             />
           </View>
-          <View style={styles.bottomRow}>
-            <PlayerBottomBar
-              currentTimeSeconds={currentTimeSeconds}
-              durationSeconds={durationSeconds}
-              playbackSpeed={playbackSpeed}
-              sleepRemainingSeconds={sleepRemainingSeconds}
-              isFullscreen={isFullscreen}
-              onSeekTo={(seconds) => {
-                overlay.touch();
-                onSeekTo(seconds);
-              }}
-              onSeekBy={(seconds) => {
-                overlay.touch();
-                onSeekBy(seconds);
-              }}
-              onScrubStart={onScrubStart}
-              onScrubEnd={onScrubEnd}
-              onCycleSpeed={act(onCycleSpeed)}
-              onOpenSleepTimer={act(onOpenSleepTimer)}
-              onToggleFullscreen={act(onToggleFullscreen)}
-            />
-          </View>
+          {controlsLayout === 'centre' ? (
+            <View style={styles.cornerRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+                onPress={act(onToggleFullscreen)}
+                hitSlop={spacing.sm}
+                style={({ pressed }) => [styles.cornerButton, pressed && styles.pressed]}
+              >
+                <PlatformIcon name={isFullscreen ? 'contract' : 'expand'} size={22} color={colors.text.primary} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.bottomRow}>
+              <PlayerBottomBar
+                currentTimeSeconds={currentTimeSeconds}
+                durationSeconds={durationSeconds}
+                playbackSpeed={playbackSpeed}
+                sleepRemainingSeconds={sleepRemainingSeconds}
+                isFullscreen={isFullscreen}
+                onSeekTo={(seconds) => {
+                  overlay.touch();
+                  onSeekTo(seconds);
+                }}
+                onSeekBy={(seconds) => {
+                  overlay.touch();
+                  onSeekBy(seconds);
+                }}
+                onScrubStart={onScrubStart}
+                onScrubEnd={onScrubEnd}
+                onCycleSpeed={act(onCycleSpeed)}
+                onOpenSleepTimer={act(onOpenSleepTimer)}
+                onToggleFullscreen={act(onToggleFullscreen)}
+              />
+            </View>
+          )}
         </Animated.View>
       ) : null}
     </View>
@@ -236,5 +258,19 @@ const styles = StyleSheet.create({
   bottomRow: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  cornerRow: {
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  cornerButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

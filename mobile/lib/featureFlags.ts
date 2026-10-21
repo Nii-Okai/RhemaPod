@@ -8,3 +8,6 @@
 
 /** Signature Home (`app/(tabs)/_home/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_HOME=1`. */
 export const SIGNATURE_HOME_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_HOME === '1';
+
+/** Signature Player (`app/player/_signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_PLAYER=1`. */
+export const SIGNATURE_PLAYER_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_PLAYER === '1';
