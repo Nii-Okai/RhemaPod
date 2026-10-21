@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
-import { colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { scaledLineHeight } from '../theme/typography';
 
 export interface FadeTitleProps {
@@ -33,6 +33,7 @@ const FADE_WIDTH = 28;
  * `components/` rather than staying screen-local.
  */
 export function FadeTitle({ children, width }: FadeTitleProps) {
+  const { colors } = useTheme();
   return (
     <View style={{ width }}>
       <AppText variant="display.compact" numberOfLines={1} ellipsizeMode="clip" style={styles.title}>

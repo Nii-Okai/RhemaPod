@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AppText, LinkButton, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { useUpdatePlaylistCover } from '../../../lib/query/hooks/usePlaylists';
@@ -34,6 +35,8 @@ function contentTypeFor(extension: string): string {
  * ticket -> PUT -> confirm pipeline every other image in this app uses.
  */
 export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160 }: PlaylistCoverPickerProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updateCover = useUpdatePlaylistCover(playlistId);
@@ -96,9 +99,9 @@ export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160 }: Playli
         )}
         <View style={styles.editBadge}>
           {updateCover.isPending ? (
-            <ActivityIndicator size="small" color={colors.text.primary} />
+            <ActivityIndicator size="small" color={onArt.text.primary} />
           ) : (
-            <PlatformIcon name="camera" size={14} color={colors.text.primary} />
+            <PlatformIcon name="camera" size={14} color={onArt.text.primary} />
           )}
         </View>
       </Pressable>
@@ -138,7 +141,7 @@ export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160 }: Playli
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     alignSelf: 'flex-start',
   },
@@ -185,4 +188,4 @@ const styles = StyleSheet.create({
   cancel: {
     alignItems: 'center',
   },
-});
+}));

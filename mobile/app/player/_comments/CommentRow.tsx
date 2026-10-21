@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, Avatar, PlatformIcon, type AppIconName } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatRelativeTime } from '../../../lib/format/relativeTime';
@@ -27,6 +27,8 @@ export interface CommentRowProps {
  * must never be tappable if one slipped through).
  */
 export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }: CommentRowProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const name = comment.author_display_name;
   const time = formatRelativeTime(comment.created_at);
   const hidden = comment.is_mine && comment.status === 'HIDDEN';
@@ -118,6 +120,8 @@ interface ActionLinkProps {
 }
 
 function ActionLink({ icon, label, accessibilityLabel, onPress }: ActionLinkProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="button"
@@ -133,7 +137,7 @@ function ActionLink({ icon, label, accessibilityLabel, onPress }: ActionLinkProp
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -197,4 +201,4 @@ const styles = StyleSheet.create({
   roseText: {
     color: colors.status.rose.text,
   },
-});
+}));

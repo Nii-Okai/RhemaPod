@@ -1,8 +1,8 @@
 import React from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -40,6 +40,7 @@ export function AuthScreen({
   subhead: string;
   children: React.ReactNode;
 }) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
 
   return (
@@ -76,7 +77,7 @@ export function AuthScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   flex: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -112,4 +113,4 @@ const styles = StyleSheet.create({
   form: {
     gap: spacing.xl,
   },
-});
+}));

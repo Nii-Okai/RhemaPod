@@ -2,7 +2,8 @@ import React from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../Text';
 import { PlatformIcon } from '../PlatformIcon';
-import { colors } from '../../theme/colors';
+import { darkColors as onArt } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { scaledLineHeight } from '../../theme/typography';
@@ -57,6 +58,7 @@ function normalize(text: string): string {
  * `THUMBNAIL_WIDTH`/`TITLE_FONT_SIZE`.
  */
 export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
+  const styles = useStyles();
   const number = episode.episode_number !== null ? String(episode.episode_number).padStart(2, '0') : null;
   const duration = formatDuration(episode.duration_seconds);
   const showSynopsis = Boolean(episode.description) && normalize(episode.description as string) !== normalize(episode.title);
@@ -81,11 +83,11 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
           )}
           <View style={styles.playButtonWrap} pointerEvents="none">
             <View style={styles.playButton}>
-              <PlatformIcon name="play" size={14} color={colors.text.primary} />
+              <PlatformIcon name="play" size={14} color={onArt.text.primary} />
             </View>
           </View>
           <View style={styles.durationBadge} pointerEvents="none">
-            <AppText variant="mono.tight" tone="primary" style={styles.durationText}>
+            <AppText variant="mono.tight" style={[styles.durationText, { color: onArt.text.primary }]}>
               {duration}
             </AppText>
           </View>
@@ -117,7 +119,7 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -188,4 +190,4 @@ const styles = StyleSheet.create({
   synopsis: {
     marginTop: spacing.xs,
   },
-});
+}));

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -18,6 +18,7 @@ export interface LibraryFilterPillsProps {
  * that section; tapping the already-selected pill again clears the filter
  * back to showing both sections, same as Spotify's own behavior. */
 export function LibraryFilterPills({ value, onChange }: LibraryFilterPillsProps) {
+  const styles = useStyles();
   const toggle = (pill: 'playlists' | 'downloaded') => onChange(value === pill ? null : pill);
 
   return (
@@ -46,7 +47,7 @@ export function LibraryFilterPills({ value, onChange }: LibraryFilterPillsProps)
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -60,4 +61,4 @@ const styles = StyleSheet.create({
   pillSelected: {
     backgroundColor: colors.text.primary,
   },
-});
+}));

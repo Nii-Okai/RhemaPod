@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
@@ -20,6 +20,7 @@ import { retryWindowText, socialAuthErrorCopy, type SocialAuthErrorCopy, type So
 type ErrorKind = null | 'credentials' | 'rate' | 'generic';
 
 export default function SignInScreen() {
+  const styles = useStyles();
   const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const appleAvailable = useAppleSignInAvailable();
   const router = useRouter();
@@ -206,7 +207,7 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   fieldGroup: {
     gap: spacing.md,
   },
@@ -240,4 +241,4 @@ const styles = StyleSheet.create({
   devRow: {
     alignItems: 'center',
   },
-});
+}));

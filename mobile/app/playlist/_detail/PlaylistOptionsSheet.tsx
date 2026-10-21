@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet } from 'react-native';
 import { AppText, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 export interface PlaylistOptionsSheetProps {
@@ -26,6 +26,7 @@ export interface PlaylistOptionsSheetProps {
  * its own entry point already — tapping the cover itself, not this menu.
  */
 export function PlaylistOptionsSheet({ visible, onClose, onShare, onAdd, onEditDetails }: PlaylistOptionsSheetProps) {
+  const { colors } = useTheme();
   // Closing this sheet and mounting another `<Modal>` in the same tick (React 18
   // batches `onClose()` + the next sheet's `setXOpen(true)` together) presents two
   // native modals at once and reliably hangs iOS (RN's own Modal can't dismiss and

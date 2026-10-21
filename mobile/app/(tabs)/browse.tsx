@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon, QueryState, SpeakerListRow } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useCategories } from '../../lib/query/hooks/useCategories';
 import { useSpeakers } from '../../lib/query/hooks/useSpeakers';
@@ -31,6 +31,8 @@ const COLLAPSED_CATEGORY_COUNT = 6;
  * server-side — this screen never fans out a per-row count request.
  */
 export default function BrowseScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -145,7 +147,7 @@ export default function BrowseScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -182,4 +184,4 @@ const styles = StyleSheet.create({
   seeMorePressed: {
     opacity: 0.7,
   },
-});
+}));

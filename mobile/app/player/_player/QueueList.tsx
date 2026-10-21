@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText, IconButton, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { metaLineFor } from '../../playlist/_detail/sermonMeta';
@@ -63,6 +63,8 @@ export function QueueList({
   onDownload,
   onShare,
 }: QueueListProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [actionsFor, setActionsFor] = useState<PlaylistItemPublic | null>(null);
 
   return (
@@ -185,7 +187,7 @@ export function QueueList({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   panel: {
     flex: 1,
     backgroundColor: colors.surface.raised,
@@ -269,4 +271,4 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.md,
   },
-});
+}));

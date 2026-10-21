@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { AppText } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 
 export interface SearchRowProps {
@@ -24,6 +24,7 @@ export interface SearchRowProps {
  * drill-down, the all-series page, Browse) — only Search itself went flat.
  */
 export function SearchRow({ label, accessibilityLabel, onPress }: SearchRowProps) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -38,7 +39,7 @@ export function SearchRow({ label, accessibilityLabel, onPress }: SearchRowProps
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -47,4 +48,4 @@ const styles = StyleSheet.create({
   rowPressed: {
     opacity: 0.7,
   },
-});
+}));

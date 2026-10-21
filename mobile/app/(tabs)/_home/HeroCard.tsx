@@ -1,7 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon, PressableScale } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatDuration } from '../../../lib/format/duration';
@@ -50,6 +51,7 @@ export interface HeroCardProps {
  * button the one session prior).
  */
 export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
+  const styles = useStyles();
   const defaultLibrary = useAddToDefaultLibrary();
   const saved = defaultLibrary.isInDefaultLibrary(sermon.id);
   const duration = formatDuration(sermon.duration_seconds);
@@ -69,14 +71,14 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
         )}
 
         <View style={[styles.eyebrowChip, { top: spacing.md + topInset }]} pointerEvents="none">
-          <AppText variant="ui.label" tone="primary">
+          <AppText variant="ui.label" style={styles.onArtText}>
             New this week
           </AppText>
         </View>
 
         <View style={styles.playButtonWrap} pointerEvents="none">
           <View style={styles.playButton}>
-            <PlatformIcon name="play" size={26} color={colors.text.primary} />
+            <PlatformIcon name="play" size={26} color={onArt.text.primary} />
           </View>
         </View>
       </View>
@@ -88,8 +90,8 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
           accessibilityLabel={watchLabel}
           style={styles.watchPill}
         >
-          <PlatformIcon name="play" size={15} color={colors.primaryButton.text} />
-          <AppText variant="ui.button" tone="inverse">
+          <PlatformIcon name="play" size={15} color={onArt.primaryButton.text} />
+          <AppText variant="ui.button" style={styles.watchPillText}>
             Watch{duration ? ` · ${duration}` : ''}
           </AppText>
         </PressableScale>
@@ -102,9 +104,9 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
           style={styles.savedCircle}
         >
           {defaultLibrary.isToggling ? (
-            <ActivityIndicator size="small" color={colors.text.primary} />
+            <ActivityIndicator size="small" color={onArt.text.primary} />
           ) : (
-            <PlatformIcon name={saved ? 'checkmark' : 'add'} size={20} color={colors.text.primary} />
+            <PlatformIcon name={saved ? 'checkmark' : 'add'} size={20} color={onArt.text.primary} />
           )}
         </PressableScale>
       </View>
@@ -112,7 +114,7 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.sm,
     overflow: 'hidden',
@@ -168,11 +170,21 @@ const styles = StyleSheet.create({
     // reading as pinned to the card's own bottom edge.
     marginTop: -22,
   },
+  // Everything drawn ON the sermon art keeps the dark palette's light-on-dark colours in
+  // both themes: the theme changes the chrome, not the brightness of the artwork.
+  onArtText: {
+    color: onArt.text.primary,
+  },
+  watchPillText: {
+    color: onArt.primaryButton.text,
+  },
   watchPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primaryButton.bg,
+    // On the art, not on chrome: the light pill in both themes (Isaac's decision,
+    // light-mode review §4.2) — a theme-following dark pill would vanish on dark art.
+    backgroundColor: onArt.primaryButton.bg,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
@@ -188,4 +200,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

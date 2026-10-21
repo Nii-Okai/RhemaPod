@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { userMessageFor } from '../lib/api/errors';
@@ -38,6 +38,8 @@ export function QueryState({
   loadingLabel,
   children,
 }: QueryStateProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   if (isLoading) {
     return (
       <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel={loadingLabel}>
@@ -79,7 +81,7 @@ export function QueryState({
   return <>{children}</>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   centered: {
     paddingVertical: spacing.xxl,
     alignItems: 'center',
@@ -106,4 +108,4 @@ const styles = StyleSheet.create({
   emptyDescription: {
     textAlign: 'center',
   },
-});
+}));

@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { colors } from '../../theme/colors';
+import { View } from 'react-native';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { usePlatformOS } from './platform';
 import { PhoneTabBarAndroid } from './PhoneTabBarAndroid';
 import { PhoneTabBarIOS } from './PhoneTabBarIOS';
@@ -19,6 +19,7 @@ export interface NavShellProps {
  * `Platform.OS`.
  */
 export function NavShell({ children }: NavShellProps) {
+  const styles = useStyles();
   const deviceClass = useDeviceClass();
   const os = usePlatformOS();
   const variant = resolveChromeVariant(deviceClass, os);
@@ -40,7 +41,7 @@ export function NavShell({ children }: NavShellProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   stackedLayout: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -53,4 +54,4 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-});
+}));

@@ -4,7 +4,7 @@ import { CircularProgress } from '../CircularProgress';
 import { IconButton } from '../IconButton';
 import { PopIn } from '../PopIn';
 import { PlatformIcon } from '../PlatformIcon';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import type { DownloadMediaType } from '../../lib/downloads/types';
@@ -44,6 +44,7 @@ export function EpisodeDownloadButton({
   thumbnailUrl = null,
   category = null,
 }: EpisodeDownloadButtonProps) {
+  const { colors } = useTheme();
   const downloads = useDownloads();
   const record = downloads.find(episodeId);
 

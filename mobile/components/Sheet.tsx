@@ -1,7 +1,7 @@
 import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -29,6 +29,7 @@ export interface SheetProps {
  * the system back closes it.
  */
 export function Sheet({ visible, onClose, children, onDismiss }: SheetProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
@@ -55,7 +56,7 @@ export function Sheet({ visible, onClose, children, onDismiss }: SheetProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -78,4 +79,4 @@ const styles = StyleSheet.create({
   content: {
     gap: spacing.md,
   },
-});
+}));

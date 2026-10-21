@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { AppText, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -69,6 +69,8 @@ export function AddToPlaylistSheet({
   existingItemIdBySermonId,
   onRemove,
 }: AddToPlaylistSheetProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [tab, setTab] = useState<SheetTab>('sermons');
   const [query, setQuery] = useState('');
   const debounced = useDebouncedValue(query, 300);
@@ -176,7 +178,7 @@ export function AddToPlaylistSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   heading: {
     textTransform: 'uppercase',
   },
@@ -211,4 +213,4 @@ const styles = StyleSheet.create({
   resultsScroll: {
     maxHeight: 360,
   },
-});
+}));

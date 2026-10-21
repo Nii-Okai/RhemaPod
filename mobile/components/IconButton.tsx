@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, type PressableProps } from 'react-native';
 import { PlatformIcon, type AppIconName } from './PlatformIcon';
-import { colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { spacing } from '../theme/spacing';
 
 export interface IconButtonProps extends Omit<PressableProps, 'style' | 'children'> {
@@ -13,6 +13,9 @@ export interface IconButtonProps extends Omit<PressableProps, 'style' | 'childre
    * rather than silently shipping a glyph with no accessible name.
    */
   accessibilityLabel: string;
+  /** Glyph colour. Defaults to the theme's `text.primary`; pass a fixed colour only for a
+      button drawn on sermon art, which stays light-on-dark in both themes. */
+  color?: string;
 }
 
 /**
@@ -21,7 +24,8 @@ export interface IconButtonProps extends Omit<PressableProps, 'style' | 'childre
  * transport/back/overflow controls (W4.2) are the confirmed second consumer, which is
  * what clears this primitive's promotion bar.
  */
-export function IconButton({ icon, size = 24, accessibilityLabel, disabled, ...rest }: IconButtonProps) {
+export function IconButton({ icon, size = 24, accessibilityLabel, disabled, color, ...rest }: IconButtonProps) {
+  const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -32,7 +36,7 @@ export function IconButton({ icon, size = 24, accessibilityLabel, disabled, ...r
       style={({ pressed }) => [styles.base, pressed && !disabled && styles.pressed, disabled && styles.disabled]}
       {...rest}
     >
-      <PlatformIcon name={icon} size={size} color={colors.text.primary} />
+      <PlatformIcon name={icon} size={size} color={color ?? colors.text.primary} />
     </Pressable>
   );
 }

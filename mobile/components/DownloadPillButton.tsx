@@ -1,10 +1,10 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { AppText } from './Text';
 import { CircularProgress } from './CircularProgress';
 import { PopIn } from './PopIn';
 import { PlatformIcon } from './PlatformIcon';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { useDownloads } from '../lib/downloads/useDownloads';
@@ -88,6 +88,8 @@ function aggregate(items: DownloadPillItem[], records: (DownloadRecord | undefin
  * the completed checkmark), not a separate progress affordance of its own.
  */
 export function DownloadPillButton({ items, label = 'Download' }: DownloadPillButtonProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const downloads = useDownloads();
   if (items.length === 0) return null;
 
@@ -193,7 +195,7 @@ export function DownloadPillButton({ items, label = 'Download' }: DownloadPillBu
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   pillShell: {
     width: '100%',
     backgroundColor: colors.track.default,
@@ -213,4 +215,4 @@ const styles = StyleSheet.create({
   failureText: {
     color: colors.status.rose.text,
   },
-});
+}));

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, Card } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 const OPTIONS_MINUTES = [15, 30, 45, 60] as const;
@@ -19,6 +19,7 @@ export interface SleepTimerSheetProps {
  * sheet, not a new shared primitive — this is the sheet's only confirmed use today.
  */
 export function SleepTimerSheet({ visible, hasActiveTimer, onSelect, onClose }: SleepTimerSheetProps) {
+  const styles = useStyles();
   const choose = (minutes: number | null) => {
     onSelect(minutes);
     onClose();
@@ -70,7 +71,7 @@ export function SleepTimerSheet({ visible, hasActiveTimer, onSelect, onClose }: 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -96,4 +97,4 @@ const styles = StyleSheet.create({
   rowPressed: {
     opacity: 0.7,
   },
-});
+}));

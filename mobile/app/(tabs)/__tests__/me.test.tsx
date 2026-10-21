@@ -438,3 +438,12 @@ describe('MeScreen — server settings', () => {
     expect(queryByText('Terms of use')).toBeNull();
   });
 });
+
+describe('MeScreen — appearance (light-mode rollout)', () => {
+  it('hides the Appearance setting while light mode is behind its flag', async () => {
+    mockRoutes();
+    const { findByText, queryByText } = renderMeScreen();
+    await findByText('ada@example.com');
+    expect(queryByText('Appearance')).toBeNull();
+  });
+});

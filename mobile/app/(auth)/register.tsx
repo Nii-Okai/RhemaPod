@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Link } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
@@ -18,6 +18,7 @@ import { socialAuthErrorCopy, type SocialAuthErrorCopy, type SocialProvider } fr
 const MIN_PASSWORD_LENGTH = 12;
 
 export default function RegisterScreen() {
+  const styles = useStyles();
   const { register, signInWithGoogle, signInWithApple } = useAuth();
   const appleAvailable = useAppleSignInAvailable();
 
@@ -177,7 +178,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   fieldGroup: {
     gap: spacing.md,
   },
@@ -204,4 +205,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-});
+}));

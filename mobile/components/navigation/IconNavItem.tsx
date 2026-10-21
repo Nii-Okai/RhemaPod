@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { colors } from '../../theme/colors';
+import { Pressable, View } from 'react-native';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { AppText } from '../Text';
@@ -23,6 +23,8 @@ export interface IconNavItemProps {
  * M3 pill indicator is a distinctly Material pattern, not one iOS's own tab bar uses.
  */
 export function IconNavItem({ route, active, onPress, orientation }: IconNavItemProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="button"
@@ -44,7 +46,7 @@ export function IconNavItem({ route, active, onPress, orientation }: IconNavItem
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bottomItem: {
     flex: 1,
     alignItems: 'center',
@@ -69,4 +71,4 @@ const styles = StyleSheet.create({
   label: {
     marginTop: spacing.xs,
   },
-});
+}));

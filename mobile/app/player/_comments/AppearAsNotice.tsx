@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { AppText, LinkButton, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -18,6 +18,8 @@ export interface AppearAsNoticeProps {
  * the X or automatically after the first successful post. "Change" reopens the name editor.
  */
 export function AppearAsNotice({ displayName, onChange, onDismiss }: AppearAsNoticeProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.strip}>
       <AppText variant="ui.body" style={styles.text}>
@@ -37,7 +39,7 @@ export function AppearAsNotice({ displayName, onChange, onDismiss }: AppearAsNot
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   strip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -55,4 +57,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

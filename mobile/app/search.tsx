@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, PlatformIcon, QueryState } from '../components';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { formatDuration } from '../lib/format/duration';
@@ -49,6 +49,8 @@ const DEBOUNCE_MS = 300;
  * speaker, episode count, bio) still reaches VoiceOver via each row's `accessibilityLabel`.
  */
 export default function SearchScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rawQuery, setRawQuery] = useState('');
@@ -228,7 +230,7 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -287,4 +289,4 @@ const styles = StyleSheet.create({
   group: {
     marginBottom: spacing.lg,
   },
-});
+}));

@@ -1,9 +1,9 @@
 import React from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Card, LinkButton } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { useCurrentUser } from '../../lib/query/hooks/useProfile';
@@ -15,6 +15,8 @@ import { useDownloads } from '../../lib/downloads/useDownloads';
 import { DownloadsSection } from './_me/DownloadsSection';
 import { LibraryRow } from './_me/LibraryRow';
 import { PlaybackSection } from './_me/PlaybackSection';
+import { AppearanceSection } from './_me/AppearanceSection';
+import { useTheme } from '../../theme/ThemeContext';
 import { ProfileAvatarPicker } from './_me/ProfileAvatarPicker';
 import { ProfileDetailsSheet } from './_me/ProfileDetailsSheet';
 import { TermsSheet } from '../player/_comments/TermsSheet';
@@ -51,7 +53,10 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  * panel, which is gone with Notes.
  */
 export default function MeScreen() {
+  const styles = useStyles();
   const router = useRouter();
+  const { lightModeAvailable } = useTheme();
+  const [appearanceError, setAppearanceError] = React.useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
 
@@ -136,6 +141,13 @@ export default function MeScreen() {
         />
       </Card>
 
+      {/* Hidden until every screen reads the theme (light-mode rollout flag). */}
+      {lightModeAvailable ? (
+        <Card style={styles.card}>
+          <AppearanceSection error={appearanceError} onError={setAppearanceError} />
+        </Card>
+      ) : null}
+
       <Card style={styles.card}>
         <DownloadsSection
           wifiOnly={wifiOnly}
@@ -205,7 +217,7 @@ export default function MeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -247,4 +259,4 @@ const styles = StyleSheet.create({
   signOutText: {
     color: colors.status.rose.text,
   },
-});
+}));

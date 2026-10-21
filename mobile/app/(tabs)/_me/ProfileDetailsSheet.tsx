@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, LinkButton, PrimaryButton, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -39,6 +39,8 @@ export function ProfileDetailsSheet({
   onClose,
   onSaved,
 }: ProfileDetailsSheetProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [firstName, setFirstName] = useState(initialFirstName);
   const [lastName, setLastName] = useState(initialLastName);
   const [gender, setGender] = useState<Gender | null>(initialGender);
@@ -151,7 +153,7 @@ export function ProfileDetailsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   heading: {
     textTransform: 'uppercase',
   },
@@ -205,4 +207,4 @@ const styles = StyleSheet.create({
   cancel: {
     alignItems: 'center',
   },
-});
+}));

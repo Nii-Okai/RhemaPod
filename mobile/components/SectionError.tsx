@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
 import { LinkButton } from './Button';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -22,6 +22,7 @@ export interface SectionErrorProps {
  * `Sheet`/`ConfirmDialog` already cleared this session.
  */
 export function SectionError({ message, onRetry }: SectionErrorProps) {
+  const styles = useStyles();
   return (
     <View style={styles.banner}>
       <AppText variant="ui.label" style={styles.text}>
@@ -34,7 +35,7 @@ export function SectionError({ message, onRetry }: SectionErrorProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   banner: {
     backgroundColor: colors.status.rose.bg,
     borderColor: colors.status.rose.border,
@@ -49,4 +50,4 @@ const styles = StyleSheet.create({
   retry: {
     alignSelf: 'flex-start',
   },
-});
+}));

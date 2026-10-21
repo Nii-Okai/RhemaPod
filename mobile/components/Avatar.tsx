@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { AppText } from './Text';
 
 export interface AvatarProps {
@@ -38,6 +38,7 @@ export function hashToIndex(seed: string, bucketCount: number): number {
 /** Circular initials chip (spec §4), rotating bg from `colors.avatarPalette` — or, when
  * `imageUri` is set, the user's own profile picture instead. */
 export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
+  const { colors } = useTheme();
   if (imageUri) {
     return (
       <Image

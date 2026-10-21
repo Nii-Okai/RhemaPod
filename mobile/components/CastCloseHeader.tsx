@@ -2,7 +2,8 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from './IconButton';
-import { colors } from '../theme/colors';
+import { darkColors as onArt } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -40,6 +41,7 @@ export interface CastCloseHeaderProps {
  * transport controls and others that shouldn't pick this up unasked.
  */
 export function CastCloseHeader({ onClose, onBack }: CastCloseHeaderProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
 
   return (
@@ -47,23 +49,23 @@ export function CastCloseHeader({ onClose, onBack }: CastCloseHeaderProps) {
       {onBack ? (
         <View style={[styles.leftRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
           <View style={styles.iconChip}>
-            <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={onBack} />
+            <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={onBack} color={onArt.text.primary} />
           </View>
         </View>
       ) : null}
       <View style={[styles.row, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
         <View style={styles.iconChip}>
-          <IconButton icon="tv-outline" accessibilityLabel="Cast" disabled onPress={() => {}} />
+          <IconButton icon="tv-outline" accessibilityLabel="Cast" disabled onPress={() => {}} color={onArt.text.primary} />
         </View>
         <View style={styles.iconChip}>
-          <IconButton icon="close" accessibilityLabel="Close" onPress={onClose} />
+          <IconButton icon="close" accessibilityLabel="Close" onPress={onClose} color={onArt.text.primary} />
         </View>
       </View>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     position: 'absolute',
     right: spacing.sm,
@@ -84,4 +86,4 @@ const styles = StyleSheet.create({
     borderColor: colors.overlay.chipBorder,
     overflow: 'hidden',
   },
-});
+}));

@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { AppText, Toggle } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 export interface PlaybackSectionProps {
@@ -23,6 +23,7 @@ export interface PlaybackSectionProps {
  * only removes the redundant second place to change it.
  */
 export function PlaybackSection({ autoplayNextInSeries, onChangeAutoplay, disabled = false, error = null }: PlaybackSectionProps) {
+  const styles = useStyles();
   return (
     <View style={styles.section}>
       <AppText variant="ui.label" tone="tertiary" style={styles.heading}>
@@ -48,7 +49,7 @@ export function PlaybackSection({ autoplayNextInSeries, onChangeAutoplay, disabl
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   section: {
     gap: spacing.md,
   },
@@ -64,4 +65,4 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.status.rose.text,
   },
-});
+}));

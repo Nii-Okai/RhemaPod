@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable } from 'react-native';
 import { AppText, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -24,6 +24,8 @@ export interface BrowseSearchEntryProps {
  * same as the reference.
  */
 export function BrowseSearchEntry({ onPress }: BrowseSearchEntryProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -39,7 +41,7 @@ export function BrowseSearchEntry({ onPress }: BrowseSearchEntryProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -59,4 +61,4 @@ const styles = StyleSheet.create({
     flex: 1,
     opacity: 0.6,
   },
-});
+}));

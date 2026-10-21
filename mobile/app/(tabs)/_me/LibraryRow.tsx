@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 export interface LibraryRowProps {
@@ -22,6 +22,7 @@ export interface LibraryRowProps {
  * destination, not a distinct component.
  */
 export function LibraryRow({ label, onPress, detail, accessibilityLabel, hideChevron = false }: LibraryRowProps) {
+  const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}

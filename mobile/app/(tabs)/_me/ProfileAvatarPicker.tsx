@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AppText, Avatar, LinkButton, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { darkColors as onArt } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { useUpdateAvatar } from '../../../lib/query/hooks/useProfile';
@@ -35,6 +36,8 @@ function contentTypeFor(extension: string): string {
  * PUT → confirm); this component only owns the picker UI, not the upload mechanics.
  */
 export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: ProfileAvatarPickerProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updateAvatar = useUpdateAvatar();
@@ -93,9 +96,9 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
         <Avatar name={name} seed={seed} size={size} imageUri={avatarUrl} />
         <View style={[styles.editBadge, { right: 0, bottom: 0 }]}>
           {updateAvatar.isPending ? (
-            <ActivityIndicator size="small" color={colors.text.primary} />
+            <ActivityIndicator size="small" color={onArt.text.primary} />
           ) : (
-            <PlatformIcon name="camera" size={14} color={colors.text.primary} />
+            <PlatformIcon name="camera" size={14} color={onArt.text.primary} />
           )}
         </View>
       </Pressable>
@@ -135,7 +138,7 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     alignSelf: 'flex-start',
   },
@@ -169,4 +172,4 @@ const styles = StyleSheet.create({
   cancel: {
     alignItems: 'center',
   },
-});
+}));

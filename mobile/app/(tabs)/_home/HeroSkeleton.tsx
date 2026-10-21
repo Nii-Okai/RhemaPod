@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { SkeletonBlock } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -13,6 +13,7 @@ import { spacing } from '../../../theme/spacing';
  * matching §8.4's skeleton convention (same "no shimmer/motion" rule, §1.4).
  */
 export function HeroSkeleton() {
+  const styles = useStyles();
   return (
     <View accessibilityRole="progressbar" accessibilityLabel="Loading home" style={styles.card}>
       <View style={styles.art} />
@@ -23,7 +24,7 @@ export function HeroSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.sm,
     overflow: 'hidden',
@@ -37,4 +38,4 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-});
+}));

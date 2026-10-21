@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Animated, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon, StaggerItem } from '../../components';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { userMessageFor } from '../../lib/api/errors';
 import { useHeroSermons } from '../../lib/query/hooks/useHeroSermons';
@@ -137,6 +137,8 @@ function chunkPairs<T>(items: T[]): T[][] {
  * the empty state) as plain `paddingTop`.
  */
 export default function HomeScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const hero = useHeroSermons();
   const continueWatching = useContinueWatching();
@@ -456,7 +458,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -505,4 +507,4 @@ const styles = StyleSheet.create({
   seriesColumn: {
     gap: spacing.md,
   },
-});
+}));

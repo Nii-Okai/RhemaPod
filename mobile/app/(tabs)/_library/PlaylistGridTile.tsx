@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { AppText, ConfirmDialog, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import type { PlaylistPublic } from '../../../lib/query/hooks/usePlaylists';
@@ -24,6 +24,8 @@ export interface PlaylistGridTileProps {
  * long-press and `DownloadGridTile`'s grid-mode one (Isaac's ask, session
  * 2026-10-10). */
 export function PlaylistGridTile({ playlist, width, onPress, onDelete }: PlaylistGridTileProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
@@ -66,7 +68,7 @@ export function PlaylistGridTile({ playlist, width, onPress, onDelete }: Playlis
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.7,
   },
@@ -82,4 +84,4 @@ const styles = StyleSheet.create({
   title: {
     marginTop: spacing.sm,
   },
-});
+}));

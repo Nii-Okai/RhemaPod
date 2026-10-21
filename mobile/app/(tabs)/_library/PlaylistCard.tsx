@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { AppText, ConfirmDialog, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatPlaylistMinutes } from '../../../lib/format/playlistDuration';
@@ -26,6 +26,8 @@ export interface PlaylistCardProps {
  * no longer needs a trip into its own detail screen's "Name & details" sheet
  * just to delete it from the library list it's sitting in. */
 export function PlaylistCard({ playlist, onPress, onDelete }: PlaylistCardProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const itemLabel = playlist.item_count === 1 ? '1 item' : `${playlist.item_count} items`;
   const subtitle = `${itemLabel} · ${formatPlaylistMinutes(playlist.total_duration_seconds)}`;
@@ -77,7 +79,7 @@ export function PlaylistCard({ playlist, onPress, onDelete }: PlaylistCardProps)
 
 const COVER_SIZE = LIST_THUMBNAIL_SIZE;
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -103,4 +105,4 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-});
+}));

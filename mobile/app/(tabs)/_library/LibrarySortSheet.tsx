@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { AppText, PlatformIcon, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import type { LibrarySortMode } from './librarySort';
 
@@ -24,6 +24,7 @@ const OPTIONS: { mode: LibrarySortMode; label: string }[] = [
  * actually means for a playlist vs. a download, since the two content
  * types don't share the same fields. */
 export function LibrarySortSheet({ visible, onClose, value, onChange }: LibrarySortSheetProps) {
+  const { colors } = useTheme();
   return (
     <Sheet visible={visible} onClose={onClose}>
       <AppText variant="ui.label" tone="tertiary" accessibilityRole="header" style={styles.heading}>

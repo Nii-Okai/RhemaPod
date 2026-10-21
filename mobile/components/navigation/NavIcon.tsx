@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { PlatformIcon } from '../PlatformIcon';
 import { Avatar } from '../Avatar';
 import { useCurrentUser } from '../../lib/query/hooks/useProfile';
@@ -25,6 +25,7 @@ export interface NavIconProps {
  * already a filled circle, so there's no "outline vs. filled" glyph swap to lean on.
  */
 export function NavIcon({ route, active, size, color }: NavIconProps) {
+  const styles = useStyles();
   const { data: user } = useCurrentUser();
 
   if (route.key === 'me') {
@@ -38,7 +39,7 @@ export function NavIcon({ route, active, size, color }: NavIconProps) {
   return <PlatformIcon name={active ? route.iconActive : route.icon} size={size} color={color} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   avatarRing: {
     borderRadius: 999,
     alignItems: 'center',
@@ -50,4 +51,4 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.accent.gold,
   },
-});
+}));

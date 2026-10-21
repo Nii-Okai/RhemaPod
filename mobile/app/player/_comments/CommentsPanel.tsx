@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, ConfirmDialog, LinkButton, PlatformIcon, SkeletonBlock } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { previewDisplayName } from '../../../lib/format/displayName';
@@ -53,6 +53,8 @@ export interface CommentsPanelProps {
  * applies. The draft lives in the composer, so it survives both prompts.
  */
 export function CommentsPanel({ sermonId }: CommentsPanelProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const online = useIsOnline();
   const profile = useCurrentUser();
@@ -383,7 +385,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   panel: {
     flex: 1,
     backgroundColor: colors.surface.raised,
@@ -450,4 +452,4 @@ const styles = StyleSheet.create({
   messageError: {
     color: colors.status.rose.text,
   },
-});
+}));

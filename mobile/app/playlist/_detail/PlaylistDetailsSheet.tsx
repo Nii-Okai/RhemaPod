@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
 import { AppText, ConfirmDialog, PlatformIcon, PrimaryButton, Sheet } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
@@ -26,6 +26,8 @@ const DESCRIPTION_MAX = 300;
  * immediately since it's a single tap with no text to debounce.
  */
 export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: PlaylistDetailsSheetProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [name, setName] = useState(playlist.name);
   const [description, setDescription] = useState(playlist.description ?? '');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -135,7 +137,7 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   heading: {
     textTransform: 'uppercase',
   },
@@ -173,4 +175,4 @@ const styles = StyleSheet.create({
   deleteText: {
     color: colors.status.rose.text,
   },
-});
+}));

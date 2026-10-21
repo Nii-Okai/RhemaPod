@@ -1,9 +1,9 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Avatar, IconButton, LinkButton, QueryState, SkeletonBlock } from '../components';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { spacing } from '../theme/spacing';
 import { useMyBlocks, useUnblock } from '../lib/query/hooks/useBlocks';
 
@@ -19,6 +19,7 @@ import { useMyBlocks, useUnblock } from '../lib/query/hooks/useBlocks';
  * through to before (`app/_layout.tsx` disables it for this route for the same reason).
  */
 export default function BlockedUsersScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const blocksQuery = useMyBlocks();
@@ -81,7 +82,7 @@ export default function BlockedUsersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -123,4 +124,4 @@ const styles = StyleSheet.create({
   error: {
     color: colors.status.rose.text,
   },
-});
+}));

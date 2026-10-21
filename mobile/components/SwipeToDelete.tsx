@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
 import { PlatformIcon } from './PlatformIcon';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -47,6 +47,8 @@ export interface SwipeToDeleteProps {
  * the rotor, no swipe required.
  */
 export function SwipeToDelete({ children, onDelete, deleteAccessibilityLabel, testID }: SwipeToDeleteProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const translateX = useRef(new Animated.Value(0)).current;
   const openRef = useRef(false);
   const dragStartX = useRef(0);
@@ -125,7 +127,7 @@ export function SwipeToDelete({ children, onDelete, deleteAccessibilityLabel, te
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     overflow: 'hidden',
     borderRadius: radius.lg,
@@ -155,4 +157,4 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
   },
-});
+}));

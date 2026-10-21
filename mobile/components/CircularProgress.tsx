@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const SPIN_DURATION_MS = 1400;
@@ -42,11 +42,14 @@ export function CircularProgress({
   progress,
   size = 24,
   strokeWidth = 2.5,
-  trackColor = colors.track.default,
-  fillColor = colors.accent.gold,
+  trackColor,
+  fillColor,
   spinning = false,
   children,
 }: CircularProgressProps) {
+  const { colors } = useTheme();
+  const track = trackColor ?? colors.track.default;
+  const fill = fillColor ?? colors.accent.gold;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.min(1, Math.max(0, progress));
@@ -93,12 +96,12 @@ export function CircularProgress({
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View style={{ position: 'absolute', transform: [{ rotate }] }}>
         <Svg width={size} height={size}>
-          <Circle cx={center} cy={center} r={radius} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+          <Circle cx={center} cy={center} r={radius} stroke={track} strokeWidth={strokeWidth} fill="none" />
           <AnimatedCircle
             cx={center}
             cy={center}
             r={radius}
-            stroke={fillColor}
+            stroke={fill}
             strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"

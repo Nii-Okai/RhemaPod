@@ -1,10 +1,10 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { AppText } from '../Text';
 import { FadeTitle } from '../FadeTitle';
 import { PressableScale } from '../PressableScale';
 import { ProgressBar } from '../ProgressBar';
-import { colors } from '../../theme/colors';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { formatDuration } from '../../lib/format/duration';
@@ -49,6 +49,7 @@ function metaLineFor(item: ContinueWatchingItem): string | null {
  * when `duration_seconds` itself is unknown, in which case there's nothing true to show.
  */
 export function ContinueWatchingCard({ item, onPress }: ContinueWatchingCardProps) {
+  const styles = useStyles();
   const metaLine = metaLineFor(item);
   const label = metaLine ? `${item.title}, ${metaLine}` : item.title;
   const progress = item.percent_complete !== null ? item.percent_complete / 100 : null;
@@ -83,7 +84,7 @@ export function ContinueWatchingCard({ item, onPress }: ContinueWatchingCardProp
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     width: CARD_WIDTH,
     borderRadius: radius.sm,
@@ -112,4 +113,4 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-});
+}));

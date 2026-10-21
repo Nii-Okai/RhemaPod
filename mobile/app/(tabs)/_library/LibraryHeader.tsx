@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, PlatformIcon } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 
 export interface LibraryHeaderProps {
@@ -17,6 +17,7 @@ export interface LibraryHeaderProps {
  * client-side; there's no server-side "search my library" endpoint to call,
  * and none is needed since both lists are already loaded in full. */
 export function LibraryHeader({ searchActive, onToggleSearch, onCreatePlaylist }: LibraryHeaderProps) {
+  const { colors } = useTheme();
   return (
     <View style={styles.row}>
       <AppText variant="display.section">Library</AppText>

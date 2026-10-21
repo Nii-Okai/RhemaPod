@@ -2,7 +2,7 @@ import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, type PressableProps } from 'react-native';
 import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -30,6 +30,8 @@ export interface SocialSignInButtonProps extends Omit<PressableProps, 'style' | 
  * on both platforms is the correct choice here, not a gap in `PlatformIcon`'s coverage.
  */
 export function SocialSignInButton({ provider, label, loading = false, disabled, ...rest }: SocialSignInButtonProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const isDisabled = Boolean(disabled) || loading;
 
   return (
@@ -48,7 +50,7 @@ export function SocialSignInButton({ provider, label, loading = false, disabled,
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   base: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -67,4 +69,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.4,
   },
-});
+}));

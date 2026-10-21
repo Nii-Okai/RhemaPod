@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { AppText, IconButton } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -28,6 +28,8 @@ export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
   { label, error, style, secureTextEntry, ...rest },
   ref,
 ) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [revealed, setRevealed] = useState(false);
   const isPasswordField = Boolean(secureTextEntry);
 
@@ -70,7 +72,7 @@ export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     gap: spacing.xs,
   },
@@ -107,4 +109,4 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.status.rose.text,
   },
-});
+}));
