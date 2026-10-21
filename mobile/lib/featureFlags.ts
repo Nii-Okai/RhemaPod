@@ -8,3 +8,6 @@
 
 /** Signature Home (`app/(tabs)/_home/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_HOME=1`. */
 export const SIGNATURE_HOME_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_HOME === '1';
+
+/** Signature You page (`app/(tabs)/_me/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_YOU=1`. */
+export const SIGNATURE_YOU_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_YOU === '1';
