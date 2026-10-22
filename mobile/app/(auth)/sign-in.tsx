@@ -138,6 +138,7 @@ export default function SignInScreen() {
       subheadVariant="ui.body"
       centerHeader
       centerBrand
+      compactTop
       footer={
         <>
           <View style={styles.footerRow}>

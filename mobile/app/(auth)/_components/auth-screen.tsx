@@ -31,6 +31,7 @@ export function AuthScreen({
   subheadVariant = 'ui.bodyLarge',
   centerHeader = false,
   centerBrand = false,
+  compactTop = false,
   children,
   footer,
 }: {
@@ -44,19 +45,22 @@ export function AuthScreen({
   centerHeader?: boolean;
   /** Centers the brand mark + wordmark instead of the usual left alignment — sign-in's ask. */
   centerBrand?: boolean;
+  /** Sits the brand mark a little higher above the header — sign-in's ask. */
+  compactTop?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, spacing.lg) + spacing.xs - (compactTop ? spacing.md : 0);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'height' : undefined}>
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.xs, paddingBottom: insets.bottom + spacing.xxl * 2 },
+          { paddingTop: Math.max(topPadding, 0), paddingBottom: insets.bottom + spacing.xxl * 2 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
