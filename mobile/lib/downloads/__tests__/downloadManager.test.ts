@@ -219,6 +219,9 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
     db: fakeDb,
     onDownloadReady,
     fetchSermonDetail: jest.fn(async (sermonId: string) => ({ id: sermonId, title: 'Detail' })),
+    // An ID3-tagged mp3, the common case.
+    readFileHead: jest.fn(async () => Uint8Array.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 0, 0])),
+    moveFile: jest.fn(async () => undefined),
     cancelTransfer: jest.fn(),
     paths: makeFakePaths(),
     ensureDir: jest.fn(async () => undefined),
@@ -490,8 +493,23 @@ describe('downloadManager — offline playback decrypt path', () => {
 
     const path = await h.manager.preparePlaybackFile('sermon-1');
 
-    expect(path).toBe('file:///playback-tmp/sermon-1-token.pcm-tmp');
+    expect(path).toBe('file:///playback-tmp/sermon-1-token.pcm-tmp.mp3');
     expect(h.decryptFile).toHaveBeenCalledWith('file:///downloads/sermon-1.rpa1', 'file:///playback-tmp/sermon-1-token.pcm-tmp', 'install-key-base64');
+  });
+
+  it('names the decrypted copy after its real format, since iOS will not play a .pcm-tmp file', async () => {
+    const moveFile = jest.fn(async () => undefined);
+    const ftyp = Uint8Array.from([0, 0, 0, 0x20, ...Array.from('ftypM4A ', (c) => c.charCodeAt(0))]);
+    const h = makeHarness({ readFileHead: jest.fn(async () => ftyp), moveFile });
+    seedRow(h.rows, 'sermon-1', 'ready', { bytesTotal: 1000, keyIdHex: 'aabbccdd' });
+
+    const path = await h.manager.preparePlaybackFile('sermon-1');
+
+    expect(path).toBe('file:///playback-tmp/sermon-1-token.pcm-tmp.m4a');
+    expect(moveFile).toHaveBeenCalledWith('file:///playback-tmp/sermon-1-token.pcm-tmp', path);
+    // Still under the playback-temp directory, so it is cleaned up like before.
+    await h.manager.cleanupPlaybackTempFile(path);
+    expect(h.deletedFiles).toContain(path);
   });
 
   it('rejects with PlaybackUnavailableError("not ready") when the download is not ready yet, without touching any file', async () => {

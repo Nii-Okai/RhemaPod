@@ -8,6 +8,7 @@ import { getOrCreateInstallKey } from './installKey';
 import { realCanStartDownload } from './network';
 import * as paths from './paths';
 import { dropSermonFromCache } from '../mediaCache/dropSermon';
+import { AUDIO_HEADER_BYTES, audioExtensionFor, base64ToBytes } from './audioFormat';
 import type { DownloadFailureReason, DownloadMediaType, DownloadRecord } from './types';
 
 /**
@@ -79,6 +80,9 @@ export interface DownloadManagerDeps {
   /** `GET /catalog/sermons/{id}` — the `SermonDetail` saved with a download so the player
    * can open it offline. Rejects on any failure; callers treat it as best-effort. */
   fetchSermonDetail: (sermonId: string) => Promise<unknown>;
+  /** The first `length` bytes of a local file. */
+  readFileHead: (uri: string, length: number) => Promise<Uint8Array>;
+  moveFile: (from: string, to: string) => Promise<void>;
 }
 
 /** How many downloads transfer at once. "Download all" on a long series otherwise opened
@@ -109,6 +113,19 @@ async function realDownloadToFile(url: string, destPath: string, onProgress: (pr
   if (result.status < 200 || result.status >= 300) {
     throw new ApiError(result.status, `Download failed (HTTP ${result.status})`);
   }
+}
+
+async function realReadFileHead(uri: string, length: number): Promise<Uint8Array> {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+    position: 0,
+    length,
+  });
+  return base64ToBytes(base64);
+}
+
+async function realMoveFile(from: string, to: string): Promise<void> {
+  await FileSystem.moveAsync({ from, to });
 }
 
 async function realFetchSermonDetail(sermonId: string): Promise<unknown> {
@@ -156,6 +173,8 @@ function defaultDeps(): DownloadManagerDeps {
     onDownloadReady: dropSermonFromCache,
     cancelTransfer: realCancelTransfer,
     fetchSermonDetail: realFetchSermonDetail,
+    readFileHead: realReadFileHead,
+    moveFile: realMoveFile,
   };
 }
 
@@ -665,9 +684,21 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     try {
       await deps.ensureDir(deps.paths.playbackTmpDir());
       await deps.crypto.decryptFile(encryptedPath, outPath, installKey);
-      return outPath;
     } catch (err) {
       return handlePlaybackDecryptError(deps, sermonId, encryptedPath, err);
+    }
+
+    // iOS only plays a local file whose extension names its format, and `outPath` ends in
+    // `.pcm-tmp` — every downloaded audio sermon failed to play on iPhone. Give the
+    // decrypted copy the extension its own header says (see `audioFormat.ts`).
+    try {
+      const ext = audioExtensionFor(await deps.readFileHead(outPath, AUDIO_HEADER_BYTES));
+      const playablePath = `${outPath}.${ext}`;
+      await deps.moveFile(outPath, playablePath);
+      return playablePath;
+    } catch {
+      await deps.deleteFile(outPath).catch(() => {});
+      throw new PlaybackUnavailableError('unknown', 'Could not prepare this download for playback. Retry.');
     }
   }
 
