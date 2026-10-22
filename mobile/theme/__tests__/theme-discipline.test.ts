@@ -32,6 +32,9 @@ const ALLOWED = new Set([
   'app/_notifications/SignatureNotifications.tsx',
   // Signature Browse: the Prophet's Catalog card's text sits on a photo.
   'app/(tabs)/_browse/signature/CatalogCollectionCard.tsx',
+  // Signature Library: download badges and the preview chip are drawn on the art.
+  'app/(tabs)/_library/signature/LibraryItems.tsx',
+  'app/playlist/_detail/signature/SignatureSermonRows.tsx',
   'app/(tabs)/_downloads/DownloadRow.tsx',
   'app/(tabs)/_library/DownloadGridTile.tsx',
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
