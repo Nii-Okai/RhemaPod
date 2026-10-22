@@ -440,6 +440,16 @@ describe('downloadManager — interrupted download (process-restart) recovery', 
     expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
   });
 
+  it('startupSweep leaves a queued (waiting for Wi-Fi) row queued, not failed, and deletes nothing for it', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'sermon-1', 'queued');
+
+    await h.manager.startupSweep();
+
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'queued', failureReason: null });
+    expect(h.deletedFiles).toEqual([]);
+  });
+
   it('startupSweep leaves ready and already-failed rows untouched', async () => {
     const h = makeHarness();
     seedRow(h.rows, 'sermon-ready', 'ready', { bytesTotal: 1, keyIdHex: '00' });
@@ -669,3 +679,82 @@ describe('downloadManager — thumbnail fetch (session 2026-10-15 fix for the 6h
     expect(h.deletedFiles.filter((f) => f === 'file:///downloads/sermon-1.thumb')).toHaveLength(2);
   });
 });
+
+
+describe('downloadManager — one attempt per sermon', () => {
+  it('concurrent resumeQueuedDownloads calls (one per mounted useDownloads) start a queued row only once', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'sermon-1', 'queued');
+
+    await Promise.all([
+      h.manager.resumeQueuedDownloads(),
+      h.manager.resumeQueuedDownloads(),
+      h.manager.resumeQueuedDownloads(),
+    ]);
+
+    expect(h.fetchDownloadUrl).toHaveBeenCalledTimes(1);
+    expect(h.downloadToFile).toHaveBeenCalledTimes(1);
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+  });
+});
+
+describe('downloadManager — delete while downloading (cancel)', () => {
+  function gatedTransfer() {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const downloadToFile = jest.fn(async (_url: string, _dest: string, onProgress: (p: number) => void) => {
+      onProgress(0.3);
+      await gate;
+    });
+    return { downloadToFile, release };
+  }
+
+  it('cancels the transfer, never marks the row ready, and leaves no file behind', async () => {
+    const { downloadToFile, release } = gatedTransfer();
+    const cancelTransfer = jest.fn();
+    const h = makeHarness({ downloadToFile, cancelTransfer });
+
+    const attempt = h.manager.enqueueDownload('sermon-1', 'Title', 'video');
+    await waitForCall(downloadToFile);
+
+    await h.manager.deleteDownload('sermon-1');
+    expect(cancelTransfer).toHaveBeenCalledWith('file:///tmp/sermon-1.video.tmp');
+    h.deletedFiles.length = 0;
+
+    release(); // the transfer finishes anyway (a cancel that lost the race)
+    await attempt;
+
+    expect(await h.manager.getDownload('sermon-1')).toBeNull();
+    expect(h.deletedFiles).toEqual(expect.arrayContaining(['file:///downloads/sermon-1.mp4']));
+  });
+
+  it('downloading again right after a delete restarts cleanly once the old attempt settles', async () => {
+    const { downloadToFile, release } = gatedTransfer();
+    const h = makeHarness({ downloadToFile });
+
+    const attempt = h.manager.enqueueDownload('sermon-1', 'Title', 'audio');
+    await waitForCall(downloadToFile);
+    await h.manager.deleteDownload('sermon-1');
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio');
+    // The old attempt is still in flight, so the new row waits instead of racing it.
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'queued' });
+    expect(downloadToFile).toHaveBeenCalledTimes(1);
+
+    release();
+    await attempt;
+    await waitForState(h, 'sermon-1', 'ready');
+    expect(downloadToFile).toHaveBeenCalledTimes(2);
+  });
+});
+
+async function waitForCall(mock: jest.Mock): Promise<void> {
+  for (let i = 0; i < 50 && mock.mock.calls.length === 0; i++) await Promise.resolve();
+  expect(mock).toHaveBeenCalled();
+}
+
+async function waitForState(h: Harness, sermonId: string, state: DownloadState): Promise<void> {
+  for (let i = 0; i < 200 && h.rows.get(sermonId)?.state !== state; i++) await Promise.resolve();
+  expect(h.rows.get(sermonId)?.state).toBe(state);
+}

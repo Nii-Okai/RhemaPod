@@ -70,7 +70,14 @@ export interface DownloadManagerDeps {
    * download. Injected so this manager's own test suite stays isolated from the cache's
    * real SQLite/filesystem internals — a failure here must never fail the download. */
   onDownloadReady: (sermonId: string) => Promise<void>;
+  /** Stops a `downloadToFile` transfer still writing to `destPath`, if there is one —
+   * that transfer then rejects. A no-op for any path nothing is writing to. */
+  cancelTransfer: (destPath: string) => void;
 }
+
+/** Transfers `realDownloadToFile` has in flight, by destination — what `cancelTransfer`
+ * reaches into, so `downloadToFile`'s own contract can stay a plain promise. */
+const activeTransfers = new Map<string, FileSystem.DownloadResumable>();
 
 async function realDownloadToFile(url: string, destPath: string, onProgress: (progress: number) => void): Promise<void> {
   const resumable = FileSystem.createDownloadResumable(url, destPath, {}, (data) => {
@@ -78,13 +85,23 @@ async function realDownloadToFile(url: string, destPath: string, onProgress: (pr
       onProgress(data.totalBytesWritten / data.totalBytesExpectedToWrite);
     }
   });
-  const result = await resumable.downloadAsync();
+  activeTransfers.set(destPath, resumable);
+  let result: FileSystem.FileSystemDownloadResult | undefined;
+  try {
+    result = await resumable.downloadAsync();
+  } finally {
+    if (activeTransfers.get(destPath) === resumable) activeTransfers.delete(destPath);
+  }
   if (!result) {
     throw new Error('Download was cancelled');
   }
   if (result.status < 200 || result.status >= 300) {
     throw new ApiError(result.status, `Download failed (HTTP ${result.status})`);
   }
+}
+
+function realCancelTransfer(destPath: string): void {
+  activeTransfers.get(destPath)?.cancelAsync().catch(() => {});
 }
 
 async function realFetchDownloadUrl(sermonId: string, mediaType: DownloadMediaType): Promise<string> {
@@ -122,6 +139,7 @@ function defaultDeps(): DownloadManagerDeps {
     getInstallKey: getOrCreateInstallKey,
     canStartDownload: realCanStartDownload,
     onDownloadReady: dropSermonFromCache,
+    cancelTransfer: realCancelTransfer,
   };
 }
 
@@ -191,8 +209,34 @@ async function handlePlaybackDecryptError(
   throw new PlaybackUnavailableError('unknown', 'Could not prepare this download for playback. Retry.');
 }
 
+/** One `runDownload` attempt in progress. `removed` is set when the user deletes the
+ * download mid-attempt, so the attempt cleans up whatever it writes after that point
+ * instead of leaving an untracked file behind (or marking a re-queued row ready). */
+interface ActiveRun {
+  removed: boolean;
+}
+
 export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = {}) {
   const deps: DownloadManagerDeps = { ...defaultDeps(), ...overrides };
+
+  /** At most one attempt per sermon. Several `useDownloads()` instances (every episode row
+   * on a series page has one) each call `resumeQueuedDownloads` on the same Wi-Fi event,
+   * and without this they would all start the same queued row, writing one tmp file at
+   * once. */
+  const activeRuns = new Map<string, ActiveRun>();
+  /** Sermons deleted and then downloaded again while their old attempt was still winding
+   * down — restarted from a clean slate once that attempt settles. */
+  const restartAfterRun = new Set<string>();
+
+  /** Every file a download of `sermonId` can leave on disk, whatever its media type. */
+  async function deleteArtifacts(sermonId: string): Promise<void> {
+    await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
+    await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
+    await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
+    await deps.deleteFile(deps.paths.videoFilePath(sermonId));
+    await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
+    await deps.deleteFile(deps.paths.thumbnailFilePath(sermonId));
+  }
 
   /** Session 2026-10-15 fix for the 6h-expiring presigned `thumbnail_url` going blank/403
    * on a sermon that's sat `ready` for a while — fetches a local, permanent copy once the
@@ -225,7 +269,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     }
   }
 
-  async function runAudioDownload(sermonId: string, thumbnailUrl: string | null): Promise<void> {
+  async function runAudioDownload(sermonId: string, thumbnailUrl: string | null, run: ActiveRun): Promise<void> {
     const tmpPath = deps.paths.tmpDownloadFilePath(sermonId);
     const encryptedPath = deps.paths.encryptedFilePath(sermonId);
 
@@ -256,10 +300,19 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.crypto.excludeFromBackup(encryptedPath).catch(() => false); // advisory only, never gates success
 
       const bytesTotal = await deps.getFileSize(encryptedPath);
+      if (run.removed) {
+        await deleteArtifacts(sermonId);
+        return;
+      }
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: encryptResult.keyIdHex });
       await deps.onDownloadReady(sermonId).catch(() => {});
       await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
+      if (run.removed) await deleteArtifacts(sermonId);
     } catch (err) {
+      if (run.removed) {
+        await deleteArtifacts(sermonId);
+        return;
+      }
       await deps.deleteFile(tmpPath);
       // A kill strictly mid-native-encrypt leaves `encryptedPath + '.part'` behind (the
       // native module's own atomic-write staging file) — never the final path itself
@@ -280,7 +333,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
    * no decrypt-to-temp step at playback time either (`preparePlaybackFile` below just
    * hands back this same path).
    */
-  async function runVideoDownload(sermonId: string, thumbnailUrl: string | null): Promise<void> {
+  async function runVideoDownload(sermonId: string, thumbnailUrl: string | null, run: ActiveRun): Promise<void> {
     const tmpPath = deps.paths.tmpDownloadVideoFilePath(sermonId);
     const finalPath = deps.paths.videoFilePath(sermonId);
 
@@ -303,10 +356,19 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await FileSystem.moveAsync({ from: tmpPath, to: finalPath });
 
       const bytesTotal = await deps.getFileSize(finalPath);
+      if (run.removed) {
+        await deleteArtifacts(sermonId);
+        return;
+      }
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: null });
       await deps.onDownloadReady(sermonId).catch(() => {});
       await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
+      if (run.removed) await deleteArtifacts(sermonId);
     } catch (err) {
+      if (run.removed) {
+        await deleteArtifacts(sermonId);
+        return;
+      }
       await deps.deleteFile(tmpPath);
       await deps.deleteFile(finalPath); // a failed moveAsync can still leave a partial file at the destination
       const { reason, message } = classifyStartError(err, 'video');
@@ -315,14 +377,25 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   }
 
   async function runDownload(sermonId: string, mediaType: DownloadMediaType, thumbnailUrl: string | null): Promise<void> {
+    if (activeRuns.has(sermonId)) return;
     const canStart = await deps.canStartDownload();
     if (!canStart) {
       // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
       // `useDownloads.ts` for the resume-on-reconnect trigger.
       return;
     }
-    if (mediaType === 'video') await runVideoDownload(sermonId, thumbnailUrl);
-    else await runAudioDownload(sermonId, thumbnailUrl);
+    // Re-checked after the await, and claimed in the same synchronous step, so two
+    // callers racing through the gate above can't both start.
+    if (activeRuns.has(sermonId)) return;
+    const run: ActiveRun = { removed: false };
+    activeRuns.set(sermonId, run);
+    try {
+      if (mediaType === 'video') await runVideoDownload(sermonId, thumbnailUrl, run);
+      else await runAudioDownload(sermonId, thumbnailUrl, run);
+    } finally {
+      activeRuns.delete(sermonId);
+      if (restartAfterRun.delete(sermonId)) void retryDownload(sermonId).catch(() => {});
+    }
   }
 
   /**
@@ -344,6 +417,11 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     const existing = await deps.db.getDownload(sermonId);
     if (!existing) {
       await deps.db.upsertQueued(sermonId, title, mediaType, thumbnailUrl, category);
+      if (activeRuns.has(sermonId)) {
+        // Deleted moments ago and its old attempt hasn't settled — start once it has.
+        restartAfterRun.add(sermonId);
+        return;
+      }
       await runDownload(sermonId, mediaType, thumbnailUrl);
       return;
     }
@@ -356,6 +434,11 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   async function retryDownload(sermonId: string): Promise<void> {
     const existing = await deps.db.getDownload(sermonId);
     if (!existing) return;
+    // Never delete files out from under an attempt that is still writing them.
+    if (activeRuns.has(sermonId)) {
+      restartAfterRun.add(sermonId);
+      return;
+    }
 
     if (existing.mediaType === 'video') {
       await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
@@ -369,17 +452,22 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     await runDownload(sermonId, existing.mediaType, existing.thumbnailUrl);
   }
 
+  /** Also the cancel path: deleting a `queued`/`downloading` row stops its transfer and
+   * makes the attempt clean up anything it still writes. */
   async function deleteDownload(sermonId: string): Promise<void> {
+    const run = activeRuns.get(sermonId);
+    if (run) {
+      run.removed = true;
+      restartAfterRun.delete(sermonId);
+      deps.cancelTransfer(deps.paths.tmpDownloadFilePath(sermonId));
+      deps.cancelTransfer(deps.paths.tmpDownloadVideoFilePath(sermonId));
+      deps.cancelTransfer(deps.paths.thumbnailFilePath(sermonId));
+    }
     // Both file sets, unconditionally, rather than looking the record up first to branch on
     // `mediaType` — `deleteFile` is already a tolerant no-op on a path that doesn't exist
     // (see `paths.deleteIfExists`), so deleting the shape this sermon's rendition isn't is
     // free, and this stays correct even if a row's own `media_type` is ever missing/stale.
-    await deps.deleteFile(deps.paths.encryptedFilePath(sermonId));
-    await deps.deleteFile(deps.paths.partFilePath(deps.paths.encryptedFilePath(sermonId)));
-    await deps.deleteFile(deps.paths.tmpDownloadFilePath(sermonId));
-    await deps.deleteFile(deps.paths.videoFilePath(sermonId));
-    await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(sermonId));
-    await deps.deleteFile(deps.paths.thumbnailFilePath(sermonId));
+    await deleteArtifacts(sermonId);
     await deps.db.deleteDownload(sermonId);
   }
 
@@ -409,18 +497,21 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   }
 
   /**
-   * Reconciles rows left in `queued`/`downloading` by a process that never got to finish
-   * them (killed, crashed, force-quit mid-transfer) — called once at app start, before
+   * Reconciles rows left `downloading` by a process that never got to finish them
+   * (killed, crashed, force-quit mid-transfer) — called once at app start, before
    * anything else touches the downloads table. Any partial plaintext, partial encrypted
    * file, or stray native `.part` staging file for these rows is deleted; the row is
    * marked `failed`/`interrupted` with a Retry-able reason, never left silently
-   * "downloading" forever or, worse, treated as `ready`. Also unconditionally clears the
+   * "downloading" forever or, worse, treated as `ready`. A `queued` row never started a
+   * transfer (it is waiting for Wi-Fi, or for its turn), so it is left queued for
+   * `resumeQueuedDownloads` rather than failed — failing it turned every "waiting for
+   * Wi-Fi" download into an "interrupted" error on the next launch. Also unconditionally clears the
    * entire playback-temp directory — every file there is a single-session artifact by
    * construction (see `paths.playbackTempFilePath`), so a crash during a previous offline
    * playback session can otherwise leave a plaintext file behind indefinitely.
    */
   async function startupSweep(): Promise<void> {
-    const stale = await deps.db.listActiveDownloads();
+    const stale = (await deps.db.listActiveDownloads()).filter((record) => record.state === 'downloading');
     for (const record of stale) {
       if (record.mediaType === 'video') {
         await deps.deleteFile(deps.paths.tmpDownloadVideoFilePath(record.sermonId));

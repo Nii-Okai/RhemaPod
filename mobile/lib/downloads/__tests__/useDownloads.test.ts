@@ -206,6 +206,10 @@ describe('useDownloads', () => {
     const { result } = renderHook(() => useDownloads(manager));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.wifiOnly).toBe(true);
+    // The once-per-launch resume after the startup sweep — cleared so the assertion
+    // below is about the toggle alone.
+    await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1));
+    (manager.resumeQueuedDownloads as jest.Mock).mockClear();
 
     await act(async () => {
       await result.current.setWifiOnly(false);
@@ -213,6 +217,17 @@ describe('useDownloads', () => {
 
     expect(result.current.wifiOnly).toBe(false);
     await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalled());
+  });
+
+  it('resumes queued downloads once at launch, after the startup sweep', async () => {
+    const manager = makeFakeManager([record('sermon-1', { state: 'queued' })]);
+    renderHook(() => useDownloads(manager));
+    renderHook(() => useDownloads(manager));
+
+    await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1));
+    expect((manager.startupSweep as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      (manager.resumeQueuedDownloads as jest.Mock).mock.invocationCallOrder[0],
+    );
   });
 
   it('polls the list while a download is active, and stops once everything has settled', async () => {

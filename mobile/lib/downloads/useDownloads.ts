@@ -123,7 +123,16 @@ async function refreshStore(manager: DownloadManager, store: SharedStore): Promi
 }
 
 function ensureStartupSweep(manager: DownloadManager, store: SharedStore): Promise<void> {
-  if (!store.startupSweep) store.startupSweep = manager.startupSweep();
+  if (!store.startupSweep) {
+    store.startupSweep = manager.startupSweep();
+    // The sweep leaves `queued` rows queued, so pick them up once per launch here. Without
+    // this, an app opened already on Wi-Fi never sees the reconnect event below and its
+    // queued downloads sit waiting until the network next changes.
+    void store.startupSweep
+      .then(() => manager.resumeQueuedDownloads())
+      .then(() => refreshStore(manager, store))
+      .catch(() => {});
+  }
   return store.startupSweep;
 }
 

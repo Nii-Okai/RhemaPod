@@ -1611,6 +1611,9 @@ async def update_category(
         await db.rollback()
         raise ContentError("A category with that slug already exists", status_code=409)
     await db.refresh(cat)
+    # category_name rides on every cached catalog card.
+    if name is not None:
+        await invalidate_catalog_cache()
     return cat
 
 
@@ -1689,6 +1692,9 @@ async def update_speaker(
         speaker.bio = bio
     await db.commit()
     await db.refresh(speaker)
+    # speaker_name rides on every cached catalog card.
+    if name is not None:
+        await invalidate_catalog_cache()
     return speaker
 
 
@@ -1827,13 +1833,15 @@ async def update_series(
             raise ContentError("category_id does not exist", status_code=400)
 
     tier_changed = "tier" in fields and fields["tier"] != series.tier
+    title_changed = "title" in fields and fields["title"] != series.title
     for key, value in fields.items():
         setattr(series, key, value)
     await db.commit()
 
     # A tier change alters the effective tier of inheriting episodes in the
-    # public catalog, so bust the cache.
-    if tier_changed:
+    # public catalog, and series_title rides on each episode's cached card,
+    # so either one busts the cache.
+    if tier_changed or title_changed:
         await invalidate_catalog_cache()
 
 
