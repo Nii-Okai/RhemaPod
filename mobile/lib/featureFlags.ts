@@ -20,3 +20,6 @@ export const SIGNATURE_YOU_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_YOU === '
 
 /** Signature Player (`app/player/_signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_PLAYER=1`. */
 export const SIGNATURE_PLAYER_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_PLAYER === '1';
+
+/** Signature series page (`app/series/_signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_SERIES=1`. */
+export const SIGNATURE_SERIES_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_SERIES === '1';
