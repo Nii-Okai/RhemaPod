@@ -1,6 +1,6 @@
 /* global __DEV__ */
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
@@ -25,6 +25,7 @@ export default function SignInScreen() {
   const appleAvailable = useAppleSignInAvailable();
   const router = useRouter();
 
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -100,11 +101,59 @@ export default function SignInScreen() {
     router.replace('/onboarding');
   }
 
+  const socialButtons = (
+    <View style={styles.socialStack}>
+      <SocialSignInButton
+        provider="google"
+        label="Continue with Google"
+        loading={socialSubmitting === 'google'}
+        disabled={socialSubmitting !== null || submitting}
+        onPress={onGooglePress}
+      />
+      {appleAvailable ? (
+        <SocialSignInButton
+          provider="apple"
+          label="Continue with Apple"
+          loading={socialSubmitting === 'apple'}
+          disabled={socialSubmitting !== null || submitting}
+          onPress={onApplePress}
+        />
+      ) : null}
+      {socialError ? (
+        <InlineAlert variant="error" title={socialError.title}>
+          {socialError.detail}
+        </InlineAlert>
+      ) : null}
+    </View>
+  );
+
   return (
-    <AuthScreen heading="Welcome back" subhead="Sign in to keep listening where you left off.">
+    <AuthScreen
+      eyebrow="Welcome back"
+      heading="Pick up where you left off"
+      subhead="Sign in to your sermons, playlists and downloads."
+      footer={
+        <>
+          <View style={styles.footerRow}>
+            <AppText variant="ui.body" tone="secondary">
+              New here?
+            </AppText>
+            <Link href="/(auth)/register" asChild>
+              <LinkButton label="Create an account" />
+            </Link>
+          </View>
+          {__DEV__ ? <LinkButton label="Dev: Replay onboarding" onPress={onReplayOnboardingPress} /> : null}
+        </>
+      }
+    >
+      {socialButtons}
+
+      <OrDivider label="or with email" />
+
       <View style={styles.fieldGroup}>
         <Field
           label="Email"
+          icon="mail-outline"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -112,10 +161,13 @@ export default function SignInScreen() {
           keyboardType="email-address"
           textContentType="username"
           returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
         />
         <View style={styles.passwordGroup}>
           <Field
+            ref={passwordRef}
             label="Password"
+            icon="lock-closed-outline"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -154,62 +206,16 @@ export default function SignInScreen() {
         label={submitting ? 'Signing in…' : 'Sign in'}
         onPress={onSubmit}
         loading={submitting}
+        disabled={socialSubmitting !== null}
         fullWidth
       />
-
-      <View style={styles.socialSection}>
-        <OrDivider />
-
-        {socialError ? (
-          <InlineAlert variant="error" title={socialError.title}>
-            {socialError.detail}
-          </InlineAlert>
-        ) : null}
-
-        <View style={styles.socialStack}>
-          <SocialSignInButton
-            provider="google"
-            label="Continue with Google"
-            loading={socialSubmitting === 'google'}
-            disabled={socialSubmitting !== null}
-            onPress={onGooglePress}
-          />
-          {appleAvailable ? (
-            <SocialSignInButton
-              provider="apple"
-              label="Continue with Apple"
-              loading={socialSubmitting === 'apple'}
-              disabled={socialSubmitting !== null}
-              onPress={onApplePress}
-            />
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.footer}>
-        <View style={styles.footerDivider} />
-        <View style={styles.footerRow}>
-          <AppText variant="ui.body" tone="secondary">
-            New here?
-          </AppText>
-          <Link href="/(auth)/register" asChild>
-            <LinkButton label="Create an account" />
-          </Link>
-        </View>
-      </View>
-
-      {__DEV__ ? (
-        <View style={styles.devRow}>
-          <LinkButton label="Dev: Replay onboarding" onPress={onReplayOnboardingPress} />
-        </View>
-      ) : null}
     </AuthScreen>
   );
 }
 
-const useStyles = createThemedStyles((colors) => ({
+const useStyles = createThemedStyles(() => ({
   fieldGroup: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   passwordGroup: {
     gap: spacing.sm,
@@ -218,27 +224,12 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
-  socialSection: {
-    gap: spacing.lg,
-  },
   socialStack: {
     gap: spacing.md,
-  },
-  footer: {
-    gap: spacing.lg,
-    alignItems: 'center',
-  },
-  footerDivider: {
-    alignSelf: 'stretch',
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border.default,
   },
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-  },
-  devRow: {
-    alignItems: 'center',
   },
 }));

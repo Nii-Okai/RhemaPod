@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
 import { Link } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
@@ -12,16 +12,16 @@ import { AuthScreen } from './_components/auth-screen';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
 import { OrDivider } from './_components/or-divider';
+import { MIN_PASSWORD_LENGTH, PasswordFlames } from './_components/password-flames';
 import { SocialSignInButton } from './_components/social-sign-in-button';
 import { socialAuthErrorCopy, type SocialAuthErrorCopy, type SocialProvider } from './_components/socialAuthErrorCopy';
-
-const MIN_PASSWORD_LENGTH = 12;
 
 export default function RegisterScreen() {
   const styles = useStyles();
   const { register, signInWithGoogle, signInWithApple } = useAuth();
   const appleAvailable = useAppleSignInAvailable();
 
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -90,10 +90,54 @@ export default function RegisterScreen() {
   }
 
   return (
-    <AuthScreen heading="Create an account" subhead="Sign up to save your place and download sermons.">
+    <AuthScreen
+      eyebrow="Join RhemaPod"
+      heading="Start listening"
+      subhead="Save your place, build playlists and download sermons for later."
+      footer={
+        <View style={styles.footerRow}>
+          <AppText variant="ui.body" tone="secondary">
+            Already have an account?
+          </AppText>
+          <Link href="/(auth)/sign-in" asChild>
+            <LinkButton label="Sign in" />
+          </Link>
+        </View>
+      }
+    >
+      <View style={styles.socialStack}>
+        <SocialSignInButton
+          provider="google"
+          label="Continue with Google"
+          loading={socialSubmitting === 'google'}
+          disabled={socialSubmitting !== null || submitting}
+          onPress={onGooglePress}
+        />
+        {appleAvailable ? (
+          <SocialSignInButton
+            provider="apple"
+            label="Continue with Apple"
+            loading={socialSubmitting === 'apple'}
+            disabled={socialSubmitting !== null || submitting}
+            onPress={onApplePress}
+          />
+        ) : null}
+        <AppText variant="ui.badge" tone="tertiary" style={styles.socialNote}>
+          Quickest way in, no confirmation email needed.
+        </AppText>
+        {socialError ? (
+          <InlineAlert variant="error" title={socialError.title}>
+            {socialError.detail}
+          </InlineAlert>
+        ) : null}
+      </View>
+
+      <OrDivider label="or sign up with email" />
+
       <View style={styles.fieldGroup}>
         <Field
           label="Email"
+          icon="mail-outline"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -101,10 +145,13 @@ export default function RegisterScreen() {
           keyboardType="email-address"
           textContentType="username"
           returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
         />
         <View style={styles.passwordGroup}>
           <Field
+            ref={passwordRef}
             label="Password"
+            icon="lock-closed-outline"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -114,9 +161,7 @@ export default function RegisterScreen() {
             returnKeyType="done"
             onSubmitEditing={onSubmit}
           />
-          <AppText variant="ui.badge" tone="tertiary">
-            At least {MIN_PASSWORD_LENGTH} characters.
-          </AppText>
+          <PasswordFlames length={password.length} />
         </View>
       </View>
 
@@ -131,74 +176,25 @@ export default function RegisterScreen() {
         label={submitting ? 'Creating account…' : 'Create account'}
         onPress={onSubmit}
         loading={submitting}
+        disabled={socialSubmitting !== null}
         fullWidth
       />
-
-      <View style={styles.socialSection}>
-        <OrDivider />
-
-        {socialError ? (
-          <InlineAlert variant="error" title={socialError.title}>
-            {socialError.detail}
-          </InlineAlert>
-        ) : null}
-
-        <View style={styles.socialStack}>
-          <SocialSignInButton
-            provider="google"
-            label="Continue with Google"
-            loading={socialSubmitting === 'google'}
-            disabled={socialSubmitting !== null}
-            onPress={onGooglePress}
-          />
-          {appleAvailable ? (
-            <SocialSignInButton
-              provider="apple"
-              label="Continue with Apple"
-              loading={socialSubmitting === 'apple'}
-              disabled={socialSubmitting !== null}
-              onPress={onApplePress}
-            />
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.footer}>
-        <View style={styles.footerDivider} />
-        <View style={styles.footerRow}>
-          <AppText variant="ui.body" tone="secondary">
-            Already have an account?
-          </AppText>
-          <Link href="/(auth)/sign-in" asChild>
-            <LinkButton label="Sign in" />
-          </Link>
-        </View>
-      </View>
     </AuthScreen>
   );
 }
 
-const useStyles = createThemedStyles((colors) => ({
+const useStyles = createThemedStyles(() => ({
   fieldGroup: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   passwordGroup: {
     gap: spacing.sm,
   },
-  socialSection: {
-    gap: spacing.lg,
-  },
   socialStack: {
     gap: spacing.md,
   },
-  footer: {
-    gap: spacing.lg,
-    alignItems: 'center',
-  },
-  footerDivider: {
-    alignSelf: 'stretch',
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border.default,
+  socialNote: {
+    textAlign: 'center',
   },
   footerRow: {
     flexDirection: 'row',
