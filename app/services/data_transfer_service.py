@@ -35,17 +35,17 @@ from __future__ import annotations
 import base64
 import enum
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from sqlalchemy import (
     JSON,
     Boolean,
     Date,
     DateTime,
-    Enum as SAEnum,
     Float,
     Integer,
     LargeBinary,
@@ -56,11 +56,14 @@ from sqlalchemy import (
     Uuid,
     delete,
     func,
-    inspect,
     insert,
+    inspect,
     select,
     text,
     tuple_,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -616,7 +619,7 @@ async def invalidate_caches() -> None:
         keys = [key async for key in redis.scan_iter(match="entitlement:*")]
         if keys:
             await redis.delete(*keys)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort; the TTL bounds staleness
         log.warning("entitlement_cache_invalidation_failed")
 
 

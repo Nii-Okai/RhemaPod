@@ -23,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import AuditCtx, CurrentUser, require_role
 from app.db.database import get_db
 from app.models.models import User, UserRole
-from app.services import auth_service, data_transfer_service as svc
+from app.services import auth_service
+from app.services import data_transfer_service as svc
 from app.services.data_transfer_service import DataTransferError
 
 router = APIRouter(prefix="/admin/data", tags=["admin data"])

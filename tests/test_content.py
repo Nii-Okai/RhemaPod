@@ -302,7 +302,8 @@ async def test_patch_published_sermon_is_locked_not_silently_stale(client, engin
     field-lock guard) — a direct PATCH is refused 409, so the pre-lock finding
     ("a tier PATCH on a published sermon left the catalog cache stale") can no
     longer happen via this path at all. The only legal way to change a live
-    sermon's fields is unpublish -> edit -> publish, and that cycle must still
+    sermon's fields is unpublish -> edit -> (back to draft) review -> publish,
+    and that cycle must still
     leave /catalog/sermons agreeing with the live detail/stream endpoints —
     checked here via the same cache-priming shape the original regression
     test used.
@@ -334,13 +335,17 @@ async def test_patch_published_sermon_is_locked_not_silently_stale(client, engin
     row = next(i for i in unchanged if i["id"] == sid)
     assert row["tier"] == "free" and row["locked"] is False
 
-    # The real path: unpublish (unlocks it), edit, republish.
+    # The real path: unpublish (unlocks it), edit — which sends it back to
+    # draft — then review it again and republish.
     await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=manager)
     r = await client.patch(
         f"/api/v1/sermons/{sid}", json={"tier": "paid"}, headers=editor
     )
     assert r.status_code == 200
-    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+    assert r.status_code == 200
 
     # Immediately re-read: the cache must reflect the new tier, not the stale
     # pre-edit row.
