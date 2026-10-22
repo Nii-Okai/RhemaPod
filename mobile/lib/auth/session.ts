@@ -138,6 +138,15 @@ async function clearSession(): Promise<void> {
     // user on the same device. In a `finally` (S8/S9 review, finding S2) so the wipe
     // still runs even if clearing the persisted refresh token above throws.
     await wipeMediaCacheBounded();
+    // Same reasoning for the query cache: per-viewer reads (`me.*`, playlists, catalog
+    // `locked` flags) carry no user id in their keys. Lazy `require()` for the same
+    // reason as the wipe above.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- see applyTokenPair's comment
+      await (require('../query/clearQueryCache') as typeof import('../query/clearQueryCache')).clearQueryCache();
+    } catch (err) {
+      if (__DEV__) console.warn('[session] query cache wipe failed (cache may not have been cleared)', err);
+    }
   }
 }
 

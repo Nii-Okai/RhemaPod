@@ -373,3 +373,60 @@ async def test_patch_draft_sermon_does_not_touch_catalog_cache(client, engine):
     assert r.status_code == 200
     listing = (await client.get("/api/v1/catalog/sermons")).json()
     assert [i["id"] for i in listing] == [published]
+
+
+# ── catalog cache invalidation on reference renames ───────────────────────────
+async def test_renames_are_reflected_in_cached_catalog(client, engine):
+    """The cached catalog card denormalises speaker/category/series names, so
+    renaming any of them must bust the cache instead of serving the old name
+    for up to CATALOG_TTL_SECONDS."""
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+
+    category = (await client.post(
+        "/api/v1/categories", json={"name": "Teaching", "slug": "teaching"}, headers=editor,
+    )).json()
+    speaker = (await client.post(
+        "/api/v1/speakers", json={"name": "Old Speaker"}, headers=editor,
+    )).json()
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Old Series", "tier": "free"}, headers=editor,
+    )).json()
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={
+            "title": "Anchored",
+            "category_id": category["id"],
+            "speaker_id": speaker["id"],
+            "series_id": series["id"],
+            "episode_number": 1,
+        },
+        headers=editor,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+
+    # Prime the cache.
+    row = (await client.get("/api/v1/catalog/sermons")).json()[0]
+    assert (row["category_name"], row["speaker_name"], row["series_title"]) == (
+        "Teaching", "Old Speaker", "Old Series",
+    )
+
+    r = await client.patch(
+        f"/api/v1/categories/{category['id']}", json={"name": "Worship"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+    r = await client.patch(
+        f"/api/v1/speakers/{speaker['id']}", json={"name": "New Speaker"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"title": "New Series"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+
+    row = (await client.get("/api/v1/catalog/sermons")).json()[0]
+    assert (row["category_name"], row["speaker_name"], row["series_title"]) == (
+        "Worship", "New Speaker", "New Series",
+    )
