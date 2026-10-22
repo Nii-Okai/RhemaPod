@@ -89,6 +89,7 @@ function ClassicSeriesDetailScreen() {
     toggleAllInMyList,
     onCloseAll,
     goToEpisode,
+    playEpisode,
     onShare,
     onDownloadAll,
   } = useSeriesScreen(id);
@@ -96,7 +97,7 @@ function ClassicSeriesDetailScreen() {
   if (series.isLoading || episodes.isLoading) {
     return (
       <View style={styles.screen}>
-        <CastCloseHeader onClose={onCloseAll} />
+        <CastCloseHeader onClose={onCloseAll} castEnabled />
         <SeriesDetailSkeleton />
       </View>
     );
@@ -105,7 +106,7 @@ function ClassicSeriesDetailScreen() {
   if (series.isError || !series.data) {
     return (
       <View style={styles.screen}>
-        <CastCloseHeader onClose={onCloseAll} />
+        <CastCloseHeader onClose={onCloseAll} castEnabled />
         <DetailError message="Something went wrong loading this series." onRetry={() => series.refetch()} />
       </View>
     );
@@ -115,7 +116,7 @@ function ClassicSeriesDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <CastCloseHeader onClose={onCloseAll} />
+      <CastCloseHeader onClose={onCloseAll} castEnabled />
       {/* Outside the ScrollView, in normal flow above it — not absolutely positioned
           behind scrolling content — so it never moves as the content below scrolls.
           Pull-to-dismiss (which does move the hero, along with everything else) is the
@@ -145,7 +146,7 @@ function ClassicSeriesDetailScreen() {
                 accessibilityLabel={cta.accessibilityLabel}
                 icon="play"
                 fullWidth
-                onPress={() => goToEpisode(cta.episodeId)}
+                onPress={() => playEpisode(cta.episodeId)}
               />
               <DownloadPillButton items={downloadableEpisodes} label="Download all episodes" />
             </View>
@@ -201,7 +202,7 @@ function ClassicSeriesDetailScreen() {
               </AppText>
             ) : (
               episodeItems.map((episode) => (
-                <EpisodeRow key={episode.id} episode={episode} onPress={() => goToEpisode(episode.id)} />
+                <EpisodeRow key={episode.id} episode={episode} onPress={() => playEpisode(episode.id)} />
               ))
             )}
           </View>
