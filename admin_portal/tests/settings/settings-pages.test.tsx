@@ -26,9 +26,11 @@ const { default: SettingsIndex } = await import("@/app/(portal)/settings/page");
 const { default: ProfilePage } = await import("@/app/(portal)/settings/profile/page");
 const { default: AuditPage } = await import("@/app/(portal)/settings/audit/page");
 const { default: ReportsPage } = await import("@/app/(portal)/settings/reports/page");
+const { default: DataPage } = await import("@/app/(portal)/settings/data/page");
 const { ProfileScreen } = await import("@/components/settings/profile-screen");
 const { AuditScreen } = await import("@/components/settings/audit-screen");
 const { ReportsScreen } = await import("@/components/settings/reports-screen");
+const { DataScreen } = await import("@/components/settings/data-screen");
 
 const session = (role: string) => ({ id: "u-1", email: "x@rhemapod.church", name: "X", role });
 
@@ -80,5 +82,14 @@ describe("Settings routes", () => {
 
     getServerUser.mockResolvedValue(session("editor"));
     await expect(ReportsPage()).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("Data 404s a manager and an editor and renders for an admin", async () => {
+    for (const role of ["manager", "editor"]) {
+      getServerUser.mockResolvedValue(session(role));
+      await expect(DataPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    }
+    getServerUser.mockResolvedValue(session("admin"));
+    expect(((await DataPage()) as Element).type).toBe(DataScreen);
   });
 });

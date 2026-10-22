@@ -91,6 +91,7 @@ describe("SettingsTabs", () => {
     expect(screen.getByRole("link", { name: "Profile" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Reports" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Audit trail" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Data" })).toBeNull();
   });
 
   it("shows it to an admin and marks the current tab", () => {
@@ -98,6 +99,7 @@ describe("SettingsTabs", () => {
     renderWith(<SettingsTabs />, "admin");
     const audit = screen.getByRole("link", { name: "Audit trail" });
     expect(audit.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Data" })).toBeTruthy();
     nav.pathname = "/settings/profile";
   });
 });

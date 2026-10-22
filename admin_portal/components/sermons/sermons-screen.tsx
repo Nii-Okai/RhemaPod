@@ -188,7 +188,7 @@ export function SermonsScreen() {
         if (window.confirm(CONFIRM_DELETE(1))) workflow.remove(one);
         break;
       case "withdraw":
-        // Disabled in the menu — no backend transition (GATE 3 Batch 2).
+        workflow.withdraw(one);
         break;
     }
   };

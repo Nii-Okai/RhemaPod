@@ -176,6 +176,22 @@ async def set_active(
     )
 
 
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx
+) -> Response:
+    """Permanently remove a staff account. Admin only (a manager gets 403).
+    The account must already be deactivated (409 otherwise), can't be your
+    own, and can't have authored content or review history (409, with what
+    it is linked to — keep such accounts deactivated)."""
+    actor = await _actor(db, user)
+    try:
+        await auth_service.delete_user(db, user_id, actor, ctx=ctx)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{user_id}/resend-invite", response_model=StaffCreateResponse)
 async def resend_invite(
     user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx

@@ -202,6 +202,7 @@ _CATEGORY_PREFIX = {
     "users": "user.",
     "settings": "settings.",
     "reports": "report.",
+    "data": "data.",
     "sermons": "sermon.",
     "announcements": "announcement.",
     "moderation": _COMMENT_PREFIX,
@@ -463,11 +464,21 @@ def build_summary(
         return f"{actor} deactivated {target}"
     if action == AuditAction.REACTIVATED.value:
         return f"{actor} reactivated {target}"
+    if action == AuditAction.USER_DELETED.value:
+        return f"{actor} removed {target}"
     if action == AuditAction.SETTINGS_UPDATED.value:
         changed = ", ".join(details.get("changed") or []) or "church settings"
         return f"{actor} updated {changed}"
     if action == AuditAction.REPORT_EXPORTED.value:
         return f"{actor} exported the {details.get('kind', 'usage')} report"
+    if action in (AuditAction.DATA_EXPORTED.value, AuditAction.DATA_IMPORTED.value):
+        tables = details.get("tables") or []
+        what = "the whole database" if details.get("all_tables") else (
+            f"{len(tables)} table{'s' if len(tables) != 1 else ''}"
+        )
+        if action == AuditAction.DATA_EXPORTED.value:
+            return f"{actor} exported {what}"
+        return f"{actor} imported {what} ({details.get('mode', 'merge')})"
     if action in (SERMON_STATUS_CHANGED, ANNOUNCEMENT_STATUS_CHANGED):
         kind = "sermon" if action == SERMON_STATUS_CHANGED else "announcement"
         frm, to = details.get("from"), details.get("to")

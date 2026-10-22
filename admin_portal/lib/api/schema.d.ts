@@ -220,6 +220,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/data/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Data */
+        get: operations["export_data_api_v1_admin_data_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Data
+         * @description Destructive when `dry_run` is false. Always preview first: the dry run
+         *     performs the whole import inside a transaction and rolls it back.
+         */
+        post: operations["import_data_api_v1_admin_data_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tables */
+        get: operations["list_tables_api_v1_admin_data_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/settings": {
         parameters: {
             query?: never;
@@ -2263,6 +2318,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User
+         * @description Permanently remove a staff account. Admin only (a manager gets 403).
+         *     The account must already be deactivated (409 otherwise), can't be your
+         *     own, and can't have authored content or review history (409, with what
+         *     it is linked to — keep such accounts deactivated).
+         */
+        delete: operations["delete_user_api_v1_users__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}/active": {
         parameters: {
             query?: never;
@@ -3167,6 +3245,79 @@ export interface components {
             tier: components["schemas"]["ContentTier"];
             /** Title */
             title: string;
+        };
+        /** DataImportRequest */
+        DataImportRequest: {
+            /**
+             * Confirm
+             * @description Required when `dry_run` is false: `IMPORT` for merge, `REPLACE` for replace.
+             */
+            confirm?: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Mode
+             * @default merge
+             * @enum {string}
+             */
+            mode: "merge" | "replace";
+            /**
+             * Tables
+             * @description Tables to import from the file; all of them when omitted.
+             */
+            tables?: string[] | null;
+        };
+        /** DataImportResponse */
+        DataImportResponse: {
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "merge" | "replace";
+            /** Tables */
+            tables: components["schemas"]["DataImportTableResult"][];
+        };
+        /** DataImportTableResult */
+        DataImportTableResult: {
+            /** Deleted */
+            deleted: number;
+            /** Inserted */
+            inserted: number;
+            /** Name */
+            name: string;
+            /** Skipped */
+            skipped: number;
+            /** Updated */
+            updated: number;
+        };
+        /** DataTable */
+        DataTable: {
+            /** Importable */
+            importable: boolean;
+            /** Name */
+            name: string;
+            /** Referenced By */
+            referenced_by: string[];
+            /** Replaceable */
+            replaceable: boolean;
+            /** Rows */
+            rows: number;
+        };
+        /** DataTablesResponse */
+        DataTablesResponse: {
+            /** Schema Revision */
+            schema_revision: string | null;
+            /** Tables */
+            tables: components["schemas"]["DataTable"][];
         };
         /**
          * EpisodeOrderItem
@@ -4925,7 +5076,7 @@ export interface operations {
                 actor_id?: string | null;
                 /** @description Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`. */
                 action?: string[];
-                category?: ("auth" | "users" | "settings" | "reports" | "sermons" | "announcements" | "moderation") | null;
+                category?: ("auth" | "users" | "settings" | "reports" | "data" | "sermons" | "announcements" | "moderation") | null;
                 /** @description Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay. */
                 staff_only?: boolean;
                 target_type?: string | null;
@@ -5132,6 +5283,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_data_api_v1_admin_data_export_get: {
+        parameters: {
+            query?: {
+                tables?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_data_api_v1_admin_data_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tables_api_v1_admin_data_tables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataTablesResponse"];
                 };
             };
         };
@@ -9020,6 +9255,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleCounts"];
+                };
+            };
+        };
+    };
+    delete_user_api_v1_users__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

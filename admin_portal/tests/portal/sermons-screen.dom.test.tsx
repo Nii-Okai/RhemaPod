@@ -646,13 +646,13 @@ describe("SermonRowMenu — status/role matrix (rendered)", () => {
     ).toEqual(["Edit", "Submit for review", "Delete"]);
   });
 
-  it("(published, manager) → Edit · Unpublish", () => {
+  it("(published, manager) → Edit (locked) · Unpublish", () => {
     const menu = openMenu("published", "manager");
     expect(
       within(menu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["Edit", "Unpublish"]);
+    ).toEqual(["Edit (locked)", "Unpublish"]);
   });
 
   it("(under_review, editor) → Edit (locked) · Withdraw, disabled", () => {
@@ -663,5 +663,12 @@ describe("SermonRowMenu — status/role matrix (rendered)", () => {
       "Withdraw",
     ]);
     expect(items[1]).toHaveAttribute("data-disabled");
+  });
+
+  it("(pending_review, editor) → Withdraw is enabled", () => {
+    const menu = openMenu("pending_review", "editor");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items[1]).toHaveTextContent("Withdraw");
+    expect(items[1]).not.toHaveAttribute("data-disabled");
   });
 });

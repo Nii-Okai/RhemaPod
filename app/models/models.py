@@ -863,8 +863,11 @@ class AuditAction(str, enum.Enum):
     ROLE_CHANGED = "user.role_changed"
     DEACTIVATED = "user.deactivated"
     REACTIVATED = "user.reactivated"
+    USER_DELETED = "user.deleted"
     SETTINGS_UPDATED = "settings.updated"
     REPORT_EXPORTED = "report.exported"
+    DATA_EXPORTED = "data.exported"
+    DATA_IMPORTED = "data.imported"
 
 
 class AuditOutcome(str, enum.Enum):
@@ -977,7 +980,8 @@ class AuditLog(Base):
             "'auth.password_changed', 'auth.password_reset', "
             "'user.staff_invited', 'user.invite_resent', 'user.role_changed', "
             "'user.deactivated', 'user.reactivated', "
-            "'settings.updated', 'report.exported')",
+            "'settings.updated', 'report.exported', "
+            "'data.exported', 'data.imported', 'user.deleted')",
             name="ck_audit_log_action",
         ),
         CheckConstraint(

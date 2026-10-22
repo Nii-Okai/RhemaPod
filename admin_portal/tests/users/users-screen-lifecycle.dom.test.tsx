@@ -280,7 +280,7 @@ describe("UsersScreen W19 — `···` menu gating", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("a deactivated row offers Reactivate, not Deactivate", async () => {
+  it("a deactivated row offers Reactivate and Remove, not Deactivate", async () => {
     backend({ rows: [EDITOR_OFF] });
     renderScreen(ADMIN_SESSION);
     await screen.findByText("Eve Duru");
@@ -289,7 +289,39 @@ describe("UsersScreen W19 — `···` menu gating", () => {
       within(await openMenu("Eve Duru"))
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["Reactivate"]);
+    ).toEqual(["Reactivate", "Remove…"]);
+  });
+
+  it("Remove confirms, deletes, and explains a refusal in the dialog", async () => {
+    backend({ rows: [EDITOR_OFF] });
+    let status = 409;
+    const deleted: string[] = [];
+    server.use(
+      http.delete("*/api/bff/users/:id", ({ params }) => {
+        if (status === 409) {
+          return HttpResponse.json(
+            { detail: "This account can't be removed because it is linked to sermons (2).", correlation_id: null },
+            { status: 409 },
+          );
+        }
+        deleted.push(String(params.id));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderScreen(ADMIN_SESSION);
+    await screen.findByText("Eve Duru");
+
+    await userEvent.click(
+      within(await openMenu("Eve Duru")).getByRole("menuitem", { name: "Remove…" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove account" }));
+    expect(await within(dialog).findByText(/linked to sermons \(2\)/)).toBeTruthy();
+
+    status = 204;
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove account" }));
+    expect(await screen.findByText(/Removed Eve Duru/)).toBeTruthy();
+    expect(deleted).toEqual([EDITOR_OFF.id]);
   });
 
   it("Resend invite shows only while the account is still pending", async () => {

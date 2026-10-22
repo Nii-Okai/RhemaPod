@@ -141,7 +141,7 @@ export function AppShell({ user, groups, children }: AppShellProps) {
           navOpen={drawerOpen}
           onMenuClick={openDrawer}
         />
-        <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-24 p-28">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-24 px-16 py-20 sm:p-28">
           {children}
         </div>
       </div>

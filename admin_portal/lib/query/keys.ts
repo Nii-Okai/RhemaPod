@@ -206,6 +206,9 @@ export const queryKeys = {
       [...queryKeys.settings.auditLists(), params] as const,
     report: (params: UsageReportParams) =>
       [...queryKeys.settings.all(), "report", params] as const,
+    /** Settings › Data table list (admin only): names, row counts and what
+        each table allows. An import invalidates it. */
+    dataTables: () => [...queryKeys.settings.all(), "data-tables"] as const,
   },
   session: {
     all: () => ["session"] as const,
