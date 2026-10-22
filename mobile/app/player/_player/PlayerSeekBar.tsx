@@ -16,15 +16,6 @@ export interface PlayerSeekBarProps {
   adjustStepSeconds: number;
   onScrubStart?: () => void;
   onScrubEnd?: () => void;
-  /** Overrides the on-video colours, for a bar drawn on the themed page instead of over the
-   * video (the Signature player's seek row). */
-  palette?: SeekBarPalette;
-}
-
-export interface SeekBarPalette {
-  track: string;
-  fill: string;
-  thumb: string;
 }
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -44,7 +35,6 @@ export function PlayerSeekBar({
   adjustStepSeconds,
   onScrubStart,
   onScrubEnd,
-  palette,
 }: PlayerSeekBarProps) {
   const disabled = !durationSeconds || durationSeconds <= 0;
   const [width, setWidth] = useState(0);
@@ -110,15 +100,12 @@ export function PlayerSeekBar({
       onAccessibilityAction={handleAction}
       style={[styles.hitArea, disabled && styles.disabled]}
     >
-      <View
-        pointerEvents="none"
-        style={[styles.track, dragging && styles.trackActive, palette && { backgroundColor: palette.track }]}
-      >
-        <View style={[styles.fill, { width: `${ratio * 100}%` }, palette && { backgroundColor: palette.fill }]} />
+      <View pointerEvents="none" style={[styles.track, dragging && styles.trackActive]}>
+        <View style={[styles.fill, { width: `${ratio * 100}%` }]} />
       </View>
       <View
         pointerEvents="none"
-        style={[styles.thumb, { left: Math.max(0, ratio * width - THUMB / 2) }, palette && { backgroundColor: palette.thumb }]}
+        style={[styles.thumb, { left: Math.max(0, ratio * width - THUMB / 2) }]}
       />
     </View>
   );

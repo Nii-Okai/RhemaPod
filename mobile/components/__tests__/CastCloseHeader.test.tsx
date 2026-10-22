@@ -17,7 +17,7 @@ describe('CastCloseHeader', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the cast icon disabled — no cast/AirPlay integration exists to back it', () => {
+  it('renders the cast icon disabled unless the screen casts (and Jest has no Cast SDK)', () => {
     const { getByLabelText } = render(<CastCloseHeader onClose={jest.fn()} />);
     const cast = getByLabelText('Cast');
     expect(cast.props.accessibilityState.disabled).toBe(true);

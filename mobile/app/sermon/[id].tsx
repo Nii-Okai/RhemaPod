@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
@@ -17,6 +17,7 @@ import { resolveCta } from './_detail/cta';
 import { isPlayable } from './_detail/isPlayable';
 import { sermonMetaLine } from './_detail/meta';
 import { DetailSkeleton } from './_detail/Skeleton';
+import { SIGNATURE_PLAYER_ENABLED } from '../../lib/featureFlags';
 import { TagsRow } from './_detail/TagsRow';
 
 /**
@@ -44,6 +45,18 @@ export default function SermonDetailScreen() {
   // no-media sermon has no Fresh/Resume distinction to make (§8.3).
   const progressQuery = useSermonProgress(id, { enabled: Boolean(detail) && playable });
 
+  // Signature player (Nii, 2026-10-22: "when a single or standalone sermon is selected, open
+  // player screen directly"): a playable sermon that isn't part of a series skips this page
+  // and opens the player, which now carries Like / My List / Download / Share itself.
+  // Handled here rather than at every list that links to a sermon, so each of them is
+  // covered; `replace`, so Back from the player returns to wherever the sermon was picked.
+  // Series episodes, and anything locked or without media, still land on this page.
+  const opensPlayer = SIGNATURE_PLAYER_ENABLED && Boolean(detail) && playable && !detail?.series_id;
+  useEffect(() => {
+    if (opensPlayer) router.replace({ pathname: '/player/[id]', params: { id } });
+    // `router` is stable for the screen's lifetime; only the decision matters.
+  }, [opensPlayer, id]);
+
   const goBack = () => router.back();
   // Close (the X) dismisses the whole stack — "close all pages" (Isaac's ask, session
   // 2026-10-01), however many Related/episode drill-down levels deep the user is —
@@ -59,7 +72,7 @@ export default function SermonDetailScreen() {
   // fetches — so `progressQuery.isLoading` is `false`, not stuck `true`, once
   // `enabled` above goes false. That's why gating on it here can't hang the screen
   // for locked/no-media sermons that never enable the progress query at all.
-  if (detailQuery.isLoading || (playable && progressQuery.isLoading)) {
+  if (opensPlayer || detailQuery.isLoading || (playable && progressQuery.isLoading)) {
     return (
       <View style={styles.screen}>
         <CastCloseHeader onClose={onCloseAll} onBack={onBack} />

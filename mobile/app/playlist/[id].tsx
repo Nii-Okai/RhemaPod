@@ -18,6 +18,8 @@ import { PlaylistOptionsSheet } from './_detail/PlaylistOptionsSheet';
 import { playlistQueueParams, shuffled } from './_detail/playlistQueue';
 import { SermonAddRow } from './_detail/SermonAddRow';
 import { usePlaylistPreview } from './_detail/usePlaylistPreview';
+import { SignaturePlaylistDetailScreen } from './_detail/signature/SignaturePlaylistDetail';
+import { SIGNATURE_LIBRARY_ENABLED } from '../../lib/featureFlags';
 
 const COVER_SIZE = 120;
 
@@ -76,6 +78,11 @@ const COVER_SIZE = 120;
  * empty playlist shows is something fillable, not a dead-end sentence.
  */
 export default function PlaylistDetailScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): a build-time constant, like Home's.
+  return SIGNATURE_LIBRARY_ENABLED ? <SignaturePlaylistDetailScreen /> : <ClassicPlaylistDetailScreen />;
+}
+
+function ClassicPlaylistDetailScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();

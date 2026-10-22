@@ -13,6 +13,7 @@ import { __lastMockPlayer } from '../../../../__mocks__/expo-video';
 
 jest.mock('../../../../lib/featureFlags', () => ({
   SIGNATURE_HOME_ENABLED: false,
+  SIGNATURE_NOTIFICATIONS_ENABLED: false,
   SIGNATURE_PLAYER_ENABLED: true,
 }));
 
@@ -184,7 +185,7 @@ describe('Signature player', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the title, speaker and category under the video, with the seek row always visible', async () => {
+  it('shows the title, speaker and category under the video, and keeps every control on the video', async () => {
     const screen = renderPlayer();
     await screen.findByTestId('video-view');
     expect(screen.getAllByText('The Destiny of the Church').length).toBe(2); // header + title
@@ -194,8 +195,10 @@ describe('Signature player', () => {
     await act(async () => {
       player.__simulateReady(5400);
     });
-    // One seek bar — the row under the video, not a second one on the overlay.
+    // Nii, 2026-10-22: all player controls stay on the player itself.
     expect(screen.getAllByLabelText('Seek')).toHaveLength(1);
+    expect(screen.getByLabelText('Playback speed, 1×')).toBeTruthy();
+    expect(screen.getByLabelText('Sleep timer, off')).toBeTruthy();
     expect(screen.getByLabelText('Enter full screen')).toBeTruthy();
   });
 
@@ -223,7 +226,7 @@ describe('Signature player', () => {
     expect(screen.getByLabelText('Share this sermon')).toBeTruthy();
   });
 
-  it('cycles speed and opens the sleep timer from the toolbar', async () => {
+  it('cycles speed and opens the sleep timer from the video overlay', async () => {
     const screen = renderPlayer();
     fireEvent.press(await screen.findByLabelText('Playback speed, 1×'));
     expect(__lastMockPlayer!.playbackRate).toBe(1.25);

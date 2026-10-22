@@ -9,6 +9,13 @@ import { spacing } from '../../theme/spacing';
 import { useAnnouncements } from '../../lib/query/hooks/useAnnouncements';
 import { sortPinnedFirst } from '../../lib/format/pinnedFirst';
 import { useDeviceClass } from '../../components/navigation/useDeviceClass';
+import { SIGNATURE_ANNOUNCEMENTS_ENABLED } from '../../lib/featureFlags';
+import { SignatureAnnouncementsScreen } from './_announcements/SignatureAnnouncements';
+
+export default function AnnouncementsScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): a build-time constant, like Home's.
+  return SIGNATURE_ANNOUNCEMENTS_ENABLED ? <SignatureAnnouncementsScreen /> : <ClassicAnnouncementsScreen />;
+}
 
 /**
  * Announcements (design spec 1k, plan W4.4) — the tablet rail's dedicated
@@ -30,7 +37,7 @@ import { useDeviceClass } from '../../components/navigation/useDeviceClass';
  * arrow there would be redundant chrome next to chrome that never moves,
  * same reasoning `series.tsx`'s own doc comment gives.
  */
-export default function AnnouncementsScreen() {
+function ClassicAnnouncementsScreen() {
   const styles = useStyles();
   const router = useRouter();
   const announcements = useAnnouncements();

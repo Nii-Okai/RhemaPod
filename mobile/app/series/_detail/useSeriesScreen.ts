@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import type { DownloadPillItem } from '../../../components/DownloadPillButton';
+import type { CastMedia } from '../../../lib/cast/castRequest';
+import { useCastPlayback } from '../../../lib/cast/useCastPlayback';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
 import { buildHistoryMap } from '../../../lib/format/episodeStatus';
 import { RELATED_PARAM, RELATED_PARAM_VALUE } from '../../../lib/navigation/detailTransition';
@@ -46,6 +48,30 @@ export function useSeriesScreen(id: string) {
   // every push from here always targets the same one, `sermon/related/[id]`.
   const goToEpisode = (sermonId: string) =>
     router.push({ pathname: '/sermon/related/[id]', params: { id: sermonId, [RELATED_PARAM]: RELATED_PARAM_VALUE } });
+
+  // What goes on the TV for one episode: its title over the series name, its art (or the
+  // series cover), from where the viewer stopped unless they finished it.
+  const castMediaFor = (sermonId: string): CastMedia | null => {
+    const episode = episodes.data?.find((ep) => ep.id === sermonId);
+    if (!episode || episode.locked) return null;
+    const progress = historyMap.get(sermonId);
+    return {
+      sermonId,
+      title: episode.title,
+      subtitle: series.data?.title ?? episode.series_title,
+      imageUrl: episode.thumbnail_url ?? series.data?.thumbnail_url,
+      startTime: progress && !progress.completed ? progress.position_seconds : 0,
+    };
+  };
+  // Connecting a TV from the cast button puts the Resume/Play episode on it.
+  const cast = useCastPlayback(cta ? castMediaFor(cta.episodeId) : null);
+  // The Resume/Play button and episode rows: on the TV while one is connected, else the
+  // in-app player. A locked episode always opens its page, where the paywall lives.
+  const playEpisode = (sermonId: string) => {
+    const media = cast.connected ? castMediaFor(sermonId) : null;
+    if (media) cast.play(media);
+    else goToEpisode(sermonId);
+  };
 
   const onShare = () => {
     if (!series.data) return;
@@ -109,6 +135,7 @@ export function useSeriesScreen(id: string) {
     toggleAllInMyList,
     onCloseAll,
     goToEpisode,
+    playEpisode,
     onShare,
     onDownloadAll,
   };

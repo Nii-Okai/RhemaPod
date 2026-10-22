@@ -29,9 +29,8 @@ import { useProgressFlush } from './_player/useProgressFlush';
 import { useSleepTimer } from './_player/useSleepTimer';
 import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
 import { SignaturePlayerHeader } from './_signature/SignaturePlayerHeader';
-import { SignatureSeekRow } from './_signature/SignatureSeekRow';
 import { NowPlayingDetails } from './_signature/NowPlayingDetails';
-import { PlayerToolbar, type PlayerPane } from './_signature/PlayerToolbar';
+import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
 import { useKeyboardVisible } from './_signature/useKeyboardVisible';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
 import { SIGNATURE_PLAYER_ENABLED } from '../../lib/featureFlags';
@@ -558,103 +557,50 @@ function PlayerContent({
     />
   );
 
+  const video = (
+    <VideoSurface
+      player={player}
+      videoRef={videoRef}
+      isBuffering={status === 'loading'}
+      isPlaying={isPlaying}
+      isEnded={isEnded}
+      isAudio={variant.type === 'audio'}
+      artworkUrl={detail.thumbnail_url}
+      overlay={overlay}
+      isFullscreen={isFullscreen}
+      onFullscreenChange={setIsFullscreen}
+      onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+      onReplay={() => {
+        // `player.replay()` only seeks back to 0 — it does not resume playback (see its
+        // own doc comment: "Seeks the playback to the beginning"). Without the explicit
+        // `play()`, the sermon just sits paused at frame 0 and Replay looks like it does
+        // nothing.
+        player.replay();
+        player.play();
+      }}
+      onSeekBy={(seconds) => player.seekBy(seconds)}
+      currentTimeSeconds={currentTime}
+      durationSeconds={duration}
+      playbackSpeed={speed}
+      sleepRemainingSeconds={sleepTimer.remainingSeconds}
+      onSeekTo={(seconds) => {
+        player.currentTime = seconds;
+      }}
+      onScrubStart={() => setIsScrubbing(true)}
+      onScrubEnd={() => setIsScrubbing(false)}
+      onCycleSpeed={cycleSpeed}
+      onOpenSleepTimer={() => setSleepSheetOpen(true)}
+      onToggleFullscreen={toggleFullscreen}
+    />
+  );
+
   if (SIGNATURE_PLAYER_ENABLED) {
-    return (
-      <SignatureLayout
-        sermonId={sermonId}
-        detail={detail}
-        queueContext={queueContext}
-        speed={speed}
-        sleepRemainingSeconds={sleepTimer.remainingSeconds}
-        onCycleSpeed={cycleSpeed}
-        onOpenSleepTimer={() => setSleepSheetOpen(true)}
-        seekRow={
-          <SignatureSeekRow
-            currentTimeSeconds={currentTime}
-            durationSeconds={duration}
-            onSeekTo={(seconds) => {
-              player.currentTime = seconds;
-            }}
-            onSeekBy={(seconds) => player.seekBy(seconds)}
-            onScrubStart={() => setIsScrubbing(true)}
-            onScrubEnd={() => setIsScrubbing(false)}
-          />
-        }
-        sleepSheet={sleepSheet}
-        video={
-          <VideoSurface
-            controlsLayout="centre"
-            player={player}
-            videoRef={videoRef}
-            isBuffering={status === 'loading'}
-            isPlaying={isPlaying}
-            isEnded={isEnded}
-            isAudio={variant.type === 'audio'}
-            artworkUrl={detail.thumbnail_url}
-            overlay={overlay}
-            isFullscreen={isFullscreen}
-            onFullscreenChange={setIsFullscreen}
-            onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
-            onReplay={() => {
-              // Same as the classic layout below: `replay()` only seeks to 0.
-              player.replay();
-              player.play();
-            }}
-            onSeekBy={(seconds) => player.seekBy(seconds)}
-            currentTimeSeconds={currentTime}
-            durationSeconds={duration}
-            playbackSpeed={speed}
-            sleepRemainingSeconds={sleepTimer.remainingSeconds}
-            onSeekTo={(seconds) => {
-              player.currentTime = seconds;
-            }}
-            onScrubStart={() => setIsScrubbing(true)}
-            onScrubEnd={() => setIsScrubbing(false)}
-            onCycleSpeed={cycleSpeed}
-            onOpenSleepTimer={() => setSleepSheetOpen(true)}
-            onToggleFullscreen={toggleFullscreen}
-          />
-        }
-      />
-    );
+    return <SignatureLayout sermonId={sermonId} detail={detail} queueContext={queueContext} video={video} sleepSheet={sleepSheet} />;
   }
 
   return (
     <>
-      <VideoSurface
-        player={player}
-        videoRef={videoRef}
-        isBuffering={status === 'loading'}
-        isPlaying={isPlaying}
-        isEnded={isEnded}
-        isAudio={variant.type === 'audio'}
-        artworkUrl={detail.thumbnail_url}
-        overlay={overlay}
-        isFullscreen={isFullscreen}
-        onFullscreenChange={setIsFullscreen}
-        onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
-        onReplay={() => {
-          // `player.replay()` only seeks back to 0 — it does not resume playback (see its
-          // own doc comment: "Seeks the playback to the beginning"). Without the explicit
-          // `play()`, the sermon just sits paused at frame 0 and Replay looks like it does
-          // nothing.
-          player.replay();
-          player.play();
-        }}
-        onSeekBy={(seconds) => player.seekBy(seconds)}
-        currentTimeSeconds={currentTime}
-        durationSeconds={duration}
-        playbackSpeed={speed}
-        sleepRemainingSeconds={sleepTimer.remainingSeconds}
-        onSeekTo={(seconds) => {
-          player.currentTime = seconds;
-        }}
-        onScrubStart={() => setIsScrubbing(true)}
-        onScrubEnd={() => setIsScrubbing(false)}
-        onCycleSpeed={cycleSpeed}
-        onOpenSleepTimer={() => setSleepSheetOpen(true)}
-        onToggleFullscreen={toggleFullscreen}
-      />
+      {video}
       {queueContext ? <QueueList {...queueContext} /> : <CommentsPanel sermonId={sermonId} />}
       {sleepSheet}
     </>
@@ -665,33 +611,24 @@ interface SignatureLayoutProps {
   sermonId: string;
   detail: SermonDetail;
   queueContext: QueueListProps | null;
-  speed: PlaybackSpeed;
-  sleepRemainingSeconds: number | null;
-  onCycleSpeed: () => void;
-  onOpenSleepTimer: () => void;
   video: React.ReactNode;
-  seekRow: React.ReactNode;
   sleepSheet: React.ReactNode;
 }
 
 /**
- * Signature player layout (behind `SIGNATURE_PLAYER_ENABLED`): video with only its centre
- * controls and full screen, an always-visible seek row, the title block with Like / My List
- * / Share, the comments card, and a toolbar with speed and the sleep timer. A playlist still
- * opens on its queue; the toolbar's Queue / Comments switch between the two. The title block
- * and toolbar fold away while the keyboard is up so the comment composer keeps its room.
+ * Signature player layout (behind `SIGNATURE_PLAYER_ENABLED`): the same video surface as
+ * the classic layout, with every playback control (scrub, speed, sleep timer, full screen)
+ * still on its overlay (Nii, 2026-10-22: "all player controls must be kept on player"), then
+ * the title block with Like / My List / Download / Share and the comments card. A playlist
+ * still opens on its queue, with a Queue / Comments switch at the bottom. The title block and
+ * that switch fold away while the keyboard is up so the comment composer keeps its room.
  * Playback itself is `PlayerContent`'s, unchanged.
  */
 function SignatureLayout({
   sermonId,
   detail,
   queueContext,
-  speed,
-  sleepRemainingSeconds,
-  onCycleSpeed,
-  onOpenSleepTimer,
   video,
-  seekRow,
   sleepSheet,
 }: SignatureLayoutProps) {
   const styles = useStyles();
@@ -703,7 +640,6 @@ function SignatureLayout({
   return (
     <>
       {video}
-      {seekRow}
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
@@ -712,16 +648,10 @@ function SignatureLayout({
       ) : (
         <CommentsPanel sermonId={sermonId} variant="signature" />
       )}
-      {keyboardVisible ? null : (
-        <PlayerToolbar
-          playbackSpeed={speed}
-          sleepRemainingSeconds={sleepRemainingSeconds}
-          onCycleSpeed={onCycleSpeed}
-          onOpenSleepTimer={onOpenSleepTimer}
-          pane={queueContext ? (showQueue ? 'queue' : 'comments') : null}
-          onSelectPane={setPane}
-          bottomInset={insets.bottom}
-        />
+      {keyboardVisible ? null : queueContext ? (
+        <PaneSwitch pane={showQueue ? 'queue' : 'comments'} onSelectPane={setPane} bottomInset={insets.bottom} />
+      ) : (
+        <View style={{ height: spacing.md + insets.bottom }} />
       )}
       {sleepSheet}
     </>

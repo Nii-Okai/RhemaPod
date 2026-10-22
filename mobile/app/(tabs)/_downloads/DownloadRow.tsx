@@ -30,7 +30,7 @@ function formatBytes(bytes: number | null): string | null {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-function metaLineFor(download: DownloadRecord): string {
+export function metaLineFor(download: DownloadRecord): string {
   if (download.state === 'failed') return download.failureMessage ?? 'Download failed.';
   if (download.state === 'downloading') return `Downloading… ${Math.round(download.progress * 100)}%`;
   if (download.state === 'queued') return 'Queued';

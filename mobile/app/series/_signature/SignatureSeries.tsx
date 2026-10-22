@@ -46,7 +46,7 @@ export function SignatureSeriesScreen() {
     [episodeItems, historyMap],
   );
 
-  const header = <CastCloseHeader onClose={screen.onCloseAll} />;
+  const header = <CastCloseHeader onClose={screen.onCloseAll} castEnabled />;
 
   if (series.isLoading || episodes.isLoading) {
     return (
@@ -115,7 +115,7 @@ export function SignatureSeriesScreen() {
 
           {cta && wording ? (
             <Pressable
-              onPress={() => screen.goToEpisode(cta.episodeId)}
+              onPress={() => screen.playEpisode(cta.episodeId)}
               accessibilityRole="button"
               accessibilityLabel={cta.accessibilityLabel}
               style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
@@ -215,7 +215,7 @@ export function SignatureSeriesScreen() {
                   episode={ep}
                   progress={progress.get(ep.id) as EpisodeProgress}
                   current={ep.id === resumeId}
-                  onPress={() => screen.goToEpisode(ep.id)}
+                  onPress={() => screen.playEpisode(ep.id)}
                 />
               ))
             )}

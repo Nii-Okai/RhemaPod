@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated } from 'react-native';
+import { Animated, type StyleProp, type ViewStyle } from 'react-native';
 
 export interface PopInProps {
   children: React.ReactNode;
+  /** Layout for the animated wrapper, e.g. `flexShrink` when it sits in a row. */
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -13,7 +15,7 @@ export interface PopInProps {
  * type at the same JSX position, e.g. the ring `Pressable` vs this `IconButton`) to
  * remount this on every fresh transition into the ready state, not on manual key changes.
  */
-export function PopIn({ children }: PopInProps) {
+export function PopIn({ children, style }: PopInProps) {
   const scale = useRef(new Animated.Value(0.5)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -33,5 +35,5 @@ export function PopIn({ children }: PopInProps) {
     ]).start();
   }, [scale, opacity]);
 
-  return <Animated.View style={{ transform: [{ scale }], opacity }}>{children}</Animated.View>;
+  return <Animated.View style={[style, { transform: [{ scale }], opacity }]}>{children}</Animated.View>;
 }

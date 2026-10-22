@@ -115,9 +115,9 @@ function Pill({ icon, label, accessibilityLabel, selected = false, onPress }: Pi
         pressed && styles.pressed,
       ]}
     >
-      <PlatformIcon name={icon} size={16} color={tint} />
+      <PlatformIcon name={icon} size={15} color={tint} />
       {label ? (
-        <AppText variant="ui.label" tone={selected ? 'gold' : 'primary'}>
+        <AppText variant="ui.label" tone={selected ? 'gold' : 'primary'} numberOfLines={1} style={styles.label}>
           {label}
         </AppText>
       ) : null}
@@ -135,25 +135,32 @@ const useStyles = createThemedStyles((colors) => ({
   titles: {
     gap: spacing.xs,
   },
+  // One line, never wrapping (Nii, 2026-10-22): the pills shrink and their labels truncate
+  // before anything drops to a second row, which only happens at large text sizes.
   pills: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.xs + 2,
   },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs + 2,
+    flexShrink: 1,
+    gap: spacing.xs + 1,
     minHeight: 36,
-    paddingHorizontal: spacing.md + 2,
+    paddingHorizontal: spacing.sm + 2,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border.card,
   },
   iconPill: {
     width: 36,
+    flexShrink: 0,
     paddingHorizontal: 0,
     justifyContent: 'center',
+  },
+  label: {
+    flexShrink: 1,
   },
   pillSelected: {
     borderColor: colors.accent.gold,

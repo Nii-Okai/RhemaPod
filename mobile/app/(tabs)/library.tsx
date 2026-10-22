@@ -29,6 +29,13 @@ import { LibrarySortSheet } from './_library/LibrarySortSheet';
 import { PlaylistCard } from './_library/PlaylistCard';
 import { PlaylistGridTile } from './_library/PlaylistGridTile';
 import { libraryItemTitle, sortLibraryItems, type LibraryItem, type LibrarySortMode } from './_library/librarySort';
+import { SignatureLibraryScreen } from './_library/signature/SignatureLibrary';
+import { SIGNATURE_LIBRARY_ENABLED } from '../../lib/featureFlags';
+
+export default function LibraryScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): a build-time constant, like Home's.
+  return SIGNATURE_LIBRARY_ENABLED ? <SignatureLibraryScreen /> : <ClassicLibraryScreen />;
+}
 
 /**
  * Library (Isaac's ask, session 2026-10-10: "a tab called Library ... to
@@ -75,7 +82,7 @@ import { libraryItemTitle, sortLibraryItems, type LibraryItem, type LibrarySortM
  * shows. Omitted entirely when it resolves empty, same as Home's own copy
  * of this shelf — no empty-state card for a shelf that has nothing to show.
  */
-export default function LibraryScreen() {
+function ClassicLibraryScreen() {
   const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();

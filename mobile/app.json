@@ -11,7 +11,10 @@
     ],
     "ios": {
       "supportsTabletMode": true,
-      "bundleIdentifier": "com.niitech.rhemapod"
+      "bundleIdentifier": "com.niitech.rhemapod",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -58,12 +61,17 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
+          "image": "./assets/splash-icon-light.png",
           "imageWidth": 280,
           "resizeMode": "contain",
-          "backgroundColor": "#0B1725"
+          "backgroundColor": "#F7F4EF",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B1725"
+          }
         }
-      ]
+      ],
+      "react-native-google-cast"
     ],
     "scheme": "rhemapod",
     "extra": {
