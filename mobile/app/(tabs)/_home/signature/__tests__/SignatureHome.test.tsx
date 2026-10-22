@@ -202,14 +202,31 @@ describe('SignatureHomeScreen', () => {
     expect(screen.queryByLabelText(/^Next message/)).toBeNull();
   });
 
-  it('hides empty shelves and the walk when nothing in progress belongs to a series', async () => {
+  it('hides empty shelves when nothing in progress belongs to a series', async () => {
     const screen = renderSignature({ '/me/continue-watching': [], '/me/recommended': [] });
     await screen.findByText('Trending');
     expect(screen.queryByText('Pick up where you left off')).toBeNull();
     expect(screen.queryByText('Recommended for you')).toBeNull();
     expect(screen.queryByLabelText(/Continue: Part/)).toBeNull();
-    expect(screen.getByLabelText('Divine Patterns, 4 episodes')).toBeTruthy();
     expect(mockedGet).not.toHaveBeenCalledWith('/me/history', expect.anything());
+  });
+
+  it('spotlights the first series instead of leaving the section\'s top empty when there is no walk yet', async () => {
+    const screen = renderSignature({ '/me/continue-watching': [], '/me/recommended': [] });
+    const spotlight = await screen.findByLabelText('Divine Patterns. 4 episodes. Start this series.');
+    // Left out of the grid below it, same as the walk's own series is.
+    expect(screen.queryByLabelText('Divine Patterns, 4 episodes')).toBeNull();
+    expect(screen.getByLabelText('The Eyes to See, 2 episodes')).toBeTruthy();
+    expect(screen.getByLabelText('The Glory, 3 episodes')).toBeTruthy();
+
+    fireEvent.press(spotlight);
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/series/[id]', params: { id: 'se1' } });
+  });
+
+  it('spotlights nothing (and does not crash) when the catalog has no series at all', async () => {
+    const screen = renderSignature({ '/me/continue-watching': [], '/me/recommended': [], '/series': [] });
+    await screen.findByText('No series yet — check back once the catalogue has one.');
+    expect(screen.queryByLabelText(/Start this series/)).toBeNull();
   });
 
   it('offers a retry when a shelf fails', async () => {

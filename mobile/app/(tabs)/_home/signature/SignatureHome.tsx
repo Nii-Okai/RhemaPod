@@ -23,6 +23,7 @@ import { HeroSkeleton } from '../HeroSkeleton';
 import { HomeTopBar } from '../HomeTopBar';
 import { CountdownCard } from './CountdownCard';
 import { SignatureHeroCard } from './SignatureHeroCard';
+import { SeriesSpotlightCard } from './SeriesSpotlightCard';
 import { SeriesWalkCard } from './SeriesWalkCard';
 import { VerseCard } from './VerseCard';
 import {
@@ -127,8 +128,8 @@ function Shelf<T extends { id: string }>({
  *
  *  verse of the day → "New this week" hero → pick up where you left off → new releases →
  *  next message countdown (only while one is scheduled) → Prophet's Pick → Series ("your
- *  walk" above a two-column grid of the other series) → Prophet's Catalog → recommended
- *  for you → trending.
+ *  walk" — or, with none yet, a spotlight on one series — above a two-column grid of the
+ *  other series) → Prophet's Catalog → recommended for you → trending.
  *
  * The top bar sits above the scroll in normal flow (not over the art, as on the classic
  * Home) because the verse, not the hero, now opens the page.
@@ -153,7 +154,11 @@ export function SignatureHomeScreen() {
   const pick = catalogItems[0];
   const walk = seriesWalk.walk;
   const seriesItems = series.data ?? [];
-  const otherSeries = seriesItems.filter((item) => item.id !== walk?.seriesId).slice(0, SERIES_GRID_MAX);
+  // No walk yet (every brand-new account has none) — feature the first series instead of
+  // leaving the section's top empty; `otherSeries` excludes whichever of the two is up top.
+  const spotlightSeries = walk ? null : seriesItems[0] ?? null;
+  const featuredSeriesId = walk?.seriesId ?? spotlightSeries?.id;
+  const otherSeries = seriesItems.filter((item) => item.id !== featuredSeriesId).slice(0, SERIES_GRID_MAX);
   const walkThumbnail =
     seriesItems.find((item) => item.id === walk?.seriesId)?.thumbnail_url ?? walk?.current.thumbnail_url;
   // The catalogue is one speaker's; the header shows their avatar.
@@ -285,6 +290,8 @@ export function SignatureHomeScreen() {
               onOpenSeries={() => goToSeries(walk.seriesId)}
               onResume={() => goToSermon(walk.current.id)}
             />
+          ) : spotlightSeries ? (
+            <SeriesSpotlightCard series={spotlightSeries} onPress={() => goToSeries(spotlightSeries.id)} />
           ) : null}
           {series.isLoading ? (
             <ShelfSkeleton loadingLabel="Loading series" />
