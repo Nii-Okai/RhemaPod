@@ -173,6 +173,29 @@ describe('SignatureHomeScreen', () => {
     expect(await screen.findByLabelText(/The Destiny of the Church · Part 4\. 3 days 4 hours 30 minutes to go$/)).toBeTruthy();
   });
 
+  it("shows the scheduled sermon's own cover art on the countdown", async () => {
+    const publishAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const screen = renderSignature({
+      '/catalog/sermons/upcoming': {
+        id: 'u1',
+        title: 'Part 4',
+        publish_at: publishAt,
+        thumbnail_url: 'https://cdn.example/u1.jpg',
+      },
+    });
+    const art = await screen.findByTestId('countdown-art');
+    expect(art.props.source).toEqual({ uri: 'https://cdn.example/u1.jpg' });
+  });
+
+  it('falls back to the congregation photo when the scheduled sermon has no art', async () => {
+    const publishAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const screen = renderSignature({
+      '/catalog/sermons/upcoming': { id: 'u1', title: 'Part 4', publish_at: publishAt, thumbnail_url: null },
+    });
+    const art = await screen.findByTestId('countdown-art');
+    expect(art.props.source).not.toHaveProperty('uri');
+  });
+
   it('leaves the countdown out when nothing is scheduled', async () => {
     const screen = renderSignature();
     await screen.findByText('Trending');
