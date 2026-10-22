@@ -95,7 +95,7 @@ export default function RegisterScreen() {
   return (
     <AuthScreen
       heading="Start listening"
-      subhead="Save your place, build playlists and download sermons for later."
+      subhead="Build playlists and download sermons for later."
       subheadVariant="ui.body"
       centerHeader
       centerBrand
