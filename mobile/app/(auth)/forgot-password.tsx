@@ -79,9 +79,10 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthScreen
-      eyebrow="Password reset"
       heading="Forgot your password?"
+      headingVariant="display.title"
       subhead="Enter the email you signed up with and we'll send you a link to set a new one."
+      subheadVariant="ui.body"
       footer={backToSignIn}
     >
       <Field

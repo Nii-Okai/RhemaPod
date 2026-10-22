@@ -94,9 +94,9 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreen
-      eyebrow="Join RhemaPod"
       heading="Start listening"
       subhead="Save your place, build playlists and download sermons for later."
+      subheadVariant="ui.body"
       footer={
         <View style={styles.footerRow}>
           <AppText variant="ui.body" tone="secondary">
@@ -125,9 +125,6 @@ export default function RegisterScreen() {
             onPress={onApplePress}
           />
         ) : null}
-        <AppText variant="ui.badge" tone="tertiary" style={styles.socialNote}>
-          Quickest way in, no confirmation email needed.
-        </AppText>
         {socialError ? (
           <InlineAlert variant="error" title={socialError.title}>
             {socialError.detail}
@@ -195,9 +192,6 @@ const useStyles = createThemedStyles(() => ({
   },
   socialStack: {
     gap: spacing.md,
-  },
-  socialNote: {
-    textAlign: 'center',
   },
   footerRow: {
     flexDirection: 'row',

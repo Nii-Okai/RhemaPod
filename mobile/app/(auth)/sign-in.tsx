@@ -132,9 +132,10 @@ export default function SignInScreen() {
 
   return (
     <AuthScreen
-      eyebrow="Welcome back"
       heading="Pick up where you left off"
-      subhead="Sign in to your sermons, playlists and downloads."
+      headingVariant="display.title"
+      subhead="Sign in to your sermons and playlists."
+      subheadVariant="ui.body"
       footer={
         <>
           <View style={styles.footerRow}>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText } from '../../../components';
+import { AppText, type AppTextVariant } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { Flame } from '../../(tabs)/_home/signature/Flame';
@@ -26,13 +26,18 @@ import { LEAF } from '../../(tabs)/_home/signature/leaf';
 export function AuthScreen({
   eyebrow,
   heading,
+  headingVariant = 'display.hero',
   subhead,
+  subheadVariant = 'ui.bodyLarge',
   children,
   footer,
 }: {
   eyebrow?: string;
   heading: string;
+  /** Smaller headings (e.g. `display.title`) for screens with more content to fit above the fold. */
+  headingVariant?: AppTextVariant;
   subhead?: React.ReactNode;
+  subheadVariant?: AppTextVariant;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -45,7 +50,7 @@ export function AuthScreen({
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md, paddingBottom: insets.bottom + spacing.xxl * 2 },
+          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.xs, paddingBottom: insets.bottom + spacing.xxl * 2 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -73,11 +78,11 @@ export function AuthScreen({
               </AppText>
             </View>
           ) : null}
-          <AppText variant="display.hero" tone="primary" accessibilityRole="header">
+          <AppText variant={headingVariant} tone="primary" accessibilityRole="header">
             {heading}
           </AppText>
           {subhead ? (
-            <AppText variant="ui.bodyLarge" tone="secondary">
+            <AppText variant={subheadVariant} tone="secondary">
               {subhead}
             </AppText>
           ) : null}
@@ -106,7 +111,7 @@ const useStyles = createThemedStyles((colors) => ({
   content: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
-    gap: spacing.xxl,
+    gap: spacing.xl,
   },
   brandRow: {
     flexDirection: 'row',
