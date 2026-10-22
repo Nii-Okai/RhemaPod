@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
 import * as manifest from './manifest';
 import * as paths from './paths';
@@ -75,6 +75,9 @@ export interface UseCachedSourceResult {
 }
 
 interface LookupState {
+  /** The key this state describes — a state for an older key (or none) means the lookup
+   * for the current key hasn't started yet, which counts as loading. */
+  forKey: string | null;
   loading: boolean;
   hit: boolean;
   localUrl: string | null;
@@ -89,16 +92,17 @@ export function useCachedSource(
     [enabled, variant, mediaRefs],
   );
 
-  const [state, setState] = useState<LookupState>({ loading: Boolean(key), hit: false, localUrl: null });
+  const [state, setState] = useState<LookupState>({ forKey: null, loading: false, hit: false, localUrl: null });
 
   useEffect(() => {
     if (!key) {
-      setState({ loading: false, hit: false, localUrl: null });
+      setState({ forKey: null, loading: false, hit: false, localUrl: null });
       return;
     }
 
     let cancelled = false;
-    setState({ loading: true, hit: false, localUrl: null });
+    const forKey = key.mediaRefId;
+    setState({ forKey, loading: true, hit: false, localUrl: null });
 
     void (async () => {
       // Best-effort, once per app launch — `ensureSwept` swallows its own failures, so
@@ -110,7 +114,7 @@ export function useCachedSource(
       if (!entry) {
         if (!cancelled) {
           emitCacheEvent('miss', { sermonId, mediaRefId: key.mediaRefId });
-          setState({ loading: false, hit: false, localUrl: null });
+          setState({ forKey, loading: false, hit: false, localUrl: null });
         }
         return;
       }
@@ -130,14 +134,14 @@ export function useCachedSource(
         await deps.manifestDeleteByKey(key.mediaRefId).catch(() => {});
         if (cancelled) return;
         emitCacheEvent('miss', { sermonId, mediaRefId: key.mediaRefId });
-        setState({ loading: false, hit: false, localUrl: null });
+        setState({ forKey, loading: false, hit: false, localUrl: null });
         return;
       }
 
       await deps.manifestTouch(key.mediaRefId, deps.now());
       if (cancelled) return;
       emitCacheEvent('hit', { sermonId, mediaRefId: key.mediaRefId });
-      setState({ loading: false, hit: true, localUrl });
+      setState({ forKey, loading: false, hit: true, localUrl });
     })();
 
     return () => {
@@ -150,19 +154,32 @@ export function useCachedSource(
     // project to suppress here, same as `[id].tsx`'s own `[status]`-only effect.)
   }, [key?.mediaRefId, sermonId]);
 
+  const lookupPending = Boolean(key) && (state.forKey !== key?.mediaRefId || state.loading);
+
   const reportExit = useCallback(
     (positionSeconds: number, durationSeconds: number | null) => {
-      if (!key || !variant || state.hit || state.loading) return;
+      if (!key || !variant || state.hit || lookupPending) return;
       if (expiresAt === null) return;
       if (!durationSeconds || durationSeconds <= 0 || !Number.isFinite(durationSeconds)) return;
       const fraction = positionSeconds / durationSeconds;
       if (fraction < FILL_PROGRESS_MIN || fraction > FILL_PROGRESS_MAX) return;
       void deps.requestFill({ sermonId, key, url: variant.url, expiresAt });
     },
-    [key, variant, state.hit, state.loading, expiresAt, sermonId, deps],
+    [key, variant, state.hit, lookupPending, expiresAt, sermonId, deps],
   );
 
-  const effectiveUrl = !key ? (variant?.url ?? null) : state.loading ? null : state.hit ? state.localUrl : (variant?.url ?? null);
+  const resolvedUrl = !key ? (variant?.url ?? null) : lookupPending ? null : state.hit ? state.localUrl : (variant?.url ?? null);
 
-  return { isLoading: Boolean(key) && state.loading, effectiveUrl, reportExit };
+  // The first URL this sermon actually resolved to is the one it keeps. A sermon reopened
+  // in the same session starts streaming from the still-in-memory /stream response before
+  // the fresh fetch lands and lets the cache in (`[id].tsx`'s `isStreamFreshThisMount`);
+  // switching then — to a loading gate, the local file, or the refetch's new presigned URL
+  // — unmounted and restarted the player mid-play. The lookup still runs, so `reportExit`
+  // knows whether a fill is needed; the cached copy is used from the next open.
+  const committed = useRef<{ sermonId: string; url: string } | null>(null);
+  if (committed.current && committed.current.sermonId !== sermonId) committed.current = null;
+  if (!committed.current && resolvedUrl) committed.current = { sermonId, url: resolvedUrl };
+  const effectiveUrl = committed.current?.url ?? resolvedUrl;
+
+  return { isLoading: !committed.current && lookupPending, effectiveUrl, reportExit };
 }
