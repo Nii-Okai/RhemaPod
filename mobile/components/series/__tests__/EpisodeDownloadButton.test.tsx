@@ -40,6 +40,7 @@ function hook(overrides: Partial<ReturnType<typeof useDownloads>> = {}) {
     retry: jest.fn(),
     remove: jest.fn(),
     find: jest.fn(() => undefined),
+    waitingForWifi: false,
     ...overrides,
   };
 }
@@ -65,7 +66,30 @@ describe('EpisodeDownloadButton', () => {
     const { getByLabelText } = render(
       <EpisodeDownloadButton episodeId="e1" episodeTitle="Part One" mediaType="audio" />,
     );
-    expect(getByLabelText('Part One queued for download')).toBeTruthy();
+    expect(getByLabelText('Part One queued for download. Cancel download')).toBeTruthy();
+  });
+
+  it('cancels a download in progress when the ring is tapped', () => {
+    const remove = jest.fn();
+    mockedUseDownloads.mockReturnValue(
+      hook({ remove, find: jest.fn(() => record({ state: 'downloading', progress: 0.4 })) }),
+    );
+    const { getByLabelText } = render(
+      <EpisodeDownloadButton episodeId="e1" episodeTitle="Part One" mediaType="audio" />,
+    );
+
+    fireEvent.press(getByLabelText('Downloading Part One, 40 percent. Cancel download'));
+    expect(remove).toHaveBeenCalledWith('e1');
+  });
+
+  it('says a queued episode is waiting for Wi-Fi when it is', () => {
+    mockedUseDownloads.mockReturnValue(
+      hook({ waitingForWifi: true, find: jest.fn(() => record({ state: 'queued' })) }),
+    );
+    const { getByLabelText } = render(
+      <EpisodeDownloadButton episodeId="e1" episodeTitle="Part One" mediaType="audio" />,
+    );
+    expect(getByLabelText('Part One waiting for Wi-Fi. Cancel download')).toBeTruthy();
   });
 
   it('shows a delete control once downloaded', () => {

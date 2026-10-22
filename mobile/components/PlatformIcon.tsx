@@ -48,6 +48,7 @@ const ICONS = {
   'images-outline': { ios: 'images-outline', android: 'photo-library' },
   close: { ios: 'close', android: 'close' },
   'close-circle': { ios: 'close-circle', android: 'cancel' },
+  'wifi-outline': { ios: 'wifi-outline', android: 'wifi' },
   'paper-plane': { ios: 'paper-plane', android: 'send' },
   'cloud-offline-outline': { ios: 'cloud-offline-outline', android: 'cloud-off' },
   'ban-outline': { ios: 'ban-outline', android: 'block' },

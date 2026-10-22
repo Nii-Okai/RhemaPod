@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import * as Network from 'expo-network';
 import { ACTIVE_STATES, type DownloadMediaType, type DownloadRecord } from './types';
 import { downloadManager, type DownloadManager } from './downloadManager';
@@ -45,6 +45,9 @@ export interface UseDownloadsResult {
   ) => Promise<void>;
   retry: (sermonId: string) => Promise<void>;
   remove: (sermonId: string) => Promise<void>;
+  /** True while Wi-Fi-only is on and the device isn't on Wi-Fi — queued downloads are
+   * waiting for Wi-Fi, not for their turn, and the UI says so. */
+  waitingForWifi: boolean;
   find: (sermonId: string) => DownloadRecord | undefined;
 }
 
@@ -203,6 +206,8 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
   );
   const getSnapshot = useCallback(() => store.snapshot, [store]);
   const { downloads, isLoading } = useSyncExternalStore(subscribe, getSnapshot);
+  // Optimistic until the first read lands, so nothing flashes "Waiting for Wi-Fi".
+  const [onWifi, setOnWifi] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,7 +230,14 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
   }, [preferences.wifiOnly, manager, store]);
 
   useEffect(() => {
+    let active = true;
+    Promise.resolve(Network.getNetworkStateAsync())
+      .then((state) => {
+        if (active && state) setOnWifi(state.type === Network.NetworkStateType.WIFI && state.isConnected === true);
+      })
+      .catch(() => {});
     const subscription = Network.addNetworkStateListener((state) => {
+      setOnWifi(state.type === Network.NetworkStateType.WIFI && state.isConnected === true);
       if (state.type === Network.NetworkStateType.WIFI && state.isConnected) {
         void manager.resumeQueuedDownloads().then(() => refreshStore(manager, store));
       } else {
@@ -234,7 +246,10 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
         void manager.pauseIfGateClosed().then(() => refreshStore(manager, store));
       }
     });
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      subscription.remove();
+    };
   }, [manager, store]);
 
   const download = useCallback(
@@ -289,5 +304,6 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
     retry,
     remove,
     find,
+    waitingForWifi: preferences.wifiOnly && !onWifi,
   };
 }

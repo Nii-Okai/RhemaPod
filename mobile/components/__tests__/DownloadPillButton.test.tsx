@@ -42,6 +42,7 @@ function hook(overrides: Partial<ReturnType<typeof useDownloads>> = {}) {
     retry: jest.fn(),
     remove: jest.fn(),
     find: jest.fn(() => undefined),
+    waitingForWifi: false,
     ...overrides,
   };
 }
@@ -70,6 +71,43 @@ describe('DownloadPillButton', () => {
     mockedUseDownloads.mockReturnValue(hook({ find: jest.fn(() => record({ state: 'downloading', progress: 0.65 })) }));
     const { getByText } = render(<DownloadPillButton items={items} />);
     expect(getByText('Downloading… 65%')).toBeTruthy();
+  });
+
+  it('says it is waiting for Wi-Fi when that is why it is queued', () => {
+    mockedUseDownloads.mockReturnValue(
+      hook({ waitingForWifi: true, find: jest.fn(() => record({ state: 'queued', progress: 0 })) }),
+    );
+    const { getByText } = render(<DownloadPillButton items={items} />);
+    expect(getByText('Waiting for Wi-Fi')).toBeTruthy();
+  });
+
+  it('cancels a queued or in-progress download on press', () => {
+    const remove = jest.fn();
+    mockedUseDownloads.mockReturnValue(
+      hook({ remove, find: jest.fn(() => record({ state: 'downloading', progress: 0.3 })) }),
+    );
+    const { getByLabelText } = render(<DownloadPillButton items={items} />);
+    fireEvent.press(getByLabelText('Downloading… 30%. Cancel download'));
+    expect(remove).toHaveBeenCalledWith('e1');
+  });
+
+  it('on a series, cancelling leaves already-downloaded episodes alone', () => {
+    const remove = jest.fn();
+    const series = [
+      { sermonId: 'e1', title: 'One', mediaType: 'audio' as const },
+      { sermonId: 'e2', title: 'Two', mediaType: 'audio' as const },
+      { sermonId: 'e3', title: 'Three', mediaType: 'audio' as const },
+    ];
+    const states: Record<string, DownloadRecord> = {
+      e1: record({ sermonId: 'e1', state: 'ready' }),
+      e2: record({ sermonId: 'e2', state: 'downloading', progress: 0.5 }),
+      e3: record({ sermonId: 'e3', state: 'queued', progress: 0 }),
+    };
+    mockedUseDownloads.mockReturnValue(hook({ remove, find: jest.fn((id: string) => states[id]) }));
+    const { getByRole } = render(<DownloadPillButton items={series} label="Download all episodes" />);
+
+    fireEvent.press(getByRole('button'));
+    expect(remove.mock.calls.map((c) => c[0])).toEqual(['e2', 'e3']);
   });
 
   it('shows a Downloaded state with a working delete', () => {
@@ -101,7 +139,7 @@ describe('DownloadPillButton', () => {
     mockedUseDownloads.mockReturnValue(hook({ find: jest.fn(() => record({ state: 'downloading', progress: 0.65 })) }));
     const { getByText, getByLabelText, rerender } = render(<DownloadPillButton items={items} compact />);
     expect(getByText('65%')).toBeTruthy();
-    expect(getByLabelText('Downloading… 65%')).toBeTruthy();
+    expect(getByLabelText('Downloading… 65%. Cancel download')).toBeTruthy();
 
     mockedUseDownloads.mockReturnValue(
       hook({ find: jest.fn(() => record({ state: 'failed', failureMessage: 'Download failed.' })) }),
