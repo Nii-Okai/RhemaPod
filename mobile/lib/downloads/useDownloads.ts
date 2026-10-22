@@ -3,6 +3,7 @@ import * as Network from 'expo-network';
 import { ACTIVE_STATES, type DownloadMediaType, type DownloadRecord } from './types';
 import { downloadManager, type DownloadManager } from './downloadManager';
 import { useDownloadPreferences } from '../settings/useDownloadPreferences';
+import { seedOfflineDetails } from './offlineDetails';
 
 /**
  * App-facing surface over `downloadManager` (plan W4.5) — the Downloads tab, the
@@ -115,6 +116,7 @@ async function refreshStore(manager: DownloadManager, store: SharedStore): Promi
       const list = await manager.listDownloads();
       setSnapshot(store, { downloads: list, isLoading: false });
       ensurePolling(manager, store);
+      await seedOfflineDetails(manager, list).catch(() => {});
     })().finally(() => {
       store.refreshing = null;
     });
@@ -130,6 +132,10 @@ function ensureStartupSweep(manager: DownloadManager, store: SharedStore): Promi
     // queued downloads sit waiting until the network next changes.
     void store.startupSweep
       .then(() => manager.resumeQueuedDownloads())
+      .then(() => refreshStore(manager, store))
+      // Downloads made before details were saved get one now (online only; offline it
+      // just fails quietly and runs again next launch).
+      .then(() => manager.backfillDetailSnapshots())
       .then(() => refreshStore(manager, store))
       .catch(() => {});
   }
@@ -222,6 +228,10 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
     const subscription = Network.addNetworkStateListener((state) => {
       if (state.type === Network.NetworkStateType.WIFI && state.isConnected) {
         void manager.resumeQueuedDownloads().then(() => refreshStore(manager, store));
+      } else {
+        // Left Wi-Fi: with Wi-Fi-only on, transfers in flight go back to `queued` rather
+        // than carrying on over mobile data.
+        void manager.pauseIfGateClosed().then(() => refreshStore(manager, store));
       }
     });
     return () => subscription.remove();

@@ -34,6 +34,9 @@ export interface DownloadManagerDeps {
     | 'markFailed'
     | 'deleteDownload'
     | 'setThumbnailPath'
+    | 'setDetailSnapshot'
+    | 'getDetailSnapshot'
+    | 'listReadyMissingDetail'
   >;
   crypto: {
     encryptFile: typeof RpaCrypto.encryptFile;
@@ -73,7 +76,15 @@ export interface DownloadManagerDeps {
   /** Stops a `downloadToFile` transfer still writing to `destPath`, if there is one —
    * that transfer then rejects. A no-op for any path nothing is writing to. */
   cancelTransfer: (destPath: string) => void;
+  /** `GET /catalog/sermons/{id}` — the `SermonDetail` saved with a download so the player
+   * can open it offline. Rejects on any failure; callers treat it as best-effort. */
+  fetchSermonDetail: (sermonId: string) => Promise<unknown>;
 }
+
+/** How many downloads transfer at once. "Download all" on a long series otherwise opened
+ * one connection per episode, which is slower overall and fails more on weak networks;
+ * the rest wait `queued` and start as slots free up. */
+export const MAX_CONCURRENT_DOWNLOADS = 2;
 
 /** Transfers `realDownloadToFile` has in flight, by destination — what `cancelTransfer`
  * reaches into, so `downloadToFile`'s own contract can stay a plain promise. */
@@ -98,6 +109,10 @@ async function realDownloadToFile(url: string, destPath: string, onProgress: (pr
   if (result.status < 200 || result.status >= 300) {
     throw new ApiError(result.status, `Download failed (HTTP ${result.status})`);
   }
+}
+
+async function realFetchSermonDetail(sermonId: string): Promise<unknown> {
+  return api.get('/catalog/sermons/{sermon_id}', { params: { path: { sermon_id: sermonId } } });
 }
 
 function realCancelTransfer(destPath: string): void {
@@ -140,6 +155,7 @@ function defaultDeps(): DownloadManagerDeps {
     canStartDownload: realCanStartDownload,
     onDownloadReady: dropSermonFromCache,
     cancelTransfer: realCancelTransfer,
+    fetchSermonDetail: realFetchSermonDetail,
   };
 }
 
@@ -214,6 +230,9 @@ async function handlePlaybackDecryptError(
  * instead of leaving an untracked file behind (or marking a re-queued row ready). */
 interface ActiveRun {
   removed: boolean;
+  /** Set when the Wi-Fi-only gate closes mid-transfer (Wi-Fi dropped to mobile data): the
+   * cancelled attempt goes back to `queued` instead of `failed`, and resumes on Wi-Fi. */
+  requeue: boolean;
 }
 
 export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = {}) {
@@ -227,6 +246,46 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   /** Sermons deleted and then downloaded again while their old attempt was still winding
    * down — restarted from a clean slate once that attempt settles. */
   const restartAfterRun = new Set<string>();
+
+  let runningTransfers = 0;
+  const slotWaiters: (() => void)[] = [];
+  function acquireSlot(): Promise<void> {
+    if (runningTransfers < MAX_CONCURRENT_DOWNLOADS) {
+      runningTransfers += 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => slotWaiters.push(resolve));
+  }
+  function releaseSlot(): void {
+    const next = slotWaiters.shift();
+    if (next) next();
+    else runningTransfers -= 1;
+  }
+
+  /** A failed attempt normally lands on `failed`; one cancelled because the Wi-Fi gate
+   * closed goes back to `queued` with its metadata intact, to resume on Wi-Fi. */
+  async function failOrRequeue(sermonId: string, run: ActiveRun, reason: DownloadFailureReason, message: string): Promise<void> {
+    if (run.requeue) {
+      const existing = await deps.db.getDownload(sermonId);
+      if (existing) {
+        await deps.db.upsertQueued(sermonId, existing.title, existing.mediaType, existing.thumbnailUrl, existing.category);
+        return;
+      }
+    }
+    await deps.db.markFailed(sermonId, reason, message);
+  }
+
+  /** Best-effort, like the thumbnail: saves the sermon's `SermonDetail` on its row so the
+   * player can open it with no network (see `offlineDetails.ts`). A failure only means
+   * the backfill tries again next launch. */
+  async function saveDetailBestEffort(sermonId: string): Promise<void> {
+    try {
+      const detail = await deps.fetchSermonDetail(sermonId);
+      await deps.db.setDetailSnapshot(sermonId, JSON.stringify(detail));
+    } catch {
+      // swallowed — see above
+    }
+  }
 
   /** Every file a download of `sermonId` can leave on disk, whatever its media type. */
   async function deleteArtifacts(sermonId: string): Promise<void> {
@@ -307,6 +366,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: encryptResult.keyIdHex });
       await deps.onDownloadReady(sermonId).catch(() => {});
       await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
+      await saveDetailBestEffort(sermonId);
       if (run.removed) await deleteArtifacts(sermonId);
     } catch (err) {
       if (run.removed) {
@@ -320,7 +380,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       // and needs the same cleanup or it leaks forever.
       await deps.deleteFile(deps.paths.partFilePath(encryptedPath));
       const { reason, message } = classifyStartError(err, 'audio');
-      await deps.db.markFailed(sermonId, reason, message);
+      await failOrRequeue(sermonId, run, reason, message);
     }
   }
 
@@ -363,6 +423,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.db.markReady(sermonId, { bytesTotal, keyIdHex: null });
       await deps.onDownloadReady(sermonId).catch(() => {});
       await fetchThumbnailBestEffort(sermonId, thumbnailUrl);
+      await saveDetailBestEffort(sermonId);
       if (run.removed) await deleteArtifacts(sermonId);
     } catch (err) {
       if (run.removed) {
@@ -372,26 +433,32 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
       await deps.deleteFile(tmpPath);
       await deps.deleteFile(finalPath); // a failed moveAsync can still leave a partial file at the destination
       const { reason, message } = classifyStartError(err, 'video');
-      await deps.db.markFailed(sermonId, reason, message);
+      await failOrRequeue(sermonId, run, reason, message);
     }
   }
 
   async function runDownload(sermonId: string, mediaType: DownloadMediaType, thumbnailUrl: string | null): Promise<void> {
+    // Checked and claimed in one synchronous step, so two callers can't both start.
     if (activeRuns.has(sermonId)) return;
-    const canStart = await deps.canStartDownload();
-    if (!canStart) {
-      // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
-      // `useDownloads.ts` for the resume-on-reconnect trigger.
-      return;
-    }
-    // Re-checked after the await, and claimed in the same synchronous step, so two
-    // callers racing through the gate above can't both start.
-    if (activeRuns.has(sermonId)) return;
-    const run: ActiveRun = { removed: false };
+    const run: ActiveRun = { removed: false, requeue: false };
     activeRuns.set(sermonId, run);
     try {
-      if (mediaType === 'video') await runVideoDownload(sermonId, thumbnailUrl, run);
-      else await runAudioDownload(sermonId, thumbnailUrl, run);
+      // Waits `queued` for a free slot (MAX_CONCURRENT_DOWNLOADS).
+      await acquireSlot();
+      try {
+        if (run.removed) return;
+        // Checked once the slot is ours, not before: the network can change while a row
+        // waits its turn.
+        if (!(await deps.canStartDownload())) {
+          // Stays `queued` — the UI reads this as "waiting for Wi-Fi", not a failure. See
+          // `useDownloads.ts` for the resume-on-reconnect trigger.
+          return;
+        }
+        if (mediaType === 'video') await runVideoDownload(sermonId, thumbnailUrl, run);
+        else await runAudioDownload(sermonId, thumbnailUrl, run);
+      } finally {
+        releaseSlot();
+      }
     } finally {
       activeRuns.delete(sermonId);
       if (restartAfterRun.delete(sermonId)) void retryDownload(sermonId).catch(() => {});
@@ -469,6 +536,40 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     // free, and this stays correct even if a row's own `media_type` is ever missing/stale.
     await deleteArtifacts(sermonId);
     await deps.db.deleteDownload(sermonId);
+  }
+
+  /** Called on every network change: if Wi-Fi-only is on and the device just left Wi-Fi,
+   * stops the transfers in flight and puts them back to `queued`, so they don't carry on
+   * over mobile data. They resume on the next Wi-Fi connection like any queued row. */
+  async function pauseIfGateClosed(): Promise<void> {
+    if (activeRuns.size === 0) return;
+    if (await deps.canStartDownload()) return;
+    for (const [sermonId, run] of activeRuns) {
+      run.requeue = true;
+      deps.cancelTransfer(deps.paths.tmpDownloadFilePath(sermonId));
+      deps.cancelTransfer(deps.paths.tmpDownloadVideoFilePath(sermonId));
+    }
+  }
+
+  /** The saved `SermonDetail` for a downloaded sermon, or `null` if none was saved (or it
+   * no longer parses). */
+  async function getDetailSnapshot(sermonId: string): Promise<unknown> {
+    const json = await deps.db.getDetailSnapshot(sermonId);
+    if (!json) return null;
+    try {
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Saves a `SermonDetail` for every `ready` download that predates them. Best-effort and
+   * one at a time; offline it simply finds nothing to save and tries again next launch. */
+  async function backfillDetailSnapshots(): Promise<void> {
+    const missing = await deps.db.listReadyMissingDetail();
+    for (const sermonId of missing) {
+      await saveDetailBestEffort(sermonId);
+    }
   }
 
   async function listDownloads(): Promise<DownloadRecord[]> {
@@ -588,6 +689,9 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     listDownloads,
     getDownload,
     resumeQueuedDownloads,
+    pauseIfGateClosed,
+    getDetailSnapshot,
+    backfillDetailSnapshots,
     startupSweep,
     preparePlaybackFile,
     cleanupPlaybackTempFile,

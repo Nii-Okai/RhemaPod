@@ -105,6 +105,13 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       if (!columns.some((c) => c.name === 'thumbnail_path')) {
         await db.execAsync('ALTER TABLE downloads ADD COLUMN thumbnail_path TEXT;');
       }
+      // Migration (offline playback fix, session 2026-10-22): the sermon's own
+      // `SermonDetail` JSON, saved once the download is ready, so the player can open a
+      // downloaded sermon with no network. Nullable: rows that predate this are filled in
+      // by `downloadManager.backfillDetailSnapshots` the next time the app is online.
+      if (!columns.some((c) => c.name === 'detail_json')) {
+        await db.execAsync('ALTER TABLE downloads ADD COLUMN detail_json TEXT;');
+      }
       return db;
     })();
   }
@@ -225,6 +232,35 @@ export async function setThumbnailPath(sermonId: string, path: string | null): P
     $now: Date.now(),
   });
   return result.changes > 0;
+}
+
+/** Saves the sermon's `SermonDetail` JSON on its row. Returns whether a row was updated
+ * (`false`: the download was deleted meanwhile), same contract as `setThumbnailPath`. */
+export async function setDetailSnapshot(sermonId: string, detailJson: string): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.runAsync('UPDATE downloads SET detail_json = $detailJson WHERE sermon_id = $sermonId', {
+    $sermonId: sermonId,
+    $detailJson: detailJson,
+  });
+  return result.changes > 0;
+}
+
+export async function getDetailSnapshot(sermonId: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ detail_json: string | null }>(
+    'SELECT detail_json FROM downloads WHERE sermon_id = $sermonId',
+    { $sermonId: sermonId },
+  );
+  return row?.detail_json ?? null;
+}
+
+/** `ready` downloads with no saved `SermonDetail` yet — the backfill's work list. */
+export async function listReadyMissingDetail(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ sermon_id: string }>(
+    "SELECT sermon_id FROM downloads WHERE state = 'ready' AND detail_json IS NULL",
+  );
+  return rows.map((r) => r.sermon_id);
 }
 
 export async function deleteDownload(sermonId: string): Promise<void> {

@@ -21,7 +21,12 @@
  */
 import { ApiError, networkError } from '../../api/errors';
 import { RpaCryptoError } from '../../../modules/rpa-crypto/src/RpaCryptoError';
-import { PlaybackUnavailableError, createDownloadManager, type DownloadManagerDeps } from '../downloadManager';
+import {
+  MAX_CONCURRENT_DOWNLOADS,
+  PlaybackUnavailableError,
+  createDownloadManager,
+  type DownloadManagerDeps,
+} from '../downloadManager';
 import type { DownloadFailureReason, DownloadRecord, DownloadState } from '../types';
 
 /**
@@ -51,6 +56,7 @@ jest.mock('../../../modules/rpa-crypto', () => {
 
 function makeFakeDb() {
   const rows = new Map<string, DownloadRecord>();
+  const details = new Map<string, string>();
 
   const api: DownloadManagerDeps['db'] = {
     getDownload: jest.fn(async (sermonId: string) => rows.get(sermonId) ?? null),
@@ -121,9 +127,20 @@ function makeFakeDb() {
       row.thumbnailPath = path;
       return true;
     }),
+    setDetailSnapshot: jest.fn(async (sermonId: string, json: string) => {
+      if (!rows.has(sermonId)) return false;
+      details.set(sermonId, json);
+      return true;
+    }),
+    getDetailSnapshot: jest.fn(async (sermonId: string) => details.get(sermonId) ?? null),
+    listReadyMissingDetail: jest.fn(async () =>
+      Array.from(rows.values())
+        .filter((r) => r.state === 'ready' && !details.has(r.sermonId))
+        .map((r) => r.sermonId),
+    ),
   };
 
-  return { api, rows };
+  return { api, rows, details };
 }
 
 function seedRow(rows: Map<string, DownloadRecord>, sermonId: string, state: DownloadState, extra: Partial<DownloadRecord> = {}) {
@@ -164,6 +181,7 @@ function makeFakePaths(): DownloadManagerDeps['paths'] {
 interface Harness {
   manager: ReturnType<typeof createDownloadManager>;
   rows: Map<string, DownloadRecord>;
+  details: Map<string, string>;
   deletedFiles: string[];
   clearedDirectories: string[];
   fetchDownloadUrl: jest.Mock;
@@ -178,7 +196,7 @@ interface Harness {
 }
 
 function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
-  const { api: fakeDb, rows } = makeFakeDb();
+  const { api: fakeDb, rows, details } = makeFakeDb();
   const deletedFiles: string[] = [];
   const clearedDirectories: string[] = [];
 
@@ -200,6 +218,8 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
   const deps: Partial<DownloadManagerDeps> = {
     db: fakeDb,
     onDownloadReady,
+    fetchSermonDetail: jest.fn(async (sermonId: string) => ({ id: sermonId, title: 'Detail' })),
+    cancelTransfer: jest.fn(),
     paths: makeFakePaths(),
     ensureDir: jest.fn(async () => undefined),
     deleteFile: jest.fn(async (uri: string) => {
@@ -226,6 +246,7 @@ function makeHarness(overrides: Partial<DownloadManagerDeps> = {}): Harness {
   return {
     manager,
     rows,
+    details,
     deletedFiles,
     clearedDirectories,
     fetchDownloadUrl,
@@ -750,7 +771,7 @@ describe('downloadManager — delete while downloading (cancel)', () => {
 });
 
 async function waitForCall(mock: jest.Mock): Promise<void> {
-  for (let i = 0; i < 50 && mock.mock.calls.length === 0; i++) await Promise.resolve();
+  for (let i = 0; i < 200 && mock.mock.calls.length === 0; i++) await Promise.resolve();
   expect(mock).toHaveBeenCalled();
 }
 
@@ -758,3 +779,92 @@ async function waitForState(h: Harness, sermonId: string, state: DownloadState):
   for (let i = 0; i < 200 && h.rows.get(sermonId)?.state !== state; i++) await Promise.resolve();
   expect(h.rows.get(sermonId)?.state).toBe(state);
 }
+
+
+describe('downloadManager — saved sermon detail (offline playback)', () => {
+  it('saves the SermonDetail once the download is ready, and reads it back parsed', async () => {
+    const h = makeHarness();
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'audio');
+
+    expect(await h.manager.getDetailSnapshot('sermon-1')).toEqual({ id: 'sermon-1', title: 'Detail' });
+  });
+
+  it('a failed detail fetch never fails the download', async () => {
+    const h = makeHarness({ fetchSermonDetail: jest.fn(async () => Promise.reject(networkError())) });
+    await h.manager.enqueueDownload('sermon-1', 'Title', 'video');
+
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'ready' });
+    expect(await h.manager.getDetailSnapshot('sermon-1')).toBeNull();
+  });
+
+  it('backfills downloads that predate saved details', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'old-1', 'ready', { bytesTotal: 1 });
+    seedRow(h.rows, 'queued-1', 'queued');
+
+    await h.manager.backfillDetailSnapshots();
+
+    expect(await h.manager.getDetailSnapshot('old-1')).toEqual({ id: 'old-1', title: 'Detail' });
+    expect(await h.manager.getDetailSnapshot('queued-1')).toBeNull();
+  });
+});
+
+describe('downloadManager — concurrency cap', () => {
+  it(`transfers at most ${MAX_CONCURRENT_DOWNLOADS} at once; the rest wait queued and start as slots free`, async () => {
+    const releases: (() => void)[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const downloadToFile = jest.fn(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      inFlight -= 1;
+    });
+    const h = makeHarness({ downloadToFile });
+
+    const all = ['a', 'b', 'c', 'd'].map((id) => h.manager.enqueueDownload(id, id, 'video'));
+    for (let i = 0; i < 200 && releases.length < MAX_CONCURRENT_DOWNLOADS; i++) await Promise.resolve();
+    expect(downloadToFile).toHaveBeenCalledTimes(MAX_CONCURRENT_DOWNLOADS);
+    expect(h.rows.get('d')?.state).toBe('queued');
+
+    while (h.rows.size > 0 && [...h.rows.values()].some((r) => r.state !== 'ready')) {
+      releases.shift()?.();
+      for (let i = 0; i < 50; i++) await Promise.resolve();
+    }
+    await Promise.all(all);
+    expect(peak).toBe(MAX_CONCURRENT_DOWNLOADS);
+    expect([...h.rows.values()].every((r) => r.state === 'ready')).toBe(true);
+  });
+});
+
+describe('downloadManager — Wi-Fi dropped mid-download', () => {
+  it('puts an in-flight download back to queued (not failed) when the Wi-Fi gate closes', async () => {
+    let release!: () => void;
+    const downloadToFile = jest.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          release = () => reject(new Error('Download was cancelled'));
+        }),
+    );
+    const canStartDownload = jest.fn(async () => true);
+    const cancelTransfer = jest.fn(() => release());
+    const h = makeHarness({ downloadToFile, canStartDownload, cancelTransfer });
+
+    const attempt = h.manager.enqueueDownload('sermon-1', 'Title', 'video');
+    await waitForCall(downloadToFile);
+
+    canStartDownload.mockResolvedValue(false); // now on mobile data with Wi-Fi only on
+    await h.manager.pauseIfGateClosed();
+    await attempt;
+
+    expect(cancelTransfer).toHaveBeenCalledWith('file:///tmp/sermon-1.video.tmp');
+    expect(await h.manager.getDownload('sermon-1')).toMatchObject({ state: 'queued', failureReason: null, title: 'Title' });
+  });
+
+  it('does nothing while the gate is still open', async () => {
+    const cancelTransfer = jest.fn();
+    const h = makeHarness({ cancelTransfer });
+    await h.manager.pauseIfGateClosed();
+    expect(cancelTransfer).not.toHaveBeenCalled();
+  });
+});

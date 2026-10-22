@@ -184,9 +184,13 @@ export const queryClient = new QueryClient({
       retry: shouldRetry,
       retryDelay,
       refetchOnReconnect: true,
+      // See `lifecycle.ts`: offline is known but never pauses a request, so screens keep
+      // failing fast into their own offline states instead of hanging on "Loading…".
+      networkMode: 'always',
     },
     mutations: {
       retry: false,
+      networkMode: 'always',
     },
   },
 });

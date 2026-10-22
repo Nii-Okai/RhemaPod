@@ -4,7 +4,7 @@
  * they're the same small policy and a happy-path-only test would miss a
  * regression in, say, the "don't retry a 404" branch.
  */
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, onlineManager } from '@tanstack/react-query';
 import { ApiError, networkError } from '../../api/errors';
 import { retryDelay, shouldRetry } from '../retryPolicy';
 
@@ -100,5 +100,19 @@ describe('wired into a real QueryClient (not just the pure functions)', () => {
     // `QueryClient` schedules a `gcTime` timeout per query; clear it so
     // Jest doesn't report an open handle after this test completes.
     client.clear();
+  });
+});
+
+describe('shouldRetry while offline', () => {
+  afterEach(() => onlineManager.setOnline(true));
+
+  it('never retries a network failure once the device is known to be offline', () => {
+    onlineManager.setOnline(false);
+    expect(shouldRetry(0, networkError())).toBe(false);
+  });
+
+  it('keeps the 5xx rule unchanged while offline', () => {
+    onlineManager.setOnline(false);
+    expect(shouldRetry(0, new ApiError(503, 'Unavailable'))).toBe(true);
   });
 });
