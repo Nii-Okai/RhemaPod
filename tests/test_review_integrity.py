@@ -415,3 +415,101 @@ async def test_resubmit_after_reject_from_approved(client, engine):
     r = await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "pending_review"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Content can't change behind the review: approved media is locked, and editing
+# an unpublished sermon sends it back to draft
+# ═══════════════════════════════════════════════════════════════════════════════
+_VIDEO = {"media_type": "video", "filename": "s.mp4", "content_type": "video/mp4"}
+
+
+async def _approved(client, engine, title="Locked"):
+    ed = await make_user(client, engine, f"ed-{title.lower()}@example.com", "editor")
+    mgr = await make_user(client, engine, f"mgr-{title.lower()}@example.com", "manager")
+    sid = await _new_sermon(client, ed, title)
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+    assert r.json()["status"] == "approved"
+    return ed, mgr, sid
+
+
+async def _unpublished(client, engine, title="Pulled"):
+    ed, mgr, sid = await _approved(client, engine, title)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=mgr)
+    assert r.json()["status"] == "unpublished"
+    return ed, mgr, sid
+
+
+async def test_media_upload_to_approved_sermon_is_409(client, engine):
+    ed, mgr, sid = await _approved(client, engine)
+    for who in (ed, mgr):
+        r = await client.post(
+            f"/api/v1/sermons/{sid}/upload-url", json=_VIDEO, headers=who
+        )
+        assert r.status_code == 409, r.text
+
+
+async def test_upload_ticket_issued_in_draft_cannot_confirm_after_approval(
+    client, engine
+):
+    ed = await make_user(client, engine, "ed-late@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr-late@example.com", "manager")
+    sid = await _new_sermon(client, ed, "Late")
+    ticket = (await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=_VIDEO, headers=ed
+    )).json()
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=ed)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=mgr)
+
+    r = await client.post(
+        f"/api/v1/uploads/{ticket['job_id']}/confirm", headers=ed
+    )
+    assert r.status_code == 409, r.text
+
+
+async def test_editing_unpublished_sermon_sends_it_back_to_draft(client, engine):
+    ed, mgr, sid = await _unpublished(client, engine)
+
+    r = await client.patch(
+        f"/api/v1/sermons/{sid}", json={"title": "Changed"}, headers=ed
+    )
+    assert r.status_code == 200, r.text
+    detail = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
+    assert detail["status"] == "draft"
+
+    # It can't go straight back up — it has to be reviewed again.
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+    assert r.status_code == 409
+
+    log = (await client.get(
+        f"/api/v1/approvals/sermons/{sid}/approval-log", headers=ed
+    )).json()
+    assert log[-1]["from_status"] == "unpublished"
+    assert log[-1]["to_status"] == "draft"
+    assert "review" in log[-1]["note"]
+
+
+async def test_noop_patch_keeps_unpublished_sermon_publishable(client, engine):
+    """The editor's autosave can echo back what it loaded; that is not an
+    edit and must not reopen the sermon."""
+    ed, mgr, sid = await _unpublished(client, engine, "Echo")
+    r = await client.patch(
+        f"/api/v1/sermons/{sid}", json={"title": "Echo", "tags": []}, headers=ed
+    )
+    assert r.status_code == 200, r.text
+    detail = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
+    assert detail["status"] == "unpublished"
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=mgr)
+    assert r.status_code == 200 and r.json()["status"] == "published"
+
+
+async def test_media_upload_to_unpublished_sermon_reopens_it(client, engine):
+    ed, mgr, sid = await _unpublished(client, engine, "Remaster")
+    r = await client.post(
+        f"/api/v1/sermons/{sid}/upload-url", json=_VIDEO, headers=ed
+    )
+    assert r.status_code == 201, r.text
+    detail = (await client.get(f"/api/v1/sermons/{sid}", headers=ed)).json()
+    assert detail["status"] == "draft"

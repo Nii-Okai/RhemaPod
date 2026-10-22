@@ -920,15 +920,57 @@ _CONTENT_LOCKED_MESSAGES: dict[SermonStatus, str] = {
 }
 
 
+# Note on the approval-log row `reopen_unpublished_for_edit` writes.
+REOPENED_FOR_EDIT_NOTE = (
+    "Edited after unpublishing — needs review again before it can go live."
+)
+
+
+def ensure_not_content_locked(sermon: Sermon) -> None:
+    """409 if `sermon` is approved or published (see `_CONTENT_LOCKED_MESSAGES`)."""
+    if sermon.status in _CONTENT_LOCKED_MESSAGES:
+        raise ContentError(
+            _CONTENT_LOCKED_MESSAGES[sermon.status], status_code=409
+        )
+
+
+def reopen_unpublished_for_edit(sermon: Sermon, actor: User, db: AsyncSession) -> bool:
+    """Send an `unpublished` sermon back to `draft` because its content is
+    about to change. Returns True when it did.
+
+    `publish` accepts `unpublished` as a source so a pulled sermon can go
+    straight back up. That is only safe while the content is still what was
+    reviewed: without this, unpublish → edit → publish puts unreviewed content
+    live, and lets a manager publish their own edits (sidestepping the
+    self-review rule). So any real edit drops it to `draft`, and it has to be
+    submitted and approved again. Adds the ApprovalLog row; never commits —
+    the caller's commit carries it with the edit itself.
+    """
+    if sermon.status != SermonStatus.UNPUBLISHED:
+        return False
+    sermon.status = SermonStatus.DRAFT
+    db.add(ApprovalLog(
+        sermon_id=sermon.id,
+        from_status=SermonStatus.UNPUBLISHED.value,
+        to_status=SermonStatus.DRAFT.value,
+        actor_id=actor.id,
+        note=REOPENED_FOR_EDIT_NOTE,
+        created_at=datetime.now(timezone.utc),
+    ))
+    log.info("sermon_reopened_for_edit", sermon_id=str(sermon.id), by=str(actor.id))
+    return True
+
+
+def _normalised_tags(tags: list[str]) -> set[str]:
+    return {t.strip().lower() for t in tags if t.strip()}
+
+
 async def update_sermon(
     db: AsyncSession, sermon_id: uuid.UUID, data: SermonUpdate, editor: User
 ) -> Sermon:
     sermon = await _load_editable(db, sermon_id, editor)
 
-    if sermon.status in _CONTENT_LOCKED_MESSAGES:
-        raise ContentError(
-            _CONTENT_LOCKED_MESSAGES[sermon.status], status_code=409
-        )
+    ensure_not_content_locked(sermon)
 
     fields = data.model_dump(exclude_unset=True, exclude={"tags"})
 
@@ -959,15 +1001,24 @@ async def update_sermon(
             status_code=409,
         )
 
+    # Only a real change counts: the editor's autosave can PATCH back the
+    # values it loaded, and that must not reopen an unpublished sermon.
+    changed = any(getattr(sermon, key) != value for key, value in fields.items())
+    new_tags = _normalised_tags(data.tags) if data.tags is not None else None
+    if new_tags is not None and new_tags != {t.tag for t in sermon.tags}:
+        changed = True
+    if changed:
+        reopen_unpublished_for_edit(sermon, editor, db)
+
     for key, value in fields.items():
         setattr(sermon, key, value)
 
     # Tags are excluded from `fields` on purpose: they are not part of
     # SermonListItem / the cached catalog row, so a tags-only edit never needs
     # to bust a catalog cache entry.
-    if data.tags is not None:
+    if new_tags is not None:
         sermon.tags.clear()
-        for tag in {t.strip().lower() for t in data.tags if t.strip()}:
+        for tag in new_tags:
             sermon.tags.append(SermonTag(tag=tag))
 
     await db.commit()
@@ -2144,10 +2195,8 @@ async def confirm_thumbnail(
     # Series-only: `kind == "series"` never reaches an approval workflow at
     # all (a series is draft/published only, via `update_series`, which has no
     # equivalent lock on PUBLISHED) — nothing to extend there.
-    if kind == "sermons" and entity.status in _CONTENT_LOCKED_MESSAGES:
-        raise ContentError(
-            _CONTENT_LOCKED_MESSAGES[entity.status], status_code=409
-        )
+    if kind == "sermons":
+        ensure_not_content_locked(entity)
 
     # The key is supplied by the client, so confine it to this entity's prefix —
     # otherwise a caller could point their thumbnail at any object in the bucket.
@@ -2177,6 +2226,8 @@ async def confirm_thumbnail(
             status_code=413,
         )
 
+    if kind == "sermons" and entity.thumbnail_key != key:
+        reopen_unpublished_for_edit(entity, actor, db)
     entity.thumbnail_key = key
     await db.commit()
     await invalidate_catalog_cache()

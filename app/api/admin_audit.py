@@ -25,7 +25,7 @@ ReadDbDep = Annotated[AsyncSession, Depends(get_read_db)]
 AdminOnly = Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))]
 
 AuditCategory = Literal[
-    "auth", "users", "settings", "reports", "sermons", "announcements", "moderation"
+    "auth", "users", "settings", "reports", "data", "sermons", "announcements", "moderation"
 ]
 
 

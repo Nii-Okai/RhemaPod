@@ -2058,6 +2058,188 @@
         "title": "ContinueWatchingItem",
         "type": "object"
       },
+      "DataImportRequest": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required when `dry_run` is false: `IMPORT` for merge, `REPLACE` for replace.",
+            "title": "Confirm"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "merge",
+            "enum": [
+              "merge",
+              "replace"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "tables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tables to import from the file; all of them when omitted.",
+            "title": "Tables"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "DataImportRequest",
+        "type": "object"
+      },
+      "DataImportResponse": {
+        "properties": {
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "merge",
+              "replace"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/DataImportTableResult"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "dry_run",
+          "tables"
+        ],
+        "title": "DataImportResponse",
+        "type": "object"
+      },
+      "DataImportTableResult": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "inserted": {
+            "title": "Inserted",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "inserted",
+          "updated",
+          "deleted",
+          "skipped"
+        ],
+        "title": "DataImportTableResult",
+        "type": "object"
+      },
+      "DataTable": {
+        "properties": {
+          "importable": {
+            "title": "Importable",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "referenced_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Referenced By",
+            "type": "array"
+          },
+          "replaceable": {
+            "title": "Replaceable",
+            "type": "boolean"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "rows",
+          "importable",
+          "replaceable",
+          "referenced_by"
+        ],
+        "title": "DataTable",
+        "type": "object"
+      },
+      "DataTablesResponse": {
+        "properties": {
+          "schema_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Revision"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/DataTable"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_revision",
+          "tables"
+        ],
+        "title": "DataTablesResponse",
+        "type": "object"
+      },
       "EpisodeOrderItem": {
         "description": "One row of the reordered episode list \u2014 the minimum the client needs to\napply the new order locally.",
         "properties": {
@@ -6607,6 +6789,7 @@
                     "users",
                     "settings",
                     "reports",
+                    "data",
                     "sermons",
                     "announcements",
                     "moderation"
@@ -7129,6 +7312,132 @@
         "summary": "Restore Comment",
         "tags": [
           "admin-comments"
+        ]
+      }
+    },
+    "/api/v1/admin/data/export": {
+      "get": {
+        "operationId": "export_data_api_v1_admin_data_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tables",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tables"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Export file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Data",
+        "tags": [
+          "admin data"
+        ]
+      }
+    },
+    "/api/v1/admin/data/import": {
+      "post": {
+        "description": "Destructive when `dry_run` is false. Always preview first: the dry run\nperforms the whole import inside a transaction and rolls it back.",
+        "operationId": "import_data_api_v1_admin_data_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Data",
+        "tags": [
+          "admin data"
+        ]
+      }
+    },
+    "/api/v1/admin/data/tables": {
+      "get": {
+        "operationId": "list_tables_api_v1_admin_data_tables_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataTablesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tables",
+        "tags": [
+          "admin data"
         ]
       }
     },

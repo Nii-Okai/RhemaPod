@@ -106,9 +106,9 @@ function lockedBannerTitle(status: SermonStatus): string {
 function lockedBannerBody(status: SermonStatus): string {
   switch (status) {
     case "approved":
-      return "Fields are locked now that it’s approved. It can still be published, but there’s no way to send it back for edits.";
+      return "Fields are locked now that it’s approved. A manager can publish it, or reject it from the Review queue to send it back for edits.";
     case "published":
-      return "Fields are locked while it’s live. A manager can unpublish it from the Sermons list to edit it again.";
+      return "Fields are locked while it’s live. A manager can unpublish it from the Sermons list to edit it again — any edit then sends it back for review.";
     default:
       return "Fields are locked while a manager reviews it. Withdraw it to keep editing.";
   }
@@ -486,6 +486,11 @@ function EditorForm({ mode, initial }: EditorFormProps) {
             {locked ? (
               <Alert variant="warning" title={lockedBannerTitle(displayStatus)}>
                 {lockedBannerBody(displayStatus)}
+              </Alert>
+            ) : mode === "edit" && displayStatus === "unpublished" ? (
+              <Alert variant="warning" title="This sermon is unpublished">
+                Any change you save moves it back to draft. It will need to be
+                submitted and approved again before it can go live.
               </Alert>
             ) : null}
 

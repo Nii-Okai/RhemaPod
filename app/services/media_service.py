@@ -55,6 +55,8 @@ from app.services.content_service import (
     ContentError,
     effective_tier,
     ensure_editor_can_access,
+    ensure_not_content_locked,
+    reopen_unpublished_for_edit,
     sermon_publish_time_passed,
     staff_scope_hides,
 )
@@ -88,6 +90,11 @@ async def _load_sermon_for_editor(
         raise ContentError(
             "Unpublish the sermon before replacing its media", status_code=409
         )
+    # An approved sermon is content-locked like its fields and thumbnail:
+    # swapping its media would publish something nobody reviewed.
+    ensure_not_content_locked(sermon)
+    # Changing an unpublished sermon's media sends it back through review.
+    reopen_unpublished_for_edit(sermon, actor, db)
     return sermon
 
 
@@ -213,6 +220,13 @@ async def confirm_upload(
         raise ContentError(
             f"Upload is already '{job.status.value}'", status_code=409
         )
+
+    # The ticket may have been issued while the sermon was still a draft; it
+    # must not land on a sermon that has since been approved or published.
+    target = await db.get(Sermon, job.sermon_id)
+    if target is not None:
+        ensure_not_content_locked(target)
+        reopen_unpublished_for_edit(target, actor, db)
 
     store = storage_module.get_storage()
     # Trust but verify: never mark an upload complete on the client's word alone.

@@ -70,6 +70,21 @@ const REDIRECT_STATUSES = new Set([300, 301, 302, 303, 307, 308]);
 const MAX_BODY_BYTES = 1_000_000;
 
 /**
+ * The one exception to `MAX_BODY_BYTES`: the admin database import posts a
+ * whole export file. Admin-only upstream (FastAPI `require_role(ADMIN)`), and
+ * FastAPI applies the same 25 MB ceiling (`Settings.max_import_bytes`). It
+ * gets a longer read deadline too, since a big file on a slow link is honest.
+ */
+const LARGE_BODY_PATHS: Record<string, { maxBytes: number; timeoutMs: number }> = {
+  "admin/data/import": { maxBytes: 25 * 1024 * 1024, timeoutMs: 120_000 },
+};
+
+function bodyLimitsFor(segments: string[]): { maxBytes: number; timeoutMs: number } {
+  const path = segments.join("/").replace(/\/+/g, "/").replace(/^\//, "").toLowerCase();
+  return LARGE_BODY_PATHS[path] ?? { maxBytes: MAX_BODY_BYTES, timeoutMs: bodyReadTimeoutMs() };
+}
+
+/**
  * Wall-clock ceiling on reading the request body off the stream. Without it a
  * slow drip that stays under `MAX_BODY_BYTES` parks a handler until Node's
  * ~300s `requestTimeout` — a cheap way to tie up this single-instance process.
@@ -134,15 +149,17 @@ function serviceUnavailable(): NextResponse {
  */
 async function readCappedBody(
   req: NextRequest,
+  maxBytes: number = MAX_BODY_BYTES,
+  timeoutMs: number = bodyReadTimeoutMs(),
 ): Promise<ArrayBuffer | undefined | "too-large" | "timeout"> {
   if (!req.body) {
     const buf = await req.arrayBuffer();
-    if (buf.byteLength > MAX_BODY_BYTES) return "too-large";
+    if (buf.byteLength > maxBytes) return "too-large";
     return buf.byteLength > 0 ? buf : undefined;
   }
 
   const reader = req.body.getReader();
-  const deadline = AbortSignal.timeout(bodyReadTimeoutMs());
+  const deadline = AbortSignal.timeout(timeoutMs);
   const onTimeout = () => {
     // Unblocks a pending reader.read() (it resolves { done: true }); the
     // deadline.aborted checks below turn that into a "timeout" result.
@@ -158,7 +175,7 @@ async function readCappedBody(
       if (done) break;
       if (!value) continue;
       total += value.byteLength;
-      if (total > MAX_BODY_BYTES) {
+      if (total > maxBytes) {
         await reader.cancel();
         return "too-large";
       }
@@ -278,11 +295,12 @@ export async function handleBffRequest(
   const method = req.method.toUpperCase();
   let body: ArrayBuffer | undefined;
   if (method !== "GET" && method !== "HEAD") {
+    const limits = bodyLimitsFor(pathSegments);
     const declaredLength = Number(req.headers.get("content-length") ?? "");
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+    if (Number.isFinite(declaredLength) && declaredLength > limits.maxBytes) {
       return jsonError(413, "Request body too large.");
     }
-    const capped = await readCappedBody(req);
+    const capped = await readCappedBody(req, limits.maxBytes, limits.timeoutMs);
     if (capped === "too-large") {
       return jsonError(413, "Request body too large.");
     }

@@ -6,8 +6,8 @@ import type { SermonStatus } from "@/components/sermons/sermon-status";
 /* W7 — the `···` row-menu matrix (design "Row menu actions by status"). Pure
    status/role → items. The rendered menu is covered in the dom project; this
    locks the matrix itself, including the two backend-shaped rules:
-   "never offer Publish/Unpublish to an Editor" and "Withdraw is disabled
-   (no backend transition — GATE 3 Batch 2)". */
+   "never offer Publish/Unpublish to an Editor" and "an Editor can't
+   withdraw once a manager has started the review". */
 
 const labels = (status: SermonStatus, role: string) =>
   rowMenuItems(status, role).map((item) => item.label);
@@ -23,14 +23,23 @@ describe("rowMenuItems", () => {
     }
   });
 
-  it("pending_review / under_review → Edit (locked) · Withdraw, disabled", () => {
-    for (const status of ["pending_review", "under_review"] as SermonStatus[]) {
-      const items = rowMenuItems(status, "editor");
+  it("pending_review → Edit (locked) · Withdraw, enabled for every role", () => {
+    for (const role of ["editor", "manager", "admin"]) {
+      const items = rowMenuItems("pending_review", role);
       expect(items.map((i) => i.label)).toEqual(["Edit (locked)", "Withdraw"]);
-      const withdraw = items.find((i) => i.action === "withdraw")!;
-      expect(withdraw.disabled).toBe(true);
-      expect(withdraw.title).toMatch(/GATE 3 Batch 2/);
+      expect(items.find((i) => i.action === "withdraw")!.disabled).toBeFalsy();
     }
+  });
+
+  it("under_review → Withdraw disabled for an editor, enabled for a manager", () => {
+    const editor = rowMenuItems("under_review", "editor");
+    expect(editor.map((i) => i.label)).toEqual(["Edit (locked)", "Withdraw"]);
+    const withdraw = editor.find((i) => i.action === "withdraw")!;
+    expect(withdraw.disabled).toBe(true);
+    expect(withdraw.title).toMatch(/manager is reviewing/);
+
+    const manager = rowMenuItems("under_review", "manager");
+    expect(manager.find((i) => i.action === "withdraw")!.disabled).toBeFalsy();
   });
 
   it("rejected → Edit · Resubmit", () => {
@@ -38,9 +47,9 @@ describe("rowMenuItems", () => {
   });
 
   it("published → Unpublish for a manager, never for an editor", () => {
-    expect(labels("published", "editor")).toEqual(["Edit"]);
-    expect(labels("published", "manager")).toEqual(["Edit", "Unpublish"]);
-    expect(labels("published", "admin")).toEqual(["Edit", "Unpublish"]);
+    expect(labels("published", "editor")).toEqual(["Edit (locked)"]);
+    expect(labels("published", "manager")).toEqual(["Edit (locked)", "Unpublish"]);
+    expect(labels("published", "admin")).toEqual(["Edit (locked)", "Unpublish"]);
   });
 
   it("unpublished → Publish for a manager, never for an editor", () => {
@@ -48,8 +57,9 @@ describe("rowMenuItems", () => {
     expect(labels("unpublished", "manager")).toEqual(["Edit", "Publish"]);
   });
 
-  it("approved → Edit only (design matrix is silent on it)", () => {
-    expect(labels("approved", "manager")).toEqual(["Edit"]);
+  it("approved → locked Edit, plus Publish for a manager", () => {
+    expect(labels("approved", "editor")).toEqual(["Edit (locked)"]);
+    expect(labels("approved", "manager")).toEqual(["Edit (locked)", "Publish"]);
   });
 
   it("marks Delete and Unpublish destructive", () => {

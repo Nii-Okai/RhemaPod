@@ -28,10 +28,8 @@
  *   resubmit  POST /sermons/{id}/submit  (same route)     pending_review
  *   unpublish POST /approvals/sermons/{id}/unpublish      unpublished
  *   publish   POST /approvals/sermons/{id}/publish        published
+ *   withdraw  POST /sermons/{id}/withdraw                 draft
  *   delete    DELETE /sermons/{id}                        (row removed)
- *
- * "Withdraw" is absent by design — it has no backend transition (see
- * `row-menu-items.ts`, [GATE 3 Batch 2]).
  */
 
 "use client";
@@ -53,6 +51,7 @@ export type WorkflowKind =
   | "resubmit"
   | "unpublish"
   | "publish"
+  | "withdraw"
   | "delete";
 
 export interface WorkflowRow {
@@ -83,6 +82,10 @@ const ENDPOINT: Record<WorkflowKind, (id: string) => Promise<unknown>> = {
     api.POST("/api/v1/approvals/sermons/{sermon_id}/publish", {
       params: { path: { sermon_id: id } },
     }),
+  withdraw: (id) =>
+    api.POST("/api/v1/sermons/{sermon_id}/withdraw", {
+      params: { path: { sermon_id: id } },
+    }),
   delete: (id) =>
     api.DELETE("/api/v1/sermons/{sermon_id}", {
       params: { path: { sermon_id: id } },
@@ -94,6 +97,7 @@ const NEXT_STATUS: Partial<Record<WorkflowKind, SermonStatus>> = {
   resubmit: "pending_review",
   unpublish: "unpublished",
   publish: "published",
+  withdraw: "draft",
 };
 
 const VERB: Record<WorkflowKind, string> = {
@@ -101,6 +105,7 @@ const VERB: Record<WorkflowKind, string> = {
   resubmit: "resubmit",
   unpublish: "unpublish",
   publish: "publish",
+  withdraw: "withdraw",
   delete: "delete",
 };
 
@@ -321,6 +326,7 @@ export function useSermonWorkflow(options: UseSermonWorkflowOptions) {
     resubmit: (rows: WorkflowRow[]) => run("resubmit", rows),
     unpublish: (rows: WorkflowRow[]) => run("unpublish", rows),
     publish: (rows: WorkflowRow[]) => run("publish", rows),
+    withdraw: (rows: WorkflowRow[]) => run("withdraw", rows),
     remove: (rows: WorkflowRow[]) => run("delete", rows),
   };
 }

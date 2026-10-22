@@ -292,6 +292,10 @@ class Settings(BaseSettings):
     trusted_proxies: list[str] = []
     # Reject request bodies larger than this before parsing (bytes).
     max_request_bytes: int = 2 * 1024 * 1024
+    # The admin database import (`POST /admin/data/import`) is the one JSON
+    # body allowed past `max_request_bytes`: an export file is the whole
+    # document. Admin only; the BFF applies the same ceiling.
+    max_import_bytes: int = 25 * 1024 * 1024
 
     # --- Social sign-in (ADR 0015) ---
     # Google ships first and must be real (Isaac's decision): client IDs are
