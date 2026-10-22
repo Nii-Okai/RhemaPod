@@ -73,13 +73,10 @@ def image_url(key: str | None) -> str | None:
     from app.core import storage as storage_module
 
     try:
-        presigned = storage_module.get_storage().presigned_download_url(
-            settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
-        )
+        return storage_module.stable_image_url(key)
     except Exception:
         log.warning("announcement_image_url_failed", key=key)
         return None
-    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
 
 
 def to_public(ann: Announcement) -> dict:

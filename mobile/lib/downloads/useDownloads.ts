@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import * as Network from 'expo-network';
 import { ACTIVE_STATES, type DownloadMediaType, type DownloadRecord } from './types';
 import { downloadManager, type DownloadManager } from './downloadManager';
 import { useDownloadPreferences } from '../settings/useDownloadPreferences';
+import { seedOfflineDetails } from './offlineDetails';
 
 /**
  * App-facing surface over `downloadManager` (plan W4.5) — the Downloads tab, the
@@ -44,6 +45,9 @@ export interface UseDownloadsResult {
   ) => Promise<void>;
   retry: (sermonId: string) => Promise<void>;
   remove: (sermonId: string) => Promise<void>;
+  /** True while Wi-Fi-only is on and the device isn't on Wi-Fi — queued downloads are
+   * waiting for Wi-Fi, not for their turn, and the UI says so. */
+  waitingForWifi: boolean;
   find: (sermonId: string) => DownloadRecord | undefined;
 }
 
@@ -115,6 +119,7 @@ async function refreshStore(manager: DownloadManager, store: SharedStore): Promi
       const list = await manager.listDownloads();
       setSnapshot(store, { downloads: list, isLoading: false });
       ensurePolling(manager, store);
+      await seedOfflineDetails(manager, list).catch(() => {});
     })().finally(() => {
       store.refreshing = null;
     });
@@ -130,6 +135,10 @@ function ensureStartupSweep(manager: DownloadManager, store: SharedStore): Promi
     // queued downloads sit waiting until the network next changes.
     void store.startupSweep
       .then(() => manager.resumeQueuedDownloads())
+      .then(() => refreshStore(manager, store))
+      // Downloads made before details were saved get one now (online only; offline it
+      // just fails quietly and runs again next launch).
+      .then(() => manager.backfillDetailSnapshots())
       .then(() => refreshStore(manager, store))
       .catch(() => {});
   }
@@ -197,6 +206,8 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
   );
   const getSnapshot = useCallback(() => store.snapshot, [store]);
   const { downloads, isLoading } = useSyncExternalStore(subscribe, getSnapshot);
+  // Optimistic until the first read lands, so nothing flashes "Waiting for Wi-Fi".
+  const [onWifi, setOnWifi] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,12 +230,26 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
   }, [preferences.wifiOnly, manager, store]);
 
   useEffect(() => {
+    let active = true;
+    Promise.resolve(Network.getNetworkStateAsync())
+      .then((state) => {
+        if (active && state) setOnWifi(state.type === Network.NetworkStateType.WIFI && state.isConnected === true);
+      })
+      .catch(() => {});
     const subscription = Network.addNetworkStateListener((state) => {
+      setOnWifi(state.type === Network.NetworkStateType.WIFI && state.isConnected === true);
       if (state.type === Network.NetworkStateType.WIFI && state.isConnected) {
         void manager.resumeQueuedDownloads().then(() => refreshStore(manager, store));
+      } else {
+        // Left Wi-Fi: with Wi-Fi-only on, transfers in flight go back to `queued` rather
+        // than carrying on over mobile data.
+        void manager.pauseIfGateClosed().then(() => refreshStore(manager, store));
       }
     });
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      subscription.remove();
+    };
   }, [manager, store]);
 
   const download = useCallback(
@@ -279,5 +304,6 @@ export function useDownloads(manager: DownloadManager = downloadManager): UseDow
     retry,
     remove,
     find,
+    waitingForWifi: preferences.wifiOnly && !onWifi,
   };
 }

@@ -66,16 +66,22 @@ export function EpisodeDownloadButton({
     const progress = record.state === 'downloading' ? record.progress : 0;
     return (
       <Pressable
-        accessibilityRole="progressbar"
+        accessibilityRole="button"
         accessibilityLabel={
           record.state === 'downloading'
-            ? `Downloading ${episodeTitle}, ${Math.round(progress * 100)} percent`
-            : `${episodeTitle} queued for download`
+            ? `Downloading ${episodeTitle}, ${Math.round(progress * 100)} percent. Cancel download`
+            : `${episodeTitle} ${downloads.waitingForWifi ? 'waiting for Wi-Fi' : 'queued for download'}. Cancel download`
         }
+        onPress={() => {
+          void downloads.remove(episodeId);
+        }}
+        hitSlop={8}
         style={styles.ringWrap}
       >
+        {/* An X in the ring, not the arrow, while it can be cancelled: tapping stops it
+            (App Store-style). */}
         <CircularProgress progress={progress} size={24} strokeWidth={2.5} spinning>
-          <PlatformIcon name="arrow-down" size={11} color={colors.text.secondary} />
+          <PlatformIcon name="close" size={12} color={colors.text.secondary} />
         </CircularProgress>
       </Pressable>
     );

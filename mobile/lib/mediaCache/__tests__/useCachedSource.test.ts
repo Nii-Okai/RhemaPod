@@ -172,6 +172,44 @@ describe('useCachedSource', () => {
     expect(deps.manifestGet).not.toHaveBeenCalled();
   });
 
+  it('a reopen that already started streaming keeps its URL once freshness confirms (no player remount)', async () => {
+    // Reopening a sermon in the same session: the previous /stream response is still in
+    // memory, so the player mounts on it before the fresh fetch lands and the cache is
+    // allowed in. Flipping to a loading gate (or a new URL) at that point would unmount
+    // and restart the player mid-play.
+    const deps = makeDeps({
+      manifestGet: jest.fn().mockResolvedValue({
+        mediaRefId: MEDIA_REF.id,
+        sermonId: SERMON_ID,
+        fileName: FILE_NAME,
+        sizeBytes: 500,
+        lastAccessedAt: NOW,
+        createdAt: NOW,
+      }),
+      getFileInfo: jest.fn().mockResolvedValue({ exists: true, size: 500 }),
+    });
+    const refreshed: KeyVariant = { type: 'audio', url: 'https://example.com/a.mp3?sig=new' };
+    const seen: { isLoading: boolean; effectiveUrl: string | null }[] = [];
+    const { result, rerender } = renderHook(
+      ({ variant, enabled }: { variant: KeyVariant; enabled: boolean }) => {
+        const r = useCachedSource({ sermonId: SERMON_ID, mediaRefs: [MEDIA_REF], variant, enabled, expiresAt: EXPIRES_AT }, deps);
+        seen.push({ isLoading: r.isLoading, effectiveUrl: r.effectiveUrl });
+        return r;
+      },
+      { initialProps: { variant: AUDIO_VARIANT, enabled: false } },
+    );
+    expect(result.current.effectiveUrl).toBe(AUDIO_VARIANT.url);
+
+    rerender({ variant: refreshed, enabled: true });
+    await waitFor(() => expect(deps.manifestGet).toHaveBeenCalled());
+    await waitFor(() => expect(deps.manifestTouch).toHaveBeenCalled());
+
+    expect(seen.every((r) => !r.isLoading && r.effectiveUrl === AUDIO_VARIANT.url)).toBe(true);
+    // Already cached, so leaving never re-fills it.
+    result.current.reportExit(50, 100);
+    expect(deps.requestFill).not.toHaveBeenCalled();
+  });
+
   describe('reportExit on a miss', () => {
     async function renderMiss(deps: jest.Mocked<CachedSourceDeps>) {
       const { result } = renderHook(() =>

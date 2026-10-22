@@ -24,9 +24,11 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import io
+import threading
 import uuid
 import zlib
 from base64 import b64encode
+from datetime import datetime, timezone
 from struct import pack
 from typing import BinaryIO, Protocol
 
@@ -158,7 +160,12 @@ class Storage(Protocol):
         sync, ADR 0015, fetching a provider's profile picture server-side)."""
         ...
 
-    def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str: ...
+    def presigned_download_url(
+        self, bucket: str, key: str, expires_in: int, *, signed_at: datetime | None = None
+    ) -> str:
+        """`signed_at` pins the signature's timestamp (default: now), so two calls
+        with the same arguments return the same URL — see `stable_image_url`."""
+        ...
 
     def object_exists(self, bucket: str, key: str) -> bool: ...
 
@@ -220,7 +227,9 @@ class LocalStorage:
         self._objects.add((bucket, key))
         self._put_objects[(bucket, key)] = (data, content_type)
 
-    def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
+    def presigned_download_url(
+        self, bucket: str, key: str, expires_in: int, *, signed_at: datetime | None = None
+    ) -> str:
         return f"https://local-storage.invalid/{bucket}/{key}?expires={expires_in}"
 
     def object_exists(self, bucket: str, key: str) -> bool:
@@ -315,12 +324,15 @@ class S3Storage:
             log.error("s3_put_object_failed", bucket=bucket, key=key, code=code)
             raise StorageError(f"Could not write object (S3 error {code}).") from exc
 
-    def presigned_download_url(self, bucket: str, key: str, expires_in: int) -> str:
-        return self._client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=expires_in,
-        )
+    def presigned_download_url(
+        self, bucket: str, key: str, expires_in: int, *, signed_at: datetime | None = None
+    ) -> str:
+        with _signing_time(signed_at):
+            return self._client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bucket, "Key": key},
+                ExpiresIn=expires_in,
+            )
 
     def object_exists(self, bucket: str, key: str) -> bool:
         from botocore.exceptions import ClientError
@@ -823,3 +835,73 @@ def cdn_url_for(key: str, *, presigned_fallback: str) -> str:
             ),
         )
     return presigned_fallback
+
+
+# ── Stable image URLs ─────────────────────────────────────────────────────────
+# A presigned URL's signature covers the moment it was signed, so signing the same
+# key twice a second apart yields two different URLs. Phones cache images by URL,
+# which meant every list reload re-downloaded every thumbnail and cached images were
+# rarely there offline. Image URLs are therefore signed at the start of a fixed
+# window: every request inside the window gets the identical URL, and the expiry is
+# stretched so the URL still has at least `stream_url_expire_seconds` left when the
+# window ends. SigV4 caps a presigned URL at 7 days, well above window + 6h.
+IMAGE_URL_WINDOW_SECONDS = 24 * 60 * 60
+
+_signing = threading.local()
+
+
+class _signing_time:
+    """Pins botocore's SigV4 clock to `at` for this thread only, for the duration of
+    the `with` block. Thread-local, not a global patch: a concurrent header-signed
+    S3 call on another thread must keep signing with the real time, or S3 rejects
+    it as skewed."""
+
+    _installed = False
+
+    def __init__(self, at: datetime | None) -> None:
+        self._at = at
+
+    def __enter__(self) -> None:
+        if self._at is None:
+            return
+        _signing_time._install()
+        _signing.at = self._at
+
+    def __exit__(self, *exc) -> None:
+        if self._at is not None:
+            _signing.at = None
+
+    @staticmethod
+    def _install() -> None:
+        if _signing_time._installed:
+            return
+        import botocore.auth
+
+        real_now = botocore.auth.get_current_datetime
+
+        def _now(remove_tzinfo: bool = True):
+            at = getattr(_signing, "at", None)
+            if at is None:
+                return real_now(remove_tzinfo)
+            at = at.astimezone(timezone.utc)
+            return at.replace(tzinfo=None) if remove_tzinfo else at
+
+        botocore.auth.get_current_datetime = _now
+        _signing_time._installed = True
+
+
+def stable_image_url(key: str, *, now: datetime | None = None) -> str:
+    """A fetchable URL for an image object (sermon/series cover, avatar, announcement
+    image, playlist cover) that stays byte-identical for a whole
+    `IMAGE_URL_WINDOW_SECONDS` window, so the app's image cache keeps hitting. Media
+    playback URLs don't use this; they stay signed per request."""
+    now = now or datetime.now(timezone.utc)
+    epoch = int(now.timestamp())
+    window_start = datetime.fromtimestamp(
+        epoch - epoch % IMAGE_URL_WINDOW_SECONDS, tz=timezone.utc
+    )
+    expires_in = IMAGE_URL_WINDOW_SECONDS + settings.stream_url_expire_seconds
+    presigned = get_storage().presigned_download_url(
+        settings.object_store_media_bucket, key, expires_in, signed_at=window_start
+    )
+    return cdn_url_for(key, presigned_fallback=presigned)

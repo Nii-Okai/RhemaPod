@@ -3,6 +3,7 @@ import * as Network from 'expo-network';
 import { __resetStartupSweepForTests, useDownloads } from '../useDownloads';
 import type { DownloadManager } from '../downloadManager';
 import type { DownloadRecord } from '../types';
+import { queryClient, queryKeys } from '../../query/queryClient';
 
 /**
  * `useDownloads.ts` imports the real `downloadManager` singleton from `./downloadManager`
@@ -82,6 +83,9 @@ function makeFakeManager(initial: DownloadRecord[] = []): jest.Mocked<DownloadMa
     listDownloads: jest.fn(async () => rows),
     getDownload: jest.fn(async (sermonId: string) => rows.find((r) => r.sermonId === sermonId) ?? null),
     resumeQueuedDownloads: jest.fn(async () => undefined),
+    pauseIfGateClosed: jest.fn(async () => undefined),
+    getDetailSnapshot: jest.fn(async () => null),
+    backfillDetailSnapshots: jest.fn(async () => undefined),
     startupSweep: jest.fn(async () => undefined),
     preparePlaybackFile: jest.fn(async () => 'file:///playback-tmp/x'),
     cleanupPlaybackTempFile: jest.fn(async () => undefined),
@@ -279,5 +283,44 @@ describe('useDownloads', () => {
     });
 
     expect(manager.resumeQueuedDownloads).toHaveBeenCalled();
+  });
+
+  it('asks the manager to pause in-flight transfers when the device leaves Wi-Fi', async () => {
+    let listener: ((event: { type: string; isConnected: boolean }) => void) | undefined;
+    (Network.addNetworkStateListener as jest.Mock).mockImplementation((cb) => {
+      listener = cb;
+      return { remove: jest.fn() };
+    });
+
+    const manager = makeFakeManager([]);
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      listener?.({ type: 'CELLULAR', isConnected: true });
+      await Promise.resolve();
+    });
+
+    expect(manager.pauseIfGateClosed).toHaveBeenCalled();
+    expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1); // only the launch resume
+  });
+
+  it('seeds the saved sermon detail of a ready download into the query cache, with its local thumbnail', async () => {
+    queryClient.clear();
+    const manager = makeFakeManager([record('sermon-1', { thumbnailPath: 'file:///downloads/sermon-1.thumb' })]);
+    manager.getDetailSnapshot.mockResolvedValue({ id: 'sermon-1', title: 'Saved', thumbnail_url: 'https://expired' });
+
+    renderHook(() => useDownloads(manager));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.sermons.detail('sermon-1'))).toEqual({
+        id: 'sermon-1',
+        title: 'Saved',
+        thumbnail_url: 'file:///downloads/sermon-1.thumb',
+      }),
+    );
+    // Always stale, so an online mount still refetches the live detail.
+    expect(queryClient.getQueryState(queryKeys.sermons.detail('sermon-1'))?.dataUpdatedAt).toBe(0);
+    queryClient.clear();
   });
 });

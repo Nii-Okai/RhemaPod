@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable } from 'react-native';
 import { AppText } from './Text';
 import { CircularProgress } from './CircularProgress';
 import { PopIn } from './PopIn';
@@ -105,14 +105,34 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
   const records = items.map((item) => downloads.find(item.sermonId));
   const status = aggregate(items, records);
 
+  // Tapping a queued/in-progress pill cancels whatever hasn't finished; episodes already
+  // downloaded stay downloaded.
+  const cancelActive = () => {
+    for (let i = 0; i < items.length; i++) {
+      const state = records[i]?.state;
+      if (state === 'queued' || state === 'downloading') void downloads.remove(items[i].sermonId);
+    }
+  };
+
   if (status.kind === 'queued') {
+    const queuedLabel = downloads.waitingForWifi ? 'Waiting for Wi-Fi' : compact ? 'Queued' : 'Queued…';
     return (
-      <View style={[shell, styles.pillRow]}>
-        <ActivityIndicator size="small" color={colors.text.primary} />
+      <Pressable
+        onPress={cancelActive}
+        accessibilityRole="button"
+        accessibilityLabel={`${downloads.waitingForWifi ? 'Waiting for Wi-Fi' : 'Queued'}. Cancel download`}
+        style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
+      >
+        {downloads.waitingForWifi ? (
+          <PlatformIcon name="wifi-outline" size={iconSize} color={colors.text.primary} />
+        ) : (
+          <ActivityIndicator size="small" color={colors.text.primary} />
+        )}
         <AppText variant={textVariant} tone="primary" numberOfLines={lines} style={textStyle}>
-          {compact ? 'Queued' : 'Queued…'}
+          {queuedLabel}
         </AppText>
-      </View>
+        <PlatformIcon name="close" size={iconSize - 2} color={colors.text.secondary} />
+      </Pressable>
     );
   }
 
@@ -140,10 +160,11 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
     const progressLabel =
       status.total > 1 ? `Downloading ${status.doneCount} of ${status.total}… ${percent}%` : `Downloading… ${percent}%`;
     return (
-      <View
-        style={[shell, styles.pillRow]}
-        accessibilityRole="progressbar"
-        accessibilityLabel={progressLabel}
+      <Pressable
+        onPress={cancelActive}
+        style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`${progressLabel}. Cancel download`}
       >
         <CircularProgress progress={status.progress} size={20} strokeWidth={2.5} spinning>
           <PlatformIcon name="arrow-down" size={10} color={colors.text.primary} />
@@ -151,7 +172,8 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
         <AppText variant={textVariant} tone="primary" numberOfLines={lines} style={textStyle}>
           {compact ? `${percent}%` : progressLabel}
         </AppText>
-      </View>
+        <PlatformIcon name="close" size={iconSize - 2} color={colors.text.secondary} />
+      </Pressable>
     );
   }
 

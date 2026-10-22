@@ -19,6 +19,9 @@ import {
   markDownloading,
   markFailed,
   markReady,
+  getDetailSnapshot,
+  listReadyMissingDetail,
+  setDetailSnapshot,
   setThumbnailPath,
   updateProgress,
   upsertQueued,
@@ -29,6 +32,7 @@ interface FakeRow {
   title: string;
   media_type: string;
   thumbnail_path: string | null;
+  detail_json?: string | null;
   state: string;
   progress: number;
   bytes_total: number | null;
@@ -97,6 +101,10 @@ function makeFakeDatabase() {
         // `downloadManager.ts`), so this is the one statement in this fake whose `changes`
         // count must genuinely reflect whether a row existed, not just always report 1.
         return { changes: row ? 1 : 0, lastInsertRowId: 0 };
+      } else if (sql.includes('detail_json = $detailJson')) {
+        const row = rows.get(sermonId);
+        if (row) row.detail_json = params.$detailJson as string;
+        return { changes: row ? 1 : 0, lastInsertRowId: 0 };
       } else if (sql.includes("state = 'failed'")) {
         const row = rows.get(sermonId);
         if (row) {
@@ -117,6 +125,9 @@ function makeFakeDatabase() {
     }),
     getAllAsync: jest.fn(async (sql: string) => {
       const all = Array.from(rows.values());
+      if (sql.includes('detail_json IS NULL')) {
+        return all.filter((r) => r.state === 'ready' && !r.detail_json);
+      }
       if (sql.includes("state IN ('queued', 'downloading')")) {
         return all.filter((r) => r.state === 'queued' || r.state === 'downloading').sort((a, b) => a.created_at - b.created_at);
       }
@@ -299,5 +310,26 @@ describe('downloads db', () => {
     expect(execCalls.some((sql) => sql.includes('ADD COLUMN media_type'))).toBe(false);
     expect(execCalls.some((sql) => sql.includes('ADD COLUMN thumbnail_url'))).toBe(false);
     expect(execCalls.some((sql) => sql.includes('ADD COLUMN category'))).toBe(false);
+  });
+});
+
+
+describe('db — sermon detail snapshot (offline playback)', () => {
+  it('saves and reads back a snapshot, and lists ready rows still missing one', async () => {
+    await upsertQueued('sermon-1', 'One', 'audio');
+    await markReady('sermon-1', { bytesTotal: 1, keyIdHex: null });
+    await upsertQueued('sermon-2', 'Two', 'audio');
+    await markReady('sermon-2', { bytesTotal: 1, keyIdHex: null });
+    await upsertQueued('sermon-3', 'Three', 'audio');
+
+    expect(await setDetailSnapshot('sermon-1', '{"id":"sermon-1"}')).toBe(true);
+
+    expect(await getDetailSnapshot('sermon-1')).toBe('{"id":"sermon-1"}');
+    expect(await getDetailSnapshot('sermon-2')).toBeNull();
+    expect(await listReadyMissingDetail()).toEqual(['sermon-2']);
+  });
+
+  it('reports false when the row was deleted before the snapshot landed', async () => {
+    expect(await setDetailSnapshot('gone', '{}')).toBe(false);
   });
 });

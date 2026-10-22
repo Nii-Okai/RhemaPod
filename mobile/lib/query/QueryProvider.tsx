@@ -2,6 +2,7 @@ import React from 'react';
 import { defaultShouldDehydrateQuery, type Query } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { MAX_AGE_MS, sqliteQueryPersister } from './persister';
+import { installQueryLifecycle } from './lifecycle';
 import { queryClient, queryKeys } from './queryClient';
 
 /**
@@ -60,6 +61,9 @@ export function shouldPersistMutation(): boolean {
  * `persister.ts`).
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
+  React.useEffect(() => {
+    installQueryLifecycle();
+  }, []);
   return (
     <PersistQueryClientProvider
       client={queryClient}
