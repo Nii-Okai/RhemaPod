@@ -464,6 +464,8 @@ def build_summary(
         return f"{actor} deactivated {target}"
     if action == AuditAction.REACTIVATED.value:
         return f"{actor} reactivated {target}"
+    if action == AuditAction.USER_DELETED.value:
+        return f"{actor} removed {target}"
     if action == AuditAction.SETTINGS_UPDATED.value:
         changed = ", ".join(details.get("changed") or []) or "church settings"
         return f"{actor} updated {changed}"

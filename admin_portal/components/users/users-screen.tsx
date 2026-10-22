@@ -26,6 +26,7 @@ import {
   USERS_PAGE_SIZE,
   toRoleFilter,
   useChangeUserRole,
+  useDeleteUser,
   useResendInvite,
   useSetUserActive,
   useUsers,
@@ -200,6 +201,9 @@ export function UsersScreen() {
   const changeRole = useChangeUserRole();
   const setActive = useSetUserActive();
   const resendInvite = useResendInvite();
+  const deleteUser = useDeleteUser();
+  const [removeTarget, setRemoveTarget] = React.useState<UserPublic | null>(null);
+  const [removeMessage, setRemoveMessage] = React.useState<string | null>(null);
 
   // Active admins visible on this page — the last-admin client gate. The
   // backend 409 is the real invariant; this only hides an affordance that
@@ -280,8 +284,28 @@ export function UsersScreen() {
     );
   };
 
+  const runRemove = (row: UserPublic) => {
+    setActionError(null);
+    deleteUser.mutate(
+      { id: row.id },
+      {
+        onSuccess: () => {
+          setRemoveTarget(null);
+          setRemoveMessage(null);
+          setToast(`Removed ${personLabel(row)}.`);
+        },
+        onError: (err) =>
+          setRemoveMessage(errorText(err, "Couldn’t remove this account.")),
+      },
+    );
+  };
+
   const handleRowAction = (row: UserPublic, action: UserRowAction) => {
     switch (action) {
+      case "remove":
+        setRemoveMessage(null);
+        setRemoveTarget(row);
+        break;
       case "deactivate":
         setConfirmMessage(null);
         setConfirmTarget(row);
@@ -375,7 +399,7 @@ export function UsersScreen() {
     <>
       <PageHeader
         title="Users & roles"
-        subhead="Staff accounts, invites and inline role changes. Invites work once and expire in 48 hours. The last admin can’t be demoted or deactivated."
+        subhead="Staff accounts, invites and inline role changes. Invites work once and expire in 48 hours. Deactivated accounts can be removed by an admin. The last admin can’t be demoted or deactivated."
         actions={<InviteStaffDialog actorRole={session.role} />}
       />
 
@@ -507,6 +531,48 @@ export function UsersScreen() {
               }
             >
               {setActive.isPending ? "Deactivating…" : "Deactivate"}
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" size="md" variant="secondary">
+                Cancel
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeTarget != null}
+        onOpenChange={(next) => {
+          if (!next && !deleteUser.isPending) {
+            setRemoveTarget(null);
+            setRemoveMessage(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[min(460px,calc(100vw-32px))]">
+          <DialogTitle>Remove this account permanently?</DialogTitle>
+          <DialogDescription>
+            {removeTarget
+              ? `${personLabel(removeTarget)} (${removeTarget.email}) is deleted, along with their sign-in, subscription, playlists, likes and comments. This can’t be undone. Accounts that authored sermons, series or announcements, or took part in a review, can’t be removed — keep those deactivated.`
+              : null}
+          </DialogDescription>
+
+          {removeMessage ? (
+            <Alert variant="warning" title="Can’t remove this account">
+              {removeMessage}
+            </Alert>
+          ) : null}
+
+          <div className="flex items-center gap-8 pt-2">
+            <Button
+              type="button"
+              size="md"
+              variant="destructive"
+              disabled={deleteUser.isPending}
+              onClick={() => removeTarget && runRemove(removeTarget)}
+            >
+              {deleteUser.isPending ? "Removing…" : "Remove account"}
             </Button>
             <DialogClose asChild>
               <Button type="button" size="md" variant="secondary">

@@ -13799,6 +13799,48 @@
         ]
       }
     },
+    "/api/v1/users/{user_id}": {
+      "delete": {
+        "description": "Permanently remove a staff account. Admin only (a manager gets 403).\nThe account must already be deactivated (409 otherwise), can't be your\nown, and can't have authored content or review history (409, with what\nit is linked to \u2014 keep such accounts deactivated).",
+        "operationId": "delete_user_api_v1_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete User",
+        "tags": [
+          "admin auth"
+        ]
+      }
+    },
     "/api/v1/users/{user_id}/active": {
       "patch": {
         "description": "Deactivate (`is_active=false`) or reactivate a staff account.\n\nManagers may act on editors only; admins on anyone, except where it would\nleave zero active admins (409). Deactivation commits first, then revokes\nrefresh tokens best-effort: a Redis outage still returns 200 with\n`revocation_deferred=true` rather than 503, because every request re-checks\n`is_active` regardless (plan \u00a7W18, GATE 6).",

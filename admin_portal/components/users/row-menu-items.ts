@@ -13,6 +13,9 @@
  *
  *   active     → Deactivate            (destructive; confirmation dialog)
  *   deactivated→ Reactivate            (constructive; no dialog)
+ *              + Remove                (admin only; destructive; confirmation
+ *                                       dialog — the server refuses accounts
+ *                                       linked to content or review history)
  *   pending    → + Resend invite       (`is_active && activated_at == null`)
  *
  * Resend is gated on `is_active` too: a deactivated-never-activated account
@@ -37,12 +40,16 @@
 
 import type { UserPublic } from "@/lib/query/hooks/use-users";
 
-export type UserRowAction = "deactivate" | "reactivate" | "resend-invite";
+export type UserRowAction =
+  | "deactivate"
+  | "reactivate"
+  | "resend-invite"
+  | "remove";
 
 export interface UserRowMenuItem {
   action: UserRowAction;
   label: string;
-  /** Rose text (Deactivate). */
+  /** Rose text (Deactivate, Remove). */
   destructive?: boolean;
 }
 
@@ -83,6 +90,10 @@ export function userRowMenuItems({
     }
   } else {
     items.push({ action: "reactivate", label: "Reactivate" });
+    // Removing is two steps on purpose: deactivate first, then remove.
+    if (actor.role === "admin") {
+      items.push({ action: "remove", label: "Remove…", destructive: true });
+    }
   }
 
   if (target.is_active && target.activated_at == null) {

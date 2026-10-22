@@ -807,6 +807,106 @@ async def set_active(
     return target, revocation_deferred
 
 
+# Human labels for the tables whose `users` FK is RESTRICT — the history a
+# delete would have to erase or falsify, so it refuses instead.
+_HISTORY_LABELS = {
+    "sermons": "sermons",
+    "series": "series",
+    "approval_log": "sermon review steps",
+    "upload_jobs": "media uploads",
+    "announcements": "announcements",
+    "announcement_approval_log": "announcement review steps",
+}
+
+
+async def _authored_history(db: AsyncSession, user_id: uuid.UUID) -> dict[str, int]:
+    """Rows in RESTRICT-FK tables that point at `user_id`, by table. Read off
+    the metadata so a new RESTRICT reference is covered without a code
+    change here."""
+    from sqlalchemy import func
+
+    from app.db.database import Base
+
+    users = User.__table__
+    counts: dict[str, int] = {}
+    for table in Base.metadata.sorted_tables:
+        for fk in table.foreign_keys:
+            if fk.column.table is not users:
+                continue
+            if (fk.ondelete or "RESTRICT").upper() not in ("RESTRICT", "NO ACTION"):
+                continue
+            n = (await db.execute(
+                select(func.count()).select_from(table).where(fk.parent == user_id)
+            )).scalar_one()
+            if n:
+                counts[table.name] = counts.get(table.name, 0) + n
+    return counts
+
+
+async def delete_user(
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
+) -> bool:
+    """Permanently remove a staff account. Returns `revocation_deferred`.
+
+    Admin only, and deliberately narrower than deactivation:
+
+    * never your own account;
+    * the account must already be deactivated, so removing someone is always
+      two steps and the lockout (reversible) comes first;
+    * refused (409) while the account authored sermons, series, announcements
+      or uploads, or took part in a review: those rows reference the user with
+      ON DELETE RESTRICT, and erasing or reassigning them would rewrite who
+      did what. Such accounts stay deactivated instead.
+
+    What does go with the row (ON DELETE CASCADE / SET NULL) is the account's
+    own listener data: sign-in identities, subscription, playlists, likes,
+    comments. The audit row keeps the email as its target label.
+    """
+    if actor.role != _UserRole.ADMIN:
+        raise ContentError("Only an admin can remove an account.", status_code=403)
+    target = await get_user_by_id(db, target_id)
+    if target is None:
+        raise ContentError("User not found", status_code=404)
+    if target.id == actor.id:
+        raise ContentError("You can't remove your own account.", status_code=403)
+    if target.is_active:
+        raise ContentError(
+            "Deactivate this account before removing it.", status_code=409
+        )
+
+    history = await _authored_history(db, target.id)
+    if history:
+        parts = ", ".join(
+            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
+        )
+        raise ContentError(
+            f"This account can't be removed because it is linked to {parts}. "
+            "Keep it deactivated instead — it can't sign in.",
+            status_code=409,
+        )
+
+    email, role = target.email, target.role.value
+    await audit_service.record(
+        db, AuditAction.USER_DELETED,
+        actor=actor, target=_user_target(target), details={"role": role},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    await db.delete(target)
+    await db.commit()
+
+    revocation_deferred = False
+    try:
+        await token_store.revoke_refresh(str(target_id))
+    except TokenStoreUnavailable:
+        # The row is gone, so no token can authenticate anyway.
+        revocation_deferred = True
+    log.info("user_deleted", user_id=str(target_id), email=email, by=str(actor.id))
+    return revocation_deferred
+
+
 async def resend_invite(
     db: AsyncSession,
     target_id: uuid.UUID,
