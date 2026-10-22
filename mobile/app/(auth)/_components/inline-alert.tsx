@@ -3,8 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
 import type { ColorTokens } from '../../../theme/colors';
 import { useTheme } from '../../../theme/ThemeContext';
-import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
+import { LEAF_SM } from '../../(tabs)/_home/signature/leaf';
 
 export type AlertVariant = 'error' | 'warning' | 'success';
 
@@ -54,7 +54,7 @@ export function InlineAlert({
 const styles = StyleSheet.create({
   base: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
+    ...LEAF_SM,
     padding: spacing.md,
     gap: spacing.xs,
   },

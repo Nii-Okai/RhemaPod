@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'expo-router';
-import { LinkButton, PrimaryButton } from '../../components';
+import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { AuthScreen } from './_components/auth-screen';
+import { CheckEmailBody } from './_components/check-email';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
 
@@ -50,47 +51,70 @@ export default function ForgotPasswordScreen() {
     }
   }
 
+  const backToSignIn = (
+    <Link href="/(auth)/sign-in" asChild>
+      <LinkButton label="Back to sign in" />
+    </Link>
+  );
+
+  if (sent) {
+    return (
+      <AuthScreen
+        eyebrow="Reset link sent"
+        heading="Check your email"
+        subhead={GENERIC_SUCCESS}
+        footer={backToSignIn}
+      >
+        <CheckEmailBody
+          email={email.trim()}
+          kind="reset"
+          onResend={async () => {
+            await forgotPassword(email.trim());
+          }}
+          onUseDifferentEmail={() => setSent(false)}
+        />
+      </AuthScreen>
+    );
+  }
+
   return (
     <AuthScreen
-      heading="Reset your password"
-      subhead="Enter your email and we'll send you a link to reset your password."
+      eyebrow="Password reset"
+      heading="Forgot your password?"
+      subhead="Enter the email you signed up with and we'll send you a link to set a new one."
+      footer={backToSignIn}
     >
-      {sent ? (
-        <InlineAlert variant="success" title="Check your email">
-          {GENERIC_SUCCESS}
+      <Field
+        label="Email"
+        icon="mail-outline"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        textContentType="username"
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+        autoFocus
+      />
+
+      {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
+      {networkErrorMessage ? (
+        <InlineAlert variant="error" title="Could not send reset link">
+          {networkErrorMessage}
         </InlineAlert>
-      ) : (
-        <>
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="username"
-            returnKeyType="done"
-            onSubmitEditing={onSubmit}
-          />
+      ) : null}
 
-          {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
-          {networkErrorMessage ? (
-            <InlineAlert variant="error" title="Could not send reset link">
-              {networkErrorMessage}
-            </InlineAlert>
-          ) : null}
+      <PrimaryButton
+        label={submitting ? 'Sending…' : 'Send reset link'}
+        onPress={onSubmit}
+        loading={submitting}
+        fullWidth
+      />
 
-          <PrimaryButton
-            label={submitting ? 'Sending…' : 'Send reset link'}
-            onPress={onSubmit}
-            loading={submitting}
-          />
-        </>
-      )}
-
-      <Link href="/(auth)/sign-in" asChild>
-        <LinkButton label="Back to sign in" />
-      </Link>
+      <AppText variant="ui.badge" tone="tertiary">
+        Signed up with Google or Apple? You can keep using that button to sign in, no password needed.
+      </AppText>
     </AuthScreen>
   );
 }

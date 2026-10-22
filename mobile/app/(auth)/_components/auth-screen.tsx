@@ -1,59 +1,56 @@
 import React from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '../../../components';
-import { createThemedStyles } from '../../../theme/ThemeContext';
-import { radius } from '../../../theme/radius';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
+import { Flame } from '../../(tabs)/_home/signature/Flame';
+import { LEAF } from '../../(tabs)/_home/signature/leaf';
 
 /**
- * The shared shell for sign-in / register / forgot-password (spec 1m,
- * mirroring the admin portal's `AuthLayout` two-part structure — heading +
- * subhead, then the form — minus the desktop-only brand aside, which has no
- * mobile-width equivalent in the spec).
+ * The shared shell for sign-in / register / forgot-password / reset-password /
+ * check-email, Signature redesign (Nii's ask, 2026-10-22: "feel free to redesign
+ * signin/signup, password reset screens"). Same vocabulary as the rest of Signature:
  *
- * Design pass (Isaac's ask, session 2026-10-16: "reorganise the page in a way
- * that is user friendly and appealing"): a centered brand mark now sits above
- * the heading/subhead on every auth screen, giving the group an actual focal
- * point instead of a heading that just starts at the top of the scroll view.
- * The mark reuses `chip.circle` + `goldText` — the same circular-chip
- * convention `TabletRail`'s profile icon already established — rather than
- * inventing a new badge treatment for one screen. Heading/subhead are now
- * centered under it (previously left-aligned); the form content below stays
- * left-aligned, since that's how label/input pairs read.
+ *  - the brand mark wears a gold ring (the You tab's avatar treatment) beside the
+ *    "RhemaPod" wordmark, left-aligned like every other Signature screen's header;
+ *  - a mono uppercase eyebrow over a Newsreader `display.hero` heading;
+ *  - the form sits on a leaf-cornered raised card, with the oversized faint flame in
+ *    its corner that the You tab's profile card already carries;
+ *  - `footer` renders below the card on the bare screen background (the "New here? /
+ *    Already have an account?" switch line), so the card holds only the task at hand.
  *
- * Anchored near the top (Isaac's ask, session 2026-10-16: "the forgot
- * password screen is centered down, move it up a bit") rather than true
- * vertical centering — `forgot-password.tsx`'s content (one field + button)
- * is much shorter than sign-in/register's, so centering it in the full
- * screen height left a lot of dead space below and made the form read as
- * floating low. A fixed top offset (safe-area-aware, same `insets.top`
- * pattern `HomeTopBar` already uses) reads consistently across all three
- * screens regardless of how much content each one has.
+ * Anchored near the top rather than vertically centred (Isaac's ask, 2026-10-16: the
+ * short forgot-password form read as floating low when centred).
  */
 export function AuthScreen({
+  eyebrow,
   heading,
   subhead,
   children,
+  footer,
 }: {
+  eyebrow?: string;
   heading: string;
-  subhead: string;
+  subhead?: React.ReactNode;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'height' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'height' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.xxl) + spacing.xxl }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md, paddingBottom: insets.bottom + spacing.xxl * 2 },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <View style={styles.brandRow}>
           <View style={styles.brandMark}>
             <Image
               source={require('../../../assets/icon-mark.png')}
@@ -62,20 +59,44 @@ export function AuthScreen({
               accessible={false}
             />
           </View>
-          <View style={styles.headerText}>
-            <AppText variant="display.title" tone="primary" style={styles.centerText}>
-              {heading}
-            </AppText>
-            <AppText variant="ui.bodyLarge" tone="secondary" style={styles.centerText}>
+          <AppText variant="display.compact" tone="primary">
+            RhemaPod
+          </AppText>
+        </View>
+
+        <View style={styles.header}>
+          {eyebrow ? (
+            <View style={styles.eyebrowRow}>
+              <Flame width={9} fill={colors.accent.gold} />
+              <AppText variant="mono.meta" tone="gold">
+                {eyebrow.toUpperCase()}
+              </AppText>
+            </View>
+          ) : null}
+          <AppText variant="display.hero" tone="primary" accessibilityRole="header">
+            {heading}
+          </AppText>
+          {subhead ? (
+            <AppText variant="ui.bodyLarge" tone="secondary">
               {subhead}
             </AppText>
-          </View>
+          ) : null}
         </View>
-        <View style={styles.form}>{children}</View>
+
+        <View style={styles.card}>
+          <View style={styles.cardFlame} pointerEvents="none">
+            <Flame width={120} fill={colors.accent.gold} />
+          </View>
+          {children}
+        </View>
+
+        {footer ? <View style={styles.footer}>{footer}</View> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const BRAND_SIZE = 40;
 
 const useStyles = createThemedStyles((colors) => ({
   flex: {
@@ -84,33 +105,54 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     flexGrow: 1,
-    padding: spacing.xxl,
+    paddingHorizontal: spacing.lg,
     gap: spacing.xxl,
   },
-  header: {
+  brandRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   brandMark: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.pill,
+    width: BRAND_SIZE,
+    height: BRAND_SIZE,
+    borderRadius: BRAND_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.chip.circle,
+    borderWidth: 1.5,
+    borderColor: colors.accent.gold,
   },
   brandIcon: {
-    width: 36,
-    height: 36,
+    width: 22,
+    height: 22,
   },
-  headerText: {
+  header: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm - 2,
   },
-  centerText: {
-    textAlign: 'center',
-  },
-  form: {
+  card: {
+    ...LEAF,
+    overflow: 'hidden',
+    padding: spacing.xl,
     gap: spacing.xl,
+    backgroundColor: colors.surface.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  cardFlame: {
+    position: 'absolute',
+    right: -22,
+    top: -28,
+    opacity: 0.08,
+  },
+  footer: {
+    alignItems: 'center',
+    gap: spacing.md,
   },
 }));
