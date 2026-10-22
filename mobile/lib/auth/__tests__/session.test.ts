@@ -9,6 +9,7 @@ import * as authClient from '../../api/authClient';
 import { ApiError } from '../../api/errors';
 import { clearMediaCache } from '../../mediaCache/clearMediaCache';
 import { clearQueryCache } from '../../query/clearQueryCache';
+import { downloadManager } from '../../downloads/downloadManager';
 import * as fill from '../../mediaCache/fill';
 import * as session from '../session';
 
@@ -46,10 +47,17 @@ jest.mock('../../api/authClient', () => ({
 jest.mock('../../mediaCache/clearMediaCache', () => ({ clearMediaCache: jest.fn().mockResolvedValue(undefined) }));
 // Same shape for the query-cache wipe: asserted called, never run against real SQLite.
 jest.mock('../../query/clearQueryCache', () => ({ clearQueryCache: jest.fn().mockResolvedValue(undefined) }));
+// Same shape again for the downloads wipe: `downloadManager.ts` imports `rpa-crypto`'s
+// native binding at module scope, unresolvable under Jest (see that module's test file),
+// so this mocks the whole module rather than letting session.ts's lazy require() reach it.
+jest.mock('../../downloads/downloadManager', () => ({
+  downloadManager: { wipeAllDownloads: jest.fn().mockResolvedValue(undefined) },
+}));
 
 const mockedAuthClient = authClient as jest.Mocked<typeof authClient>;
 const mockedClearMediaCache = clearMediaCache as jest.Mock;
 const mockedClearQueryCache = clearQueryCache as jest.Mock;
+const mockedWipeAllDownloads = downloadManager.wipeAllDownloads as jest.Mock;
 const mockedSecureStore = SecureStore as unknown as {
   getItemAsync: jest.Mock;
   setItemAsync: jest.Mock;
@@ -234,6 +242,8 @@ describe('session access-token storage', () => {
     expect(mockedClearMediaCache).toHaveBeenCalled();
     // ...and the query cache, so the next account never sees this one's `me.*` reads.
     expect(mockedClearQueryCache).toHaveBeenCalled();
+    // ...and every download, so the next account never sees this one's offline library.
+    expect(mockedWipeAllDownloads).toHaveBeenCalled();
   });
 
   it('a genuine auth rejection during refresh also wipes the media cache (the other forced sign-out path)', async () => {
@@ -280,6 +290,23 @@ describe('session S7 — media cache wipe on every clearSession() path', () => {
     await session.signIn('user@example.com', 'password123456');
 
     mockedClearMediaCache.mockRejectedValueOnce(new Error('wipe failed'));
+
+    await expect(session.signOut()).resolves.toBeUndefined();
+
+    expect(session.getAccessToken()).toBeNull();
+    expect(session.getStatus()).toBe('signedOut');
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
+  });
+
+  it('a throwing wipeAllDownloads never stops sign-out', async () => {
+    mockedAuthClient.login.mockResolvedValueOnce({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 900,
+    });
+    await session.signIn('user@example.com', 'password123456');
+
+    mockedWipeAllDownloads.mockRejectedValueOnce(new Error('wipe failed'));
 
     await expect(session.signOut()).resolves.toBeUndefined();
 

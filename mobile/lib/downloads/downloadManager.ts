@@ -599,6 +599,19 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     return deps.db.getDownload(sermonId);
   }
 
+  /** Every download on the device, gone — the per-viewer wipe `clearSession` (auth/
+   * session.ts) runs on sign-out, same reasoning as the media-cache and query-cache wipes
+   * alongside it there: a downloaded file and the DRM key reference on its row are this
+   * viewer's own entitlement, and must never carry over to a different account signed in
+   * on the same device afterward. Reuses `deleteDownload` per row so an in-flight transfer
+   * is cancelled exactly as a single delete already handles it. */
+  async function wipeAllDownloads(): Promise<void> {
+    const all = await deps.db.listDownloads();
+    for (const record of all) {
+      await deleteDownload(record.sermonId);
+    }
+  }
+
   /**
    * Re-attempts every `queued` row — called on app start, whenever the Wi-Fi-only
    * preference is turned off, and whenever the device reconnects to Wi-Fi (see
@@ -719,6 +732,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     deleteDownload,
     listDownloads,
     getDownload,
+    wipeAllDownloads,
     resumeQueuedDownloads,
     pauseIfGateClosed,
     getDetailSnapshot,

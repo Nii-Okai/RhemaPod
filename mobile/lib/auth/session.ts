@@ -87,6 +87,7 @@ async function applyTokenPair(pair: TokenPair): Promise<void> {
 
 const MEDIA_CACHE_WIPE_TIMEOUT_MS = 3000;
 const MEDIA_CACHE_WIPE_JOIN_TIMEOUT_MS = 2000;
+const DOWNLOADS_WIPE_TIMEOUT_MS = 3000;
 
 /** The real (unbounded) wipe, tracked so a subsequent sign-in can join it — see
  * `applyTokenPair`'s own comment. Cleared once the real wipe settles, not once
@@ -127,6 +128,28 @@ function wipeMediaCacheBounded(): Promise<void> {
   return Promise.race([wipe, timeout]).finally(() => clearTimeout(timeoutHandle));
 }
 
+/**
+ * Bounded like `wipeMediaCacheBounded` above, same reasoning — a sermon's downloaded
+ * media file(s) can be large, and a hung filesystem call must never block sign-out. No
+ * `pendingWipe`-style join on the next sign-in: unlike the media cache, nothing
+ * auto-restarts a download after sign-in (every download is a deliberate tap), so there
+ * is no "fresh fill interleaves with a still-draining wipe" race here to guard against.
+ */
+function wipeDownloadsBounded(): Promise<void> {
+  const wipe = (async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see wipeMediaCacheBounded's comment: import() throws under this project's Jest config
+    const { downloadManager } = require('../downloads/downloadManager') as typeof import('../downloads/downloadManager');
+    await downloadManager.wipeAllDownloads();
+  })().catch((err: unknown) => {
+    if (__DEV__) console.warn('[session] downloads wipe failed (downloads may not have been cleared)', err);
+  });
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(resolve, DOWNLOADS_WIPE_TIMEOUT_MS);
+  });
+  return Promise.race([wipe, timeout]).finally(() => clearTimeout(timeoutHandle));
+}
+
 async function clearSession(): Promise<void> {
   accessToken = null;
   refreshTokenCache = null;
@@ -138,6 +161,10 @@ async function clearSession(): Promise<void> {
     // user on the same device. In a `finally` (S8/S9 review, finding S2) so the wipe
     // still runs even if clearing the persisted refresh token above throws.
     await wipeMediaCacheBounded();
+    // Same reasoning, a different disposable store: a sermon downloaded for offline
+    // playback (and the DRM key reference on its row) is this viewer's own entitlement —
+    // see `wipeDownloadsBounded`'s own comment.
+    await wipeDownloadsBounded();
     // Same reasoning for the query cache: per-viewer reads (`me.*`, playlists, catalog
     // `locked` flags) carry no user id in their keys. Lazy `require()` for the same
     // reason as the wipe above.

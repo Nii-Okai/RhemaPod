@@ -622,6 +622,28 @@ describe('downloadManager — delete', () => {
   });
 });
 
+describe('downloadManager — wipeAllDownloads (per-viewer sign-out wipe)', () => {
+  it('deletes every row on the device, ready or not, and their artifacts', async () => {
+    const h = makeHarness();
+    seedRow(h.rows, 'sermon-1', 'ready', { bytesTotal: 1, keyIdHex: '00' });
+    seedRow(h.rows, 'sermon-2', 'failed', { failureReason: 'network', failureMessage: 'offline' });
+    seedRow(h.rows, 'sermon-3', 'queued');
+
+    await h.manager.wipeAllDownloads();
+
+    expect(await h.manager.listDownloads()).toEqual([]);
+    expect(h.deletedFiles).toEqual(
+      expect.arrayContaining(['file:///downloads/sermon-1.rpa1', 'file:///downloads/sermon-2.rpa1', 'file:///downloads/sermon-3.rpa1']),
+    );
+  });
+
+  it('is a no-op when nothing is downloaded', async () => {
+    const h = makeHarness();
+    await expect(h.manager.wipeAllDownloads()).resolves.toBeUndefined();
+    expect(await h.manager.listDownloads()).toEqual([]);
+  });
+});
+
 describe('downloadManager — thumbnail fetch (session 2026-10-15 fix for the 6h presigned-URL expiry)', () => {
   it('does nothing when the sermon has no thumbnailUrl — no second downloadToFile call, no setThumbnailPath', async () => {
     const h = makeHarness();
