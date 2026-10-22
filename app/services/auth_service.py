@@ -70,10 +70,7 @@ def _avatar_url(key: str | None) -> str | None:
         return None
     from app.core import storage as storage_module
 
-    presigned = storage_module.get_storage().presigned_download_url(
-        settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
-    )
-    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
+    return storage_module.stable_image_url(key)
 
 
 def to_user_public(user: User) -> UserPublic:

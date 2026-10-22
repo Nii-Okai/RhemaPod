@@ -214,23 +214,20 @@ def sermon_visibility_clause(at: datetime | None = None):
 def _thumbnail_url(key: str | None) -> str | None:
     """Turn a stored thumbnail key into a fetchable URL.
 
-    Always signs a time-limited URL against the media bucket, then defers to
-    `storage_module.cdn_url_for` to decide whether a CDN URL can safely
-    replace it (today it never can — see that function's docstring). Buckets
-    stay private either way — we never expose a raw object URL.
+    Always a time-limited signed URL against the media bucket, signed at the
+    start of a fixed window so it stays identical across requests and the
+    app's image cache keeps hitting (`storage_module.stable_image_url`).
+    Buckets stay private either way — we never expose a raw object URL.
     """
     if not key:
         return None
     from app.core import storage as storage_module
 
     try:
-        presigned = storage_module.get_storage().presigned_download_url(
-            settings.object_store_media_bucket, key, settings.stream_url_expire_seconds
-        )
+        return storage_module.stable_image_url(key)
     except Exception:
         log.warning("thumbnail_url_failed", key=key)
         return None
-    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
 
 
 def to_list_item(

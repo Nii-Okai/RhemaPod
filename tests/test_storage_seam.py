@@ -115,3 +115,44 @@ def test_local_storage_open_read_missing_key_raises():
         pass
     else:
         raise AssertionError("expected StorageError for an unread object")
+
+
+# ── stable_image_url: one URL per window, so phone image caches hit ───────────
+def _query(url: str) -> dict[str, str]:
+    from urllib.parse import parse_qsl, urlsplit
+
+    return dict(parse_qsl(urlsplit(url).query))
+
+
+def test_stable_image_url_is_identical_within_a_window_and_changes_after(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    st = S3Storage(_cfg())
+    monkeypatch.setattr(storage_module, "get_storage", lambda: st)
+    t0 = datetime(2026, 10, 22, 0, 0, 5, tzinfo=timezone.utc)
+
+    first = storage_module.stable_image_url("thumbnails/a.jpg", now=t0)
+    later = storage_module.stable_image_url("thumbnails/a.jpg", now=t0 + timedelta(hours=23))
+    next_window = storage_module.stable_image_url("thumbnails/a.jpg", now=t0 + timedelta(hours=24))
+
+    assert first == later
+    assert first != next_window
+    q = _query(first)
+    assert q["X-Amz-Date"] == "20261022T000000Z"
+    # Window + the usual playback lifetime, so a URL handed out at the very end of
+    # its window still has stream_url_expire_seconds left.
+    assert int(q["X-Amz-Expires"]) == (
+        storage_module.IMAGE_URL_WINDOW_SECONDS + storage_module.settings.stream_url_expire_seconds
+    )
+
+
+def test_pinned_signing_time_does_not_leak_into_other_presigns():
+    from datetime import datetime, timezone
+
+    st = S3Storage(_cfg())
+    pinned = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    st.presigned_download_url("b", "k", 900, signed_at=pinned)
+    after = st.presigned_download_url("b", "k", 900)
+
+    assert _query(after)["X-Amz-Date"] != "20200101T000000Z"
+    assert _query(after)["X-Amz-Date"][:4] == str(datetime.now(timezone.utc).year)
