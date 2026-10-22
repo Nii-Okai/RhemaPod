@@ -96,7 +96,9 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
   const styles = useStyles();
   const shell = compact ? styles.compactShell : styles.pillShell;
   const textVariant = compact ? ('ui.label' as const) : ('ui.button' as const);
-  const iconSize = compact ? 16 : 18;
+  const iconSize = compact ? 15 : 18;
+  const textStyle = compact ? styles.compactText : undefined;
+  const lines = compact ? 1 : undefined;
   const downloads = useDownloads();
   if (items.length === 0) return null;
 
@@ -107,7 +109,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
     return (
       <View style={[shell, styles.pillRow]}>
         <ActivityIndicator size="small" color={colors.text.primary} />
-        <AppText variant={textVariant} tone="primary">
+        <AppText variant={textVariant} tone="primary" numberOfLines={lines} style={textStyle}>
           {compact ? 'Queued' : 'Queued…'}
         </AppText>
       </View>
@@ -146,7 +148,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
         <CircularProgress progress={status.progress} size={20} strokeWidth={2.5} spinning>
           <PlatformIcon name="arrow-down" size={10} color={colors.text.primary} />
         </CircularProgress>
-        <AppText variant={textVariant} tone="primary">
+        <AppText variant={textVariant} tone="primary" numberOfLines={lines} style={textStyle}>
           {compact ? `${percent}%` : progressLabel}
         </AppText>
       </View>
@@ -155,7 +157,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
 
   if (status.kind === 'ready') {
     return (
-      <PopIn>
+      <PopIn style={compact ? styles.compactText : undefined}>
         <Pressable
           onPress={removeAll}
           accessibilityRole="button"
@@ -163,7 +165,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
           style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
         >
           <PlatformIcon name="checkmark-circle" size={iconSize} color={colors.accent.gold} />
-          <AppText variant={textVariant} tone="gold">
+          <AppText variant={textVariant} tone="gold" numberOfLines={lines} style={textStyle}>
             Downloaded
           </AppText>
         </Pressable>
@@ -180,7 +182,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
         style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
       >
         <PlatformIcon name="refresh" size={iconSize} color={colors.status.rose.text} />
-        <AppText variant={textVariant} style={styles.failureText}>
+        <AppText variant={textVariant} numberOfLines={lines} style={[styles.failureText, textStyle]}>
           {compact ? 'Retry' : status.message}
         </AppText>
       </Pressable>
@@ -195,7 +197,7 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
       style={({ pressed }) => [shell, styles.pillRow, pressed && styles.pressed]}
     >
       <PlatformIcon name="download-outline" size={iconSize} color={colors.text.primary} />
-      <AppText variant={textVariant} tone="primary">
+      <AppText variant={textVariant} tone="primary" numberOfLines={lines} style={textStyle}>
         {label}
       </AppText>
     </Pressable>
@@ -211,11 +213,16 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.xxl,
   },
   compactShell: {
+    flexShrink: 1,
     minHeight: 36,
-    paddingHorizontal: spacing.md + 2,
+    paddingHorizontal: spacing.sm + 2,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border.card,
+  },
+  // Also the ready state's `PopIn` wrapper, so the pill can shrink in its row.
+  compactText: {
+    flexShrink: 1,
   },
   pillRow: {
     flexDirection: 'row',
