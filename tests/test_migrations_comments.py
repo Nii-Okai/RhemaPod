@@ -36,16 +36,16 @@ PRE_DROP_REV = "c7d8e9f0a1b2"
 # revision has two parents.
 MERGE_REV = "0543034f79af"
 # The actual current head — whatever's chained on top of MERGE_REV as of the most
-# recent migration (email verification: `users.email_verified_at`,
-# `b7e2c4d9a1f3`, chained on ADMIN-SETTINGS S11's `church_settings`,
-# `e5a68425e539`, chained on S6's `audit_log`, `8c596c67f0ae`, chained on
-# the pre-existing schema-drift fix `a517c3beba93`, itself chained on S3's
-# sermon_play_daily/listener_day rollup tables `dbdcee764ca3`, chained on
-# `c9b3e7a1f2d4`). A future migration moves this constant forward again; the
-# chain assertions below it (MERGE_REV/COMMENTS_REV/DROP_REV/PRE_DROP_REV, all
-# further down the tree) don't change, since they describe ancestry beneath
-# MERGE_REV, not what sits on top of it.
-CURRENT_HEAD = "b7e2c4d9a1f3"
+# recent migration (data-transfer/user-delete audit actions: `c8d9e0f1a2b3`,
+# chained on email verification's `users.email_verified_at`, `b7e2c4d9a1f3`,
+# chained on ADMIN-SETTINGS S11's `church_settings`, `e5a68425e539`, chained on
+# S6's `audit_log`, `8c596c67f0ae`, chained on the pre-existing schema-drift fix
+# `a517c3beba93`, itself chained on S3's sermon_play_daily/listener_day rollup
+# tables `dbdcee764ca3`, chained on `c9b3e7a1f2d4`). A future migration moves
+# this constant forward again; the chain assertions below it (MERGE_REV/
+# COMMENTS_REV/DROP_REV/PRE_DROP_REV, all further down the tree) don't change,
+# since they describe ancestry beneath MERGE_REV, not what sits on top of it.
+CURRENT_HEAD = "c8d9e0f1a2b3"
 
 NEW_TABLES = {
     "sermon_comments",
