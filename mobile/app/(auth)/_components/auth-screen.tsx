@@ -29,6 +29,7 @@ export function AuthScreen({
   headingVariant = 'display.hero',
   subhead,
   subheadVariant = 'ui.bodyLarge',
+  centerHeader = false,
   children,
   footer,
 }: {
@@ -38,6 +39,8 @@ export function AuthScreen({
   headingVariant?: AppTextVariant;
   subhead?: React.ReactNode;
   subheadVariant?: AppTextVariant;
+  /** Centers the eyebrow/heading/subhead instead of the usual left alignment — sign-in's ask. */
+  centerHeader?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -69,7 +72,7 @@ export function AuthScreen({
           </AppText>
         </View>
 
-        <View style={styles.header}>
+        <View style={[styles.header, centerHeader ? styles.headerCentered : null]}>
           {eyebrow ? (
             <View style={styles.eyebrowRow}>
               <Flame width={9} fill={colors.accent.gold} />
@@ -78,11 +81,16 @@ export function AuthScreen({
               </AppText>
             </View>
           ) : null}
-          <AppText variant={headingVariant} tone="primary" accessibilityRole="header">
+          <AppText
+            variant={headingVariant}
+            tone="primary"
+            accessibilityRole="header"
+            style={centerHeader ? styles.textCentered : null}
+          >
             {heading}
           </AppText>
           {subhead ? (
-            <AppText variant={subheadVariant} tone="secondary">
+            <AppText variant={subheadVariant} tone="secondary" style={centerHeader ? styles.textCentered : null}>
               {subhead}
             </AppText>
           ) : null}
@@ -135,6 +143,12 @@ const useStyles = createThemedStyles((colors) => ({
   header: {
     gap: spacing.sm,
     paddingTop: spacing.sm,
+  },
+  headerCentered: {
+    alignItems: 'center',
+  },
+  textCentered: {
+    textAlign: 'center',
   },
   eyebrowRow: {
     flexDirection: 'row',
