@@ -209,6 +209,50 @@ async def test_recommended_falls_back_to_trending_when_affinity_has_nothing_left
     assert not any(r["title"] == "Only one, same speaker" for r in rows)
 
 
+async def test_recommended_trending_fallback_is_shuffled_not_a_copy_of_trending(client, engine):
+    """A fresh viewer (no watch history, so the affinity branch is empty) fell back to
+    trending sermons left in trending's own rank order — Recommended rendered as a
+    one-for-one copy of the Trending shelf, same sermons, same order (Isaac's phone-test
+    report, 2026-10-22). `list_recommended_sermons` now daily-shuffles its copy of the
+    trending list under its own salt before using it, so the two shelves no longer line
+    up card-for-card. 8 trending sermons, all played by exactly one viewer each (so
+    trending's own order is the deterministic tiebreak, newest-published first) — with
+    that many items, a coincidental identity permutation is negligible (1/8!)."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sermon_ids = [await publish(client, ed, mgr, title=f"Trending {i}") for i in range(8)]
+    # One shared viewer across all 8 — each sermon still gets its own `PlaybackSession`
+    # row (viewer count 1 apiece), the same tiebreak as 8 distinct viewers, without the
+    # extra logins tripping the per-IP login rate limit this test doesn't care about.
+    fan = await make_viewer(client, "fan@example.com")
+    for sid in sermon_ids:
+        await play(client, sid, fan)
+
+    trending_order = [r["id"] for r in (await client.get("/api/v1/catalog/sermons/trending")).json()]
+
+    fresh_viewer = await make_viewer(client, "fresh@example.com")
+    recommended_order = [r["id"] for r in (await client.get("/api/v1/me/recommended", headers=fresh_viewer)).json()]
+
+    assert set(recommended_order) == set(trending_order)
+    assert recommended_order != trending_order
+
+
+async def test_recommended_trending_fallback_order_is_stable_across_repeat_calls(client, engine):
+    """Same reasoning as the affinity branch's own stability test: the fallback shuffle is
+    seeded by day + user id, not per-request, so it must not reshuffle on every refetch."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sermon_ids = [await publish(client, ed, mgr, title=f"Trending {i}") for i in range(8)]
+    fan = await make_viewer(client, "fan@example.com")
+    for sid in sermon_ids:
+        await play(client, sid, fan)
+
+    fresh_viewer = await make_viewer(client, "fresh@example.com")
+    first = (await client.get("/api/v1/me/recommended", headers=fresh_viewer)).json()
+    second = (await client.get("/api/v1/me/recommended", headers=fresh_viewer)).json()
+    assert [r["id"] for r in first] == [r["id"] for r in second]
+
+
 async def test_recommended_requires_auth(client, engine):
     r = await client.get("/api/v1/me/recommended")
     assert r.status_code in (401, 403)

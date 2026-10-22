@@ -455,9 +455,11 @@ async def list_recommended_sermons(
     `PlaybackSession` rows. Matches come first, highest score first, with a daily
     seeded shuffle only among equal scores (`_daily_shuffle`, so the shelf doesn't
     mirror New Releases yet doesn't jitter on refetch). The shelf is then topped up
-    with what's trending, then with the newest remaining unplayed sermons — the old
-    version stopped at the matches, so a viewer who had sampled most of a small
-    catalogue saw a single card. A viewer with no history gets trending, then newest.
+    with what's trending (itself daily-shuffled under its own salt, so it isn't a
+    one-for-one copy of the Trending shelf), then with the newest remaining unplayed
+    sermons — the old version stopped at the matches, so a viewer who had sampled most
+    of a small catalogue saw a single card. A viewer with no history gets a shuffled
+    trending, then newest.
 
     Anything the caller has ever started is excluded: unfinished ones already sit in
     "Pick up where you left off", finished ones aren't a recommendation. Capped to one
@@ -503,9 +505,17 @@ async def list_recommended_sermons(
     )
     by_id = {s.id: s for s in pool}
     trending_ids = [item.id for item in await list_trending_sermons(db, user, 50)]
+    # Shuffled for the same reason as `matches` above, own salt so the two shuffles don't
+    # coincidentally line up: left in Trending's own rank order, a viewer with no watch
+    # history (every brand-new account) saw this shelf as a one-for-one copy of Trending,
+    # same sermons, same order (Isaac's phone-test report, 2026-10-22). Trending's own
+    # ranking is never touched — only this copy of it.
+    trending_fallback = _daily_shuffle(
+        [by_id[i] for i in trending_ids if i in by_id], salt=f"recommended-trending:{user.id}"
+    )
     ordered: list[Sermon] = []
     seen: set[uuid.UUID] = set()
-    for sermon in [*matches, *(by_id[i] for i in trending_ids if i in by_id), *pool]:
+    for sermon in [*matches, *trending_fallback, *pool]:
         if sermon.id not in seen:
             seen.add(sermon.id)
             ordered.append(sermon)
