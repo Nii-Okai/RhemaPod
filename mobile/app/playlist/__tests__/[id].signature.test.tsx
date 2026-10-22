@@ -11,9 +11,6 @@ jest.mock('../../../lib/api/typedClient', () => ({
 
 jest.mock('@expo/vector-icons');
 
-// The route renders the Signature screen when its rollout flag is on.
-jest.mock('../../../lib/featureFlags', () => ({ SIGNATURE_LIBRARY_ENABLED: true }));
-
 // `PlaylistOptionsSheet` now sequences "close this sheet, then open the next" off
 // `Sheet`'s own `onDismiss` (real iOS behavior — see that component's own doc comment
 // for why a guessed delay wasn't reliable), which real RN's `Modal` only fires through

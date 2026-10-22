@@ -13,7 +13,8 @@
       "supportsTabletMode": true,
       "bundleIdentifier": "com.niitech.rhemapod",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to."
+        "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

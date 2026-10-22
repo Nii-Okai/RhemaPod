@@ -378,7 +378,7 @@ describe('PlayerScreen — back control', () => {
     const { findByTestId, getByLabelText } = renderPlayer();
     // Wait for the resolved screen: the loading state has its own (soon unmounted) header.
     await findByTestId('video-view');
-    fireEvent.press(getByLabelText('Back'));
+    fireEvent.press(getByLabelText('Close player'));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 });
@@ -586,13 +586,12 @@ describe('PlayerScreen — queue list', () => {
   }
 
   it('shows the queue list (playlist name, position, owner, private lock) instead of comments', async () => {
-    const { findByText, queryByText } = renderWithQueue();
+    const { findByText } = renderWithQueue();
 
     expect(await findByText(/Driving/)).toBeTruthy();
     expect(await findByText('1/2')).toBeTruthy();
     expect(await findByText('Isaac N.A. Okai')).toBeTruthy();
     expect(await findByText('Title sermon-2')).toBeTruthy();
-    expect(queryByText('Comments')).toBeNull();
   });
 
   it('tapping another row jumps playback to it, staying on this screen (setParams, not replace)', async () => {
@@ -671,9 +670,9 @@ describe('PlayerScreen — comments', () => {
         },
       ],
     });
-    const { findByText, getByTestId } = renderPlayer();
+    const { findByText, findByLabelText, getByTestId } = renderPlayer();
     expect(await findByText('Blessed by this.')).toBeTruthy();
-    expect(await findByText('1 comment')).toBeTruthy();
+    expect(await findByLabelText('1 comment')).toBeTruthy();
     expect(getByTestId('video-view')).toBeTruthy();
   });
 

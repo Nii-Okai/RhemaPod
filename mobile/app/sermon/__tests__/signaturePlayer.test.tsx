@@ -5,12 +5,6 @@ import SermonDetailScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
-jest.mock('../../../lib/featureFlags', () => ({
-  SIGNATURE_HOME_ENABLED: false,
-  SIGNATURE_NOTIFICATIONS_ENABLED: false,
-  SIGNATURE_PLAYER_ENABLED: true,
-}));
-
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));

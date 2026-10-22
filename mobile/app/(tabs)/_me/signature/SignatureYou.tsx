@@ -122,8 +122,7 @@ function LinkRow({
  *
  *  - a profile card: the tappable photo (gold ring), name, email, how the name shows on
  *    comments, and Edit profile;
- *  - Appearance as one three-way switch (`ThemeSwitch`) — still hidden while light mode
- *    is behind its own rollout flag, exactly as on the classic screen;
+ *  - Appearance as one three-way switch (`ThemeSwitch`);
  *  - Playback & downloads: autoplay next in series and Wi-Fi-only downloads;
  *  - Library: Announcements and Blocked users;
  *  - Help & safety: Contact us, Comment guidelines, and the legal links once they're set;
@@ -131,7 +130,7 @@ function LinkRow({
  */
 export function SignatureYouScreen() {
   const styles = useStyles();
-  const { colors, lightModeAvailable } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
@@ -223,12 +222,9 @@ export function SignatureYouScreen() {
         )}
       </View>
 
-      {/* Hidden until every screen reads the theme (light-mode rollout flag). */}
-      {lightModeAvailable ? (
-        <Group label="Appearance">
-          <ThemeSwitch error={appearanceError} onError={setAppearanceError} />
-        </Group>
-      ) : null}
+      <Group label="Appearance">
+        <ThemeSwitch error={appearanceError} onError={setAppearanceError} />
+      </Group>
 
       <Group label="Playback & downloads">
         <Panel>

@@ -21,7 +21,6 @@ const ALLOWED = new Set([
   // Themed files that pin only their on-art elements to the dark palette.
   'app/(tabs)/_home/HeroCard.tsx',
   'app/(tabs)/_home/HomeTopBar.tsx',
-  'app/(tabs)/_home/SpotlightCard.tsx',
   // Signature Home: the hero and countdown are dark photo frames in both themes; the shelf cards
   // pin only the chips and play buttons drawn on the art.
   'app/(tabs)/_home/signature/ArtScrim.tsx',
@@ -36,12 +35,9 @@ const ALLOWED = new Set([
   'app/(tabs)/_library/signature/LibraryItems.tsx',
   'app/playlist/_detail/signature/SignatureSermonRows.tsx',
   'app/(tabs)/_downloads/DownloadRow.tsx',
-  'app/(tabs)/_library/DownloadGridTile.tsx',
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
   'app/playlist/_detail/PlaylistCoverPicker.tsx',
-  'app/playlist/_detail/PlaylistItemRow.tsx',
   'components/CastCloseHeader.tsx',
-  'components/series/EpisodeRow.tsx',
 ]);
 
 const STATIC_IMPORT = /import \{[^}]*\b(colors|darkColors)\b[^}]*\} from '[./]*theme\/colors'/;

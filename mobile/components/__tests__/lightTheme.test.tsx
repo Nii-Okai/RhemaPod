@@ -19,7 +19,7 @@ beforeEach(() => jest.spyOn(RN, 'useColorScheme').mockReturnValue('light'));
 afterEach(() => jest.restoreAllMocks());
 
 function Light({ children }: { children: React.ReactNode }) {
-  return <ThemeProvider lightModeAvailable>{children}</ThemeProvider>;
+  return <ThemeProvider>{children}</ThemeProvider>;
 }
 
 function flatColor(style: unknown): string | undefined {

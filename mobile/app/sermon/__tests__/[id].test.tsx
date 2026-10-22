@@ -68,8 +68,12 @@ const baseDetail = {
   category_name: 'Teaching',
   speaker_id: 'sp1',
   speaker_name: 'Ada Nwosu',
-  series_id: null,
-  series_title: null,
+  // A series episode — not a standalone playable sermon — so it still lands on this
+  // detail page instead of redirecting straight to the player (see `[id].tsx`'s own
+  // `opensPlayer` doc comment; that redirect path has its own dedicated coverage in
+  // `signaturePlayer.test.tsx`).
+  series_id: 's1',
+  series_title: 'A Series',
   episode_number: null,
   tier: 'free',
   locked: false,
@@ -444,7 +448,9 @@ describe('SermonDetailScreen — Related', () => {
     speakers_total: 0,
     results: [
       { ...baseDetail, id: 'sermon-1', title: 'Anchored in the Storm' }, // itself — must be excluded
-      { ...baseDetail, id: 'sermon-2', title: 'Standing Firm', speaker_name: 'Pastor Grace' },
+      // A different sermon from a different series — not an episode of the viewed
+      // sermon's own series, which `excludeSeriesId` would otherwise filter out too.
+      { ...baseDetail, id: 'sermon-2', title: 'Standing Firm', speaker_name: 'Pastor Grace', series_id: null, series_title: null },
     ],
   };
 

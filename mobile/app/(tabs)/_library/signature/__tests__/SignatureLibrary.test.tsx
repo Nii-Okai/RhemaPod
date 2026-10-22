@@ -151,7 +151,7 @@ describe('SignatureLibraryScreen', () => {
     mockedUsePlaylists.mockReturnValue(basePlaylistsHook({ data: [playlist()] }));
     mockedUseDownloads.mockReturnValue(baseDownloadsHook({ downloads: [record()] }));
     const screen = render(
-      <ThemeProvider lightModeAvailable>
+      <ThemeProvider>
         <LibraryScreen />
       </ThemeProvider>,
     );

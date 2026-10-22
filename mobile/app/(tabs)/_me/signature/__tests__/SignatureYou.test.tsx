@@ -91,11 +91,11 @@ function SchemeProbe() {
   return null;
 }
 
-function renderYou({ lightModeAvailable = false } = {}) {
+function renderYou() {
   mockRoutes();
   const client = createTestQueryClient();
   return render(
-    <ThemeProvider lightModeAvailable={lightModeAvailable}>
+    <ThemeProvider>
       <QueryClientProvider client={client}>
         <SignatureYouScreen />
         <SchemeProbe />
@@ -140,7 +140,7 @@ describe('SignatureYouScreen', () => {
     expect(screen.getByText("Shown as 'Ada N.' on comments.")).toBeTruthy();
     expect(screen.getByText('Edit profile')).toBeTruthy();
     expect(screen.getByLabelText('Change profile picture')).toBeTruthy();
-    for (const heading of ['PLAYBACK & DOWNLOADS', 'LIBRARY', 'HELP & SAFETY']) {
+    for (const heading of ['APPEARANCE', 'PLAYBACK & DOWNLOADS', 'LIBRARY', 'HELP & SAFETY']) {
       expect(screen.getByText(heading)).toBeTruthy();
     }
     expect(screen.getByLabelText('Autoplay next in series')).toBeTruthy();
@@ -151,14 +151,8 @@ describe('SignatureYouScreen', () => {
     expect(screen.getByText('Sign out')).toBeTruthy();
   });
 
-  it('hides Appearance while light mode is behind its flag', async () => {
-    const screen = renderYou();
-    await screen.findByText('ada@example.com');
-    expect(screen.queryByText('APPEARANCE')).toBeNull();
-  });
-
   it('switches the theme three ways and saves the choice', async () => {
-    const screen = renderYou({ lightModeAvailable: true });
+    const screen = renderYou();
     await screen.findByText('ada@example.com');
     await waitFor(() => expect(kv().getItem).toHaveBeenCalledWith('rhemapod-theme-preference'));
 
@@ -183,7 +177,7 @@ describe('SignatureYouScreen', () => {
   });
 
   it('reverts the theme and says so when the save fails', async () => {
-    const screen = renderYou({ lightModeAvailable: true });
+    const screen = renderYou();
     await screen.findByText('ada@example.com');
     await waitFor(() => expect(kv().getItem).toHaveBeenCalledWith('rhemapod-theme-preference'));
 

@@ -34,24 +34,17 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-function wrapper(lightModeAvailable: boolean) {
-  return ({ children }: { children: React.ReactNode }) => (
-    <ThemeProvider lightModeAvailable={lightModeAvailable}>{children}</ThemeProvider>
-  );
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <ThemeProvider>{children}</ThemeProvider>;
 }
 
 describe('resolveScheme', () => {
   it('follows the phone for `system`, and an explicit choice otherwise', () => {
-    expect(resolveScheme('system', 'light', true)).toBe('light');
-    expect(resolveScheme('system', 'dark', true)).toBe('dark');
-    expect(resolveScheme('system', null, true)).toBe('dark');
-    expect(resolveScheme('light', 'dark', true)).toBe('light');
-    expect(resolveScheme('dark', 'light', true)).toBe('dark');
-  });
-
-  it('is always dark while light mode is behind its rollout flag', () => {
-    expect(resolveScheme('light', 'light', false)).toBe('dark');
-    expect(resolveScheme('system', 'light', false)).toBe('dark');
+    expect(resolveScheme('system', 'light')).toBe('light');
+    expect(resolveScheme('system', 'dark')).toBe('dark');
+    expect(resolveScheme('system', null)).toBe('dark');
+    expect(resolveScheme('light', 'dark')).toBe('light');
+    expect(resolveScheme('dark', 'light')).toBe('dark');
   });
 });
 
@@ -60,11 +53,10 @@ describe('ThemeProvider', () => {
     const { result } = renderHook(() => useTheme());
     expect(result.current.scheme).toBe('dark');
     expect(result.current.colors).toBe(darkColors);
-    expect(result.current.lightModeAvailable).toBe(false);
   });
 
   it('defaults to following the phone', async () => {
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(true) });
+    const { result } = renderHook(() => useTheme(), { wrapper });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalled());
     expect(result.current.preference).toBe('system');
     expect(result.current.scheme).toBe('light');
@@ -73,21 +65,21 @@ describe('ThemeProvider', () => {
 
   it('restores a saved choice on launch', async () => {
     storage.__store.set('rhemapod-theme-preference', 'dark');
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(true) });
+    const { result } = renderHook(() => useTheme(), { wrapper });
     await waitFor(() => expect(result.current.preference).toBe('dark'));
     expect(result.current.scheme).toBe('dark');
   });
 
   it('ignores a corrupted saved value', async () => {
     storage.__store.set('rhemapod-theme-preference', 'sepia');
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(true) });
+    const { result } = renderHook(() => useTheme(), { wrapper });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalled());
     expect(result.current.preference).toBe('system');
   });
 
   it('saves a new choice and applies it immediately', async () => {
     systemScheme = 'dark';
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(true) });
+    const { result } = renderHook(() => useTheme(), { wrapper });
     await act(async () => {
       await result.current.setPreference('light');
     });
@@ -96,20 +88,13 @@ describe('ThemeProvider', () => {
   });
 
   it('reverts the choice when saving it fails', async () => {
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(true) });
+    const { result } = renderHook(() => useTheme(), { wrapper });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalled());
     storage.setItem.mockRejectedValueOnce(new Error('disk full'));
     await act(async () => {
       await expect(result.current.setPreference('dark')).rejects.toThrow('disk full');
     });
     expect(result.current.preference).toBe('system');
-  });
-
-  it('stays dark behind the rollout flag even when the phone is light', async () => {
-    const { result } = renderHook(() => useTheme(), { wrapper: wrapper(false) });
-    await waitFor(() => expect(storage.getItem).toHaveBeenCalled());
-    expect(result.current.scheme).toBe('dark');
-    expect(result.current.lightModeAvailable).toBe(false);
   });
 });
 
@@ -122,7 +107,7 @@ describe('createThemedStyles', () => {
   }
 
   it('builds the sheet from the active palette', async () => {
-    const light = render(<Probe />, { wrapper: wrapper(true) });
+    const light = render(<Probe />, { wrapper });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalled());
     expect(light.getByTestId('probe').props.style).toEqual({ backgroundColor: lightColors.surface.app });
 

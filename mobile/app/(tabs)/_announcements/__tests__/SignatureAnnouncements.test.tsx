@@ -65,7 +65,7 @@ function renderScreen(items: unknown[] = list, theme: 'dark' | 'light' = 'dark')
     throw new Error(`unexpected path: ${path}`);
   });
   return render(
-    <ThemeProvider lightModeAvailable>
+    <ThemeProvider>
       <QueryClientProvider client={createTestQueryClient()}>
         <SignatureAnnouncementsScreen />
       </QueryClientProvider>

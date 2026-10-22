@@ -11,12 +11,6 @@ import { loadThemePreference } from '../../../../lib/settings/themePreference';
 // See the classic player test for why this is imported by its relative path.
 import { __lastMockPlayer } from '../../../../__mocks__/expo-video';
 
-jest.mock('../../../../lib/featureFlags', () => ({
-  SIGNATURE_HOME_ENABLED: false,
-  SIGNATURE_NOTIFICATIONS_ENABLED: false,
-  SIGNATURE_PLAYER_ENABLED: true,
-}));
-
 jest.mock('../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
@@ -157,7 +151,7 @@ function mockReads(overrides: { detail?: unknown } = {}) {
 function renderPlayer() {
   const client = createTestQueryClient();
   return render(
-    <ThemeProvider lightModeAvailable>
+    <ThemeProvider>
       <QueryClientProvider client={client}>
         <PlayerScreen />
       </QueryClientProvider>

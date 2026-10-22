@@ -89,7 +89,7 @@ function renderSignature(overrides: Record<string, unknown> = {}) {
   });
   const client = createTestQueryClient();
   return render(
-    <ThemeProvider lightModeAvailable>
+    <ThemeProvider>
       <QueryClientProvider client={client}>
         <SignatureHomeScreen />
       </QueryClientProvider>

@@ -17,7 +17,6 @@ import { resolveCta } from './_detail/cta';
 import { isPlayable } from './_detail/isPlayable';
 import { sermonMetaLine } from './_detail/meta';
 import { DetailSkeleton } from './_detail/Skeleton';
-import { SIGNATURE_PLAYER_ENABLED } from '../../lib/featureFlags';
 import { TagsRow } from './_detail/TagsRow';
 
 /**
@@ -51,7 +50,7 @@ export default function SermonDetailScreen() {
   // Handled here rather than at every list that links to a sermon, so each of them is
   // covered; `replace`, so Back from the player returns to wherever the sermon was picked.
   // Series episodes, and anything locked or without media, still land on this page.
-  const opensPlayer = SIGNATURE_PLAYER_ENABLED && Boolean(detail) && playable && !detail?.series_id;
+  const opensPlayer = Boolean(detail) && playable && !detail?.series_id;
   useEffect(() => {
     if (opensPlayer) router.replace({ pathname: '/player/[id]', params: { id } });
     // `router` is stable for the screen's lifetime; only the decision matters.

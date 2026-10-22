@@ -19,7 +19,6 @@ import { useCachedSource } from '../../lib/mediaCache/useCachedSource';
 import { usePlaylist, useRemovePlaylistItem, type PlaylistItemPublic } from '../../lib/query/hooks/usePlaylists';
 import { shuffled } from '../playlist/_detail/playlistQueue';
 import { shareContent } from '../../lib/share/shareContent';
-import { PlayerHeader } from './_player/PlayerHeader';
 import { VideoSurface } from './_player/VideoSurface';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
 import { QueueList, type QueueListProps } from './_player/QueueList';
@@ -33,7 +32,6 @@ import { NowPlayingDetails } from './_signature/NowPlayingDetails';
 import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
 import { useKeyboardVisible } from './_signature/useKeyboardVisible';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
-import { SIGNATURE_PLAYER_ENABLED } from '../../lib/featureFlags';
 
 /**
  * Player screen (design spec §3 "Player (1d, iOS) / Now playing (2b, Android)", plan
@@ -356,16 +354,8 @@ export default function PlayerScreen() {
   );
 }
 
-/**
- * The classic header, or the Signature one behind `SIGNATURE_PLAYER_ENABLED` (a build-time
- * constant, so this never switches within one run).
- */
 function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
-  return SIGNATURE_PLAYER_ENABLED ? (
-    <SignaturePlayerHeader onBack={onBack} detail={detail} />
-  ) : (
-    <PlayerHeader onBack={onBack} title={detail?.title} />
-  );
+  return <SignaturePlayerHeader onBack={onBack} detail={detail} />;
 }
 
 interface PlayerErrorProps {
@@ -594,17 +584,7 @@ function PlayerContent({
     />
   );
 
-  if (SIGNATURE_PLAYER_ENABLED) {
-    return <SignatureLayout sermonId={sermonId} detail={detail} queueContext={queueContext} video={video} sleepSheet={sleepSheet} />;
-  }
-
-  return (
-    <>
-      {video}
-      {queueContext ? <QueueList {...queueContext} /> : <CommentsPanel sermonId={sermonId} />}
-      {sleepSheet}
-    </>
-  );
+  return <SignatureLayout sermonId={sermonId} detail={detail} queueContext={queueContext} video={video} sleepSheet={sleepSheet} />;
 }
 
 interface SignatureLayoutProps {
@@ -616,8 +596,7 @@ interface SignatureLayoutProps {
 }
 
 /**
- * Signature player layout (behind `SIGNATURE_PLAYER_ENABLED`): the same video surface as
- * the classic layout, with every playback control (scrub, speed, sleep timer, full screen)
+ * Signature player layout: every playback control (scrub, speed, sleep timer, full screen)
  * still on its overlay (Nii, 2026-10-22: "all player controls must be kept on player"), then
  * the title block with Like / My List / Download / Share and the comments card. A playlist
  * still opens on its queue, with a Queue / Comments switch at the bottom. The title block and
