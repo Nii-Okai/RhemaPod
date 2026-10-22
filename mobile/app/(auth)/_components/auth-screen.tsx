@@ -53,7 +53,7 @@ export function AuthScreen({
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const topPadding = Math.max(insets.top, spacing.lg) + spacing.xs - (compactTop ? spacing.md : 0);
+  const topPadding = Math.max(insets.top, spacing.lg) + spacing.xs - (compactTop ? spacing.xl : 0);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'height' : undefined}>

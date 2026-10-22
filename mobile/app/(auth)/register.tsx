@@ -97,6 +97,9 @@ export default function RegisterScreen() {
       heading="Start listening"
       subhead="Save your place, build playlists and download sermons for later."
       subheadVariant="ui.body"
+      centerHeader
+      centerBrand
+      compactTop
       footer={
         <View style={styles.footerRow}>
           <AppText variant="ui.body" tone="secondary">
