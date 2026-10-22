@@ -40,6 +40,32 @@ jest.mock('expo-sqlite/kv-store', () => ({
 
 const mockedGet = api.get as jest.Mock;
 const HOUR = 60 * 60 * 1000;
+
+// Pin "now" to mid-afternoon local time so "2h ago" stays on the same calendar day; run
+// between midnight and 2am it became YESTERDAY. Only Date is faked: real timers keep the
+// queries and findBy* polling working.
+const NOW = new Date(2026, 9, 21, 15, 0);
+jest.useFakeTimers({
+  now: NOW,
+  doNotFake: [
+    'hrtime',
+    'nextTick',
+    'performance',
+    'queueMicrotask',
+    'requestAnimationFrame',
+    'cancelAnimationFrame',
+    'requestIdleCallback',
+    'cancelIdleCallback',
+    'setImmediate',
+    'clearImmediate',
+    'setInterval',
+    'clearInterval',
+    'setTimeout',
+    'clearTimeout',
+  ],
+});
+afterAll(() => jest.useRealTimers());
+
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 const sermon = (id: string, title: string, publishAt: string, extra: object = {}) => ({
