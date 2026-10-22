@@ -3,7 +3,6 @@ import { Image, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActionButton, AppText, CastCloseHeader, DetailError, PrimaryButton, Tag } from '../../components';
-import { DownloadPillButton, type DownloadPillItem } from '../../components/DownloadPillButton';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
@@ -92,21 +91,6 @@ export default function SermonDetailScreen() {
   }
 
   const metaLine = sermonMetaLine(detail);
-  // Every sermon has exactly one rendition uploaded (audio or video, never both), so this
-  // is always a single-item list — `DownloadPillButton` just treats it as the degenerate
-  // case of the same series-detail bulk-download fold rather than a separate one-sermon
-  // code path. No item at all when `media_type` is unset (nothing uploaded yet).
-  const downloadItems: DownloadPillItem[] = detail.media_type
-    ? [
-        {
-          sermonId: detail.id,
-          title: detail.title,
-          mediaType: detail.media_type,
-          thumbnailUrl: detail.thumbnail_url,
-          category: detail.category_name,
-        },
-      ]
-    : [];
   // A progress-lookup failure degrades gracefully to "treat as Fresh" rather than
   // blocking the whole screen on a secondary, non-critical query.
   const cta = resolveCta(detail, progressQuery.data ?? null);
@@ -167,7 +151,6 @@ export default function SermonDetailScreen() {
               onPress={onCtaPress}
               disabled={cta.disabled}
             />
-            {playable ? <DownloadPillButton items={downloadItems} /> : null}
           </View>
           {cta.caption ? (
             <AppText variant="ui.body" tone="tertiary">

@@ -19,25 +19,6 @@ jest.mock('@expo/vector-icons');
 // composed-message/thumbnail-download logic is `lib/share/__tests__/shareContent.test.ts`'s.
 jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
 
-// Explicit factory (not a bare automock) — an automock still has to `require()` the real
-// module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
-// module resolution (unavailable under Jest). This screen's own download-affordance
-// coverage lives in `components/__tests__/DownloadPillButton.test.tsx`; here it's enough
-// that `useDownloads()` returns a harmless "nothing downloaded yet" shape.
-jest.mock('../../../lib/downloads/useDownloads', () => ({
-  useDownloads: jest.fn(() => ({
-    downloads: [],
-    isLoading: false,
-    wifiOnly: true,
-    isSavingWifiOnly: false,
-    setWifiOnly: jest.fn(),
-    download: jest.fn(),
-    retry: jest.fn(),
-    remove: jest.fn(),
-    find: jest.fn(() => undefined),
-  })),
-}));
-
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -68,15 +49,17 @@ const baseDetail = {
   category_name: 'Teaching',
   speaker_id: 'sp1',
   speaker_name: 'Ada Nwosu',
-  // A series episode — not a standalone playable sermon — so it still lands on this
-  // detail page instead of redirecting straight to the player (see `[id].tsx`'s own
-  // `opensPlayer` doc comment; that redirect path has its own dedicated coverage in
-  // `signaturePlayer.test.tsx`).
   series_id: 's1',
   series_title: 'A Series',
   episode_number: null,
   tier: 'free',
-  locked: false,
+  // Locked, not playable — every playable sermon (standalone or series episode) now
+  // redirects straight to the player instead of rendering this page at all (see
+  // `[id].tsx`'s own `opensPlayer` doc comment; that redirect path has its own
+  // dedicated coverage in `signaturePlayer.test.tsx`). Locked is the one remaining
+  // reason this screen renders its main content — Like / My List / Share / Related
+  // still work the same for a locked preview, which is what most of this file covers.
+  locked: true,
   tags: ['grief', 'hope'],
   media_type: 'video',
   media_refs: [{ id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' }],
@@ -158,41 +141,7 @@ describe('SermonDetailScreen — error', () => {
   });
 });
 
-describe('SermonDetailScreen — fresh', () => {
-  it('renders Play (has video), the single published/category/tier meta line, tags, and synopsis', async () => {
-    mockDetailAndProgress(baseDetail, null);
-    const { findByText, getByText, getByLabelText, queryByText } = renderDetail();
-
-    await findByText('Anchored in the Storm');
-    expect(queryByText('Ada Nwosu')).toBeNull(); // speaker eyebrow removed
-    expect(getByText('2026 · Teaching')).toBeTruthy(); // single meta line: year + category, no "published"
-    expect(getByText('Free')).toBeTruthy(); // tier, as the shared Tag chip
-    expect(getByText('A word for the weary.')).toBeTruthy();
-    expect(getByText('grief')).toBeTruthy();
-    expect(getByText('hope')).toBeTruthy();
-
-    const cta = getByLabelText('Play sermon');
-    expect(cta).toBeTruthy();
-  });
-
-  it('renders Listen when no video rendition exists', async () => {
-    mockDetailAndProgress({
-      ...baseDetail,
-      media_refs: [{ id: 'm1', type: 'audio', quality: null, s3_key: 'x', hls_manifest_key: null }],
-    });
-    const { findByLabelText } = renderDetail();
-
-    await findByLabelText('Listen to sermon');
-  });
-
-  it('navigates to the player route when the CTA is pressed', async () => {
-    mockDetailAndProgress(baseDetail, null);
-    const { findByLabelText } = renderDetail();
-
-    fireEvent.press(await findByLabelText('Play sermon'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
-  });
-
+describe('SermonDetailScreen — hero', () => {
   it('renders a flat fallback hero (no icon) when thumbnail_url is null (§8.3)', async () => {
     mockDetailAndProgress({ ...baseDetail, thumbnail_url: null });
     const { findByText, queryByRole } = renderDetail();
@@ -265,63 +214,9 @@ describe('SermonDetailScreen — Like', () => {
   });
 });
 
-describe('SermonDetailScreen — Download', () => {
-  it('shows the Download pill for a playable sermon even with no audio rendition (bug fix, session 2026-10-01)', async () => {
-    // baseDetail's only media_ref is `type: 'video'` — the pill used to be gated on an
-    // audio rendition existing, so almost no sermon ever showed it. It now only gates on
-    // `playable`, matching series detail's own Download pill (which never checks for an
-    // audio rendition either).
-    mockDetailAndProgress(baseDetail, null);
-    const { findByLabelText } = renderDetail();
-
-    expect(await findByLabelText('Download Anchored in the Storm')).toBeTruthy();
-  });
-
-  it('shows no Download pill when the sermon is not playable at all', async () => {
-    mockDetailAndProgress({ ...baseDetail, media_refs: [] });
-    const { findByText, queryByLabelText } = renderDetail();
-
-    await findByText('Anchored in the Storm');
-    expect(queryByLabelText('Download Anchored in the Storm')).toBeNull();
-  });
-});
-
-describe('SermonDetailScreen — resume', () => {
-  it('renders Resume with remaining time when progress exists and is incomplete', async () => {
-    mockDetailAndProgress(baseDetail, {
-      sermon_id: 'sermon-1',
-      position_seconds: 600,
-      completed: false,
-      play_count: 2,
-      watched_seconds: 600,
-      last_played_at: '2026-09-10T00:00:00Z',
-    });
-    const { findByLabelText } = renderDetail();
-
-    // The remaining time still reaches screen readers via the CTA's own accessibility
-    // label — there's no separate visible "timer" line under the CTA/Download pair
-    // anymore (Isaac's ask, session 2026-10-01).
-    await findByLabelText('Resume sermon, 21:02 remaining');
-  });
-
-  it('falls back to Fresh (Play) when the sermon is already completed', async () => {
-    mockDetailAndProgress(baseDetail, {
-      sermon_id: 'sermon-1',
-      position_seconds: 1862,
-      completed: true,
-      play_count: 3,
-      watched_seconds: 1862,
-      last_played_at: '2026-09-10T00:00:00Z',
-    });
-    const { findByLabelText } = renderDetail();
-
-    await findByLabelText('Play sermon');
-  });
-});
-
 describe('SermonDetailScreen — no-media', () => {
   it('renders the disabled "Not available yet" state with the same single meta line', async () => {
-    mockDetailAndProgress({ ...baseDetail, media_refs: [] });
+    mockDetailAndProgress({ ...baseDetail, locked: false, media_refs: [] });
     const { findByText, getByText, getByLabelText, queryByText } = renderDetail();
 
     await findByText('Anchored in the Storm');
