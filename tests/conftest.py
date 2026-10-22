@@ -15,6 +15,9 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://test:test@localhost/
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("DEBUG", "true")
+# Most suites register-then-login as a fixture shortcut; tests/test_email_verification.py
+# turns the gate back on for the flow itself.
+os.environ.setdefault("REQUIRE_EMAIL_VERIFICATION", "false")
 
 # In-memory fake Redis shared across the app for tests.
 from tests.fake_redis import FakeRedis  # noqa: E402

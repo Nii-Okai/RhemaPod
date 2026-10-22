@@ -49,7 +49,10 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 401) {
+        if (err.status === 403) {
+          // Correct password, but the account hasn't entered its sign-up code yet.
+          router.push({ pathname: '/(auth)/verify-email', params: { email: email.trim(), resend: '1' } });
+        } else if (err.status === 401) {
           setErrorKind('credentials');
         } else if (err.status === 429) {
           setErrorKind('rate');

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -21,6 +21,7 @@ export default function RegisterScreen() {
   const styles = useStyles();
   const { register, signInWithGoogle, signInWithApple } = useAuth();
   const appleAvailable = useAppleSignInAvailable();
+  const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,6 +49,8 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register(email.trim(), password);
+      // The new account confirms its email with a 6-digit code before it can sign in.
+      router.replace({ pathname: '/(auth)/verify-email', params: { email: email.trim() } });
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorTitle('Could not create your account');

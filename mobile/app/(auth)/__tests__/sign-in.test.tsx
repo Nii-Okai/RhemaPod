@@ -12,7 +12,7 @@ import { resetOnboardingSeen } from '../../../lib/settings/onboardingSeen';
 
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
-  useRouter: jest.fn(() => ({ replace: jest.fn() })),
+  useRouter: jest.fn(() => ({ replace: jest.fn(), push: jest.fn() })),
 }));
 
 jest.mock('../../../lib/settings/onboardingSeen', () => ({
@@ -82,7 +82,7 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedDigestStringAsync.mockResolvedValue('hashed-nonce');
-  mockedUseRouter.mockReturnValue({ replace: jest.fn() });
+  mockedUseRouter.mockReturnValue({ replace: jest.fn(), push: jest.fn() });
   mockedResetOnboardingSeen.mockResolvedValue(undefined);
   Platform.OS = 'ios';
 });
@@ -111,6 +111,24 @@ describe('SignInScreen', () => {
     });
     expect(queryByText('Email and password are required.')).toBeNull();
     expect(signIn).toHaveBeenCalledWith('user@example.com', 'password123456');
+  });
+
+  it('sends an unconfirmed account to verify-email (with a fresh code) on a 403', async () => {
+    mockAuth({ signIn: jest.fn().mockRejectedValue(new ApiError(403, 'Email address not verified')) });
+    const push = jest.fn();
+    mockedUseRouter.mockReturnValue({ replace: jest.fn(), push });
+
+    const { getByText, getByLabelText } = render(<SignInScreen />);
+    fireEvent.changeText(getByLabelText('Email'), 'user@example.com');
+    fireEvent.changeText(getByLabelText('Password'), 'password123456');
+    fireEvent.press(getByText('Sign in'));
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith({
+        pathname: '/(auth)/verify-email',
+        params: { email: 'user@example.com', resend: '1' },
+      });
+    });
   });
 
   describe('social sign-in buttons', () => {

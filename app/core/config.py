@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     password_reset_expire_minutes: int = 30
       # Staff invite links (set-your-password) live longer than a self-service reset.
     invite_token_expire_hours: int = 48
+    # Self-registered (email/password) viewers confirm their address with a
+    # 6-digit emailed code before they can sign in. Google/Apple sign-ins skip
+    # it (the provider already verified the email). Off only for the test suite.
+    require_email_verification: bool = True
+    email_verification_expire_minutes: int = 15
+    # Wrong guesses allowed against one code before it is burned (a 6-digit
+    # code is only 10^6 wide, so guessing must be capped per code, not per IP).
+    email_verification_max_attempts: int = 5
     # Base URL of the frontend that renders the set-password / reset page.
     frontend_base_url: str = "http://localhost:3000"
     # --- Media / storage (Phase 4) ---
@@ -227,8 +235,9 @@ class Settings(BaseSettings):
     # How long an entitlement decision is cached in Redis.
     entitlement_cache_seconds: int = 300
 
-    # --- Email (SMTP) ---
+    # --- Email (SMTP — production uses Resend's SMTP relay, DEPLOYMENT.md §7) ---
     # Unset -> console backend (logs the message). Required in production.
+    # SMTP_FROM_EMAIL may carry a display name: "RhemaPod <no-reply@rhemapod.com>".
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -583,6 +592,11 @@ class Settings(BaseSettings):
                 "APPLE_OAUTH_AUDIENCES is required while OAUTH_APPLE_ENABLED "
                 "is true (without it every Apple identity token fails "
                 "audience verification, and /auth/oauth/apple is unusable)"
+            )
+        if not self.require_email_verification:
+            problems.append(
+                "REQUIRE_EMAIL_VERIFICATION must be true (it exists only so the "
+                "test suite can register-then-login without the emailed code)"
             )
         if self.debug:
             problems.append("DEBUG must be false (it exposes API docs)")
