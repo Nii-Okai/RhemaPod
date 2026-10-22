@@ -30,6 +30,7 @@ export function AuthScreen({
   subhead,
   subheadVariant = 'ui.bodyLarge',
   centerHeader = false,
+  centerBrand = false,
   children,
   footer,
 }: {
@@ -41,6 +42,8 @@ export function AuthScreen({
   subheadVariant?: AppTextVariant;
   /** Centers the eyebrow/heading/subhead instead of the usual left alignment — sign-in's ask. */
   centerHeader?: boolean;
+  /** Centers the brand mark + wordmark instead of the usual left alignment — sign-in's ask. */
+  centerBrand?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -58,7 +61,7 @@ export function AuthScreen({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.brandRow}>
+        <View style={[styles.brandRow, centerBrand ? styles.brandRowCentered : null]}>
           <View style={styles.brandMark}>
             <Image
               source={require('../../../assets/icon-mark.png')}
@@ -125,6 +128,9 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  brandRowCentered: {
+    justifyContent: 'center',
   },
   brandMark: {
     width: BRAND_SIZE,

@@ -137,6 +137,7 @@ export default function SignInScreen() {
       subhead="Sign in to your sermons and playlists."
       subheadVariant="ui.body"
       centerHeader
+      centerBrand
       footer={
         <>
           <View style={styles.footerRow}>
