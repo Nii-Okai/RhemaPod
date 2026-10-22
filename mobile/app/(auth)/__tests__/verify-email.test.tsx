@@ -38,13 +38,12 @@ beforeEach(() => {
 });
 
 describe('VerifyEmailScreen', () => {
-  it('submits the 6-digit code with the email from the route', async () => {
+  it('submits the 6-digit code with the email from the route as soon as it is complete', async () => {
     const { verifyEmail, resendVerification } = mockAuth();
     const { getByText, getByLabelText } = render(<VerifyEmailScreen />);
 
     expect(getByText('Enter the 6-digit code we sent to user@example.com.')).toBeTruthy();
     fireEvent.changeText(getByLabelText('Verification code'), '12 34-56');
-    fireEvent.press(getByText('Verify and continue'));
 
     await waitFor(() => expect(verifyEmail).toHaveBeenCalledWith('user@example.com', '123456'));
     expect(resendVerification).not.toHaveBeenCalled();
@@ -63,7 +62,6 @@ describe('VerifyEmailScreen', () => {
     mockAuth({ verifyEmail: jest.fn().mockRejectedValue(new ApiError(400, 'Invalid or expired code')) });
     const { getByText, getByLabelText } = render(<VerifyEmailScreen />);
     fireEvent.changeText(getByLabelText('Verification code'), '123456');
-    fireEvent.press(getByText('Verify and continue'));
     await waitFor(() =>
       expect(getByText('That code is wrong or has expired. Check the email or send a new code.')).toBeTruthy(),
     );

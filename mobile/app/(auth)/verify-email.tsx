@@ -4,12 +4,10 @@ import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
 import { AuthScreen } from './_components/auth-screen';
-import { Field } from './_components/field';
+import { CheckEmailBody } from './_components/check-email';
+import { CODE_LENGTH, CodeInput } from './_components/code-input';
 import { InlineAlert } from './_components/inline-alert';
 import { retryWindowText } from './_components/socialAuthErrorCopy';
-
-const CODE_LENGTH = 6;
-const RESEND_COOLDOWN_SECONDS = 30;
 
 /**
  * Email confirmation for email/password sign-ups. `/auth/register` emails a
@@ -17,7 +15,9 @@ const RESEND_COOLDOWN_SECONDS = 30;
  * the root auth guard moves them into the app. Reached from register.tsx right
  * after sign-up, and from sign-in.tsx when `/auth/login` answers 403 for an
  * unconfirmed account (`resend=1`: that code may be long expired, so a fresh
- * one is sent on arrival). Google/Apple sign-ins never come here.
+ * one is sent on arrival, surfaced below as its own notice — distinct from
+ * `CheckEmailBody`'s own "Resend email" control, which the user drives). Google/Apple
+ * sign-ins never come here.
  */
 export default function VerifyEmailScreen() {
   const { verifyEmail, resendVerification } = useAuth();
@@ -27,44 +27,30 @@ export default function VerifyEmailScreen() {
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
+  const [arrivalNotice, setArrivalNotice] = useState<string | null>(null);
   const sentOnArrival = useRef(false);
 
   useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cooldown]);
-
-  async function onResend() {
-    setError(null);
-    setNotice(null);
-    try {
-      await resendVerification(email);
-      setNotice(`We sent a new code to ${email}.`);
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
-        setError(`Too many codes requested. ${retryWindowText(err.retryAfter)}`);
-      } else {
-        setError('Could not send a new code. Check your connection and try again.');
+    if (params.resend !== '1' || !email || sentOnArrival.current) return;
+    sentOnArrival.current = true;
+    void (async () => {
+      try {
+        await resendVerification(email);
+        setArrivalNotice(`We sent a new code to ${email}.`);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 429) {
+          setError(`Too many codes requested. ${retryWindowText(err.retryAfter)}`);
+        } else {
+          setError('Could not send a new code. Check your connection and try again.');
+        }
       }
-    }
-  }
-
-  useEffect(() => {
-    if (params.resend === '1' && email && !sentOnArrival.current) {
-      sentOnArrival.current = true;
-      void onResend();
-    }
+    })();
     // Once on arrival only (the ref also guards StrictMode's double effect).
   }, []);
 
-  async function onSubmit() {
+  async function onSubmit(submittedCode: string) {
     setError(null);
-    setNotice(null);
-    const trimmed = code.trim();
+    const trimmed = submittedCode.trim();
     if (trimmed.length !== CODE_LENGTH) {
       setError(`Enter the ${CODE_LENGTH}-digit code from the email.`);
       return;
@@ -87,40 +73,33 @@ export default function VerifyEmailScreen() {
 
   return (
     <AuthScreen
+      eyebrow="One more step"
       heading="Confirm your email"
       subhead={`Enter the ${CODE_LENGTH}-digit code we sent to ${email || 'your email'}.`}
+      footer={
+        <Link href="/(auth)/sign-in" asChild>
+          <LinkButton label="Back to sign in" />
+        </Link>
+      }
     >
-      <Field
-        label="Verification code"
-        value={code}
-        onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, CODE_LENGTH))}
-        keyboardType="number-pad"
-        textContentType="oneTimeCode"
-        autoComplete="one-time-code"
-        maxLength={CODE_LENGTH}
-        returnKeyType="done"
-        onSubmitEditing={onSubmit}
-      />
+      <CodeInput value={code} onChangeText={setCode} error={error} onComplete={onSubmit} />
 
-      {error ? <InlineAlert variant="error" title={error} /> : null}
-      {notice ? <InlineAlert variant="success" title={notice} /> : null}
+      {arrivalNotice ? <InlineAlert variant="success" title={arrivalNotice} /> : null}
 
       <PrimaryButton
         label={submitting ? 'Verifying…' : 'Verify and continue'}
-        onPress={onSubmit}
+        onPress={() => onSubmit(code)}
         loading={submitting}
         fullWidth
       />
 
-      <LinkButton
-        label={cooldown > 0 ? `Send a new code (${cooldown}s)` : 'Send a new code'}
-        onPress={onResend}
-        disabled={cooldown > 0 || !email}
+      <CheckEmailBody
+        email={email}
+        kind="code"
+        onResend={async () => {
+          await resendVerification(email);
+        }}
       />
-
-      <Link href="/(auth)/sign-in" asChild>
-        <LinkButton label="Back to sign in" />
-      </Link>
     </AuthScreen>
   );
 }
