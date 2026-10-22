@@ -207,13 +207,24 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 /**
- * `/auth/register` returns the created user, not a token pair — this signs
- * in immediately after so registration reads as one action to the user, the
- * same flow the design spec's "self-registration" screen implies.
+ * `/auth/register` returns the created user, not a token pair, and the new
+ * account can't sign in until it confirms its email: the backend emails a
+ * 6-digit code, which `verifyEmail()` below exchanges for a session. The
+ * register screen sends the user to `/(auth)/verify-email` next.
  */
 export async function register(email: string, password: string): Promise<void> {
   await authClient.register(email, password);
-  await signIn(email, password);
+}
+
+/** The sign-up code from the confirmation email, exchanged for a session. */
+export async function verifyEmail(email: string, code: string): Promise<void> {
+  const pair = await authClient.verifyEmail(email, code);
+  await applyTokenPair(pair);
+  setStatus('signedIn');
+}
+
+export function resendVerification(email: string): Promise<{ message: string }> {
+  return authClient.resendVerification(email);
 }
 
 export function forgotPassword(email: string): Promise<{ message: string }> {

@@ -114,6 +114,13 @@ class User(Base):
     activated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # NULL until the address is proven: the emailed sign-up code, a completed
+    # reset/invite link, or a Google/Apple sign-in. `/auth/login` refuses a
+    # viewer while NULL (staff prove theirs through the invite). Pre-existing
+    # rows were backfilled with `created_at` (grandfathered).
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Set once when the user accepts the comments terms (timestamp only, no
     # version; plan P9). NULL = not accepted, posting is refused.
     comments_terms_accepted_at: Mapped[datetime | None] = mapped_column(

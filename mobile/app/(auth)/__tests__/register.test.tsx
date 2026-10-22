@@ -8,8 +8,10 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 
+const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
+  useRouter: () => ({ replace: mockReplace }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -97,6 +99,25 @@ describe('RegisterScreen', () => {
 
     await waitFor(() => {
       expect(getByText('Email already registered')).toBeTruthy();
+    });
+    expect(register).toHaveBeenCalledWith('user@example.com', 'password123456');
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('goes to verify-email after a successful register', async () => {
+    const { register } = mockAuth();
+    mockReplace.mockClear();
+
+    const { getByText, getByLabelText } = render(<RegisterScreen />);
+    fireEvent.changeText(getByLabelText('Email'), 'user@example.com');
+    fireEvent.changeText(getByLabelText('Password'), 'password123456');
+    fireEvent.press(getByText('Create account'));
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith({
+        pathname: '/(auth)/verify-email',
+        params: { email: 'user@example.com' },
+      });
     });
     expect(register).toHaveBeenCalledWith('user@example.com', 'password123456');
   });

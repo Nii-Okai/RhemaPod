@@ -25,7 +25,7 @@ Required when `ENVIRONMENT=production`:
 | Variable | Why |
 |---|---|
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Otherwise uploads go to an in-memory stub |
-| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Otherwise invite and reset emails are only logged |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Otherwise invite, reset and verification emails are only logged |
 | `SECRET_KEY` | 32+ chars, from a secrets manager |
 | `ALLOWED_ORIGINS` | https only, no `*` |
 | `FRONTEND_BASE_URL` | https |
@@ -199,11 +199,28 @@ directly**, so nothing in the send path changes — this is configuration only.
    | `SMTP_PORT` | `587` (STARTTLS) or `465` (implicit TLS) — `email.py` handles both |
    | `SMTP_USERNAME` | the literal string `resend` |
    | `SMTP_PASSWORD` | your Resend API key |
-   | `SMTP_FROM_EMAIL` | a verified sender address on your verified domain |
+   | `SMTP_FROM_EMAIL` | `RhemaPod <no-reply@rhemapod.com>` (any address on the verified `rhemapod.com` domain; the display name is optional) |
 
-No code change, no new dependency. `send_staff_invite` and
-`send_password_reset` (both in `email.py`) are unaffected — they call the
-same `_send` seam regardless of which SMTP provider is configured behind it.
+No new dependency. Every message (`send_staff_invite`, `send_password_reset`,
+`send_email_verification`, `send_sign_in_method_linked`, all in `email.py`)
+goes out as branded HTML with a plain-text alternative through the same
+`_send` seam, whichever SMTP provider is configured behind it.
+
+What gets sent:
+
+| Email | Trigger | Link / code |
+|---|---|---|
+| Confirm your email | `POST /auth/register` (email/password sign-up only; Google/Apple skip it) | 6-digit code, entered in the app (`POST /auth/verify-email`), valid `EMAIL_VERIFICATION_EXPIRE_MINUTES` (15), 5 wrong guesses burn it; `POST /auth/resend-verification` sends a new one |
+| Reset your password | `POST /auth/forgot-password` | `{FRONTEND_BASE_URL}/set-password?token=…`, plus `&app=1` for app users so the page shows app copy |
+| Staff invite | `POST /users`, `POST /users/{id}/resend-invite` | `{FRONTEND_BASE_URL}/set-password?token=…` |
+| Sign-in connected | Google/Apple linked to a password account | none |
+
+`/auth/login` answers **403 "Email address not verified"** for a viewer who
+hasn't entered their code yet; the app takes them to its code screen. Accounts
+that existed before this shipped were backfilled as verified by migration
+`b7e2c4d9a1f3`, and a completed reset link or a Google/Apple sign-in also marks
+the address verified. Staff never see the gate (the invite link proves the
+address).
 
 ## 8. S3 / CORS
 

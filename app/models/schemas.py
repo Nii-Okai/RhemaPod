@@ -57,6 +57,15 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\s*\d{6}\s*$")
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=128)

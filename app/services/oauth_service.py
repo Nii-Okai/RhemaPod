@@ -263,7 +263,9 @@ async def sign_in_with_identity(
 
     if existing_user is None:
         try:
-            user = await _create_viewer(db, email, password_hash=None)
+            user = await _create_viewer(
+                db, email, password_hash=None, email_verified=True
+            )
             await _prefill_name(db, user, identity)
             db.add(
                 UserIdentity(
@@ -338,6 +340,10 @@ async def sign_in_with_identity(
     # Auto-link: closes the pre-registration takeover hole described in the
     # module docstring. All in one transaction with the identity-row insert.
     existing_user.password_hash = None
+    # The provider verified this address, so an account still waiting on its
+    # sign-up code is now proven too.
+    if existing_user.email_verified_at is None:
+        existing_user.email_verified_at = datetime.now(timezone.utc)
     await token_store.revoke_refresh(str(existing_user.id))
     try:
         db.add(

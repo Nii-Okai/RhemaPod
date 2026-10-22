@@ -17,6 +17,8 @@ LIVE_ENV = {
     **BASE_ENV,
     "environment": "production",
     "debug": False,
+    # conftest turns verification off for the suite via the environment.
+    "require_email_verification": True,
     "allowed_origins": ["https://app.example.com"],
     "frontend_base_url": "https://app.example.com",
     "object_store_endpoint_url": "https://acct123.r2.cloudflarestorage.com",
@@ -109,6 +111,11 @@ def test_production_refuses_stub_storage():
 def test_production_refuses_console_email():
     with pytest.raises(ValueError, match="SMTP_HOST"):
         _settings(smtp_host=None, smtp_from_email=None)
+
+
+def test_production_refuses_disabled_email_verification():
+    with pytest.raises(ValueError, match="REQUIRE_EMAIL_VERIFICATION"):
+        _settings(require_email_verification=False)
 
 
 def test_production_refuses_debug():

@@ -1,5 +1,6 @@
 import hashlib
 import time
+import uuid
 from dataclasses import replace
 from typing import Annotated
 
@@ -23,7 +24,7 @@ from app.core.oauth import (
 )
 from app.core.rate_limit import check_rate_limit
 from app.db.database import get_db
-from app.models.models import AuditAction, AuditOutcome
+from app.models.models import AuditAction, AuditOutcome, UserRole
 from app.models.schemas import (
     AppleSignInRequest,
     AvatarResponse,
@@ -37,11 +38,13 @@ from app.models.schemas import (
     ProfileDetailsUpdate,
     ProfileUpdate,
     RefreshRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     TokenPair,
     UserLogin,
     UserPublic,
     UserRegister,
+    VerifyEmailRequest,
 )
 from app.services import audit_service, auth_service, comments_service, oauth_service
 from app.services.audit_service import AuditContext
@@ -64,12 +67,105 @@ _ACCESS_TTL_SECONDS = settings.access_token_expire_minutes * 60
     response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
 )
-async def register(data: UserRegister, db: DbDep) -> UserPublic:
+async def register(
+    data: UserRegister, background_tasks: BackgroundTasks, db: DbDep
+) -> UserPublic:
+    """Creates the account. While email verification is on, it cannot sign in
+    until the 6-digit code emailed here is entered at `/auth/verify-email`."""
     try:
         user = await auth_service.register_user(db, data)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+    if auth_service.needs_email_verification(user):
+        background_tasks.add_task(
+            _dispatch_email_verification, user.id, user.email
+        )
     return auth_service.to_user_public(user)
+
+
+async def _dispatch_email_verification(user_id: uuid.UUID, to_email: str) -> None:
+    """Off the response path, swallow-and-log like `_dispatch_password_reset`:
+    the account exists either way, and the app's "Resend code" recovers from a
+    Redis blip or a failed send."""
+    try:
+        code = await auth_service.issue_email_verification_code(user_id)
+        await email_module.send_email_verification(to_email, code)
+    except Exception as exc:
+        log.warning(
+            "email_verification_dispatch_failed",
+            user_id=str(user_id),
+            error=type(exc).__name__,
+        )
+
+
+@router.post("/verify-email", response_model=TokenPair)
+async def verify_email(
+    data: VerifyEmailRequest, request: Request, db: DbDep, ctx: AuditCtx
+) -> TokenPair:
+    """Confirm a self-registered account with its emailed 6-digit code and
+    sign it in. Wrong guesses are capped per code (see
+    `token_store.consume_email_code`) and per client IP here."""
+    allowed = await check_rate_limit(
+        f"verify_email:{client_ip(request)}",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Try again shortly.",
+        )
+    try:
+        user = await auth_service.verify_email(db, data.email, data.code)
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+    access, refresh_token = await auth_service.issue_token_pair(user)
+    await _audit_login(user, ctx, {"method": "email_verification"})
+    return TokenPair(
+        access_token=access, refresh_token=refresh_token, expires_in=_ACCESS_TTL_SECONDS
+    )
+
+
+_RESEND_VERIFICATION_LIMIT = 3
+_RESEND_VERIFICATION_WINDOW_SECONDS = 15 * 60
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+async def resend_verification(
+    data: ResendVerificationRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: DbDep,
+) -> MessageResponse:
+    """Email a fresh code. Same generic answer whether or not the address
+    exists or still needs verifying — not an enumeration oracle — and the send
+    happens off the response path, as in `forgot_password`."""
+    generic = MessageResponse(
+        message="If that account needs verifying, a new code has been sent."
+    )
+    email = data.email.lower()
+    allowed = await check_rate_limit(
+        f"resend_verification:{email}",
+        _RESEND_VERIFICATION_LIMIT,
+        _RESEND_VERIFICATION_WINDOW_SECONDS,
+    ) and await check_rate_limit(
+        f"resend_verification_ip:{client_ip(request)}",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Try again in a few minutes.",
+        )
+    user = await auth_service.get_user_by_email(db, email)
+    if (
+        user is not None
+        and user.is_active
+        and auth_service.needs_email_verification(user)
+    ):
+        background_tasks.add_task(_dispatch_email_verification, user.id, user.email)
+    return generic
 
 
 async def _audit_login(user, ctx: AuditContext, details: dict) -> None:
@@ -113,6 +209,15 @@ async def login(
             background=BackgroundTask(
                 audit_service.record_login_failed, data.email, ctx=ctx
             ),
+        )
+
+    if auth_service.needs_email_verification(user):
+        # Only reachable with the correct password, so this reveals nothing
+        # to someone who doesn't already hold the credentials. The app sends
+        # the user to its code screen on this exact status.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email address not verified",
         )
 
     access, refresh = await auth_service.issue_token_pair(user)
@@ -171,7 +276,12 @@ async def change_password(
 
 
 async def _dispatch_password_reset(
-    user_id: str, to_email: str, token: str, jti: str, ttl_seconds: int
+    user_id: str,
+    to_email: str,
+    token: str,
+    jti: str,
+    ttl_seconds: int,
+    for_app: bool = False,
 ) -> None:
     """Off the response path — see forgot_password for why.
 
@@ -185,7 +295,7 @@ async def _dispatch_password_reset(
     """
     try:
         await token_store.register_single_use(jti, ttl_seconds)
-        await email_module.send_password_reset(to_email, token)
+        await email_module.send_password_reset(to_email, token, for_app=for_app)
     except Exception as exc:
         log.warning(
             "password_reset_dispatch_failed",
@@ -215,6 +325,9 @@ async def forgot_password(
             token,
             jti,
             settings.password_reset_expire_minutes * 60,
+            # Viewers reset from the mobile app; the landing page shows them
+            # app copy instead of the staff portal's.
+            user.role == UserRole.VIEWER,
         )
     return MessageResponse(
         message="If that email exists, a reset link has been sent."

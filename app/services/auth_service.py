@@ -167,7 +167,13 @@ async def confirm_avatar(db: AsyncSession, actor: User, key: str) -> str | None:
     return _avatar_url(key)
 
 
-async def _create_viewer(db: AsyncSession, email: str, password_hash: str | None) -> User:
+async def _create_viewer(
+    db: AsyncSession,
+    email: str,
+    password_hash: str | None,
+    *,
+    email_verified: bool = False,
+) -> User:
     """Shared account-creation core for a fresh viewer: the user row
     (activated immediately — a brand-new account, whether self-registered or
     OAuth-created, is never a "pending invite") plus the FREE-tier
@@ -178,7 +184,11 @@ async def _create_viewer(db: AsyncSession, email: str, password_hash: str | None
     `UserIdentity` row for an OAuth sign-in) before committing once,
     atomically. `register_user` below and `oauth_service.sign_in_with_identity`
     are the two callers; neither duplicates the subscription-creation logic.
+
+    `email_verified` is True only for OAuth (the provider verified the
+    address); a self-registered account waits for its emailed code.
     """
+    now = datetime.now(timezone.utc)
     user = User(
         email=email,
         password_hash=password_hash,
@@ -186,7 +196,8 @@ async def _create_viewer(db: AsyncSession, email: str, password_hash: str | None
         # `activated_at` must be non-NULL here or `resend_invite` (which reads
         # NULL as "invite still pending") would mint a working set-password
         # link for a live account (CWE-620/640).
-        activated_at=datetime.now(timezone.utc),
+        activated_at=now,
+        email_verified_at=now if email_verified else None,
     )
     db.add(user)
     await db.flush()
@@ -213,6 +224,64 @@ async def register_user(db: AsyncSession, data: UserRegister) -> User:
     await db.commit()
     await db.refresh(user)
     log.info("user_registered", user_id=str(user.id))
+    return user
+
+
+def _email_code_digest(user_id: uuid.UUID, code: str) -> str:
+    """Keyed digest of a verification code, bound to its account: Redis never
+    holds a usable code, and a digest can't be replayed against another user."""
+    import hashlib
+    import hmac
+
+    msg = f"{user_id}:{code}".encode()
+    return hmac.new(settings.secret_key.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def needs_email_verification(user: User) -> bool:
+    """Whether `/auth/login` must refuse this (already authenticated) account
+    until it enters its emailed code. Viewers only: staff prove their address
+    by completing the invite link."""
+    return (
+        settings.require_email_verification
+        and user.role == UserRole.VIEWER
+        and user.email_verified_at is None
+    )
+
+
+async def issue_email_verification_code(user_id: uuid.UUID) -> str:
+    """Mint and record a fresh 6-digit code for the account, replacing any earlier
+    one. Returns the code for the caller to email. Fails closed
+    (`TokenStoreUnavailable`) — a code we could not record would be useless."""
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await token_store.store_email_code(
+        str(user_id),
+        _email_code_digest(user_id, code),
+        settings.email_verification_expire_minutes * 60,
+    )
+    return code
+
+
+async def verify_email(db: AsyncSession, email: str, code: str) -> User:
+    """Confirm a self-registered account's address with its emailed code.
+
+    One generic error for every failure (unknown email, already verified,
+    wrong/expired/burned code, deactivated) so this is not an enumeration
+    oracle."""
+    generic = AuthError("Invalid or expired code")
+    user = await get_user_by_email(db, email)
+    if user is None or not user.is_active or user.email_verified_at is not None:
+        raise generic
+    ok = await token_store.consume_email_code(
+        str(user.id),
+        _email_code_digest(user.id, code.strip()),
+        settings.email_verification_max_attempts,
+    )
+    if not ok:
+        raise generic
+    user.email_verified_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(user)
+    log.info("email_verified", user_id=str(user.id))
     return user
 
 
@@ -363,6 +432,10 @@ async def reset_password(
     # timestamp untouched. `resend_invite` reads this column, not Redis.
     if user.activated_at is None:
         user.activated_at = datetime.now(timezone.utc)
+    # Following the emailed link proves the address, so a viewer still waiting
+    # on their sign-up code can recover through Forgot Password too.
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
     # The account holder is the actor: whoever held the emailed link set this
     # password. `token_type` tells a forgot-password reset from an invite's
     # first set-password.

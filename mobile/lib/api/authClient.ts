@@ -4,7 +4,8 @@ import type { TokenPair, UserPublic } from '../auth/types';
 
 /**
  * Raw calls to the public auth endpoints (`/auth/register`, `/auth/login`,
- * `/auth/refresh`, `/auth/forgot-password`, `/auth/oauth/google`, `/auth/oauth/apple`)
+ * `/auth/refresh`, `/auth/forgot-password`, `/auth/verify-email`,
+ * `/auth/resend-verification`, `/auth/oauth/google`, `/auth/oauth/apple`)
  * plus `/auth/logout`. Deliberately
  * separate from `lib/api/client.ts`'s authenticated `apiFetch`: these never
  * attach a bearer token and never trigger the 401-refresh-retry dance —
@@ -43,6 +44,16 @@ export function refresh(refreshToken: string): Promise<TokenPair> {
 
 export function forgotPassword(email: string): Promise<{ message: string }> {
   return post<{ message: string }>('/auth/forgot-password', { email });
+}
+
+/** Exchanges the 6-digit sign-up code for a token pair (signs the user in). */
+export function verifyEmail(email: string, code: string): Promise<TokenPair> {
+  return post<TokenPair>('/auth/verify-email', { email, code });
+}
+
+/** Always a generic 200 (not an enumeration oracle); 429 when rate limited. */
+export function resendVerification(email: string): Promise<{ message: string }> {
+  return post<{ message: string }>('/auth/resend-verification', { email });
 }
 
 /**

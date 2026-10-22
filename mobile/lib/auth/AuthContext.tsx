@@ -9,6 +9,8 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<{ message: string }>;
   signOut: () => Promise<void>;
   signInWithGoogle: (idToken: string) => Promise<void>;
   signInWithApple: (
@@ -47,6 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn: session.signIn,
       register: session.register,
       forgotPassword: session.forgotPassword,
+      verifyEmail: session.verifyEmail,
+      resendVerification: session.resendVerification,
       signOut: session.signOut,
       signInWithGoogle: session.signInWithGoogle,
       signInWithApple: session.signInWithApple,
