@@ -12,6 +12,7 @@ import { formatDuration } from '../../lib/format/duration';
 import { useNewReleases } from '../../lib/query/hooks/useNewReleases';
 import { useNotificationsBadge } from '../../lib/query/hooks/useNotificationsBadge';
 import type { SermonListItem } from '../../lib/query/hooks/useSermons';
+import { ArtScrim } from '../(tabs)/_home/signature/ArtScrim';
 import { Flame } from '../(tabs)/_home/signature/Flame';
 import { LEAF, leaf } from '../(tabs)/_home/signature/leaf';
 import { formatWhen, isFresh, splitNotifications } from './notificationTime';
@@ -48,11 +49,7 @@ function LatestReleaseCard({ sermon, unread, onPress }: { sermon: SermonListItem
         {sermon.thumbnail_url ? (
           <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : null}
-        <View style={featured.scrim} pointerEvents="none">
-          {onArt.overlay.scrimLayers.map((color) => (
-            <View key={color} style={[featured.scrimBand, { backgroundColor: color }]} />
-          ))}
-        </View>
+        <ArtScrim height="40%" />
         <View style={featured.chip} pointerEvents="none">
           <Flame width={8} fill={unread ? onArt.accent.goldText : onArt.text.tertiary} />
           <AppText variant="ui.badge" style={featured.onArtText}>
@@ -335,16 +332,6 @@ const featured = StyleSheet.create({
   art: {
     aspectRatio: 16 / 9,
     backgroundColor: onArt.surface.sunken,
-  },
-  scrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '40%',
-  },
-  scrimBand: {
-    flex: 1,
   },
   chip: {
     position: 'absolute',

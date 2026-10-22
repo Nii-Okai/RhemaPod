@@ -28,9 +28,10 @@ async def test_upcoming_returns_the_soonest_scheduled_sermon_without_auth(client
     assert body["id"] == soonest
     assert body["title"] == "Sunday"
     assert body["publish_at"]
-    # Nothing playable or previewable ahead of the release.
-    assert "thumbnail_url" not in body
+    # The cover art is sent for the countdown; nothing playable is.
+    assert "thumbnail_url" in body
     assert "description" not in body
+    assert "stream_url" not in body
 
 
 async def test_upcoming_ignores_released_and_unpublished_sermons(client, engine):

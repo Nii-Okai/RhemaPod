@@ -4393,9 +4393,10 @@ export interface components {
         /**
          * UpcomingSermon
          * @description The next scheduled sermon — PUBLISHED with a future `publish_at` — for Home's
-         *     "next message" countdown. Deliberately thin: the title, when it goes live, and
-         *     the names a card needs. No thumbnail, description or media, so nothing playable
-         *     or previewable leaks ahead of the release; only that it is coming, and when.
+         *     "next message" countdown. Deliberately thin: the title, its cover art (Nii's call,
+         *     2026-10-21: the countdown shows the sermon's own art), when it goes live, and the
+         *     names a card needs. No description or media, so nothing playable leaks ahead of
+         *     the release.
          */
         UpcomingSermon: {
             /** Episode Number */
@@ -4414,6 +4415,8 @@ export interface components {
             series_title?: string | null;
             /** Speaker Name */
             speaker_name?: string | null;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
             /** Title */
             title: string;
         };

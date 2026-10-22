@@ -39,6 +39,8 @@ const PAIRS: Pair[] = [
   ['status.sage text on bg', (c) => c.status.sage.text, (c) => c.status.sage.bg, TEXT],
   ['status.rose text on bg', (c) => c.status.rose.text, (c) => c.status.rose.bg, TEXT],
   ['status.slate text on bg', (c) => c.status.slate.text, (c) => c.status.slate.bg, TEXT],
+  // Signature Browse's wheat category tile sets its name in the dot colour.
+  ['status.wheat dot on bg', (c) => c.status.wheat.dot, (c) => c.status.wheat.bg, TEXT],
   ['gold fill on track', (c) => c.accent.gold, (c) => c.track.default, NON_TEXT],
 ];
 

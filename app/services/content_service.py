@@ -571,8 +571,9 @@ def _daily_shuffle(items: list[Sermon], salt: str) -> list[Sermon]:
 async def next_scheduled_sermon(db: AsyncSession) -> UpcomingSermon | None:
     """The soonest sermon that is PUBLISHED but not yet visible (`publish_at` still in
     the future) — Home's "next message" countdown (Nii's ask, 2026-10-21). None when
-    nothing is scheduled. Only the fields in `UpcomingSermon` leave the server; the
-    sermon itself stays invisible to every catalogue read until its time passes."""
+    nothing is scheduled. Only the fields in `UpcomingSermon` leave the server (cover
+    art included, so the countdown can show it); the sermon itself stays invisible to
+    every catalogue read until its time passes."""
     now = datetime.now(timezone.utc)
     stmt = (
         select(Sermon)
@@ -592,6 +593,7 @@ async def next_scheduled_sermon(db: AsyncSession) -> UpcomingSermon | None:
         id=sermon.id,
         title=sermon.title,
         publish_at=sermon.publish_at,
+        thumbnail_url=_thumbnail_url(sermon.thumbnail_key),
         speaker_name=names.speakers.get(sermon.speaker_id) if sermon.speaker_id else None,
         series_title=names.series.get(sermon.series_id) if sermon.series_id else None,
         episode_number=sermon.episode_number,
