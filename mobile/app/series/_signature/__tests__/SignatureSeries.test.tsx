@@ -28,6 +28,13 @@ jest.mock('../../../(tabs)/_home/signature/Flame', () => {
   return { ...actual, GlowingFlame: actual.Flame };
 });
 
+// Casting: not connected unless a test says so.
+const mockCastPlay = jest.fn();
+let mockCastConnected = false;
+jest.mock('../../../../lib/cast/useCastPlayback', () => ({
+  useCastPlayback: () => ({ connected: mockCastConnected, play: mockCastPlay }),
+}));
+
 const mockPush = jest.fn();
 const mockDismissAll = jest.fn();
 jest.mock('expo-router', () => ({
@@ -133,6 +140,8 @@ beforeEach(() => {
   mockPush.mockClear();
   mockDismissAll.mockClear();
   download.mockClear();
+  mockCastPlay.mockClear();
+  mockCastConnected = false;
   records = {};
   mockedLoadTheme.mockResolvedValue('dark');
   mockedUseDownloads.mockReturnValue({
@@ -210,6 +219,24 @@ describe('SignatureSeriesScreen', () => {
     fireEvent.press(await findByLabelText('Divine Patterns · Part 1'));
     expect(queryByLabelText('Divine Patterns · Part 2')).toBeNull();
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ id: 'other-1' }) }));
+  });
+
+  it('sends Resume and episode rows to the TV while one is connected, from where the viewer stopped', async () => {
+    mockCastConnected = true;
+    mockApi();
+    const { findByLabelText, getByText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Resume, 41:00 remaining'));
+    expect(mockCastPlay).toHaveBeenCalledWith({
+      sermonId: 'e2',
+      title: 'Part Two',
+      subtitle: 'The Destiny of the Church',
+      imageUrl: 'https://cdn.example.com/destiny.jpg',
+      startTime: 2940,
+    });
+    fireEvent.press(getByText('Part One'));
+    expect(mockCastPlay).toHaveBeenLastCalledWith(expect.objectContaining({ sermonId: 'e1', startTime: 0 }));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('closes the whole stack from the close button', async () => {

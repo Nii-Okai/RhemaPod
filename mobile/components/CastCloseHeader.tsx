@@ -6,6 +6,7 @@ import { darkColors as onArt } from '../theme/colors';
 import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
+import { googleCast } from '../lib/cast/googleCast';
 
 export interface CastCloseHeaderProps {
   onClose: () => void;
@@ -16,6 +17,10 @@ export interface CastCloseHeaderProps {
       screenshot. Omitted (the default) for every other way of reaching this screen —
       no chevron renders at all, same as before this existed. */
   onBack?: () => void;
+  /** The screen casts (series detail, with `useCastPlayback`): render the real Google
+      Cast button in place of the disabled placeholder. Builds without the Cast SDK
+      linked (`googleCast` is null) keep the placeholder either way. */
+  castEnabled?: boolean;
 }
 
 /**
@@ -24,10 +29,10 @@ export interface CastCloseHeaderProps {
  * became its second consumer) — Prime Video/Netflix's own title-page chrome, replacing
  * the plain back-chevron `DetailHeader` on screens built with a full-bleed hero banner.
  *
- * The cast icon is rendered disabled — there is no Chromecast/AirPlay integration
- * anywhere in this app (mobile or backend). Shipping it as a dead `onPress` that
- * silently does nothing would look like a bug; shipping it disabled is honest about
- * what's actually there today without hiding the chrome Isaac asked for.
+ * The cast icon is the real Google Cast button where the screen casts (`castEnabled`,
+ * series detail — Nii's ask, 2026-10-22) and the build has the Cast SDK; everywhere else
+ * it stays rendered disabled — a dead `onPress` that silently does nothing would look
+ * like a bug; shipping it disabled is honest about what's actually there.
  *
  * Absolutely positioned over the hero (same reasoning `DetailHeader`'s iOS variant
  * already uses) — takes no layout space, so the hero renders at its full size
@@ -40,7 +45,7 @@ export interface CastCloseHeaderProps {
  * background to `IconButton` itself) — that component is shared with the player's
  * transport controls and others that shouldn't pick this up unasked.
  */
-export function CastCloseHeader({ onClose, onBack }: CastCloseHeaderProps) {
+export function CastCloseHeader({ onClose, onBack, castEnabled = false }: CastCloseHeaderProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
 
@@ -55,7 +60,13 @@ export function CastCloseHeader({ onClose, onBack }: CastCloseHeaderProps) {
       ) : null}
       <View style={[styles.row, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
         <View style={styles.iconChip}>
-          <IconButton icon="tv-outline" accessibilityLabel="Cast" disabled onPress={() => {}} color={onArt.text.primary} />
+          {castEnabled && googleCast ? (
+            // The SDK's own button: the official cast icon, its connecting/connected
+            // states, and the device picker on tap.
+            <googleCast.CastButton style={styles.castButton} tintColor={onArt.text.primary} accessibilityLabel="Cast" />
+          ) : (
+            <IconButton icon="tv-outline" accessibilityLabel="Cast" disabled onPress={() => {}} color={onArt.text.primary} />
+          )}
         </View>
         <View style={styles.iconChip}>
           <IconButton icon="close" accessibilityLabel="Close" onPress={onClose} color={onArt.text.primary} />
@@ -78,6 +89,11 @@ const useStyles = createThemedStyles((colors) => ({
     position: 'absolute',
     left: spacing.sm,
     zIndex: 10,
+  },
+  // Same footprint as an `IconButton` (24pt glyph + `spacing.sm` padding each side).
+  castButton: {
+    width: 24 + spacing.sm * 2,
+    height: 24 + spacing.sm * 2,
   },
   iconChip: {
     borderRadius: radius.pill,
