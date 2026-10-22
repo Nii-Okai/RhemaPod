@@ -29,10 +29,8 @@ import time
 SHORT_LINES = 40
 # Lines kept from the end of a long output (where summaries live).
 TAIL_LINES = 15
-# Lines kept after each error match (traceback / assertion detail).
-CONTEXT_AFTER = 3
-# Hard cap on important lines printed from a long output.
-MAX_IMPORTANT = 120
+# Hard cap on distinct error lines printed from a long output.
+MAX_IMPORTANT = 60
 
 LOG_DIR = os.path.join(tempfile.gettempdir(), "claude-condensed")
 
@@ -58,12 +56,19 @@ NOISY = re.compile(
 SELF_LIMITED = re.compile(r"\|\s*(head|tail|grep|wc|less|jq)\b|(?<![0-9&])>\s*[^&\s]|--stat\b|--quiet\b|\s-q\b")
 
 IMPORTANT = re.compile(
-    r"""(?ix)
-    error | err! | fail(ed|ure|ing)? | exception | traceback | panic | fatal
-    | ^\s*E\s{2,} | assert | ✕ | ✗ | ×\s | \bnot\s+ok\b
-    | cannot\s+find | not\s+found | denied | segmentation | killed
+    r"""(?x)
+    ^E\s                                  # pytest assertion / exception detail
+    | ^\s*([\w.]+\.)?\w*(Error|Exception|Exit):\s  # final line of a traceback
+    | ^Traceback\b
+    | (?i:\berror(\s+TS\d+)?:) | (?i:\bfatal:) | (?i:\bpanic:)
+    | npm\s+ERR! | ^\s*\d+:\d+\s+error\b       # npm, eslint
+    | ^(FAILED|ERROR)\s | \bFAIL\s | \u2715 | \u2717 | \u25cf\s  # test runner failures
+    | \b\d+\s+(failed|errors?)\b
     """
 )
+
+# Per-test status lines and section banners: the summary repeats the ones that matter.
+PROGRESS = re.compile(r"\s(PASSED|SKIPPED|ERROR|FAILED|XFAIL|XPASS)\b.*\[\s*\d+%\]$|\bSKIPPED\b|^_{3,} .* _{3,}$")
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
@@ -127,22 +132,18 @@ def diff_summary(lines):
 def condense(command, lines):
     if re.match(r"\s*git\s+(diff|show|log)", command) and any(l.startswith("diff --git ") for l in lines):
         return diff_summary(lines)
-    keep = set()
-    for i, line in enumerate(lines):
-        if IMPORTANT.search(line):
-            keep.update(range(i, min(i + CONTEXT_AFTER + 1, len(lines))))
     tail_start = max(0, len(lines) - TAIL_LINES)
-    important = sorted(i for i in keep if i < tail_start)
+    counts, order = {}, []
+    for line in lines[:tail_start]:
+        if IMPORTANT.search(line) and not PROGRESS.search(line):
+            if line not in counts:
+                order.append(line)
+            counts[line] = counts.get(line, 0) + 1
     out = []
-    if len(important) > MAX_IMPORTANT:
-        out.append(f"[{len(important) - MAX_IMPORTANT} more error lines omitted]")
-        important = important[:MAX_IMPORTANT]
-    prev = None
-    for i in important:
-        if prev is not None and i != prev + 1:
-            out.append("  ...")
-        out.append(lines[i])
-        prev = i
+    for line in order[:MAX_IMPORTANT]:
+        out.append(line if counts[line] == 1 else f"{line}  [x{counts[line]}]")
+    if len(order) > MAX_IMPORTANT:
+        out.append(f"[{len(order) - MAX_IMPORTANT} more distinct error lines omitted]")
     if out:
         out.append("  ...")
     out.extend(lines[tail_start:])
@@ -160,7 +161,7 @@ def run(encoded):
     raw = proc.stdout.decode(errors="replace")
     lines = clean(raw)
     if len(lines) <= SHORT_LINES:
-        print("\n".join(lines))
+        sys.stdout.write(raw)
         return proc.returncode
     os.makedirs(LOG_DIR, exist_ok=True)
     log = os.path.join(LOG_DIR, time.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}.log")
