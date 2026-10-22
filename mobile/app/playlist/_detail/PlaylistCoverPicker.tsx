@@ -12,6 +12,9 @@ export interface PlaylistCoverPickerProps {
   playlistId: string;
   coverUrl: string | null;
   size?: number;
+  /** Replaces the default square cover (Signature Library draws its own leaf-cornered one);
+   * the camera badge and the picker sheet stay the same. */
+  cover?: React.ReactNode;
 }
 
 function guessExtension(uri: string): string {
@@ -34,7 +37,7 @@ function contentTypeFor(extension: string): string {
  * session 2026-10-10) — plain upload only, the same direct-to-storage
  * ticket -> PUT -> confirm pipeline every other image in this app uses.
  */
-export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160 }: PlaylistCoverPickerProps) {
+export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160, cover }: PlaylistCoverPickerProps) {
   const { colors } = useTheme();
   const styles = useStyles();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -90,7 +93,9 @@ export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160 }: Playli
         accessibilityLabel="Change playlist cover"
         style={[styles.wrap, { width: size, height: size }]}
       >
-        {coverUrl ? (
+        {cover ? (
+          cover
+        ) : coverUrl ? (
           <Image source={{ uri: coverUrl }} style={[styles.cover, { width: size, height: size }]} />
         ) : (
           <View style={[styles.coverFallback, { width: size, height: size }]}>

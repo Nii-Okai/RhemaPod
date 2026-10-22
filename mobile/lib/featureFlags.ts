@@ -11,3 +11,9 @@ export const SIGNATURE_HOME_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_HOME ===
 
 /** Signature Notifications (`app/_notifications/`). Turn on with `EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS=1`. */
 export const SIGNATURE_NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS === '1';
+
+/**
+ * Signature Library (`app/(tabs)/_library/signature/`): the Library tab, playlist detail and
+ * the add-to-playlist sheet. Turn on with `EXPO_PUBLIC_SIGNATURE_LIBRARY=1`.
+ */
+export const SIGNATURE_LIBRARY_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_LIBRARY === '1';
