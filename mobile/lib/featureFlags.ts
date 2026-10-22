@@ -11,3 +11,15 @@ export const SIGNATURE_HOME_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_HOME ===
 
 /** Signature Notifications (`app/_notifications/`). Turn on with `EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS=1`. */
 export const SIGNATURE_NOTIFICATIONS_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_NOTIFICATIONS === '1';
+
+/** Signature Browse (`app/(tabs)/_browse/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_BROWSE=1`. */
+export const SIGNATURE_BROWSE_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_BROWSE === '1';
+
+/** Signature You page (`app/(tabs)/_me/signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_YOU=1`. */
+export const SIGNATURE_YOU_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_YOU === '1';
+
+/** Signature Player (`app/player/_signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_PLAYER=1`. */
+export const SIGNATURE_PLAYER_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_PLAYER === '1';
+
+/** Signature series page (`app/series/_signature/`). Turn on with `EXPO_PUBLIC_SIGNATURE_SERIES=1`. */
+export const SIGNATURE_SERIES_ENABLED = process.env.EXPO_PUBLIC_SIGNATURE_SERIES === '1';

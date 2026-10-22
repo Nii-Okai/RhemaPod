@@ -13,6 +13,8 @@ export interface ProfileAvatarPickerProps {
   seed: string;
   avatarUrl: string | null;
   size?: number;
+  /** Draws a ring of this colour around the photo (Signature You page). */
+  ringColor?: string;
 }
 
 function guessExtension(uri: string): string {
@@ -35,7 +37,7 @@ function contentTypeFor(extension: string): string {
  * an image hands its local URI straight to `useUpdateAvatar` (ticket → direct-to-storage
  * PUT → confirm); this component only owns the picker UI, not the upload mechanics.
  */
-export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: ProfileAvatarPickerProps) {
+export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88, ringColor }: ProfileAvatarPickerProps) {
   const { colors } = useTheme();
   const styles = useStyles();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -93,7 +95,13 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
         accessibilityLabel="Change profile picture"
         style={styles.wrap}
       >
-        <Avatar name={name} seed={seed} size={size} imageUri={avatarUrl} />
+        {ringColor ? (
+          <View style={[styles.ring, { borderColor: ringColor }]}>
+            <Avatar name={name} seed={seed} size={size} imageUri={avatarUrl} />
+          </View>
+        ) : (
+          <Avatar name={name} seed={seed} size={size} imageUri={avatarUrl} />
+        )}
         <View style={[styles.editBadge, { right: 0, bottom: 0 }]}>
           {updateAvatar.isPending ? (
             <ActivityIndicator size="small" color={onArt.text.primary} />
@@ -141,6 +149,11 @@ export function ProfileAvatarPicker({ name, seed, avatarUrl, size = 88 }: Profil
 const useStyles = createThemedStyles((colors) => ({
   wrap: {
     alignSelf: 'flex-start',
+  },
+  ring: {
+    borderWidth: 2,
+    padding: 2,
+    borderRadius: radius.pill,
   },
   editBadge: {
     position: 'absolute',

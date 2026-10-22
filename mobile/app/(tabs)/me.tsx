@@ -20,8 +20,15 @@ import { useTheme } from '../../theme/ThemeContext';
 import { ProfileAvatarPicker } from './_me/ProfileAvatarPicker';
 import { ProfileDetailsSheet } from './_me/ProfileDetailsSheet';
 import { TermsSheet } from '../player/_comments/TermsSheet';
+import { SignatureYouScreen } from './_me/signature/SignatureYou';
+import { SIGNATURE_YOU_ENABLED } from '../../lib/featureFlags';
 
 const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
+
+export default function MeScreen() {
+  // Signature redesign rollout (Nii's plan, 2026-10-21): a build-time constant, like Home's.
+  return SIGNATURE_YOU_ENABLED ? <SignatureYouScreen /> : <ClassicMeScreen />;
+}
 
 /**
  * Profile & Settings (design spec 1n minus membership, plan W4.6). Cuts from the source
@@ -52,7 +59,7 @@ const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
  * One column on every device width: the tablet two-pane existed only to dock the Notes
  * panel, which is gone with Notes.
  */
-export default function MeScreen() {
+function ClassicMeScreen() {
   const styles = useStyles();
   const router = useRouter();
   const { lightModeAvailable } = useTheme();

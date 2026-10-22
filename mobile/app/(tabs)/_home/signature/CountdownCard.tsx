@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { AppText } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { spacing } from '../../../../theme/spacing';
 import type { UpcomingSermon } from '../../../../lib/query/hooks/useUpcomingSermon';
+import { ArtScrim } from './ArtScrim';
 import { countdownParts, pad2, releaseLabel } from './countdown';
 import { LEAF } from './leaf';
 
@@ -18,8 +18,10 @@ const TICK_MS = 30 * 1000;
 
 /**
  * "Next message": the soonest scheduled sermon and a days / hours / minutes countdown to
- * its release, over the congregation photo from onboarding. Dark in both themes — it is
- * a photo card. Re-renders every 30 seconds; at zero it hands back to the screen, whose
+ * its release. The sermon's own cover art sits on top, whole and uncovered (it carries
+ * its title in the artwork), fading into a dark panel with the countdown — the same
+ * shape as the hero. Without art, the congregation photo from onboarding stands in.
+ * Dark in both themes. Re-renders every 30 seconds; at zero it hands back to the screen, whose
  * refetch picks up the next scheduled sermon (or hides the card).
  */
 export function CountdownCard({ sermon, onReleased }: CountdownCardProps) {
@@ -55,17 +57,15 @@ export function CountdownCard({ sermon, onReleased }: CountdownCardProps) {
       accessible
       accessibilityLabel={`Next message, ${releaseLabel(target)}: ${sermon.title}. ${spoken}`}
     >
-      <Image source={require('../../../../assets/onboarding-1.jpg')} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id="countdownScrim" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={onArt.surface.app} stopOpacity={0.94} />
-            <Stop offset="0.55" stopColor={onArt.surface.app} stopOpacity={0.75} />
-            <Stop offset="1" stopColor={onArt.surface.app} stopOpacity={0.2} />
-          </LinearGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#countdownScrim)" />
-      </Svg>
+      <View style={styles.art}>
+        <Image
+          testID="countdown-art"
+          source={sermon.thumbnail_url ? { uri: sermon.thumbnail_url } : require('../../../../assets/onboarding-1.jpg')}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
+        <ArtScrim height="35%" />
+      </View>
       <View style={styles.body}>
         <View style={styles.heading}>
           <AppText variant="ui.badge" style={styles.gold}>
@@ -96,18 +96,20 @@ const styles = StyleSheet.create({
   card: {
     ...LEAF,
     overflow: 'hidden',
-    minHeight: 200,
     backgroundColor: onArt.surface.app,
   },
+  art: {
+    aspectRatio: 16 / 9,
+    backgroundColor: onArt.surface.sunken,
+  },
   body: {
-    flex: 1,
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xl,
     gap: spacing.lg,
-    justifyContent: 'space-between',
   },
   heading: {
     gap: spacing.xs,
-    maxWidth: '80%',
   },
   gold: {
     color: onArt.accent.goldText,

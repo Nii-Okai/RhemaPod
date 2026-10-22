@@ -5501,7 +5501,7 @@
         "type": "object"
       },
       "UpcomingSermon": {
-        "description": "The next scheduled sermon \u2014 PUBLISHED with a future `publish_at` \u2014 for Home's\n\"next message\" countdown. Deliberately thin: the title, when it goes live, and\nthe names a card needs. No thumbnail, description or media, so nothing playable\nor previewable leaks ahead of the release; only that it is coming, and when.",
+        "description": "The next scheduled sermon \u2014 PUBLISHED with a future `publish_at` \u2014 for Home's\n\"next message\" countdown. Deliberately thin: the title, its cover art (Nii's call,\n2026-10-21: the countdown shows the sermon's own art), when it goes live, and the\nnames a card needs. No description or media, so nothing playable leaks ahead of\nthe release.",
         "properties": {
           "episode_number": {
             "anyOf": [
@@ -5545,6 +5545,17 @@
               }
             ],
             "title": "Speaker Name"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
           },
           "title": {
             "title": "Title",

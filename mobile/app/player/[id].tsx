@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, type VideoView } from 'expo-video';
@@ -27,6 +28,13 @@ import { useControlsOverlay } from './_player/useControlsOverlay';
 import { useProgressFlush } from './_player/useProgressFlush';
 import { useSleepTimer } from './_player/useSleepTimer';
 import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
+import { SignaturePlayerHeader } from './_signature/SignaturePlayerHeader';
+import { SignatureSeekRow } from './_signature/SignatureSeekRow';
+import { NowPlayingDetails } from './_signature/NowPlayingDetails';
+import { PlayerToolbar, type PlayerPane } from './_signature/PlayerToolbar';
+import { useKeyboardVisible } from './_signature/useKeyboardVisible';
+import { LEAF } from '../(tabs)/_home/signature/leaf';
+import { SIGNATURE_PLAYER_ENABLED } from '../../lib/featureFlags';
 
 /**
  * Player screen (design spec §3 "Player (1d, iOS) / Now playing (2b, Android)", plan
@@ -244,7 +252,7 @@ export default function PlayerScreen() {
   if (isLoading) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} title={detail?.title} />
+        <ScreenHeader onBack={goBack} detail={detail} />
         <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
           <AppText variant="ui.body" tone="secondary">
             Loading…
@@ -257,7 +265,7 @@ export default function PlayerScreen() {
   if (detailQuery.isError || !detail) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} />
+        <ScreenHeader onBack={goBack} />
         <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />
       </View>
     );
@@ -269,7 +277,7 @@ export default function PlayerScreen() {
     // guard, not a state the app's own navigation ever produces.
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} title={detail.title} />
+        <ScreenHeader onBack={goBack} detail={detail} />
         <PlayerError message="This sermon isn't available yet." />
       </View>
     );
@@ -279,7 +287,7 @@ export default function PlayerScreen() {
     if (localPlayback.error) {
       return (
         <View style={styles.screen}>
-          <PlayerHeader onBack={goBack} title={detail.title} />
+          <ScreenHeader onBack={goBack} detail={detail} />
           <PlayerError message={localPlayback.error} />
         </View>
       );
@@ -287,7 +295,7 @@ export default function PlayerScreen() {
   } else if (streamQuery.isError || !streamQuery.data) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} title={detail.title} />
+        <ScreenHeader onBack={goBack} detail={detail} />
         <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />
       </View>
     );
@@ -302,7 +310,7 @@ export default function PlayerScreen() {
   if (!variant) {
     return (
       <View style={styles.screen}>
-        <PlayerHeader onBack={goBack} title={detail.title} />
+        <ScreenHeader onBack={goBack} detail={detail} />
         <PlayerError
           message="No playable audio or video was found for this sermon."
           onRetry={isDownloaded ? undefined : () => streamQuery.refetch()}
@@ -326,7 +334,7 @@ export default function PlayerScreen() {
     // `Keyboard`'s event frame rather than the window the OS had already resized, which
     // is what actually left the composer covered rather than pushed clear.
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <PlayerHeader onBack={goBack} title={detail.title} />
+      <ScreenHeader onBack={goBack} detail={detail} />
       {/* Mounted only once detail/progress/stream/preferences have all resolved — see
           `PlayerContent`'s own docstring for why that ordering matters (it seeds
           `useProgressFlush`'s resume baseline exactly once, at first render). */}
@@ -346,6 +354,18 @@ export default function PlayerScreen() {
         onExit={cacheSource.reportExit}
       />
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * The classic header, or the Signature one behind `SIGNATURE_PLAYER_ENABLED` (a build-time
+ * constant, so this never switches within one run).
+ */
+function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
+  return SIGNATURE_PLAYER_ENABLED ? (
+    <SignaturePlayerHeader onBack={onBack} detail={detail} />
+  ) : (
+    <PlayerHeader onBack={onBack} title={detail?.title} />
   );
 }
 
@@ -529,6 +549,76 @@ function PlayerContent({
 
   const duration = player.duration > 0 ? player.duration : null;
 
+  const sleepSheet = (
+    <SleepTimerSheet
+      visible={sleepSheetOpen}
+      hasActiveTimer={sleepTimer.remainingSeconds !== null}
+      onSelect={(minutes) => sleepTimer.setMinutes(minutes)}
+      onClose={() => setSleepSheetOpen(false)}
+    />
+  );
+
+  if (SIGNATURE_PLAYER_ENABLED) {
+    return (
+      <SignatureLayout
+        sermonId={sermonId}
+        detail={detail}
+        queueContext={queueContext}
+        speed={speed}
+        sleepRemainingSeconds={sleepTimer.remainingSeconds}
+        onCycleSpeed={cycleSpeed}
+        onOpenSleepTimer={() => setSleepSheetOpen(true)}
+        seekRow={
+          <SignatureSeekRow
+            currentTimeSeconds={currentTime}
+            durationSeconds={duration}
+            onSeekTo={(seconds) => {
+              player.currentTime = seconds;
+            }}
+            onSeekBy={(seconds) => player.seekBy(seconds)}
+            onScrubStart={() => setIsScrubbing(true)}
+            onScrubEnd={() => setIsScrubbing(false)}
+          />
+        }
+        sleepSheet={sleepSheet}
+        video={
+          <VideoSurface
+            controlsLayout="centre"
+            player={player}
+            videoRef={videoRef}
+            isBuffering={status === 'loading'}
+            isPlaying={isPlaying}
+            isEnded={isEnded}
+            isAudio={variant.type === 'audio'}
+            artworkUrl={detail.thumbnail_url}
+            overlay={overlay}
+            isFullscreen={isFullscreen}
+            onFullscreenChange={setIsFullscreen}
+            onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+            onReplay={() => {
+              // Same as the classic layout below: `replay()` only seeks to 0.
+              player.replay();
+              player.play();
+            }}
+            onSeekBy={(seconds) => player.seekBy(seconds)}
+            currentTimeSeconds={currentTime}
+            durationSeconds={duration}
+            playbackSpeed={speed}
+            sleepRemainingSeconds={sleepTimer.remainingSeconds}
+            onSeekTo={(seconds) => {
+              player.currentTime = seconds;
+            }}
+            onScrubStart={() => setIsScrubbing(true)}
+            onScrubEnd={() => setIsScrubbing(false)}
+            onCycleSpeed={cycleSpeed}
+            onOpenSleepTimer={() => setSleepSheetOpen(true)}
+            onToggleFullscreen={toggleFullscreen}
+          />
+        }
+      />
+    );
+  }
+
   return (
     <>
       <VideoSurface
@@ -566,12 +656,74 @@ function PlayerContent({
         onToggleFullscreen={toggleFullscreen}
       />
       {queueContext ? <QueueList {...queueContext} /> : <CommentsPanel sermonId={sermonId} />}
-      <SleepTimerSheet
-        visible={sleepSheetOpen}
-        hasActiveTimer={sleepTimer.remainingSeconds !== null}
-        onSelect={(minutes) => sleepTimer.setMinutes(minutes)}
-        onClose={() => setSleepSheetOpen(false)}
-      />
+      {sleepSheet}
+    </>
+  );
+}
+
+interface SignatureLayoutProps {
+  sermonId: string;
+  detail: SermonDetail;
+  queueContext: QueueListProps | null;
+  speed: PlaybackSpeed;
+  sleepRemainingSeconds: number | null;
+  onCycleSpeed: () => void;
+  onOpenSleepTimer: () => void;
+  video: React.ReactNode;
+  seekRow: React.ReactNode;
+  sleepSheet: React.ReactNode;
+}
+
+/**
+ * Signature player layout (behind `SIGNATURE_PLAYER_ENABLED`): video with only its centre
+ * controls and full screen, an always-visible seek row, the title block with Like / My List
+ * / Share, the comments card, and a toolbar with speed and the sleep timer. A playlist still
+ * opens on its queue; the toolbar's Queue / Comments switch between the two. The title block
+ * and toolbar fold away while the keyboard is up so the comment composer keeps its room.
+ * Playback itself is `PlayerContent`'s, unchanged.
+ */
+function SignatureLayout({
+  sermonId,
+  detail,
+  queueContext,
+  speed,
+  sleepRemainingSeconds,
+  onCycleSpeed,
+  onOpenSleepTimer,
+  video,
+  seekRow,
+  sleepSheet,
+}: SignatureLayoutProps) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
+  const [pane, setPane] = useState<PlayerPane>('queue');
+  const showQueue = Boolean(queueContext) && pane === 'queue';
+
+  return (
+    <>
+      {video}
+      {seekRow}
+      {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
+      {showQueue ? (
+        <View style={styles.queueCard}>
+          <QueueList {...queueContext!} />
+        </View>
+      ) : (
+        <CommentsPanel sermonId={sermonId} variant="signature" />
+      )}
+      {keyboardVisible ? null : (
+        <PlayerToolbar
+          playbackSpeed={speed}
+          sleepRemainingSeconds={sleepRemainingSeconds}
+          onCycleSpeed={onCycleSpeed}
+          onOpenSleepTimer={onOpenSleepTimer}
+          pane={queueContext ? (showQueue ? 'queue' : 'comments') : null}
+          onSelectPane={setPane}
+          bottomInset={insets.bottom}
+        />
+      )}
+      {sleepSheet}
     </>
   );
 }
@@ -590,5 +742,11 @@ const useStyles = createThemedStyles((colors) => ({
   },
   errorText: {
     textAlign: 'center',
+  },
+  queueCard: {
+    ...LEAF,
+    flex: 1,
+    marginHorizontal: spacing.lg,
+    overflow: 'hidden',
   },
 }));

@@ -24,11 +24,14 @@ const ALLOWED = new Set([
   'app/(tabs)/_home/SpotlightCard.tsx',
   // Signature Home: the hero and countdown are dark photo frames in both themes; the shelf cards
   // pin only the chips and play buttons drawn on the art.
+  'app/(tabs)/_home/signature/ArtScrim.tsx',
   'app/(tabs)/_home/signature/CountdownCard.tsx',
   'app/(tabs)/_home/signature/SignatureHeroCard.tsx',
   'app/(tabs)/_home/signature/shelfCards.tsx',
   // Signature Notifications: the latest-release card is the same dark frame as the hero.
   'app/_notifications/SignatureNotifications.tsx',
+  // Signature Browse: the Prophet's Catalog card's text sits on a photo.
+  'app/(tabs)/_browse/signature/CatalogCollectionCard.tsx',
   'app/(tabs)/_downloads/DownloadRow.tsx',
   'app/(tabs)/_library/DownloadGridTile.tsx',
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',

@@ -26,6 +26,7 @@ import { CommentRow } from './CommentRow';
 import { NamePrompt } from './NamePrompt';
 import { ReportSheet } from './ReportSheet';
 import { TermsSheet } from './TermsSheet';
+import { LEAF } from '../../(tabs)/_home/signature/leaf';
 import { isForbidden, postErrorMessage, reportErrorMessage } from './commentErrors';
 
 /** How long a transient confirmation (reported / error) stays up before auto-hiding. */
@@ -40,6 +41,12 @@ type PanelMessage =
 
 export interface CommentsPanelProps {
   sermonId: string;
+  /**
+   * `'signature'` (Signature player): a leaf-cornered card inset from the screen edges,
+   * with a serif "Comments" heading and a mono count. The screen's toolbar sits below it
+   * and owns the bottom safe-area inset, so the composer doesn't pad for it.
+   */
+  variant?: 'classic' | 'signature';
 }
 
 /**
@@ -52,10 +59,12 @@ export interface CommentsPanelProps {
  * the server's 403 is the backstop and re-reads the profile to reopen whichever prompt
  * applies. The draft lives in the composer, so it survives both prompts.
  */
-export function CommentsPanel({ sermonId }: CommentsPanelProps) {
+export function CommentsPanel({ sermonId, variant = 'classic' }: CommentsPanelProps) {
   const { colors } = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const signature = variant === 'signature';
+  const panelStyle = signature ? [styles.panel, styles.signaturePanel] : styles.panel;
   const online = useIsOnline();
   const profile = useCurrentUser();
   const comments = useSermonComments(sermonId, { enabled: online });
@@ -191,7 +200,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
 
   if (!online) {
     return (
-      <View style={[styles.panel, styles.centered]}>
+      <View style={[panelStyle, styles.centered]}>
         <View accessibilityLiveRegion="polite" style={styles.offline}>
           <PlatformIcon name="cloud-offline-outline" size={28} color={colors.text.tertiary} />
           <AppText variant="ui.body" tone="secondary">
@@ -287,7 +296,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
   const showNotice = Boolean(publicName) && noticeSeen === false;
 
   return (
-    <View style={styles.panel}>
+    <View style={panelStyle}>
       {/* No `TouchableWithoutFeedback` wrapper here on purpose — it was tried (session
           2026-10-08) to dismiss the keyboard on a background tap, but it installs its own
           touch responder on this whole area, which wins the responder negotiation against
@@ -297,11 +306,25 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
           dismiss the keyboard on a background tap or a scroll drag inside the list, which
           covers the real case (tapping away from an open keyboard while the thread is
           showing) without touching its gesture handling. */}
-      <View style={styles.header}>
-        <AppText variant="ui.label" accessibilityRole="header">
-          {`${total} ${total === 1 ? 'comment' : 'comments'}`}
-        </AppText>
-      </View>
+      {signature ? (
+        <View
+          style={[styles.header, styles.signatureHeader]}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${total} ${total === 1 ? 'comment' : 'comments'}`}
+        >
+          <AppText variant="display.row">Comments</AppText>
+          <AppText variant="mono.meta" tone="tertiary">
+            {total}
+          </AppText>
+        </View>
+      ) : (
+        <View style={styles.header}>
+          <AppText variant="ui.label" accessibilityRole="header">
+            {`${total} ${total === 1 ? 'comment' : 'comments'}`}
+          </AppText>
+        </View>
+      )}
 
       {body}
 
@@ -328,7 +351,7 @@ export function CommentsPanel({ sermonId }: CommentsPanelProps) {
         viewerName={fullName || user?.email || ''}
         isPosting={post.isPending}
         error={postError}
-        bottomInset={insets.bottom}
+        bottomInset={signature ? 0 : insets.bottom}
         onGate={gate}
         onSubmit={submitComment}
         notice={
@@ -400,6 +423,19 @@ const useStyles = createThemedStyles((colors) => ({
     padding: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.default,
+  },
+  signaturePanel: {
+    ...LEAF,
+    marginHorizontal: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  signatureHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
   },
   list: {
     flex: 1,
