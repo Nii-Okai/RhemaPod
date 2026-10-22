@@ -46,12 +46,14 @@ export default function SermonDetailScreen() {
   const progressQuery = useSermonProgress(id, { enabled: Boolean(detail) && playable });
 
   // Signature player (Nii, 2026-10-22: "when a single or standalone sermon is selected, open
-  // player screen directly"): a playable sermon that isn't part of a series skips this page
-  // and opens the player, which now carries Like / My List / Download / Share itself.
-  // Handled here rather than at every list that links to a sermon, so each of them is
-  // covered; `replace`, so Back from the player returns to wherever the sermon was picked.
-  // Series episodes, and anything locked or without media, still land on this page.
-  const opensPlayer = SIGNATURE_PLAYER_ENABLED && Boolean(detail) && playable && !detail?.series_id;
+  // player screen directly", then "when a single episode is selected open the player
+  // directly"): any playable sermon, a series episode included, skips this page and opens
+  // the player, which carries Like / My List / Download / Share itself. Handled here rather
+  // than at every list that links to a sermon, so each of them (and a series page's episode
+  // rows, which route through `sermon/related/[id]` to this same screen) is covered;
+  // `replace`, so Back from the player returns to wherever the sermon was picked. Anything
+  // locked or without media still lands on this page.
+  const opensPlayer = SIGNATURE_PLAYER_ENABLED && Boolean(detail) && playable;
   useEffect(() => {
     if (opensPlayer) router.replace({ pathname: '/player/[id]', params: { id } });
     // `router` is stable for the screen's lifetime; only the decision matters.

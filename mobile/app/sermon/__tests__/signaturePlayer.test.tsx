@@ -113,10 +113,9 @@ describe('SermonDetailScreen with the Signature player', () => {
     expect(screen.queryByText('Anchored in the Storm')).toBeNull();
   });
 
-  it('keeps the detail page for a series episode', async () => {
-    const screen = renderDetail({ ...baseDetail, series_id: 'se1', series_title: 'Storms', episode_number: 1 });
-    expect(await screen.findByText('Anchored in the Storm')).toBeTruthy();
-    expect(mockReplace).not.toHaveBeenCalled();
+  it('opens a single series episode straight in the player too', async () => {
+    renderDetail({ ...baseDetail, series_id: 'se1', series_title: 'Storms', episode_number: 1 });
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } }));
   });
 
   it('keeps the detail page for a sermon with nothing to play yet', async () => {
