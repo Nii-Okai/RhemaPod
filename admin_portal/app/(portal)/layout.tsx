@@ -26,7 +26,9 @@ export default async function PortalLayout({
   children: ReactNode;
 }) {
   const user = await getServerUser();
-  if (!user) {
+  // A listener (viewer) account has no portal; login refuses them, and this
+  // covers a session that predates that check.
+  if (!user || user.role === "viewer") {
     redirect("/login");
   }
 

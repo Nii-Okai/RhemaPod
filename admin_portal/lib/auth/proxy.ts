@@ -124,6 +124,13 @@ function isBlockedProxyPath(segments: string[]): boolean {
     .replace(/\/+/g, "/")
     .replace(/^\//, "")
     .toLowerCase();
+  // A `.` / `..` segment is never a real API path, and `buildTargetUrl` would
+  // hand it to `fetch`, whose URL parser resolves it — `["x", "..", "auth",
+  // "login"]` reaches `/api/v1/auth/login` without ever matching a prefix
+  // above. Refuse dot segments outright.
+  if (path.split("/").some((part) => part === "." || part === "..")) {
+    return true;
+  }
   return BLOCKED_PROXY_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );

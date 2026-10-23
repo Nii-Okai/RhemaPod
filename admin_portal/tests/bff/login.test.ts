@@ -71,6 +71,33 @@ describe("POST /api/auth/login", () => {
     expect(c.rp_rt.attrs["max-age"]).toBe(String(60 * 60 * 24 * 30));
   });
 
+  it("refuses a listener (viewer) account, sets no cookies, and revokes the session", async () => {
+    let revoked: unknown = null;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () =>
+        HttpResponse.json({
+          access_token: "at-v",
+          refresh_token: "rt-v",
+          token_type: "bearer",
+          expires_in: 900,
+        }),
+      ),
+      http.get(`${API}/api/v1/auth/me`, () => HttpResponse.json({ ...ME, role: "viewer" })),
+      http.post(`${API}/api/v1/auth/logout`, async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Bearer at-v");
+        revoked = await request.json();
+        return HttpResponse.json({ message: "Logged out" });
+      }),
+    );
+
+    const res = await POST(loginRequest({ email: "listener@example.com", password: "pw" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).detail).toMatch(/church staff/);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(revoked).toEqual({ refresh_token: "rt-v" });
+  });
+
   it("writes rp_rt as a session cookie when 'remember' is false", async () => {
     server.use(
       http.post(`${API}/api/v1/auth/login`, () =>
