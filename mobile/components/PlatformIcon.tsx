@@ -80,6 +80,8 @@ const ICONS = {
   'square-outline': { ios: 'square-outline', android: 'check-box-outline-blank' },
   moon: { ios: 'moon', android: 'bedtime' },
   'moon-outline': { ios: 'moon-outline', android: 'bedtime' },
+  'volume-high-outline': { ios: 'volume-high-outline', android: 'volume-up' },
+  'volume-mute-outline': { ios: 'volume-mute-outline', android: 'volume-off' },
   contract: { ios: 'contract', android: 'fullscreen-exit' },
   expand: { ios: 'expand', android: 'fullscreen' },
   'tv-outline': { ios: 'tv-outline', android: 'tv' },

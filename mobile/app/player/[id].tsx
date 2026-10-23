@@ -467,6 +467,7 @@ function PlayerContent({
 
   const { status } = useEvent(player, 'statusChange', { status: player.status });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const { muted: isMuted } = useEvent(player, 'mutedChange', { muted: player.muted });
   const { currentTime } = useEvent(player, 'timeUpdate', {
     currentTime: player.currentTime,
     currentLiveTimestamp: null,
@@ -596,6 +597,10 @@ function PlayerContent({
       durationSeconds={duration}
       playbackSpeed={speed}
       sleepRemainingSeconds={sleepTimer.remainingSeconds}
+      isMuted={isMuted}
+      onToggleMute={() => {
+        player.muted = !player.muted;
+      }}
       onSeekTo={(seconds) => {
         player.currentTime = seconds;
       }}

@@ -362,6 +362,21 @@ describe('PlayerScreen — resume', () => {
   });
 });
 
+describe('PlayerScreen — mute', () => {
+  it('mutes and unmutes the player without pausing it', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText, findByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+
+    fireEvent.press(getByLabelText('Mute'));
+    expect(player.muted).toBe(true);
+    fireEvent.press(await findByLabelText('Unmute'));
+    expect(player.muted).toBe(false);
+    expect(player.pause).not.toHaveBeenCalled();
+  });
+});
+
 describe('PlayerScreen — speed control', () => {
   it('cycles the mock player\'s playbackRate on tap', async () => {
     mockReads();

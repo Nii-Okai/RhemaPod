@@ -44,6 +44,8 @@ export interface VideoSurfaceProps {
   durationSeconds: number | null;
   playbackSpeed: PlaybackSpeed;
   sleepRemainingSeconds: number | null;
+  isMuted: boolean;
+  onToggleMute: () => void;
   onSeekTo: (seconds: number) => void;
   onScrubStart: () => void;
   onScrubEnd: () => void;
@@ -81,6 +83,8 @@ export function VideoSurface({
   durationSeconds,
   playbackSpeed,
   sleepRemainingSeconds,
+  isMuted,
+  onToggleMute,
   onSeekTo,
   onScrubStart,
   onScrubEnd,
@@ -181,6 +185,8 @@ export function VideoSurface({
               playbackSpeed={playbackSpeed}
               sleepRemainingSeconds={sleepRemainingSeconds}
               isFullscreen={isFullscreen}
+              isMuted={isMuted}
+              onToggleMute={act(onToggleMute)}
               onSeekTo={(seconds) => {
                 overlay.touch();
                 onSeekTo(seconds);
