@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, type VideoView } from 'expo-video';
-import { AppText, PrimaryButton, SkeletonBlock } from '../../components';
+import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -364,7 +364,7 @@ function PlayerLoading({ detail }: { detail?: SermonDetail }) {
     <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
       <View style={styles.loadingStage}>
         {detail?.thumbnail_url ? (
-          <Image source={{ uri: detail.thumbnail_url }} style={styles.loadingArt} resizeMode="cover" />
+          <FittedArt uri={detail.thumbnail_url} />
         ) : null}
         <ActivityIndicator color={onArt.text.primary} />
       </View>
@@ -690,9 +690,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     // The video stage is dark in both themes (`VideoSurface`).
     backgroundColor: onArt.surface.app,
-  },
-  loadingArt: {
-    ...StyleSheet.absoluteFillObject,
   },
   loadingTitles: {
     gap: spacing.sm,

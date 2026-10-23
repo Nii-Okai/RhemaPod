@@ -24,3 +24,4 @@ export * from './SpeakerListRow';
 export * from './SeriesListCard';
 export * from './ShelfSkeleton';
 export * from './SectionError';
+export * from './FittedArt';

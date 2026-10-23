@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, PlatformIcon, SwipeToDelete } from '../../../../components';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { AppText, FittedArt, PlatformIcon, SwipeToDelete } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -21,7 +21,7 @@ function Art({ uri, width }: { uri: string | null | undefined; width: number }) 
   return (
     <View style={[styles.art, ART_LEAF, { width }]}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <FittedArt uri={uri} />
       ) : (
         <PlatformIcon name="musical-notes-outline" size={20} color={colors.text.tertiary} />
       )}

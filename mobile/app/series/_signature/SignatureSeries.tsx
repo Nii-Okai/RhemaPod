@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, PlatformIcon, Tag } from '../../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, FittedArt, PlatformIcon, Tag } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -96,7 +96,7 @@ export function SignatureSeriesScreen() {
       >
         <View testID="series-hero" style={[styles.hero, { height: width * HERO_ASPECT + insets.top }]}>
           {detail.thumbnail_url ? (
-            <Image source={{ uri: detail.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <FittedArt uri={detail.thumbnail_url} />
           ) : null}
         </View>
 

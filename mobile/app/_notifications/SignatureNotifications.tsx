@@ -1,8 +1,8 @@
 import React from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, PlatformIcon, PressableScale, QueryState, StaggerItem } from '../../components';
+import { AppText, FittedArt, IconButton, PlatformIcon, PressableScale, QueryState, StaggerItem } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
@@ -48,7 +48,7 @@ function LatestReleaseCard({ sermon, unread, onPress }: { sermon: SermonListItem
     >
       <View style={featured.art}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={sermon.thumbnail_url} />
         ) : null}
         <ArtScrim height="40%" />
         <View style={featured.chip} pointerEvents="none">
@@ -90,7 +90,7 @@ function NotificationRow({ sermon, unread, onPress }: { sermon: SermonListItem; 
     >
       <View style={[styles.rowArt, ROW_LEAF]}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={sermon.thumbnail_url} />
         ) : (
           <PlatformIcon name="musical-notes-outline" size={20} color={colors.text.tertiary} />
         )}

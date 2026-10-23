@@ -1,6 +1,6 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, PlatformIcon } from '../../../../components';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText, FittedArt, PlatformIcon } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
@@ -36,7 +36,7 @@ export function SeriesSpotlightCard({ series, onPress }: SeriesSpotlightCardProp
     >
       <View style={styles.thumb}>
         {series.thumbnail_url ? (
-          <Image source={{ uri: series.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={series.thumbnail_url} />
         ) : null}
       </View>
       <View style={styles.text}>

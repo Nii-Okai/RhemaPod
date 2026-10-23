@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, PlatformIcon, PressableScale } from '../../../../components';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { AppText, FittedArt, PlatformIcon, PressableScale } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
@@ -34,7 +34,7 @@ export function SignatureHeroCard({ sermon, onPress }: SignatureHeroCardProps) {
     <Pressable onPress={onPress} accessible={false} style={styles.card}>
       <View style={styles.artWrap}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={sermon.thumbnail_url} />
         ) : null}
         <ArtScrim />
         <View style={styles.chip} pointerEvents="none">

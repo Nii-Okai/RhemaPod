@@ -40,6 +40,8 @@ const ALLOWED = new Set([
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
   'app/playlist/_detail/PlaylistCoverPicker.tsx',
   'components/CastCloseHeader.tsx',
+  // Artwork backdrop dim — a photo surface.
+  'components/FittedArt.tsx',
 ]);
 
 const STATIC_IMPORT = /import \{[^}]*\b(colors|darkColors)\b[^}]*\} from '[./]*theme\/colors'/;

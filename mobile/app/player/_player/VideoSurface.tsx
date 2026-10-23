@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
 import { VideoView } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
+import { FittedArt } from '../../../components/FittedArt';
 import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 import { PlaybackOverlayControls, PlayerBottomBar } from './TransportControls';
@@ -141,7 +142,7 @@ export function VideoSurface({
         // wrapping `View` — `Image` itself has no such prop) so it never intercepts the
         // tap-to-toggle `Pressable` below, which still needs the touch.
         <View style={styles.artwork} pointerEvents="none">
-          <Image testID="player-artwork" source={{ uri: artworkUrl }} style={styles.artworkImage} resizeMode="cover" accessible={false} />
+          <FittedArt testID="player-artwork" uri={artworkUrl} />
         </View>
       ) : null}
       <Pressable
@@ -220,10 +221,6 @@ const styles = StyleSheet.create({
   },
   artwork: {
     ...StyleSheet.absoluteFillObject,
-  },
-  artworkImage: {
-    width: '100%',
-    height: '100%',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

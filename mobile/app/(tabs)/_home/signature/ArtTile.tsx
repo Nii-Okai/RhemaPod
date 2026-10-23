@@ -1,6 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, type ViewStyle } from 'react-native';
-import { PressableScale } from '../../../../components';
+import type { ViewStyle } from 'react-native';
+import { FittedArt, PressableScale } from '../../../../components';
 import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { LEAF_SM } from './leaf';
 
@@ -41,7 +41,7 @@ export function ArtTile({
       style={[styles.tile, shape, width !== undefined ? { width } : styles.fill, { aspectRatio }]}
     >
       {thumbnailUrl ? (
-        <Image source={{ uri: thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <FittedArt uri={thumbnailUrl} />
       ) : null}
       {children}
     </PressableScale>

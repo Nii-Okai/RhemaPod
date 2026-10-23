@@ -1,6 +1,6 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText } from '../../../../components';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText, FittedArt } from '../../../../components';
 import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { leaf } from '../../_home/signature/leaf';
@@ -34,7 +34,7 @@ export function ResultRow({ title, meta, onPress, thumbnailUrl, art }: ResultRow
       ) : (
         <View style={[styles.artSlot, styles.art, ART_SHAPE]}>
           {thumbnailUrl ? (
-            <Image source={{ uri: thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <FittedArt uri={thumbnailUrl} />
           ) : null}
         </View>
       )}
