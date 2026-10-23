@@ -868,6 +868,9 @@ class AuditAction(str, enum.Enum):
     REPORT_EXPORTED = "report.exported"
     DATA_EXPORTED = "data.exported"
     DATA_IMPORTED = "data.imported"
+    DATA_RESET = "data.reset"
+    AUDIT_DELETED = "data.audit_deleted"
+    AUDIT_WIPED = "data.audit_wiped"
 
 
 class AuditOutcome(str, enum.Enum):
@@ -981,7 +984,8 @@ class AuditLog(Base):
             "'user.staff_invited', 'user.invite_resent', 'user.role_changed', "
             "'user.deactivated', 'user.reactivated', "
             "'settings.updated', 'report.exported', "
-            "'data.exported', 'data.imported', 'user.deleted')",
+            "'data.exported', 'data.imported', 'user.deleted', "
+            "'data.reset', 'data.audit_deleted', 'data.audit_wiped')",
             name="ck_audit_log_action",
         ),
         CheckConstraint(
@@ -1027,6 +1031,10 @@ class ChurchSettings(Base):
     terms_of_use_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     privacy_policy_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     copyright_notice: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Object key of the photo on the admin portal's sign-in screen. Uploaded
+    # through `/admin/settings/sign-in-image-url` + `.../confirm`; null means
+    # the portal's built-in artwork.
+    sign_in_image_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")
     )

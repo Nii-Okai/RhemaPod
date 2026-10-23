@@ -51,6 +51,11 @@ export type AuditListParams = NonNullable<
   operations["list_audit_api_v1_admin_audit_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/users/members` (admin only). */
+export type MemberListParams = NonNullable<
+  operations["list_members_api_v1_users_members_get"]["parameters"]["query"]
+>;
+
 /** Query params accepted by `GET /api/v1/admin/analytics/report` (S13). */
 export type UsageReportParams = NonNullable<
   operations["usage_report_api_v1_admin_analytics_report_get"]["parameters"]["query"]
@@ -85,6 +90,10 @@ export const queryKeys = {
         Its own sub-tree, not a `list()` variant — it is four `limit=1`
         `total` probes, not a page of rows (§A.9 "Sermons list counts"). */
     counts: () => [...queryKeys.sermons.all(), "counts"] as const,
+    /** Sermons per workflow status (`GET /sermons/status-counts`), the
+        Dashboard's content pipeline. `mine` adds `created_by=me`. */
+    statusCounts: (mine = false) =>
+      [...queryKeys.sermons.all(), "status-counts", { mine }] as const,
   },
   review: {
     all: () => ["review"] as const,
@@ -135,24 +144,12 @@ export const queryKeys = {
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */
     counts: () => [...queryKeys.nav.all(), "counts"] as const,
   },
-  /** Upload jobs not nested under a single sermon. `inFlight()` is the
-      Dashboard "Processing" WIP card's feed (`GET /uploads/in-flight`) — every
-      still-moving job across the sermons the caller may see. Per-sermon job
-      lists stay under `sermons.uploads(id)`. */
-  uploads: {
-    all: () => ["uploads"] as const,
-    inFlight: () => [...queryKeys.uploads.all(), "in-flight"] as const,
-  },
-  /** Admin analytics reads behind the manager/admin Dashboard variant (W23).
-      Each is its own leaf — they share nothing and invalidate independently.
-      An editor session never mounts the component that runs these, so an
-      editor's cache never holds an `analytics` key. */
+  /** Admin analytics reads behind the manager/admin Dashboard. An editor
+      session never mounts the component that runs these, so an editor's
+      cache never holds an `analytics` key. */
   analytics: {
     all: () => ["analytics"] as const,
     overview: () => [...queryKeys.analytics.all(), "overview"] as const,
-    topSermons: () => [...queryKeys.analytics.all(), "top-sermons"] as const,
-    newListeners: () =>
-      [...queryKeys.analytics.all(), "new-listeners"] as const,
   },
   /** Users & roles screen (W17). Same shape as `announcements` — a domain root,
       a `list()` sub-tree keyed on `{role?, limit, offset}` (React Query hashes
@@ -166,6 +163,10 @@ export const queryKeys = {
     list: (params: UserListParams = {}) =>
       [...queryKeys.users.lists(), params] as const,
     roleCounts: () => [...queryKeys.users.all(), "role-counts"] as const,
+    /** Mobile users (viewers), admin only: `GET /users/members`. Under
+        `users.all()` so a deactivate/remove invalidates it too. */
+    members: (params: MemberListParams) =>
+      [...queryKeys.users.all(), "members", params] as const,
   },
   /** Subscriptions screen (W21). Same shape as `users` — a domain root, a
       `list()` sub-tree keyed on `{status?, tier?, limit, offset}` (React Query

@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EditorField } from "@/components/sermons/editor/field";
+import { SignInImageCard } from "./sign-in-image-card";
 import { isApiError } from "@/lib/api/errors";
 import { formatRelativeTime } from "@/lib/format";
 import {
@@ -265,6 +266,21 @@ function ProfileForm({
           })}
         </Card>
       ))}
+
+      <SignInImageCard
+        imageUrl={base.sign_in_image_url}
+        onSaved={(row) =>
+          // Saved on its own: re-base only what it changed, keep any unsaved
+          // edits in the form, and carry the new version so Save isn't a 409.
+          setBase((b) => ({
+            ...b,
+            sign_in_image_url: row.sign_in_image_url,
+            version: row.version,
+            updated_at: row.updated_at,
+            updated_by: row.updated_by,
+          }))
+        }
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-12">
         <span className="text-[12.5px] text-ink-faint">{updatedLine}</span>

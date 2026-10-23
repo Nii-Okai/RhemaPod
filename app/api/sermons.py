@@ -12,6 +12,7 @@ from app.models.content_schemas import (
     SermonAdminListItem,
     SermonCreate,
     SermonDetail,
+    SermonStatusCounts,
     SermonUpdate,
     StatusResponse,
     ThumbnailResponse,
@@ -116,6 +117,24 @@ async def list_my_sermons(
     return Page[SermonAdminListItem](
         items=items, total=total, limit=limit, offset=offset
     )
+
+
+@router.get("/status-counts", response_model=SermonStatusCounts)
+async def sermon_status_counts(
+    user: EditorPlus,
+    db: DbDep,
+    created_by: Literal["me"] | None = Query(
+        default=None, description="Only the caller's own sermons."
+    ),
+) -> SermonStatusCounts:
+    """How many sermons sit in each workflow status. Editors count their own
+    sermons; managers and admins count everyone's (or their own with
+    `created_by=me`). Powers the Dashboard's content pipeline."""
+    actor = await _actor(db, user)
+    counts = await content_service.sermon_status_counts(
+        db, actor, author_id=actor.id if created_by == "me" else None
+    )
+    return SermonStatusCounts(**counts)
 
 
 @router.post("", response_model=SermonDetail, status_code=status.HTTP_201_CREATED)

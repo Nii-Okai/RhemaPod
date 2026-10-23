@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/users", tags=["admin auth"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 ManagerPlus = Annotated[CurrentUser, Depends(require_role(UserRole.MANAGER, UserRole.ADMIN))]
+AdminOnly = Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))]
 
 
 # User management (managers/admins)
@@ -64,6 +65,28 @@ async def list_users(
         )
     rows, total = await auth_service.list_users(
         db, limit=limit, offset=offset, role_filter=role
+    )
+    return Page[UserPublic](
+        items=[auth_service.to_user_public(u) for u in rows],
+        total=total, limit=limit, offset=offset,
+    )
+
+
+@router.get("/members", response_model=Page[UserPublic])
+async def list_members(
+    user: AdminOnly,
+    db: DbDep,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=200, description="Email or name contains"),
+    status_filter: Literal["all", "active", "deactivated"] = Query(default="all", alias="status"),
+) -> Page[UserPublic]:
+    """Mobile app accounts (role `viewer`), newest first. Admin only: the
+    staff directory above never lists viewers, and this list exists so an
+    admin can deactivate or remove one (`PATCH /users/{id}/active`,
+    `DELETE /users/{id}`)."""
+    rows, total = await auth_service.list_members(
+        db, limit=limit, offset=offset, search=q, status=status_filter
     )
     return Page[UserPublic](
         items=[auth_service.to_user_public(u) for u in rows],
@@ -180,7 +203,7 @@ async def set_active(
 async def delete_user(
     user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx
 ) -> Response:
-    """Permanently remove a staff account. Admin only (a manager gets 403).
+    """Permanently remove a staff or mobile account. Admin only (a manager gets 403).
     The account must already be deactivated (409 otherwise), can't be your
     own, and can't have authored content or review history (409, with what
     it is linked to — keep such accounts deactivated)."""

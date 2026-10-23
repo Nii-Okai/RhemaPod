@@ -2042,6 +2042,28 @@ async def reorder_series_episodes(
 
 
 # ── Sermons: list & delete ────────────────────────────────────────────────────
+async def sermon_status_counts(
+    db: AsyncSession, requester: User, author_id: uuid.UUID | None = None
+) -> dict[str, int]:
+    """Sermons per status in the requester's scope, zero-filled, plus `total`.
+    One GROUP BY; the same scope rules as `list_sermons_for_staff`."""
+    conditions = []
+    scope_clause = editor_scope_filter(requester)
+    if scope_clause is not None:
+        conditions.append(scope_clause)
+    if author_id is not None:
+        conditions.append(Sermon.created_by == author_id)
+    rows = (await db.execute(
+        select(Sermon.status, func.count()).where(*conditions).group_by(Sermon.status)
+    )).all()
+    counts = {st.value: 0 for st in SermonStatus}
+    for st, n in rows:
+        key = st.value if isinstance(st, SermonStatus) else str(st)
+        counts[key] = int(n or 0)
+    counts["total"] = sum(counts.values())
+    return counts
+
+
 async def list_sermons_for_staff(
     db: AsyncSession,
     requester: User,

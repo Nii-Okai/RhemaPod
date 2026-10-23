@@ -479,6 +479,16 @@ def build_summary(
         if action == AuditAction.DATA_EXPORTED.value:
             return f"{actor} exported {what}"
         return f"{actor} imported {what} ({details.get('mode', 'merge')})"
+    if action == AuditAction.DATA_RESET.value:
+        tables = details.get("tables") or []
+        if details.get("all_tables"):
+            return f"{actor} wiped the database"
+        return f"{actor} reset {len(tables)} table{'s' if len(tables) != 1 else ''}"
+    if action == AuditAction.AUDIT_DELETED.value:
+        count = int(details.get("count") or 0)
+        return f"{actor} deleted {count} audit entr{'ies' if count != 1 else 'y'}"
+    if action == AuditAction.AUDIT_WIPED.value:
+        return f"{actor} wiped the audit trail ({int(details.get('count') or 0)} entries)"
     if action in (SERMON_STATUS_CHANGED, ANNOUNCEMENT_STATUS_CHANGED):
         kind = "sermon" if action == SERMON_STATUS_CHANGED else "announcement"
         frm, to = details.get("from"), details.get("to")
@@ -538,3 +548,62 @@ async def list_entries(
             )
         )
     return items, total
+
+
+# ── Clean-up (Settings › Audit trail, admin only) ───────────────────────────
+#
+# Only `audit_log` rows can be removed. The sermon/announcement review steps
+# and comment moderation rows in the feed are those records' own history:
+# the review queue reads `approval_log` to know who claimed a sermon and who
+# submitted it (no self-approval), so deleting them would change behaviour,
+# not just tidy a list. They go when their sermon, announcement or comment
+# is deleted.
+#
+# Each clean-up writes one row of its own afterwards (`data.audit_deleted` /
+# `data.audit_wiped`), so the trail always shows that it was cleared, when,
+# and by whom.
+
+WIPE_AUDIT_PHRASE = "WIPE AUDIT TRAIL"
+MAX_DELETE_IDS = 500
+
+
+async def delete_entries(
+    db: AsyncSession, ids: Sequence[uuid.UUID], *, actor: User, ctx: AuditContext
+) -> int:
+    """Delete the given `audit_log` rows; ids from other sources are ignored.
+    Returns how many rows were deleted."""
+    from sqlalchemy import delete
+
+    wanted = list(dict.fromkeys(ids))[:MAX_DELETE_IDS]
+    if not wanted:
+        return 0
+    result = await db.execute(delete(AuditLog).where(AuditLog.id.in_(wanted)))
+    deleted = max(result.rowcount or 0, 0)
+    if deleted:
+        await record(
+            db, AuditAction.AUDIT_DELETED,
+            actor=actor, target=AuditTarget(type="audit_log", label="Audit trail"),
+            details={"count": deleted},
+            outcome=AuditOutcome.SUCCESS, ctx=ctx,
+        )
+    await db.commit()
+    log.info("audit_entries_deleted", count=deleted, by=str(actor.id))
+    return deleted
+
+
+async def wipe(db: AsyncSession, *, actor: User, ctx: AuditContext) -> int:
+    """Delete every `audit_log` row, then record the wipe itself. Returns how
+    many rows were deleted."""
+    from sqlalchemy import delete
+
+    result = await db.execute(delete(AuditLog))
+    deleted = max(result.rowcount or 0, 0)
+    await record(
+        db, AuditAction.AUDIT_WIPED,
+        actor=actor, target=AuditTarget(type="audit_log", label="Audit trail"),
+        details={"count": deleted},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    await db.commit()
+    log.info("audit_wiped", count=deleted, by=str(actor.id))
+    return deleted

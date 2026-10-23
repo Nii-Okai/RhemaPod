@@ -4,12 +4,15 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/portal/data-table";
 import { EmptyState } from "@/components/portal/empty-state";
+import { Toast } from "@/components/portal/toast";
+import { isApiError } from "@/lib/api/errors";
 import { clampPage } from "@/lib/format";
 import {
   AUDIT_CATEGORIES,
@@ -18,10 +21,14 @@ import {
   toCategory,
   toOutcome,
   useAuditLog,
+  useDeleteAuditEntries,
+  useWipeAuditTrail,
+  WIPE_AUDIT_PHRASE,
   type AuditCategory,
   type AuditEntry,
   type AuditOutcome,
 } from "@/lib/query/hooks/use-audit-log";
+import { ConfirmDestructiveDialog } from "./confirm-destructive-dialog";
 
 /* =============================================================================
    AuditScreen — Settings › Audit trail (plan-admin-settings S17, ADR 0018).
@@ -34,7 +41,23 @@ import {
 
    Each row shows the server-built summary; selecting a row opens a details
    dialog with the action, IP, browser and the raw details.
+
+   Clean-up: tick rows and "Delete" them, or "Wipe audit trail…" to remove
+   every entry (typed phrase plus password). Only system-log entries can go;
+   sermon and announcement review steps and comment moderation are the
+   history of those records and stay (ticking one deletes nothing, and the
+   bulk bar says how many of the ticked rows will be kept). Either clean-up
+   leaves one entry saying who did it and when.
    ========================================================================== */
+
+function errorText(err: unknown, fallback: string): string {
+  if (isApiError(err)) {
+    return err.correlationId ? `${err.detail} (reference: ${err.correlationId})` : err.detail;
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
+const keyOf = (row: Pick<AuditEntry, "source" | "id">) => `${row.source}:${row.id}`;
 
 const SELECT_CLASS = "h-[32px] rounded-9 border-border-strong pr-[30px] text-[13px]";
 const DATE_CLASS = "h-[32px] w-[150px] rounded-9 text-[13px]";
@@ -85,6 +108,28 @@ export function AuditScreen() {
   });
 
   const [selected, setSelected] = React.useState<AuditEntry | null>(null);
+  const [checked, setChecked] = React.useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [wipeOpen, setWipeOpen] = React.useState(false);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const deleter = useDeleteAuditEntries();
+  const wiper = useWipeAuditTrail();
+
+  // Only system-log rows can be deleted; ticking anything else is ignored.
+  const deletableIds = [...checked]
+    .filter((key) => key.startsWith("audit_log:"))
+    .map((key) => key.slice("audit_log:".length));
+  const keptCount = checked.size - deletableIds.length;
+
+  const runDelete = () => {
+    deleter.mutate(deletableIds, {
+      onSuccess: (res) => {
+        setConfirmDelete(false);
+        setChecked(new Set());
+        setToast(`Deleted ${res.deleted} ${res.deleted === 1 ? "entry" : "entries"}.`);
+      },
+    });
+  };
 
   const push = (patch: Record<string, string | undefined>) => {
     const search = buildSearch(searchParams, patch);
@@ -146,6 +191,12 @@ export function AuditScreen() {
 
   const filtered = category != null || outcome != null || from !== "" || to !== "";
 
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   return (
     <div className="flex flex-col gap-12">
       <div className="flex flex-wrap items-center gap-10" data-slot="audit-filter-bar">
@@ -203,6 +254,18 @@ export function AuditScreen() {
             onChange={(e) => push({ to: e.target.value || undefined })}
           />
         </label>
+        <span className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-rose-text"
+          onClick={() => {
+            wiper.reset();
+            setWipeOpen(true);
+          }}
+        >
+          Wipe audit trail…
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-16 border border-border bg-surface">
@@ -218,7 +281,33 @@ export function AuditScreen() {
           caption="Audit trail"
           columns={columns}
           rows={items}
-          rowKey={(row) => `${row.source}:${row.id}`}
+          rowKey={keyOf}
+          selectable
+          selectedKeys={checked}
+          onSelectionChange={setChecked}
+          bulkLabel={(count) =>
+            keptCount > 0
+              ? `${count} selected · ${keptCount} review/moderation ${keptCount === 1 ? "entry stays" : "entries stay"}`
+              : `${count} selected`
+          }
+          bulkActions={
+            <div className="flex items-center gap-8">
+              <Button variant="ghost" size="sm" onClick={() => setChecked(new Set())}>
+                Clear
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deletableIds.length === 0 || deleter.isPending}
+                onClick={() => {
+                  deleter.reset();
+                  setConfirmDelete(true);
+                }}
+              >
+                Delete {deletableIds.length} {deletableIds.length === 1 ? "entry" : "entries"}…
+              </Button>
+            </div>
+          }
           loading={isPending}
           rangeLabel={rangeLabel}
           page={page}
@@ -238,6 +327,73 @@ export function AuditScreen() {
           }
         />
       </div>
+
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleter.isPending) setConfirmDelete(false);
+        }}
+      >
+        <DialogContent className="w-[min(460px,calc(100vw-32px))]">
+          <DialogTitle>
+            Delete {deletableIds.length} audit {deletableIds.length === 1 ? "entry" : "entries"}?
+          </DialogTitle>
+          <DialogDescription>
+            They’re removed for good. One new entry records that you deleted them.
+            {keptCount > 0
+              ? ` ${keptCount} ticked review or moderation ${keptCount === 1 ? "entry is" : "entries are"} kept — ${keptCount === 1 ? "it belongs" : "they belong"} to a sermon, announcement or comment.`
+              : ""}
+          </DialogDescription>
+          {deleter.isError ? (
+            <Alert variant="error" title="Not deleted">
+              {errorText(deleter.error, "Please try again.")}
+            </Alert>
+          ) : null}
+          <div className="flex justify-end gap-8">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={deleter.isPending}
+              onClick={() => setConfirmDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" disabled={deleter.isPending} onClick={runDelete}>
+              {deleter.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDestructiveDialog
+        open={wipeOpen}
+        title="Wipe the audit trail?"
+        description="Every sign-in, staff change, settings edit, export and import entry is deleted for good. Sermon and announcement review steps and comment moderation stay with their records. One new entry records that you wiped it."
+        phrase={WIPE_AUDIT_PHRASE}
+        confirmLabel="Wipe audit trail"
+        pendingLabel="Wiping…"
+        pending={wiper.isPending}
+        error={wiper.isError ? errorText(wiper.error, "Please try again.") : null}
+        onCancel={() => setWipeOpen(false)}
+        onConfirm={({ phrase, password }) =>
+          wiper.mutate(
+            { confirm: phrase, password },
+            {
+              onSuccess: (res) => {
+                setWipeOpen(false);
+                setChecked(new Set());
+                setToast(`Audit trail wiped (${res.deleted} ${res.deleted === 1 ? "entry" : "entries"}).`);
+              },
+            },
+          )
+        }
+      />
+
+      {toast ? (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <Toast message={toast} onDismiss={() => setToast(null)} />
+        </div>
+      ) : null}
 
       <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
         {selected ? (

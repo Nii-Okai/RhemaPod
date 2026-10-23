@@ -8,6 +8,10 @@
 * `POST /admin/data/import` — merge or replace from an export file. Defaults
   to a dry run that reports what would change and rolls back; a real run must
   send the mode's confirmation phrase.
+* `POST /admin/data/reset` — empty chosen tables, or every table (a database
+  wipe). Dry run by default; a real run needs the phrase and the admin's
+  password. The admin's own account, the audit trail and church settings are
+  never touched.
 
 All of the rules live in `data_transfer_service`; this module only maps them
 onto HTTP.
@@ -39,6 +43,11 @@ class DataTable(BaseModel):
     importable: bool
     replaceable: bool
     referenced_by: list[str]
+    resettable: bool
+    reset_with: list[str] = Field(
+        description="Tables a reset of this one also empties (they point at it "
+        "with ON DELETE CASCADE or RESTRICT)."
+    )
 
 
 class DataTablesResponse(BaseModel):
@@ -144,4 +153,54 @@ async def import_data(
         mode=result.mode,
         dry_run=result.dry_run,
         tables=[DataImportTableResult(**r.__dict__) for r in result.tables],
+    )
+
+
+class DataResetRequest(BaseModel):
+    tables: list[str] | None = Field(
+        default=None,
+        description="Tables to empty. Omit (or send an empty list) to wipe every table.",
+    )
+    dry_run: bool = True
+    confirm: str | None = Field(
+        default=None,
+        description="Required when `dry_run` is false: `RESET` for chosen tables, "
+        "`WIPE DATABASE` for everything.",
+    )
+    password: str | None = Field(
+        default=None, max_length=256,
+        description="Required when `dry_run` is false: the signed-in admin's password.",
+    )
+
+
+class DataResetTableResult(BaseModel):
+    name: str
+    deleted: int
+    unlinked: int
+
+
+class DataResetResponse(BaseModel):
+    dry_run: bool
+    all_tables: bool
+    tables: list[DataResetTableResult]
+
+
+@router.post("/reset", response_model=DataResetResponse)
+async def reset_data(
+    body: DataResetRequest, user: AdminOnly, db: DbDep, ctx: AuditCtx
+) -> DataResetResponse:
+    """Destructive when `dry_run` is false. Preview first: the dry run does
+    the whole reset inside a transaction and rolls it back."""
+    actor = await _actor(db, user)
+    try:
+        result = await svc.reset_tables(
+            db, tables=body.tables, dry_run=body.dry_run, confirm=body.confirm,
+            password=body.password, actor=actor, ctx=ctx,
+        )
+    except DataTransferError as exc:
+        raise _err(exc)
+    return DataResetResponse(
+        dry_run=result.dry_run,
+        all_tables=result.all_tables,
+        tables=[DataResetTableResult(**r.__dict__) for r in result.tables],
     )

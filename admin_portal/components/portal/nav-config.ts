@@ -27,6 +27,9 @@ export interface NavItem {
       `roleSeesCommunity`). Cosmetic, like the group-level filter below: the
       route itself is the real gate (`requireRole()`, 404 not redirect). */
   managerOnly?: boolean;
+  /** Hidden from everyone but admins. Cosmetic, like `managerOnly`: the page
+      itself 404s below admin (`requireRole("admin")`). */
+  adminOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -77,6 +80,7 @@ const COMMUNITY: NavGroup = {
   items: [
     { label: "Subscriptions", href: "/subscriptions" },
     { label: "Users & roles", href: "/users" },
+    { label: "Mobile users", href: "/members", adminOnly: true },
   ],
 };
 
@@ -131,7 +135,9 @@ export function navGroupsForRole(role: string): NavGroup[] {
   ).map((group) => ({
     ...group,
     items: group.items.filter(
-      (item) => seesManagerOnly || !item.managerOnly,
+      (item) =>
+        (seesManagerOnly || !item.managerOnly) &&
+        (role === "admin" || !item.adminOnly),
     ),
   }));
 }

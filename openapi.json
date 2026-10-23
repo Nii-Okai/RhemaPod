@@ -672,6 +672,39 @@
         "title": "AudioDownloadResponse",
         "type": "object"
       },
+      "AuditDeleteRequest": {
+        "properties": {
+          "ids": {
+            "description": "`audit_log` row ids. Ids from the review or moderation history are ignored: those rows can't be deleted here.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "AuditDeleteRequest",
+        "type": "object"
+      },
+      "AuditDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "AuditDeleteResponse",
+        "type": "object"
+      },
       "AuditEntry": {
         "description": "One row of the unified audit feed (`GET /admin/audit`,\nplan-admin-settings \u00a7A.5, D9): `audit_log` plus the three domain logs\nthat predate it, in one shape.\n\n`source` names the table a row came from. Legacy rows report `outcome`\n`success`, carry no `ip`/`user_agent`, and resolve `actor_label` from\nthe actor's current account (\"Deleted account\" once it is gone,\n\"System\" for automatic comment hides); `audit_log` rows carry the email\nsnapshot taken at write time. `summary` is a server-built sentence.",
         "properties": {
@@ -827,6 +860,27 @@
         ],
         "title": "AuditOutcome",
         "type": "string"
+      },
+      "AuditWipeRequest": {
+        "properties": {
+          "confirm": {
+            "description": "Must be `WIPE AUDIT TRAIL`.",
+            "title": "Confirm",
+            "type": "string"
+          },
+          "password": {
+            "description": "The signed-in admin's password.",
+            "maxLength": 256,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm",
+          "password"
+        ],
+        "title": "AuditWipeRequest",
+        "type": "object"
       },
       "AvatarResponse": {
         "properties": {
@@ -1144,6 +1198,17 @@
             ],
             "title": "Privacy Policy Url"
           },
+          "sign_in_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sign In Image Url"
+          },
           "tagline": {
             "anyOf": [
               {
@@ -1305,6 +1370,17 @@
               }
             ],
             "title": "Privacy Policy Url"
+          },
+          "sign_in_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sign In Image Url"
           },
           "tagline": {
             "anyOf": [
@@ -2176,6 +2252,106 @@
         "title": "DataImportTableResult",
         "type": "object"
       },
+      "DataResetRequest": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required when `dry_run` is false: `RESET` for chosen tables, `WIPE DATABASE` for everything.",
+            "title": "Confirm"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required when `dry_run` is false: the signed-in admin's password.",
+            "title": "Password"
+          },
+          "tables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tables to empty. Omit (or send an empty list) to wipe every table.",
+            "title": "Tables"
+          }
+        },
+        "title": "DataResetRequest",
+        "type": "object"
+      },
+      "DataResetResponse": {
+        "properties": {
+          "all_tables": {
+            "title": "All Tables",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/DataResetTableResult"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "all_tables",
+          "tables"
+        ],
+        "title": "DataResetResponse",
+        "type": "object"
+      },
+      "DataResetTableResult": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unlinked": {
+            "title": "Unlinked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "deleted",
+          "unlinked"
+        ],
+        "title": "DataResetTableResult",
+        "type": "object"
+      },
       "DataTable": {
         "properties": {
           "importable": {
@@ -2197,6 +2373,18 @@
             "title": "Replaceable",
             "type": "boolean"
           },
+          "reset_with": {
+            "description": "Tables a reset of this one also empties (they point at it with ON DELETE CASCADE or RESTRICT).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reset With",
+            "type": "array"
+          },
+          "resettable": {
+            "title": "Resettable",
+            "type": "boolean"
+          },
           "rows": {
             "title": "Rows",
             "type": "integer"
@@ -2207,7 +2395,9 @@
           "rows",
           "importable",
           "replaceable",
-          "referenced_by"
+          "referenced_by",
+          "resettable",
+          "reset_with"
         ],
         "title": "DataTable",
         "type": "object"
@@ -2468,7 +2658,13 @@
         "type": "object"
       },
       "OverviewStats": {
+        "description": "All-time platform figures for the Dashboard. Every number is a count\nover the live tables at request time (not the daily rollups), so it\ncovers history from before the rollups existed.",
         "properties": {
+          "active_members": {
+            "default": 0,
+            "title": "Active Members",
+            "type": "integer"
+          },
           "active_subscribers": {
             "title": "Active Subscribers",
             "type": "integer"
@@ -2479,6 +2675,11 @@
           },
           "completions": {
             "title": "Completions",
+            "type": "integer"
+          },
+          "members": {
+            "default": 0,
+            "title": "Members",
             "type": "integer"
           },
           "plays_last_7_days": {
@@ -2500,6 +2701,11 @@
           "unique_viewers": {
             "title": "Unique Viewers",
             "type": "integer"
+          },
+          "watch_hours": {
+            "default": 0.0,
+            "title": "Watch Hours",
+            "type": "number"
           }
         },
         "required": [
@@ -5057,6 +5263,53 @@
         "title": "SermonStatus",
         "type": "string"
       },
+      "SermonStatusCounts": {
+        "description": "Sermons per workflow status, in the caller's scope (an editor's own\nsermons; everyone's for a manager/admin). Zero-filled.",
+        "properties": {
+          "approved": {
+            "default": 0,
+            "title": "Approved",
+            "type": "integer"
+          },
+          "draft": {
+            "default": 0,
+            "title": "Draft",
+            "type": "integer"
+          },
+          "pending_review": {
+            "default": 0,
+            "title": "Pending Review",
+            "type": "integer"
+          },
+          "published": {
+            "default": 0,
+            "title": "Published",
+            "type": "integer"
+          },
+          "rejected": {
+            "default": 0,
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "under_review": {
+            "default": 0,
+            "title": "Under Review",
+            "type": "integer"
+          },
+          "unpublished": {
+            "default": 0,
+            "title": "Unpublished",
+            "type": "integer"
+          }
+        },
+        "title": "SermonStatusCounts",
+        "type": "object"
+      },
       "SermonUpdate": {
         "properties": {
           "category_id": {
@@ -6960,6 +7213,100 @@
         ]
       }
     },
+    "/api/v1/admin/audit/delete": {
+      "post": {
+        "description": "Delete chosen audit entries. One `data.audit_deleted` row records it.",
+        "operationId": "delete_audit_entries_api_v1_admin_audit_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Audit Entries",
+        "tags": [
+          "admin audit"
+        ]
+      }
+    },
+    "/api/v1/admin/audit/wipe": {
+      "post": {
+        "description": "Delete every audit entry. Needs the typed phrase and the admin's\npassword. A `data.audit_wiped` row is written after, so the trail is\nnever silently empty.",
+        "operationId": "wipe_audit_trail_api_v1_admin_audit_wipe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditWipeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wipe Audit Trail",
+        "tags": [
+          "admin audit"
+        ]
+      }
+    },
     "/api/v1/admin/comments": {
       "get": {
         "description": "The moderation queue. An editor sees only comments on their own sermons\n(ADR-0004) and the rows carry no author email or id.",
@@ -7415,6 +7762,53 @@
         ]
       }
     },
+    "/api/v1/admin/data/reset": {
+      "post": {
+        "description": "Destructive when `dry_run` is false. Preview first: the dry run does\nthe whole reset inside a transaction and rolls it back.",
+        "operationId": "reset_data_api_v1_admin_data_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reset Data",
+        "tags": [
+          "admin data"
+        ]
+      }
+    },
     "/api/v1/admin/data/tables": {
       "get": {
         "operationId": "list_tables_api_v1_admin_data_tables_get",
@@ -7507,6 +7901,128 @@
           }
         ],
         "summary": "Update Settings",
+        "tags": [
+          "admin settings"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/sign-in-image": {
+      "delete": {
+        "description": "Go back to the portal's built-in sign-in artwork.",
+        "operationId": "remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChurchSettingsAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Sign In Image",
+        "tags": [
+          "admin settings"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/sign-in-image-url": {
+      "post": {
+        "description": "A pre-signed PUT for a new sign-in screen image (JPEG, PNG or WebP).",
+        "operationId": "sign_in_image_url_api_v1_admin_settings_sign_in_image_url_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThumbnailUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThumbnailTicket"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sign In Image Url",
+        "tags": [
+          "admin settings"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/sign-in-image/confirm": {
+      "post": {
+        "description": "Use the uploaded image on the sign-in screen.",
+        "operationId": "confirm_sign_in_image_api_v1_admin_settings_sign_in_image_confirm_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "thumbnail_key",
+            "required": true,
+            "schema": {
+              "title": "Thumbnail Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChurchSettingsAdmin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Sign In Image",
         "tags": [
           "admin settings"
         ]
@@ -12168,6 +12684,64 @@
         ]
       }
     },
+    "/api/v1/sermons/status-counts": {
+      "get": {
+        "description": "How many sermons sit in each workflow status. Editors count their own\nsermons; managers and admins count everyone's (or their own with\n`created_by=me`). Powers the Dashboard's content pipeline.",
+        "operationId": "sermon_status_counts_api_v1_sermons_status_counts_get",
+        "parameters": [
+          {
+            "description": "Only the caller's own sermons.",
+            "in": "query",
+            "name": "created_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "me",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the caller's own sermons.",
+              "title": "Created By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SermonStatusCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sermon Status Counts",
+        "tags": [
+          "sermons"
+        ]
+      }
+    },
     "/api/v1/sermons/{sermon_id}": {
       "delete": {
         "description": "Editors may delete only their own draft/rejected sermons; managers and\nadmins may delete any non-published sermon. Published content must be\nunpublished first.",
@@ -13772,6 +14346,102 @@
         ]
       }
     },
+    "/api/v1/users/members": {
+      "get": {
+        "description": "Mobile app accounts (role `viewer`), newest first. Admin only: the\nstaff directory above never lists viewers, and this list exists so an\nadmin can deactivate or remove one (`PATCH /users/{id}/active`,\n`DELETE /users/{id}`).",
+        "operationId": "list_members_api_v1_users_members_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Email or name contains",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Email or name contains",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "active",
+                "deactivated"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UserPublic_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "admin auth"
+        ]
+      }
+    },
     "/api/v1/users/role-counts": {
       "get": {
         "description": "Full-table `GROUP BY role` headcount for the Users & roles tiles.\n\nDeliberately **not** staff-scoped like `GET /users`: the `viewer` bucket is\na real number here because a count identifies no one (plan \u00a7A.6).",
@@ -13801,7 +14471,7 @@
     },
     "/api/v1/users/{user_id}": {
       "delete": {
-        "description": "Permanently remove a staff account. Admin only (a manager gets 403).\nThe account must already be deactivated (409 otherwise), can't be your\nown, and can't have authored content or review history (409, with what\nit is linked to \u2014 keep such accounts deactivated).",
+        "description": "Permanently remove a staff or mobile account. Admin only (a manager gets 403).\nThe account must already be deactivated (409 otherwise), can't be your\nown, and can't have authored content or review history (409, with what\nit is linked to \u2014 keep such accounts deactivated).",
         "operationId": "delete_user_api_v1_users__user_id__delete",
         "parameters": [
           {

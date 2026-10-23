@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { loadSignInImageUrl } from "@/lib/auth/sign-in-image";
+
 import { Wordmark } from "./wordmark";
 
 /**
@@ -8,10 +10,12 @@ import { Wordmark } from "./wordmark";
  *
  * Left: white, vertically centred, `64px 8vw` padding, gap 28 — wordmark,
  * heading (Newsreader 40/1.08), a 15px ink-muted subhead, then the form.
- * Right: the striped brand placeholder with a bottom-aligned pull-quote card.
- * Below 900px the right column drops away (desktop tool; §"Responsive").
+ * Right: the church's photo (set in Settings › Profile, read from the public
+ * settings) or, until one is uploaded, built-in warm artwork — with a
+ * bottom-aligned pull-quote card either way. Below the `lg` breakpoint the
+ * right column drops away (desktop tool; §"Responsive").
  */
-export function AuthLayout({
+export async function AuthLayout({
   heading,
   subhead,
   children,
@@ -33,28 +37,46 @@ export function AuthLayout({
         <div className="flex w-full max-w-[400px] flex-col gap-14">{children}</div>
       </section>
 
-      <BrandAside />
+      <BrandAside imageUrl={await loadSignInImageUrl()} />
     </main>
   );
 }
 
-function BrandAside() {
+function BrandAside({ imageUrl }: { imageUrl: string | null }) {
   return (
     <aside
-      className="hidden flex-col justify-end p-[56px] lg:flex"
+      data-slot="auth-brand"
+      className="relative hidden flex-col justify-end overflow-hidden p-[56px] lg:flex"
       style={{
-        background:
-          "repeating-linear-gradient(135deg,#E4DDD1 0 8px,#EFE9DF 8px 16px)",
+        background: imageUrl
+          ? "var(--color-dark, #2e2723)"
+          : // Built-in artwork: warm light falling across clay and sand.
+            "radial-gradient(120% 80% at 85% 10%, rgba(255,236,214,.95) 0%, rgba(255,236,214,0) 55%)," +
+            "radial-gradient(90% 70% at 10% 95%, rgba(126,65,40,.55) 0%, rgba(126,65,40,0) 60%)," +
+            "linear-gradient(160deg, #efe4d6 0%, #e2c7ae 45%, #c98f6c 100%)",
       }}
     >
-      <figure className="max-w-[420px] rounded-16 bg-surface-sunken p-[26px]">
-        <figcaption className="text-mono-meta text-ink-faint">
-          brand image · 4:5 portrait of congregation
-        </figcaption>
-        <blockquote className="mt-14 font-serif text-[23px] leading-[1.35] text-ink">
+      {imageUrl ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          {/* Darkens the bottom so the quote card reads on any photo. */}
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_45%,rgba(0,0,0,.45)_100%)]"
+          />
+        </>
+      ) : null}
+      <figure className="relative max-w-[420px] rounded-16 bg-surface/90 p-[26px] backdrop-blur-sm">
+        <blockquote className="font-serif text-[23px] leading-[1.35] text-ink">
           &ldquo;So faith comes from hearing, and hearing through the word of
           Christ.&rdquo;
         </blockquote>
+        <figcaption className="mt-10 text-mono-meta text-ink-faint">Romans 10:17</figcaption>
       </figure>
     </aside>
   );

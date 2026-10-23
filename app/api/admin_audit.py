@@ -1,27 +1,34 @@
-"""Unified audit trail, read-only (plan-admin-settings §A.5, D5, D7, D9).
+"""Unified audit trail (plan-admin-settings §A.5, D5, D7, D9).
 
-Admin only: managers and editors get 403 at the dependency. View-only in v1:
-there is no export (D5). The feed merges `audit_log` with the three domain
-logs that predate it; see `audit_service.list_entries`.
+Admin only: managers and editors get 403 at the dependency. There is no
+export (D5). The feed merges `audit_log` with the three domain logs that
+predate it; see `audit_service.list_entries`.
+
+Clean-up: `POST /admin/audit/delete` removes chosen `audit_log` rows and
+`POST /admin/audit/wipe` removes all of them (typed phrase plus the admin's
+password). Review and moderation history stays; see `audit_service`.
 """
 import uuid
 from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, require_role
-from app.db.database import get_read_db
+from app.core.dependencies import AuditCtx, CurrentUser, require_role
+from app.db.database import get_db, get_read_db
 from app.models.content_schemas import AuditEntry, Page
 from app.models.models import AuditOutcome, UserRole
-from app.services import audit_service
+from app.services import audit_service, auth_service
 from app.services.audit_service import AuditFilters
+from app.services.content_service import ContentError
 
 router = APIRouter(prefix="/admin/audit", tags=["admin audit"])
 
 ReadDbDep = Annotated[AsyncSession, Depends(get_read_db)]
+DbDep = Annotated[AsyncSession, Depends(get_db)]
 AdminOnly = Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))]
 
 AuditCategory = Literal[
@@ -80,3 +87,59 @@ async def list_audit(
         limit=limit,
         offset=offset,
     )
+
+
+class AuditDeleteRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(
+        min_length=1,
+        max_length=audit_service.MAX_DELETE_IDS,
+        description="`audit_log` row ids. Ids from the review or moderation "
+        "history are ignored: those rows can't be deleted here.",
+    )
+
+
+class AuditWipeRequest(BaseModel):
+    confirm: str = Field(description=f"Must be `{audit_service.WIPE_AUDIT_PHRASE}`.")
+    password: str = Field(max_length=256, description="The signed-in admin's password.")
+
+
+class AuditDeleteResponse(BaseModel):
+    deleted: int
+
+
+async def _actor(db: AsyncSession, current: CurrentUser):
+    actor = await auth_service.get_user_by_id(db, current.id)
+    if actor is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return actor
+
+
+@router.post("/delete", response_model=AuditDeleteResponse)
+async def delete_audit_entries(
+    body: AuditDeleteRequest, user: AdminOnly, db: DbDep, ctx: AuditCtx
+) -> AuditDeleteResponse:
+    """Delete chosen audit entries. One `data.audit_deleted` row records it."""
+    actor = await _actor(db, user)
+    deleted = await audit_service.delete_entries(db, body.ids, actor=actor, ctx=ctx)
+    return AuditDeleteResponse(deleted=deleted)
+
+
+@router.post("/wipe", response_model=AuditDeleteResponse)
+async def wipe_audit_trail(
+    body: AuditWipeRequest, user: AdminOnly, db: DbDep, ctx: AuditCtx
+) -> AuditDeleteResponse:
+    """Delete every audit entry. Needs the typed phrase and the admin's
+    password. A `data.audit_wiped` row is written after, so the trail is
+    never silently empty."""
+    if body.confirm.strip() != audit_service.WIPE_AUDIT_PHRASE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Type {audit_service.WIPE_AUDIT_PHRASE} to confirm.",
+        )
+    actor = await _actor(db, user)
+    try:
+        await auth_service.confirm_password(actor, body.password)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    deleted = await audit_service.wipe(db, actor=actor, ctx=ctx)
+    return AuditDeleteResponse(deleted=deleted)
