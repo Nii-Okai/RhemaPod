@@ -1,6 +1,6 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText } from '../../../components';
+import { Pressable, View } from 'react-native';
+import { AppText, FittedArt } from '../../../components';
 import { EpisodeDownloadButton } from '../../../components/series/EpisodeDownloadButton';
 import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
@@ -39,7 +39,7 @@ export function SignatureEpisodeRow({ episode, progress, current, onPress }: Sig
       >
         <View style={styles.art}>
           {episode.thumbnail_url ? (
-            <Image source={{ uri: episode.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <FittedArt uri={episode.thumbnail_url} />
           ) : null}
           {progress.fraction > 0 ? (
             <View style={styles.track}>

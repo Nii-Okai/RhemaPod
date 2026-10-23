@@ -1,6 +1,6 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, PlatformIcon, PressableScale } from '../../../../components';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText, FittedArt, PlatformIcon, PressableScale } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
@@ -49,7 +49,7 @@ export function SeriesWalkCard({ walk, thumbnailUrl, onOpenSeries, onResume }: S
       <View style={styles.top}>
         <View style={styles.thumb}>
           {thumbnailUrl ? (
-            <Image source={{ uri: thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <FittedArt uri={thumbnailUrl} />
           ) : null}
         </View>
         <View style={styles.text}>

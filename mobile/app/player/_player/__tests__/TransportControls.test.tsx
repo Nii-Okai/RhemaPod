@@ -19,6 +19,8 @@ const barProps = {
   playbackSpeed: 1 as const,
   sleepRemainingSeconds: null,
   isFullscreen: false,
+  isMuted: false,
+  onToggleMute: jest.fn(),
   onSeekTo: jest.fn(),
   onSeekBy: jest.fn(),
   onScrubStart: jest.fn(),
@@ -91,6 +93,15 @@ describe('PlayerBottomBar', () => {
     const { getByLabelText, getByText } = render(<PlayerBottomBar {...barProps} sleepRemainingSeconds={905} />);
     expect(getByLabelText('Sleep timer, 15:05 remaining')).toBeTruthy();
     expect(getByText('15:05')).toBeTruthy();
+  });
+
+  it('toggles mute with a label that says what a tap will do', () => {
+    const unmuted = render(<PlayerBottomBar {...barProps} />);
+    fireEvent.press(unmuted.getByLabelText('Mute'));
+    expect(barProps.onToggleMute).toHaveBeenCalledTimes(1);
+
+    const muted = render(<PlayerBottomBar {...barProps} isMuted />);
+    expect(muted.getByLabelText('Unmute')).toBeTruthy();
   });
 
   it('toggles native fullscreen with the matching label', () => {

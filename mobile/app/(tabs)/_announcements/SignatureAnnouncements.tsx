@@ -11,6 +11,7 @@ import { useAnnouncements, type AnnouncementListItem } from '../../../lib/query/
 import { Flame } from '../_home/signature/Flame';
 import { LEAF, LEAF_SM } from '../_home/signature/leaf';
 import { formatAnnouncementWhen } from './announcementWhen';
+import { usePullToRefresh } from '../../../lib/hooks/usePullToRefresh';
 
 /** Past this many characters a description starts clamped, with "Read more" to open it. */
 const LONG_DESCRIPTION = 140;
@@ -158,13 +159,11 @@ function Section({
  * take the wheat tint and a gold flame. Every colour comes from the active theme.
  */
 export function SignatureAnnouncementsScreen() {
-  const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isTablet = useDeviceClass() === 'tablet';
   const announcements = useAnnouncements();
-  const [refreshing, setRefreshing] = useState(false);
   const [poster, setPoster] = useState<AnnouncementListItem | null>(null);
 
   const items = sortPinnedFirst(announcements.data ?? []);
@@ -172,11 +171,7 @@ export function SignatureAnnouncementsScreen() {
   const latest = items.filter((item) => !item.pinned);
   const labelled = pinned.length > 0 && latest.length > 0;
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await announcements.refetch();
-    setRefreshing(false);
-  };
+  const pullToRefresh = usePullToRefresh([announcements]);
 
   return (
     <View style={styles.screen}>
@@ -202,7 +197,7 @@ export function SignatureAnnouncementsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent.gold} colors={[colors.accent.gold]} />
+          <RefreshControl {...pullToRefresh} />
         }
       >
         <QueryState

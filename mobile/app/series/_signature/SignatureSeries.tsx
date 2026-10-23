@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, PlatformIcon, Tag } from '../../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, FittedArt, PlatformIcon, Tag } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -15,6 +15,7 @@ import { ctaWording, episodeProgress, sharedSpeaker, type EpisodeProgress } from
 import { SignatureEpisodeRow } from './SignatureEpisodeRow';
 import { SignatureRelated } from './SignatureRelated';
 import { SignatureTabs } from './SignatureTabs';
+import { usePullToRefresh } from '../../../lib/hooks/usePullToRefresh';
 
 // Full-bleed cover, running up under the status bar (Nii's edit to the mockup: a bigger
 // top image than the classic page's inset 4:3 banner).
@@ -39,6 +40,7 @@ export function SignatureSeriesScreen() {
   const { width } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>('episodes');
   const screen = useSeriesScreen(id);
+  const pullToRefresh = usePullToRefresh([screen.series, screen.episodes, screen.history]);
   const { series, episodes, episodeItems, historyMap, cta, downloads, downloadableEpisodes } = screen;
 
   const progress = useMemo(
@@ -87,10 +89,14 @@ export function SignatureSeriesScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      >
         <View testID="series-hero" style={[styles.hero, { height: width * HERO_ASPECT + insets.top }]}>
           {detail.thumbnail_url ? (
-            <Image source={{ uri: detail.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <FittedArt uri={detail.thumbnail_url} />
           ) : null}
         </View>
 

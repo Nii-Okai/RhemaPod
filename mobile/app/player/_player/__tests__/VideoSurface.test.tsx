@@ -39,6 +39,8 @@ function Harness({ overrides = {} }: { overrides?: FixtureOverrides }) {
     durationSeconds: null,
     playbackSpeed: 1,
     sleepRemainingSeconds: null,
+    isMuted: false,
+    onToggleMute: jest.fn(),
     onSeekTo: jest.fn(),
     onScrubStart: jest.fn(),
     onScrubEnd: jest.fn(),

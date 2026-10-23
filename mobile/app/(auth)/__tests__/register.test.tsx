@@ -94,13 +94,13 @@ describe('RegisterScreen', () => {
 
     const { getByText, getByLabelText } = render(<RegisterScreen />);
     fireEvent.changeText(getByLabelText('Email'), 'user@example.com');
-    fireEvent.changeText(getByLabelText('Password'), 'password123456');
+    fireEvent.changeText(getByLabelText('Password'), 'lantern-river-47');
     fireEvent.press(getByText('Create account'));
 
     await waitFor(() => {
       expect(getByText('Email already registered')).toBeTruthy();
     });
-    expect(register).toHaveBeenCalledWith('user@example.com', 'password123456');
+    expect(register).toHaveBeenCalledWith('user@example.com', 'lantern-river-47');
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe('RegisterScreen', () => {
 
     const { getByText, getByLabelText } = render(<RegisterScreen />);
     fireEvent.changeText(getByLabelText('Email'), 'user@example.com');
-    fireEvent.changeText(getByLabelText('Password'), 'password123456');
+    fireEvent.changeText(getByLabelText('Password'), 'lantern-river-47');
     fireEvent.press(getByText('Create account'));
 
     await waitFor(() => {
@@ -119,7 +119,7 @@ describe('RegisterScreen', () => {
         params: { email: 'user@example.com' },
       });
     });
-    expect(register).toHaveBeenCalledWith('user@example.com', 'password123456');
+    expect(register).toHaveBeenCalledWith('user@example.com', 'lantern-river-47');
   });
 
   describe('social sign-in buttons', () => {

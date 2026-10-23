@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, type VideoView } from 'expo-video';
-import { AppText, PrimaryButton } from '../../components';
+import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
+import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSermonDetail, type SermonDetail } from '../../lib/query/hooks/useSermons';
@@ -246,15 +247,20 @@ export default function PlayerScreen() {
     // just came from the playlist page) playlist read resolves.
     (Boolean(playlistId) && playlistQuery.isLoading);
 
-  if (isLoading) {
+  // A sermon that can't play here (locked, or its media isn't ready) belongs on its own
+  // detail page — every list in the app now opens the player directly (one transition,
+  // Nii's ask 2026-10-23), so this is the one place that sends those few elsewhere.
+  const redirectToDetail = Boolean(detail) && !playable;
+  useEffect(() => {
+    if (redirectToDetail) router.replace({ pathname: '/sermon/[id]', params: { id: sermonId } });
+    // `router` is stable for the screen's lifetime; only the decision matters.
+  }, [redirectToDetail, sermonId]);
+
+  if (isLoading || redirectToDetail) {
     return (
       <View style={styles.screen}>
         <ScreenHeader onBack={goBack} detail={detail} />
-        <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
-          <AppText variant="ui.body" tone="secondary">
-            Loading…
-          </AppText>
-        </View>
+        <PlayerLoading detail={detail} />
       </View>
     );
   }
@@ -264,18 +270,6 @@ export default function PlayerScreen() {
       <View style={styles.screen}>
         <ScreenHeader onBack={goBack} />
         <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />
-      </View>
-    );
-  }
-
-  if (!playable) {
-    // Reachable only via a direct/stale deep link — the sermon-detail CTA that pushes here
-    // is itself disabled for a non-playable sermon (`isPlayable`), so this is a landing
-    // guard, not a state the app's own navigation ever produces.
-    return (
-      <View style={styles.screen}>
-        <ScreenHeader onBack={goBack} detail={detail} />
-        <PlayerError message="This sermon isn't available yet." />
       </View>
     );
   }
@@ -356,6 +350,35 @@ export default function PlayerScreen() {
 
 function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
   return <SignaturePlayerHeader onBack={onBack} detail={detail} />;
+}
+
+/**
+ * The loading state wears the playing screen's own shape — a 16:9 stage (the sermon's art
+ * once it's known, so an audio sermon's stage doesn't change at all when playback mounts),
+ * the title block, then the panel below — so the swap to the real player reads as the
+ * controls arriving rather than as a second screen transition.
+ */
+function PlayerLoading({ detail }: { detail?: SermonDetail }) {
+  const styles = useStyles();
+  return (
+    <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
+      <View style={styles.loadingStage}>
+        {detail?.thumbnail_url ? (
+          <FittedArt uri={detail.thumbnail_url} />
+        ) : null}
+        <ActivityIndicator color={onArt.text.primary} />
+      </View>
+      {detail ? (
+        <NowPlayingDetails detail={detail} />
+      ) : (
+        <View style={styles.loadingTitles}>
+          <SkeletonBlock width="70%" height={26} radiusToken="sm" />
+          <SkeletonBlock width="45%" height={14} radiusToken="sm" />
+        </View>
+      )}
+      <View style={styles.loadingPanel} />
+    </View>
+  );
 }
 
 interface PlayerErrorProps {
@@ -444,6 +467,7 @@ function PlayerContent({
 
   const { status } = useEvent(player, 'statusChange', { status: player.status });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const { muted: isMuted } = useEvent(player, 'mutedChange', { muted: player.muted });
   const { currentTime } = useEvent(player, 'timeUpdate', {
     currentTime: player.currentTime,
     currentLiveTimestamp: null,
@@ -573,6 +597,10 @@ function PlayerContent({
       durationSeconds={duration}
       playbackSpeed={speed}
       sleepRemainingSeconds={sleepTimer.remainingSeconds}
+      isMuted={isMuted}
+      onToggleMute={() => {
+        player.muted = !player.muted;
+      }}
       onSeekTo={(seconds) => {
         player.currentTime = seconds;
       }}
@@ -584,13 +612,23 @@ function PlayerContent({
     />
   );
 
-  return <SignatureLayout sermonId={sermonId} detail={detail} queueContext={queueContext} video={video} sleepSheet={sleepSheet} />;
+  return (
+    <SignatureLayout
+      sermonId={sermonId}
+      detail={detail}
+      queueContext={queueContext}
+      isPlaying={isPlaying}
+      video={video}
+      sleepSheet={sleepSheet}
+    />
+  );
 }
 
 interface SignatureLayoutProps {
   sermonId: string;
   detail: SermonDetail;
   queueContext: QueueListProps | null;
+  isPlaying: boolean;
   video: React.ReactNode;
   sleepSheet: React.ReactNode;
 }
@@ -607,6 +645,7 @@ function SignatureLayout({
   sermonId,
   detail,
   queueContext,
+  isPlaying,
   video,
   sleepSheet,
 }: SignatureLayoutProps) {
@@ -622,7 +661,7 @@ function SignatureLayout({
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
-          <QueueList {...queueContext!} />
+          <QueueList {...queueContext!} isPlaying={isPlaying} />
         </View>
       ) : (
         <CommentsPanel sermonId={sermonId} variant="signature" />
@@ -651,6 +690,30 @@ const useStyles = createThemedStyles((colors) => ({
   },
   errorText: {
     textAlign: 'center',
+  },
+  loading: {
+    flex: 1,
+  },
+  loadingStage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // The video stage is dark in both themes (`VideoSurface`).
+    backgroundColor: onArt.surface.app,
+  },
+  loadingTitles: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  loadingPanel: {
+    ...LEAF,
+    flex: 1,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    backgroundColor: colors.surface.raised,
   },
   queueCard: {
     ...LEAF,

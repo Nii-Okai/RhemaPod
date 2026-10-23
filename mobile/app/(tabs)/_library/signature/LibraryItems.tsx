@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, CircularProgress, ConfirmDialog, PlatformIcon, PressableScale } from '../../../../components';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText, CircularProgress, ConfirmDialog, FittedArt, PlatformIcon, PressableScale } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -52,7 +52,7 @@ function DownloadArt({ download, style }: { download: DownloadRecord; style: obj
   return (
     <View style={[styles.art, style]}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <FittedArt uri={uri} />
       ) : (
         <PlatformIcon
           name={download.mediaType === 'video' ? 'videocam-outline' : 'musical-notes-outline'}

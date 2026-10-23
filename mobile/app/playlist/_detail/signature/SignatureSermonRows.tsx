@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
-import { AppText, PlatformIcon, SwipeToDelete } from '../../../../components';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { AppText, EqualizerBars, FittedArt, PlatformIcon, SwipeToDelete } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -21,7 +21,7 @@ function Art({ uri, width }: { uri: string | null | undefined; width: number }) 
   return (
     <View style={[styles.art, ART_LEAF, { width }]}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <FittedArt uri={uri} />
       ) : (
         <PlatformIcon name="musical-notes-outline" size={20} color={colors.text.tertiary} />
       )}
@@ -55,6 +55,7 @@ export function SignaturePlaylistItemRow({
   onTogglePreview,
 }: SignaturePlaylistItemRowProps) {
   const styles = useStyles();
+  const { colors } = useTheme();
   const sermon = item.sermon;
   // Category or series/episode only — no speaker or duration (Isaac's ask, 2026-10-10).
   const meta = metaLineFor(sermon);
@@ -97,13 +98,18 @@ export function SignaturePlaylistItemRow({
           </Pressable>
         </View>
         <View style={styles.text}>
-          <AppText variant="ui.bodyLarge" numberOfLines={2} style={styles.title}>
+          <AppText variant="ui.bodyLarge" numberOfLines={2} tone={isPreviewPlaying ? 'gold' : 'primary'} style={styles.title}>
             {sermon.title}
           </AppText>
-          {meta ? (
-            <AppText variant="mono.meta" tone="tertiary" numberOfLines={1}>
-              {meta.toUpperCase()}
-            </AppText>
+          {isPreviewPlaying || meta ? (
+            <View style={styles.metaRow}>
+              {isPreviewPlaying ? <EqualizerBars active color={colors.accent.goldText} size={11} testID="preview-visualiser" /> : null}
+              {meta ? (
+                <AppText variant="mono.meta" tone="tertiary" numberOfLines={1} style={styles.metaText}>
+                  {meta.toUpperCase()}
+                </AppText>
+              ) : null}
+            </View>
           ) : null}
         </View>
       </Pressable>
@@ -224,6 +230,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   title: {
     fontFamily: fontFamily.uiSemiBold,
+  },
+  metaText: {
+    flexShrink: 1,
   },
   metaRow: {
     flexDirection: 'row',

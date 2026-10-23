@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Avatar, IconButton, QueryState } from '../../components';
@@ -7,6 +7,7 @@ import { SermonCard } from '../../components/sermon/SermonCard';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSearchResults } from '../../lib/query/hooks/useSearch';
+import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 const GRID_COLUMNS = 2;
 const GRID_GAP = spacing.md;
@@ -54,6 +55,7 @@ export default function SpeakerDrillDownScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const results = useSearchResults({ speaker_id: id });
+  const pullToRefresh = usePullToRefresh([results]);
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   const displayName = name || 'Speaker';
@@ -68,7 +70,12 @@ export default function SpeakerDrillDownScreen() {
         </AppText>
         <View style={styles.headerSpacer} />
       </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      >
         <View style={styles.infoRow}>
           <Avatar name={displayName} size={AVATAR_SIZE} />
           <View style={styles.infoText}>
@@ -102,7 +109,7 @@ export default function SpeakerDrillDownScreen() {
                 sermon={sermon}
                 width={cardWidth}
                 showMeta={false}
-                onPress={() => router.push({ pathname: '/sermon/[id]', params: { id: sermon.id } })}
+                onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
               />
             ))}
           </View>

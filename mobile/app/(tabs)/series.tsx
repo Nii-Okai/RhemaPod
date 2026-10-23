@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, QueryState, SeriesListCard } from '../../components';
@@ -7,6 +7,7 @@ import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSeriesList } from '../../lib/query/hooks/useSeries';
 import { useDeviceClass } from '../../components/navigation/useDeviceClass';
+import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 /**
  * Tablet rail's Series tab (design spec §2, plan W4.4/P3) — reachable on the rail as a
@@ -24,6 +25,7 @@ export default function SeriesScreen() {
   const styles = useStyles();
   const router = useRouter();
   const series = useSeriesList();
+  const pullToRefresh = usePullToRefresh([series]);
   const insets = useSafeAreaInsets();
   const isTablet = useDeviceClass() === 'tablet';
 
@@ -38,7 +40,12 @@ export default function SeriesScreen() {
           <View style={styles.headerSpacer} />
         </View>
       )}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      >
         {isTablet ? (
           <AppText variant="display.section" style={styles.heading}>
             Series

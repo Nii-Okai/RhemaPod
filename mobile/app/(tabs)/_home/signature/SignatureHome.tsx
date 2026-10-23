@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { AppText, Avatar, StaggerItem } from '../../../../components';
-import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
+import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { userMessageFor } from '../../../../lib/api/errors';
 import { useHeroSermons } from '../../../../lib/query/hooks/useHeroSermons';
@@ -12,6 +12,7 @@ import { useNewReleases } from '../../../../lib/query/hooks/useNewReleases';
 import { useNotificationsBadge } from '../../../../lib/query/hooks/useNotificationsBadge';
 import { useProphetsCatalog } from '../../../../lib/query/hooks/useProphetsCatalog';
 import { useRecommended } from '../../../../lib/query/hooks/useRecommended';
+import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 import { useTrending } from '../../../../lib/query/hooks/useTrending';
 import { useSeriesList } from '../../../../lib/query/hooks/useSeries';
 import { useUpcomingSermon } from '../../../../lib/query/hooks/useUpcomingSermon';
@@ -135,7 +136,6 @@ function Shelf<T extends { id: string }>({
  * Home) because the verse, not the hero, now opens the page.
  */
 export function SignatureHomeScreen() {
-  const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const hero = useHeroSermons();
@@ -164,26 +164,21 @@ export function SignatureHomeScreen() {
   // The catalogue is one speaker's; the header shows their avatar.
   const catalogSpeaker = catalogItems.find((item) => item.speaker_id && item.speaker_name) ?? null;
 
-  const goToSermon = (id: string) => router.push({ pathname: '/sermon/[id]', params: { id } });
+  const goToSermon = (id: string) => router.push({ pathname: '/player/[id]', params: { id } });
   const goToSeries = (id: string) => router.push({ pathname: '/series/[id]', params: { id } });
   const goToSeriesList = () => router.push(pathnameFor(routeByKey('series')));
 
-  const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      hero.refetch(),
-      continueWatching.refetch(),
-      newReleases.refetch(),
-      prophetsCatalog.refetch(),
-      recommended.refetch(),
-      trending.refetch(),
-      series.refetch(),
-      upcoming.refetch(),
-      seriesWalk.refetch(),
-    ]);
-    setRefreshing(false);
-  };
+  const pullToRefresh = usePullToRefresh([
+    hero,
+    continueWatching,
+    newReleases,
+    prophetsCatalog,
+    recommended,
+    trending,
+    series,
+    upcoming,
+    seriesWalk,
+  ]);
 
   return (
     <View style={styles.screen}>
@@ -197,12 +192,7 @@ export function SignatureHomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent.gold}
-            colors={[colors.accent.gold]}
-          />
+          <RefreshControl {...pullToRefresh} />
         }
       >
         <View style={styles.gutter}>

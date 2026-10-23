@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import React from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, PlatformIcon, PressableScale, QueryState, StaggerItem } from '../../components';
+import { AppText, FittedArt, IconButton, PlatformIcon, PressableScale, QueryState, StaggerItem } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
@@ -16,6 +16,7 @@ import { ArtScrim } from '../(tabs)/_home/signature/ArtScrim';
 import { Flame } from '../(tabs)/_home/signature/Flame';
 import { LEAF, leaf } from '../(tabs)/_home/signature/leaf';
 import { formatWhen, isFresh, splitNotifications } from './notificationTime';
+import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 const ROW_ART_WIDTH = 96;
 const ROW_LEAF = leaf(12, 3);
@@ -47,7 +48,7 @@ function LatestReleaseCard({ sermon, unread, onPress }: { sermon: SermonListItem
     >
       <View style={featured.art}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={sermon.thumbnail_url} />
         ) : null}
         <ArtScrim height="40%" />
         <View style={featured.chip} pointerEvents="none">
@@ -89,7 +90,7 @@ function NotificationRow({ sermon, unread, onPress }: { sermon: SermonListItem; 
     >
       <View style={[styles.rowArt, ROW_LEAF]}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <FittedArt uri={sermon.thumbnail_url} />
         ) : (
           <PlatformIcon name="musical-notes-outline" size={20} color={colors.text.tertiary} />
         )}
@@ -157,13 +158,11 @@ function Section({
  * and "Mark all read" clears everything listed.
  */
 export function SignatureNotificationsScreen() {
-  const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const newReleases = useNewReleases();
   const badge = useNotificationsBadge();
-  const [refreshing, setRefreshing] = useState(false);
 
   const items = newReleases.data ?? [];
   const { latest, fresh, earlier } = splitNotifications(items);
@@ -171,14 +170,10 @@ export function SignatureNotificationsScreen() {
 
   const open = (sermon: SermonListItem) => {
     badge.markRead(sermon.id);
-    router.push({ pathname: '/sermon/[id]', params: { id: sermon.id } });
+    router.push({ pathname: '/player/[id]', params: { id: sermon.id } });
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await newReleases.refetch();
-    setRefreshing(false);
-  };
+  const pullToRefresh = usePullToRefresh([newReleases]);
 
   return (
     <View style={styles.screen}>
@@ -216,12 +211,7 @@ export function SignatureNotificationsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent.gold}
-            colors={[colors.accent.gold]}
-          />
+          <RefreshControl {...pullToRefresh} />
         }
       >
         <QueryState

@@ -3,7 +3,7 @@
 const GB = 1024 * 1024 * 1024;
 
 /** Absolute upper bound on cache size (D15). */
-export const HARD_CEILING_BYTES = 2 * GB;
+export const HARD_CEILING_BYTES = 1 * GB;
 
 /** Never fill when free space would drop below this (D15). */
 export const FREE_SPACE_FLOOR_BYTES = 1.5 * GB;

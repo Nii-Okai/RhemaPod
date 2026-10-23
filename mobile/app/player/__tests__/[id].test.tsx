@@ -242,11 +242,13 @@ describe('PlayerScreen — detail fetch error', () => {
   });
 });
 
-describe('PlayerScreen — not playable (deep-link guard)', () => {
-  it('shows a friendly message instead of crashing when media_refs is empty', async () => {
+describe('PlayerScreen — not playable', () => {
+  it('hands a sermon with no media to its detail page instead of the player', async () => {
     mockReads({ detail: { ...baseDetail, media_refs: [] } });
-    const { findByText } = renderPlayer();
-    await findByText("This sermon isn't available yet.");
+    renderPlayer();
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } }),
+    );
   });
 });
 
@@ -357,6 +359,21 @@ describe('PlayerScreen — resume', () => {
 
     await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
     expect(player.currentTime).toBe(0);
+  });
+});
+
+describe('PlayerScreen — mute', () => {
+  it('mutes and unmutes the player without pausing it', async () => {
+    mockReads();
+    const { findByTestId, getByLabelText, findByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+
+    fireEvent.press(getByLabelText('Mute'));
+    expect(player.muted).toBe(true);
+    fireEvent.press(await findByLabelText('Unmute'));
+    expect(player.muted).toBe(false);
+    expect(player.pause).not.toHaveBeenCalled();
   });
 });
 
@@ -592,6 +609,11 @@ describe('PlayerScreen — queue list', () => {
     expect(await findByText('1/2')).toBeTruthy();
     expect(await findByText('Isaac N.A. Okai')).toBeTruthy();
     expect(await findByText('Title sermon-2')).toBeTruthy();
+  });
+
+  it('marks only the current item with the now-playing visualiser', async () => {
+    const { findAllByTestId } = renderWithQueue();
+    expect(await findAllByTestId('queue-now-playing')).toHaveLength(1);
   });
 
   it('tapping another row jumps playback to it, staying on this screen (setParams, not replace)', async () => {

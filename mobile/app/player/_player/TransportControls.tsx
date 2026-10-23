@@ -103,6 +103,8 @@ export interface PlayerBottomBarProps {
   /** `null` when no sleep timer is armed. */
   sleepRemainingSeconds: number | null;
   isFullscreen: boolean;
+  isMuted: boolean;
+  onToggleMute: () => void;
   onSeekTo: (seconds: number) => void;
   onSeekBy: (seconds: number) => void;
   onScrubStart: () => void;
@@ -125,6 +127,8 @@ export function PlayerBottomBar({
   playbackSpeed,
   sleepRemainingSeconds,
   isFullscreen,
+  isMuted,
+  onToggleMute,
   onSeekTo,
   onSeekBy,
   onScrubStart,
@@ -150,6 +154,21 @@ export function PlayerBottomBar({
         <AppText variant="mono.tight" tone="secondary" accessibilityLabel={timeLabel} style={styles.time}>
           {`${formatDuration(currentTimeSeconds)} / ${formatDuration(durationSeconds)}`}
         </AppText>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}
+          accessibilityState={{ selected: isMuted }}
+          onPress={onToggleMute}
+          hitSlop={spacing.sm}
+          style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+        >
+          <PlatformIcon
+            name={isMuted ? 'volume-mute-outline' : 'volume-high-outline'}
+            size={18}
+            color={isMuted ? colors.accent.goldText : colors.text.secondary}
+          />
+        </Pressable>
 
         <Pressable
           accessibilityRole="button"

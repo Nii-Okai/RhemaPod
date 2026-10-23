@@ -51,7 +51,15 @@ export class MockVideoPlayer extends MockEventEmitter {
   showNowPlayingNotification = false;
   timeUpdateEventInterval = 0;
   loop = false;
-  muted = false;
+  private _muted = false;
+  get muted() {
+    return this._muted;
+  }
+  set muted(next: boolean) {
+    const old = this._muted;
+    this._muted = next;
+    if (old !== next) this.emit('mutedChange', { muted: next, oldMuted: old });
+  }
 
   play = jest.fn(() => {
     this.playing = true;

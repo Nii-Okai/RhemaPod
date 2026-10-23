@@ -5,7 +5,7 @@ import path from 'path';
  * Light mode only works if screens read the ACTIVE palette (`useTheme()` /
  * `createThemedStyles()`). Importing the static dark palette (`colors` / `darkColors`
  * from theme/colors) bypasses the theme, so it's allowed only where staying dark is the
- * design: the video surface, onboarding (art + light card in both themes), and elements
+ * design: the video surface, onboarding (full-bleed photography in both themes), and elements
  * drawn ON sermon art (the "onArt" pins — art doesn't change brightness with the theme).
  * A new file on this list needs the same justification in its own code.
  */
@@ -18,6 +18,8 @@ const ALLOWED = new Set([
   'app/player/_player/TransportControls.tsx',
   'app/player/_player/PlayerSeekBar.tsx',
   'app/onboarding.tsx',
+  // The player's loading stage stands in for VideoSurface, so it is dark the same way.
+  'app/player/[id].tsx',
   // Themed files that pin only their on-art elements to the dark palette.
   'app/(tabs)/_home/HeroCard.tsx',
   'app/(tabs)/_home/HomeTopBar.tsx',
@@ -38,6 +40,10 @@ const ALLOWED = new Set([
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
   'app/playlist/_detail/PlaylistCoverPicker.tsx',
   'components/CastCloseHeader.tsx',
+  // Artwork backdrop dim — a photo surface.
+  'components/FittedArt.tsx',
+  // The queue's now-playing visualiser sits on the cover art.
+  'app/player/_player/QueueList.tsx',
 ]);
 
 const STATIC_IMPORT = /import \{[^}]*\b(colors|darkColors)\b[^}]*\} from '[./]*theme\/colors'/;
