@@ -24,7 +24,8 @@ from app.models.content_schemas import (
     ChurchSettingsUpdate,
 )
 from app.models.models import AuditAction, AuditOutcome, ChurchSettings, User
-from app.services import audit_service
+from app.core.config import get_settings
+from app.services import audit_service, content_service
 from app.services.audit_service import AuditContext, AuditTarget
 from app.services.content_service import ContentError
 
@@ -51,7 +52,7 @@ async def get_public(db: AsyncSession) -> dict:
 
     async def _source() -> dict:
         row = await _load(db)
-        return ChurchSettingsPublic.model_validate(row).model_dump(mode="json")
+        return _to_public(row).model_dump(mode="json")
 
     return await cache_aside(PUBLIC_CACHE_KEY, PUBLIC_CACHE_TTL, _source)
 
@@ -61,6 +62,12 @@ async def get_admin(db: AsyncSession) -> ChurchSettingsAdmin:
     return await _to_admin(db, row)
 
 
+def _to_public(row: ChurchSettings) -> ChurchSettingsPublic:
+    public = ChurchSettingsPublic.model_validate(row)
+    public.sign_in_image_url = content_service._thumbnail_url(row.sign_in_image_key)
+    return public
+
+
 async def _to_admin(db: AsyncSession, row: ChurchSettings) -> ChurchSettingsAdmin:
     updated_by: str | None = None
     if row.updated_by_id is not None:
@@ -68,7 +75,7 @@ async def _to_admin(db: AsyncSession, row: ChurchSettings) -> ChurchSettingsAdmi
             await db.execute(select(User.email).where(User.id == row.updated_by_id))
         ).scalar_one_or_none()
         updated_by = email or _DELETED_ACCOUNT
-    public = ChurchSettingsPublic.model_validate(row).model_dump()
+    public = _to_public(row).model_dump()
     return ChurchSettingsAdmin(**public, updated_at=row.updated_at, updated_by=updated_by)
 
 
@@ -173,3 +180,97 @@ def etag_matches(if_none_match: str | None, version: int) -> bool:
             return True
     return False
 
+
+
+# ── Sign-in screen image ──────────────────────────────────────────────────────
+# The photo beside the admin portal's sign-in form. Same direct-to-storage
+# upload as a series cover: a pre-signed PUT, then a confirm that checks the
+# object landed, is under the image size limit and sits under this prefix.
+# Saving it bumps `version` (it is part of the public body, so the ETag must
+# change) and writes a `settings.updated` audit row.
+
+SIGN_IN_IMAGE_PREFIX = "branding/sign-in/"
+
+
+def sign_in_image_ticket(filename: str, content_type: str) -> dict:
+    import uuid
+
+    from app.core import storage as storage_module
+
+    content_service._validate_image_type(content_type)
+    cfg = get_settings()
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if not suffix.isalnum() or len(suffix) > 5:
+        suffix = "jpg"
+    key = f"{SIGN_IN_IMAGE_PREFIX}{uuid.uuid4()}.{suffix}"
+    url = storage_module.get_storage().presigned_upload_url(
+        cfg.object_store_media_bucket, key, content_type, cfg.upload_url_expire_seconds,
+    )
+    return {
+        "upload_url": url,
+        "headers": {"Content-Type": content_type},
+        "expires_in": cfg.upload_url_expire_seconds,
+        "thumbnail_key": key,
+    }
+
+
+async def set_sign_in_image(
+    db: AsyncSession, key: str | None, actor: User, ctx: AuditContext
+) -> ChurchSettingsAdmin:
+    """Attach an uploaded sign-in image (`key`), or go back to the built-in
+    artwork (`None`)."""
+    from app.core import storage as storage_module
+
+    cfg = get_settings()
+    if key is not None:
+        if not key.startswith(SIGN_IN_IMAGE_PREFIX) or "/" in key[len(SIGN_IN_IMAGE_PREFIX):]:
+            raise ContentError("That image key isn't a sign-in image.", status_code=400)
+        store = storage_module.get_storage()
+        if not store.object_exists(cfg.object_store_media_bucket, key):
+            raise ContentError(
+                "No uploaded image found — complete the upload first.", status_code=409
+            )
+        size = store.object_size(cfg.object_store_media_bucket, key)
+        if size is not None and size > cfg.max_thumbnail_bytes:
+            try:
+                store.delete_object(cfg.object_store_media_bucket, key)
+            except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
+                log.warning("oversize_sign_in_image_cleanup_failed", key=key)
+            raise ContentError(
+                f"The image is larger than the "
+                f"{cfg.max_thumbnail_bytes // (1024 * 1024)} MB limit.",
+                status_code=413,
+            )
+
+    row = await _load(db)
+    if row.sign_in_image_key == key:
+        return await _to_admin(db, row)
+
+    before = row.sign_in_image_key
+    await db.execute(
+        sa_update(ChurchSettings)
+        .where(ChurchSettings.id == _SETTINGS_ID)
+        .values(
+            sign_in_image_key=key,
+            version=ChurchSettings.version + 1,
+            updated_at=func.now(),
+            updated_by_id=actor.id,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await audit_service.record(
+        db, AuditAction.SETTINGS_UPDATED,
+        actor=actor,
+        target=AuditTarget(type="church_settings", id=None, label="Church settings"),
+        details={
+            "changed": ["sign_in_image"],
+            "before": {"sign_in_image": before},
+            "after": {"sign_in_image": key},
+        },
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    await db.commit()
+    await invalidate_public_cache()
+    await db.refresh(row)
+    log.info("sign_in_image_updated", by=str(actor.id), removed=key is None)
+    return await _to_admin(db, row)

@@ -5,9 +5,9 @@
  * guards on `PATCH /users/{id}/active` and `POST /users/{id}/resend-invite`
  * (`auth_service.set_active` / `resend_invite`, both keyed on `_ASSIGNABLE_BY`):
  *
- *   caller \ target   editor           manager / admin
- *   manager           may act          — (403)      → no menu
- *   admin             may act          may act
+ *   caller \ target   editor           manager / admin   viewer (mobile)
+ *   manager           may act          — (403)           — (403)
+ *   admin             may act          may act           may act
  *
  * State then decides the verbs:
  *
@@ -53,9 +53,11 @@ export interface UserRowMenuItem {
   destructive?: boolean;
 }
 
+// An admin may also switch mobile (viewer) accounts off and on and remove
+// them — the Mobile users screen reuses this menu.
 const CAN_ACT_ON: Record<string, readonly string[]> = {
   manager: ["editor"],
-  admin: ["editor", "manager", "admin"],
+  admin: ["editor", "manager", "admin", "viewer"],
 };
 
 export interface UserRowMenuArgs {
@@ -96,7 +98,8 @@ export function userRowMenuItems({
     }
   }
 
-  if (target.is_active && target.activated_at == null) {
+  // Invites are a staff concept; a mobile account signs itself up.
+  if (target.role !== "viewer" && target.is_active && target.activated_at == null) {
     items.push({ action: "resend-invite", label: "Resend invite" });
   }
 

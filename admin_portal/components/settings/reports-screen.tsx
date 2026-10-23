@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "cn";
 
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SegmentedControl, StatCard } from "@/components/portal";
 import { BarChart } from "@/components/charts/BarChart";
@@ -61,6 +61,13 @@ function toMeasure(raw: string | null): Measure {
 
 const SHORT_MONTH = new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" });
 const DAY_MONTH = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const WEEKDAY_DATE = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 const LONG_DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "long",
@@ -83,6 +90,26 @@ function bucketLabel(start: string, granularity: Granularity): string {
   }
   return DAY_MONTH.format(d);
 }
+
+/** Exported for tests: the tooltip label for one bucket — the whole
+    period it covers, since axis labels are short and thinned. `end` is
+    exclusive. */
+export function bucketTooltip(start: string, end: string, granularity: Granularity): string {
+  if (granularity === "day") return WEEKDAY_DATE.format(utc(start));
+  if (granularity === "month") return MONTH_YEAR.format(utc(start));
+  const last = utc(end);
+  last.setUTCDate(last.getUTCDate() - 1);
+  const a = DAY_MONTH.format(utc(start));
+  const b = DAY_MONTH.format(last);
+  return a === b ? a : `${a} – ${b}`;
+}
+
+const MEASURE_UNIT: Record<Measure, readonly [string, string]> = {
+  plays: ["play", "plays"],
+  listeners: ["listener", "listeners"],
+  new_listeners: ["new listener", "new listeners"],
+  signups: ["signup", "signups"],
+};
 
 /** Exported for tests: axis labels for a series, every k-th one kept. */
 export function axisLabels(starts: string[], granularity: Granularity): string[] {
@@ -141,7 +168,11 @@ export function ReportsScreen({ canExport }: { canExport: boolean }) {
   ];
   const series = data?.series ?? [];
   const labels = axisLabels(series.map((b) => b.start), granularity);
-  const chartData = series.map((b, i) => ({ label: labels[i], value: b[measure] }));
+  const chartData = series.map((b, i) => ({
+    label: labels[i],
+    value: b[measure],
+    tooltip: bucketTooltip(b.start, b.end, granularity),
+  }));
   const measureLabel = MEASURES.find((m) => m.value === measure)!.label;
 
   return (
@@ -160,6 +191,19 @@ export function ReportsScreen({ canExport }: { canExport: boolean }) {
           onValueChange={(value) => push({ by: value })}
         />
         <span className="flex-1" />
+        <span className="text-[12px] text-ink-faint" data-slot="report-updated" aria-live="polite">
+          {report.dataUpdatedAt
+            ? `Updated ${new Date(report.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
+            : null}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={report.isFetching}
+          onClick={() => void report.refetch()}
+        >
+          {report.isFetching ? "Refreshing…" : "Refresh"}
+        </Button>
         {canExport ? (
           <div className="flex items-center gap-8" data-slot="report-export">
             <a
@@ -211,6 +255,10 @@ export function ReportsScreen({ canExport }: { canExport: boolean }) {
           <BarChart
             title={`${measureLabel} per ${granularity}`}
             data={chartData}
+            height="fill"
+            minHeight={240}
+            formatValue={n}
+            unit={MEASURE_UNIT[measure]}
             emptyLabel={report.isPending ? "Loading…" : "Nothing in this period"}
           />
         </Card>

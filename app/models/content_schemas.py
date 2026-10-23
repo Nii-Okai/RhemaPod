@@ -771,7 +771,14 @@ class TopSermonStat(BaseModel):
 
 
 class OverviewStats(BaseModel):
+    """All-time platform figures for the Dashboard. Every number is a count
+    over the live tables at request time (not the daily rollups), so it
+    covers history from before the rollups existed."""
+
     total_users: int
+    # Mobile app accounts (role viewer); `active_members` excludes deactivated.
+    members: int = 0
+    active_members: int = 0
     active_subscribers: int
     published_sermons: int
     total_plays: int
@@ -779,6 +786,21 @@ class OverviewStats(BaseModel):
     completions: int
     completion_rate: float
     plays_last_7_days: int
+    watch_hours: float = 0.0
+
+
+class SermonStatusCounts(BaseModel):
+    """Sermons per workflow status, in the caller's scope (an editor's own
+    sermons; everyone's for a manager/admin). Zero-filled."""
+
+    draft: int = 0
+    pending_review: int = 0
+    under_review: int = 0
+    approved: int = 0
+    published: int = 0
+    rejected: int = 0
+    unpublished: int = 0
+    total: int = 0
 
 
 class ReportPeriod(BaseModel):
@@ -1056,6 +1078,10 @@ class ChurchSettingsPublic(BaseModel):
     terms_of_use_url: str | None
     privacy_policy_url: str | None
     copyright_notice: str | None
+    # The admin portal's sign-in screen photo (a time-limited URL), or null
+    # for the portal's built-in artwork. Changed through
+    # `/admin/settings/sign-in-image*`, not the PATCH.
+    sign_in_image_url: str | None = None
     version: int
 
 

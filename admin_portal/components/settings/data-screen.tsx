@@ -22,13 +22,20 @@ import {
   MAX_IMPORT_BYTES,
   parseExportFile,
   replaceClosure,
+  RESET_PHRASE,
+  resetAlsoEmpties,
   useDataImport,
+  useDataReset,
   useDataTables,
   type DataImportResponse,
+  type DataResetResponse,
   type DataTable,
   type ImportMode,
   type ParsedExport,
+  type ResetScope,
 } from "@/lib/query/hooks/use-data-transfer";
+
+import { ConfirmDestructiveDialog } from "./confirm-destructive-dialog";
 
 /* =============================================================================
    DataScreen — Settings › Data (admin only).
@@ -46,6 +53,13 @@ import {
      3. "Import…" opens a dialog that names what will happen and needs the
         mode's phrase typed in. Replace mode pulls in every table that points
         at a selected one (the server refuses otherwise) and says so.
+
+   Reset: empty chosen tables, or wipe the whole database. Same shape —
+   preview (a dry run the server rolls back), then a dialog that needs the
+   phrase (RESET / WIPE DATABASE) and the admin's password. Tables pointing
+   at a chosen one with CASCADE/RESTRICT are emptied too and listed first;
+   SET NULL links are cleared. Never touched: the signed-in admin's account,
+   the audit trail and church settings. Uploaded files stay in storage.
 
    The server enforces every rule here; this screen only explains them.
    ========================================================================== */
@@ -600,6 +614,211 @@ function ConfirmImportDialog({
   );
 }
 
+
+/* --- reset ---------------------------------------------------------------- */
+
+function ResetResultTable({ result }: { result: DataResetResponse }) {
+  const rows = result.tables.filter((r) => r.deleted > 0 || r.unlinked > 0);
+  if (rows.length === 0) {
+    return <p className="text-[13px] text-ink-muted">Nothing to delete — those tables are already empty.</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-12 border border-border">
+      <table className="w-full text-left text-[13px]">
+        <thead className="bg-surface-sunken text-ink-muted">
+          <tr>
+            <th className="px-12 py-8 font-medium">Table</th>
+            <th className="px-12 py-8 text-right font-medium">Rows deleted</th>
+            <th className="px-12 py-8 text-right font-medium">Links cleared</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name} className="border-t border-border">
+              <td className="px-12 py-6 font-mono text-[12.5px]">{row.name}</td>
+              <td className="px-12 py-6 text-right">{n(row.deleted)}</td>
+              <td className="px-12 py-6 text-right">{n(row.unlinked)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ResetCard({ tables }: { tables: DataTable[] }) {
+  const [scope, setScope] = React.useState<ResetScope>("tables");
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [preview, setPreview] = React.useState<DataResetResponse | null>(null);
+  const [done, setDone] = React.useState<DataResetResponse | null>(null);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const reset = useDataReset();
+
+  const resettable = tables.filter((t) => t.resettable);
+  const chosen = resettable.filter((t) => selected.has(t.name)).map((t) => t.name);
+  const alsoEmptied = scope === "tables" ? resetAlsoEmpties(chosen, tables) : [];
+  const canRun = scope === "all" || chosen.length > 0;
+
+  const clearRun = () => {
+    setPreview(null);
+    setDone(null);
+    reset.reset();
+  };
+
+  const body = (dryRun: boolean, confirm?: string, password?: string) => ({
+    tables: scope === "all" ? null : chosen,
+    dry_run: dryRun,
+    confirm: confirm ?? null,
+    password: password ?? null,
+  });
+
+  const tableCount = scope === "all" ? resettable.length : chosen.length + alsoEmptied.length;
+
+  return (
+    <Card className="flex flex-col gap-16 border-rose/40" data-slot="data-reset">
+      <CardHeader>
+        <CardTitle>Reset data</CardTitle>
+        <span className="text-[12.5px] text-ink-faint">Admins only · every run is audited</span>
+      </CardHeader>
+      <p className="text-[13.5px] text-ink-muted">
+        Permanently delete every row in chosen tables, or wipe the whole
+        database to start again. Your own account, the audit trail and church
+        settings are never touched, and uploaded files stay in storage. Take an
+        export first — it’s the only way back.
+      </p>
+
+      <fieldset className="flex flex-col gap-8">
+        <legend className="text-mono-eyebrow mb-8 text-ink-faint">What to reset</legend>
+        {(
+          [
+            ["tables", "Chosen tables", "Empty only the tables you tick, plus any table that can’t exist without them."],
+            ["all", "Entire database", "Delete all content, members, staff (except you) and listening data, like a fresh install. Church settings and the audit trail stay."],
+          ] as const
+        ).map(([value, title, help]) => (
+          <label key={value} className="flex items-start gap-10 text-[13.5px]">
+            <Radio
+              name="reset-scope"
+              value={value}
+              checked={scope === value}
+              onChange={() => {
+                setScope(value);
+                clearRun();
+              }}
+              className="mt-[2px]"
+            />
+            <span>
+              <span className="font-semibold text-ink">{title}</span>
+              <span className="block text-ink-muted">{help}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      {scope === "tables" ? (
+        <TableChecklist
+          label="Tables to reset"
+          rows={tables.map((t) => ({
+            name: t.name,
+            rows: t.rows,
+            disabled: !t.resettable,
+            note: t.resettable ? undefined : t.name === "audit_log" ? "use Audit trail" : "kept",
+          }))}
+          selected={selected}
+          onToggle={(name) => {
+            setSelected((s) => toggle(s, name));
+            clearRun();
+          }}
+          onSetAll={(names) => {
+            setSelected(new Set(names));
+            clearRun();
+          }}
+        />
+      ) : null}
+
+      {alsoEmptied.length > 0 ? (
+        <Alert variant="warning" title="These tables are emptied too">
+          Rows in {alsoEmptied.join(", ")} can’t exist without the tables you picked, so they are deleted as well.
+        </Alert>
+      ) : null}
+
+      {reset.isError && !confirmOpen ? (
+        <Alert variant="error" title="Reset refused — nothing was changed">
+          {errorText(reset.error, "Please try again.")}
+        </Alert>
+      ) : null}
+      {done ? (
+        <Alert variant="success" title={done.all_tables ? "Database wiped" : "Tables reset"}>
+          Done, and recorded in the audit trail.
+        </Alert>
+      ) : null}
+      {preview && !done ? (
+        <div className="flex flex-col gap-8">
+          <span className="text-mono-eyebrow text-ink-faint">Preview — what the reset will do</span>
+          <ResetResultTable result={preview} />
+        </div>
+      ) : null}
+      {done ? <ResetResultTable result={done} /> : null}
+
+      <div className="flex flex-wrap items-center gap-8">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!canRun || reset.isPending}
+          onClick={() => {
+            setDone(null);
+            reset.mutate(body(true), { onSuccess: setPreview });
+          }}
+        >
+          {reset.isPending && !confirmOpen ? "Checking…" : "Preview reset"}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={!canRun || !preview || reset.isPending || done !== null}
+          title={preview ? undefined : "Preview the reset first."}
+          onClick={() => {
+            reset.reset();
+            setConfirmOpen(true);
+          }}
+        >
+          {scope === "all" ? "Wipe database…" : `Reset ${tableCount} ${tableCount === 1 ? "table" : "tables"}…`}
+        </Button>
+      </div>
+
+      <ConfirmDestructiveDialog
+        open={confirmOpen}
+        title={scope === "all" ? "Wipe the entire database?" : `Reset ${tableCount} ${tableCount === 1 ? "table" : "tables"}?`}
+        description={
+          scope === "all"
+            ? "Every sermon, series, member, staff account (except yours), playlist, comment and listening record is deleted. This can’t be undone except by importing a backup."
+            : "Every row in these tables is deleted. This can’t be undone except by importing a backup."
+        }
+        phrase={RESET_PHRASE[scope]}
+        confirmLabel={scope === "all" ? "Wipe database" : "Reset tables"}
+        pendingLabel={scope === "all" ? "Wiping…" : "Resetting…"}
+        pending={reset.isPending}
+        error={reset.isError && confirmOpen ? errorText(reset.error, "Please try again.") : null}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={({ phrase, password }) =>
+          reset.mutate(body(false, phrase, password), {
+            onSuccess: (result) => {
+              setDone(result);
+              setConfirmOpen(false);
+              setSelected(new Set());
+            },
+          })
+        }
+      >
+        {scope === "tables" ? (
+          <p className="break-words font-mono text-[12.5px] text-ink-muted">
+            {[...chosen, ...alsoEmptied].join(", ")}
+          </p>
+        ) : null}
+      </ConfirmDestructiveDialog>
+    </Card>
+  );
+}
+
 /* --- screen --------------------------------------------------------------- */
 
 export function DataScreen() {
@@ -619,6 +838,7 @@ export function DataScreen() {
     <div className="flex flex-col gap-20">
       <ExportCard tables={tables.data.tables} />
       <ImportCard tables={tables.data.tables} schemaRevision={tables.data.schema_revision} />
+      <ResetCard tables={tables.data.tables} />
     </div>
   );
 }

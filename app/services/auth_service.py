@@ -722,8 +722,13 @@ async def set_active(
     if target is None:
         raise ContentError("User not found", status_code=404)
 
-    # Mirror the role matrix: managers reach editors only; admins reach anyone.
-    if not _may_assign(actor.role, target.role):
+    # Mirror the role matrix: managers reach editors only; admins reach any
+    # staff account, and also mobile (viewer) accounts — only for switching
+    # them off and on, never for assigning the viewer role.
+    admin_on_viewer = (
+        actor.role == _UserRole.ADMIN and target.role == _UserRole.VIEWER
+    )
+    if not (admin_on_viewer or _may_assign(actor.role, target.role)):
         raise ContentError(
             "You are not permitted to change this account's active status.",
             status_code=403,
@@ -849,7 +854,8 @@ async def delete_user(
     actor: User,
     ctx: AuditContext = _NO_CTX,
 ) -> bool:
-    """Permanently remove a staff account. Returns `revocation_deferred`.
+    """Permanently remove a staff or mobile (viewer) account. Returns
+    `revocation_deferred`.
 
     Admin only, and deliberately narrower than deactivation:
 
@@ -1053,6 +1059,75 @@ async def list_users(
         .offset(max(0, offset))
     )).scalars().all()
     return list(rows), total
+
+
+MEMBER_STATUSES = ("all", "active", "deactivated")
+
+
+async def list_members(
+    db: AsyncSession,
+    *,
+    limit: int = 25,
+    offset: int = 0,
+    search: str | None = None,
+    status: str = "all",
+) -> tuple[list[User], int]:
+    """Mobile app accounts (role `viewer`), newest first, for the admin-only
+    Mobile users screen. `search` matches email or name (case-insensitive);
+    `status` narrows to active or deactivated accounts."""
+    from sqlalchemy import func, or_
+
+    conditions = [User.role == _UserRole.VIEWER]
+    if status == "active":
+        conditions.append(User.is_active.is_(True))
+    elif status == "deactivated":
+        conditions.append(User.is_active.is_(False))
+    if search:
+        # Escape LIKE wildcards so a search for "50%" means the literal text.
+        needle = (
+            search.strip().lower()
+            .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        pattern = f"%{needle}%"
+        conditions.append(or_(
+            func.lower(User.email).like(pattern, escape="\\"),
+            func.lower(func.coalesce(User.full_name, "")).like(pattern, escape="\\"),
+        ))
+
+    total = (await db.execute(
+        _select(func.count()).select_from(User).where(*conditions)
+    )).scalar_one()
+    rows = (await db.execute(
+        _select(User)
+        .where(*conditions)
+        .order_by(User.created_at.desc(), User.id)
+        .limit(max(1, min(limit, 100)))
+        .offset(max(0, offset))
+    )).scalars().all()
+    return list(rows), total
+
+
+async def confirm_password(actor: User, password: str | None) -> None:
+    """Re-check the signed-in admin's password before an irreversible action
+    (wiping the database or the audit trail). A stolen session cookie alone
+    is then not enough. Capped at 5 attempts per 15 minutes per account.
+    Refusals are 403, never 401, so the portal doesn't treat them as an
+    expired session."""
+    if not await check_rate_limit(
+        f"reauth:{actor.id}", limit=5, window_seconds=15 * 60
+    ):
+        raise ContentError(
+            "Too many password attempts. Wait 15 minutes and try again.",
+            status_code=429,
+        )
+    if not actor.password_hash:
+        raise ContentError(
+            "Your account has no password to confirm with. Set one from "
+            "Settings › Profile first.",
+            status_code=403,
+        )
+    if not password or not security.verify_password(password, actor.password_hash):
+        raise ContentError("That password isn't right.", status_code=403)
 
 
 async def role_counts(db: AsyncSession) -> dict[str, int]:

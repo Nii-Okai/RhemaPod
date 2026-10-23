@@ -7,6 +7,9 @@
 * `GET /admin/settings`, `PATCH /admin/settings` — manager and admin.
   PATCH is a partial update guarded by `version` (409 when stale) and
   writes a `settings.updated` audit row in the same transaction.
+* `POST /admin/settings/sign-in-image-url`, `POST .../sign-in-image/confirm`,
+  `DELETE .../sign-in-image` — the photo on the admin portal's sign-in
+  screen (manager and admin). Upload is a pre-signed PUT, like a cover image.
 
 Both reads use the primary session, not the replica: right after a PATCH
 deletes the cache key, a lagging replica could otherwise re-cache the old
@@ -23,6 +26,8 @@ from app.models.content_schemas import (
     ChurchSettingsAdmin,
     ChurchSettingsPublic,
     ChurchSettingsUpdate,
+    ThumbnailTicket,
+    ThumbnailUploadRequest,
 )
 from app.models.models import UserRole
 from app.services import auth_service, settings_service
@@ -84,5 +89,49 @@ async def update_settings(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     try:
         return await settings_service.update(db, data, actor, ctx)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+async def _actor(db: AsyncSession, user: CurrentUser):
+    actor = await auth_service.get_user_by_id(db, user.id)
+    if actor is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return actor
+
+
+@router.post("/sign-in-image-url", response_model=ThumbnailTicket)
+async def sign_in_image_url(
+    data: ThumbnailUploadRequest, user: ManagerPlus
+) -> ThumbnailTicket:
+    """A pre-signed PUT for a new sign-in screen image (JPEG, PNG or WebP)."""
+    try:
+        return ThumbnailTicket(
+            **settings_service.sign_in_image_ticket(data.filename, data.content_type)
+        )
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/sign-in-image/confirm", response_model=ChurchSettingsAdmin)
+async def confirm_sign_in_image(
+    thumbnail_key: str, user: ManagerPlus, db: DbDep, ctx: AuditCtx
+) -> ChurchSettingsAdmin:
+    """Use the uploaded image on the sign-in screen."""
+    actor = await _actor(db, user)
+    try:
+        return await settings_service.set_sign_in_image(db, thumbnail_key, actor, ctx)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.delete("/sign-in-image", response_model=ChurchSettingsAdmin)
+async def remove_sign_in_image(
+    user: ManagerPlus, db: DbDep, ctx: AuditCtx
+) -> ChurchSettingsAdmin:
+    """Go back to the portal's built-in sign-in artwork."""
+    actor = await _actor(db, user)
+    try:
+        return await settings_service.set_sign_in_image(db, None, actor, ctx)
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)

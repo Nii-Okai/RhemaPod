@@ -160,3 +160,18 @@ describe("userRowMenuItems — Remove", () => {
     ).not.toContain("Remove…");
   });
 });
+
+describe("userRowMenuItems — mobile (viewer) accounts", () => {
+  it("lets an admin deactivate, reactivate and remove, never resend an invite", () => {
+    const viewer = target({ role: "viewer", is_active: true, activated_at: null });
+    expect(labels({ actor: ADMIN, target: viewer, activeAdminCount: 1 })).toEqual(["Deactivate"]);
+    expect(
+      labels({ actor: ADMIN, target: { ...viewer, is_active: false }, activeAdminCount: 1 }),
+    ).toEqual(["Reactivate", "Remove…"]);
+  });
+
+  it("gives a manager nothing", () => {
+    const viewer = target({ role: "viewer", is_active: true });
+    expect(labels({ actor: MANAGER, target: viewer, activeAdminCount: 1 })).toEqual([]);
+  });
+});

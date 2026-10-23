@@ -68,12 +68,18 @@ export async function loadUsageReport(
   return unwrap(client.GET("/api/v1/admin/analytics/report", { params: { query: params } }));
 }
 
+/** How often an open report (or Dashboard) re-reads the figures, so a tab
+    left open keeps up with listening as it happens. */
+export const REPORT_REFRESH_MS = 60_000;
+
 export function useUsageReport(params: UsageReportParams) {
   return useQuery({
     queryKey: queryKeys.settings.report(params),
     queryFn: () => loadUsageReport(params),
     placeholderData: keepPreviousData,
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: REPORT_REFRESH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -169,6 +169,10 @@ class TableInfo:
     importable: bool
     replaceable: bool
     referenced_by: list[str]
+    # Reset (empty) is allowed, and the other tables a reset of this one
+    # empties with it (see `reset_closure`).
+    resettable: bool = False
+    reset_with: list[str] = field(default_factory=list)
 
 
 async def list_tables(db: AsyncSession) -> tuple[list[TableInfo], str | None]:
@@ -185,6 +189,11 @@ async def list_tables(db: AsyncSession) -> tuple[list[TableInfo], str | None]:
                 and table.name not in REPLACE_FORBIDDEN
             ),
             referenced_by=sorted(refs.get(table.name, ())),
+            resettable=table.name not in RESET_FORBIDDEN,
+            reset_with=(
+                sorted(reset_closure({table.name}) - {table.name})
+                if table.name not in RESET_FORBIDDEN else []
+            ),
         ))
     return infos, await schema_revision(db)
 
@@ -698,3 +707,176 @@ async def record_export(
         outcome=AuditOutcome.SUCCESS, ctx=ctx,
     )
     await db.commit()
+
+
+# ── Reset (empty tables) ──────────────────────────────────────────────────────
+#
+# `reset_tables` deletes every row of the chosen tables, or of every table for
+# a whole-database wipe. It does what the foreign keys would do, explicitly,
+# so the counts are honest on every dialect:
+#
+# * a table that points at a chosen one with ON DELETE CASCADE or RESTRICT is
+#   emptied too (cascade would delete those rows anyway; restrict would refuse
+#   the delete) — the screen lists these before anything runs;
+# * a column that points at a chosen table with ON DELETE SET NULL is set to
+#   null, and its rows stay.
+#
+# What is never touched: the signed-in admin's own `users` row (so the wipe
+# can't lock out the person running it), `audit_log` (it has its own clean-up
+# in Settings › Audit trail, and records this reset), and `church_settings`
+# (configuration, edited in Settings › Profile). Files in object storage are
+# not deleted either; only database rows.
+
+RESET_FORBIDDEN: frozenset[str] = frozenset({"audit_log", "church_settings"})
+RESET_PHRASE: dict[str, str] = {"tables": "RESET", "all": "WIPE DATABASE"}
+
+
+def reset_closure(names: set[str]) -> set[str]:
+    """`names` plus every table that must be emptied with them: those holding
+    a CASCADE or RESTRICT foreign key into the set, transitively. SET NULL
+    references don't pull a table in; their columns are cleared instead."""
+    closed = set(names)
+    pending = list(names)
+    while pending:
+        parent = pending.pop()
+        for table in _tables():
+            if table.name in closed:
+                continue
+            for fk in table.foreign_keys:
+                if fk.column.table.name != parent:
+                    continue
+                if (fk.ondelete or "RESTRICT").upper() == "SET NULL":
+                    continue
+                closed.add(table.name)
+                pending.append(table.name)
+                break
+    return closed
+
+
+@dataclass
+class ResetTableResult:
+    name: str
+    deleted: int = 0
+    # Rows kept but with a link to a reset table cleared (ON DELETE SET NULL).
+    unlinked: int = 0
+
+
+@dataclass
+class ResetResult:
+    dry_run: bool
+    all_tables: bool
+    tables: list[ResetTableResult] = field(default_factory=list)
+
+
+def _resolve_reset(names: list[str] | None) -> tuple[set[str], bool]:
+    resettable = {t.name for t in _tables()} - RESET_FORBIDDEN
+    if not names:
+        return resettable, True
+    known = {t.name for t in _tables()}
+    unknown = sorted(set(names) - known)
+    if unknown:
+        raise DataTransferError(f"Unknown table(s): {', '.join(unknown)}", 422)
+    refused = sorted(set(names) & RESET_FORBIDDEN)
+    if refused:
+        raise DataTransferError(
+            f"{', '.join(refused)} can't be reset here. Clear the audit trail "
+            "from Settings › Audit trail, and edit church settings in Settings › Profile.",
+            422,
+        )
+    return reset_closure(set(names)), False
+
+
+async def reset_tables(
+    db: AsyncSession,
+    *,
+    tables: list[str] | None,
+    dry_run: bool,
+    confirm: str | None,
+    password: str | None,
+    actor: User,
+    ctx: AuditContext,
+) -> ResetResult:
+    """Empty the chosen tables (all of them when `tables` is empty). A dry run
+    does the whole thing inside the transaction and rolls back, so its counts
+    are exactly what a real run would do. A real run needs the typed phrase
+    (`RESET`, or `WIPE DATABASE` for everything) and the admin's password."""
+    from sqlalchemy import update
+
+    from app.services import auth_service
+
+    effective, all_tables = _resolve_reset(tables)
+    if not dry_run:
+        phrase = RESET_PHRASE["all" if all_tables else "tables"]
+        if (confirm or "").strip() != phrase:
+            raise DataTransferError(f"Type {phrase} to confirm.", 422)
+        try:
+            await auth_service.confirm_password(actor, password)
+        except content_service.ContentError as exc:
+            raise DataTransferError(exc.message, exc.status_code) from None
+
+    ordered = [t for t in _tables() if t.name in effective]
+    results = {t.name: ResetTableResult(name=t.name) for t in ordered}
+
+    try:
+        # SET NULL links into the reset tables, from tables that keep their
+        # rows. Counted before the delete so the number is what changed.
+        for table in _tables():
+            if table.name in effective:
+                continue
+            for fk in table.foreign_keys:
+                parent = fk.column.table
+                if parent.name not in effective:
+                    continue
+                if (fk.ondelete or "").upper() != "SET NULL":
+                    continue
+                col = fk.parent
+                cond = [col.is_not(None)]
+                if parent.name == "users":
+                    cond.append(col != actor.id)
+                res = await db.execute(update(table).where(*cond).values({col.name: None}))
+                changed = max(res.rowcount or 0, 0)
+                if changed:
+                    entry = results.setdefault(table.name, ResetTableResult(name=table.name))
+                    entry.unlinked += changed
+
+        # Children first, so no foreign key ever sees a missing parent.
+        for table in reversed(ordered):
+            stmt = delete(table)
+            if table.name == "users":
+                stmt = stmt.where(table.c.id != actor.id)
+            res = await db.execute(stmt)
+            results[table.name].deleted = max(res.rowcount or 0, 0)
+        await db.flush()
+    except (IntegrityError, DBAPIError) as exc:
+        await db.rollback()
+        log.warning("data_reset_refused", error=str(getattr(exc, "orig", exc))[:300])
+        detail = str(getattr(exc, "orig", exc)).strip().splitlines()[0][:300]
+        raise DataTransferError(
+            f"The database refused the reset, so nothing was changed. Database said: {detail}",
+            409,
+        ) from None
+
+    order = {t.name: i for i, t in enumerate(_tables())}
+    out = sorted(results.values(), key=lambda r: order.get(r.name, 0))
+    if dry_run:
+        await db.rollback()
+        return ResetResult(dry_run=True, all_tables=all_tables, tables=out)
+
+    await audit_service.record(
+        db, AuditAction.DATA_RESET,
+        actor=actor,
+        target=AuditTarget(
+            type="database",
+            label="whole database" if all_tables else f"{len(ordered)} table(s)",
+        ),
+        details={
+            "all_tables": all_tables,
+            "tables": [t.name for t in ordered],
+            "counts": {r.name: {"deleted": r.deleted, "unlinked": r.unlinked} for r in out},
+        },
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    await db.commit()
+    await invalidate_caches()
+    log.info("data_reset", all_tables=all_tables, tables=[t.name for t in ordered], by=str(actor.id))
+    return ResetResult(dry_run=False, all_tables=all_tables, tables=out)

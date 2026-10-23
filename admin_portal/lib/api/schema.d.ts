@@ -128,6 +128,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Audit Entries
+         * @description Delete chosen audit entries. One `data.audit_deleted` row records it.
+         */
+        post: operations["delete_audit_entries_api_v1_admin_audit_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/wipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wipe Audit Trail
+         * @description Delete every audit entry. Needs the typed phrase and the admin's
+         *     password. A `data.audit_wiped` row is written after, so the trail is
+         *     never silently empty.
+         */
+        post: operations["wipe_audit_trail_api_v1_admin_audit_wipe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/comments": {
         parameters: {
             query?: never;
@@ -258,6 +300,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/data/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Data
+         * @description Destructive when `dry_run` is false. Preview first: the dry run does
+         *     the whole reset inside a transaction and rolls it back.
+         */
+        post: operations["reset_data_api_v1_admin_data_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/data/tables": {
         parameters: {
             query?: never;
@@ -295,6 +358,66 @@ export interface paths {
          *     409 means someone else saved first: reload and reapply.
          */
         patch: operations["update_settings_api_v1_admin_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Sign In Image
+         * @description Go back to the portal's built-in sign-in artwork.
+         */
+        delete: operations["remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign In Image Url
+         * @description A pre-signed PUT for a new sign-in screen image (JPEG, PNG or WebP).
+         */
+        post: operations["sign_in_image_url_api_v1_admin_settings_sign_in_image_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Sign In Image
+         * @description Use the uploaded image on the sign-in screen.
+         */
+        post: operations["confirm_sign_in_image_api_v1_admin_settings_sign_in_image_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/subscriptions": {
@@ -1828,6 +1951,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sermons/status-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sermon Status Counts
+         * @description How many sermons sit in each workflow status. Editors count their own
+         *     sermons; managers and admins count everyone's (or their own with
+         *     `created_by=me`). Powers the Dashboard's content pipeline.
+         */
+        get: operations["sermon_status_counts_api_v1_sermons_status_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}": {
         parameters: {
             query?: never;
@@ -2295,6 +2440,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description Mobile app accounts (role `viewer`), newest first. Admin only: the
+         *     staff directory above never lists viewers, and this list exists so an
+         *     admin can deactivate or remove one (`PATCH /users/{id}/active`,
+         *     `DELETE /users/{id}`).
+         */
+        get: operations["list_members_api_v1_users_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/role-counts": {
         parameters: {
             query?: never;
@@ -2330,7 +2498,7 @@ export interface paths {
         post?: never;
         /**
          * Delete User
-         * @description Permanently remove a staff account. Admin only (a manager gets 403).
+         * @description Permanently remove a staff or mobile account. Admin only (a manager gets 403).
          *     The account must already be deactivated (409 otherwise), can't be your
          *     own, and can't have authored content or review history (409, with what
          *     it is linked to — keep such accounts deactivated).
@@ -2767,6 +2935,19 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AuditDeleteRequest */
+        AuditDeleteRequest: {
+            /**
+             * Ids
+             * @description `audit_log` row ids. Ids from the review or moderation history are ignored: those rows can't be deleted here.
+             */
+            ids: string[];
+        };
+        /** AuditDeleteResponse */
+        AuditDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+        };
         /**
          * AuditEntry
          * @description One row of the unified audit feed (`GET /admin/audit`,
@@ -2830,6 +3011,19 @@ export interface components {
          * @enum {string}
          */
         AuditOutcome: "success" | "failure";
+        /** AuditWipeRequest */
+        AuditWipeRequest: {
+            /**
+             * Confirm
+             * @description Must be `WIPE AUDIT TRAIL`.
+             */
+            confirm: string;
+            /**
+             * Password
+             * @description The signed-in admin's password.
+             */
+            password: string;
+        };
         /** AvatarResponse */
         AvatarResponse: {
             /** Avatar Url */
@@ -2952,6 +3146,8 @@ export interface components {
             copyright_notice: string | null;
             /** Privacy Policy Url */
             privacy_policy_url: string | null;
+            /** Sign In Image Url */
+            sign_in_image_url?: string | null;
             /** Tagline */
             tagline: string | null;
             /** Terms Of Use Url */
@@ -2994,6 +3190,8 @@ export interface components {
             copyright_notice: string | null;
             /** Privacy Policy Url */
             privacy_policy_url: string | null;
+            /** Sign In Image Url */
+            sign_in_image_url?: string | null;
             /** Tagline */
             tagline: string | null;
             /** Terms Of Use Url */
@@ -3299,6 +3497,47 @@ export interface components {
             /** Updated */
             updated: number;
         };
+        /** DataResetRequest */
+        DataResetRequest: {
+            /**
+             * Confirm
+             * @description Required when `dry_run` is false: `RESET` for chosen tables, `WIPE DATABASE` for everything.
+             */
+            confirm?: string | null;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Password
+             * @description Required when `dry_run` is false: the signed-in admin's password.
+             */
+            password?: string | null;
+            /**
+             * Tables
+             * @description Tables to empty. Omit (or send an empty list) to wipe every table.
+             */
+            tables?: string[] | null;
+        };
+        /** DataResetResponse */
+        DataResetResponse: {
+            /** All Tables */
+            all_tables: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Tables */
+            tables: components["schemas"]["DataResetTableResult"][];
+        };
+        /** DataResetTableResult */
+        DataResetTableResult: {
+            /** Deleted */
+            deleted: number;
+            /** Name */
+            name: string;
+            /** Unlinked */
+            unlinked: number;
+        };
         /** DataTable */
         DataTable: {
             /** Importable */
@@ -3309,6 +3548,13 @@ export interface components {
             referenced_by: string[];
             /** Replaceable */
             replaceable: boolean;
+            /**
+             * Reset With
+             * @description Tables a reset of this one also empties (they point at it with ON DELETE CASCADE or RESTRICT).
+             */
+            reset_with: string[];
+            /** Resettable */
+            resettable: boolean;
             /** Rows */
             rows: number;
         };
@@ -3453,14 +3699,29 @@ export interface components {
              */
             week_start: string;
         };
-        /** OverviewStats */
+        /**
+         * OverviewStats
+         * @description All-time platform figures for the Dashboard. Every number is a count
+         *     over the live tables at request time (not the daily rollups), so it
+         *     covers history from before the rollups existed.
+         */
         OverviewStats: {
+            /**
+             * Active Members
+             * @default 0
+             */
+            active_members: number;
             /** Active Subscribers */
             active_subscribers: number;
             /** Completion Rate */
             completion_rate: number;
             /** Completions */
             completions: number;
+            /**
+             * Members
+             * @default 0
+             */
+            members: number;
             /** Plays Last 7 Days */
             plays_last_7_days: number;
             /** Published Sermons */
@@ -3471,6 +3732,11 @@ export interface components {
             total_users: number;
             /** Unique Viewers */
             unique_viewers: number;
+            /**
+             * Watch Hours
+             * @default 0
+             */
+            watch_hours: number;
         };
         /** Page[AnnouncementAdminItem] */
         Page_AnnouncementAdminItem_: {
@@ -4350,6 +4616,53 @@ export interface components {
          * @enum {string}
          */
         SermonStatus: "draft" | "pending_review" | "under_review" | "approved" | "published" | "rejected" | "unpublished";
+        /**
+         * SermonStatusCounts
+         * @description Sermons per workflow status, in the caller's scope (an editor's own
+         *     sermons; everyone's for a manager/admin). Zero-filled.
+         */
+        SermonStatusCounts: {
+            /**
+             * Approved
+             * @default 0
+             */
+            approved: number;
+            /**
+             * Draft
+             * @default 0
+             */
+            draft: number;
+            /**
+             * Pending Review
+             * @default 0
+             */
+            pending_review: number;
+            /**
+             * Published
+             * @default 0
+             */
+            published: number;
+            /**
+             * Rejected
+             * @default 0
+             */
+            rejected: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Under Review
+             * @default 0
+             */
+            under_review: number;
+            /**
+             * Unpublished
+             * @default 0
+             */
+            unpublished: number;
+        };
         /** SermonUpdate */
         SermonUpdate: {
             /** Category Id */
@@ -5115,6 +5428,72 @@ export interface operations {
             };
         };
     };
+    delete_audit_entries_api_v1_admin_audit_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wipe_audit_trail_api_v1_admin_audit_wipe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditWipeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_admin_comments_api_v1_admin_comments_get: {
         parameters: {
             query?: {
@@ -5351,6 +5730,39 @@ export interface operations {
             };
         };
     };
+    reset_data_api_v1_admin_data_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tables_api_v1_admin_data_tables_get: {
         parameters: {
             query?: never;
@@ -5403,6 +5815,90 @@ export interface operations {
                 "application/json": components["schemas"]["ChurchSettingsUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+        };
+    };
+    sign_in_image_url_api_v1_admin_settings_sign_in_image_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThumbnailUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_sign_in_image_api_v1_admin_settings_sign_in_image_confirm_post: {
+        parameters: {
+            query: {
+                thumbnail_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -8257,6 +8753,38 @@ export interface operations {
             };
         };
     };
+    sermon_status_counts_api_v1_sermons_status_counts_get: {
+        parameters: {
+            query?: {
+                /** @description Only the caller's own sermons. */
+                created_by?: "me" | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonStatusCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sermon_api_v1_sermons__sermon_id__get: {
         parameters: {
             query?: never;
@@ -9226,6 +9754,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_v1_users_members_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description Email or name contains */
+                q?: string | null;
+                status?: "all" | "active" | "deactivated";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UserPublic_"];
                 };
             };
             /** @description Validation Error */

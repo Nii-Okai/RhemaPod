@@ -5,6 +5,7 @@
  *   dataExportHref(tables)     the BFF URL for GET /admin/data/export — a
  *                              plain link, so the browser saves the file
  *   useDataImport()            POST /api/v1/admin/data/import
+ *   useDataReset()             POST /api/v1/admin/data/reset
  *
  * The import mutation is used twice per run: a dry run (the default) that
  * the server performs and rolls back, then the real run with the typed
@@ -28,6 +29,15 @@ export type DataTablesResponse = components["schemas"]["DataTablesResponse"];
 export type DataImportRequest = components["schemas"]["DataImportRequest"];
 export type DataImportResponse = components["schemas"]["DataImportResponse"];
 export type ImportMode = DataImportRequest["mode"];
+export type DataResetRequest = components["schemas"]["DataResetRequest"];
+export type DataResetResponse = components["schemas"]["DataResetResponse"];
+export type ResetScope = "tables" | "all";
+
+/** Phrases the reset dialog asks for; the server checks the same text. */
+export const RESET_PHRASE: Record<ResetScope, string> = {
+  tables: "RESET",
+  all: "WIPE DATABASE",
+};
 
 export const EXPORT_FORMAT = "rhemapod-export";
 export const CONFIRM_PHRASE: Record<ImportMode, string> = {
@@ -126,6 +136,35 @@ export function useDataImport() {
     mutationFn: (body) =>
       unwrap(api.POST("/api/v1/admin/data/import", { body })),
     onSuccess: (result) => {
+      if (!result.dry_run) void qc.invalidateQueries();
+    },
+  });
+}
+
+
+/** Tables a reset of `selected` empties too (CASCADE/RESTRICT references,
+    from the server's `reset_with`), excluding the selection itself. */
+export function resetAlsoEmpties(
+  selected: Iterable<string>,
+  tables: readonly Pick<DataTable, "name" | "reset_with">[],
+): string[] {
+  const chosen = new Set(selected);
+  const byName = new Map(tables.map((t) => [t.name, t.reset_with]));
+  const extra = new Set<string>();
+  for (const name of chosen) {
+    for (const child of byName.get(name) ?? []) {
+      if (!chosen.has(child)) extra.add(child);
+    }
+  }
+  return tables.map((t) => t.name).filter((name) => extra.has(name));
+}
+
+export function useDataReset() {
+  const qc = useQueryClient();
+  return useMutation<DataResetResponse, Error, DataResetRequest>({
+    mutationFn: (body) => unwrap(api.POST("/api/v1/admin/data/reset", { body })),
+    onSuccess: (result) => {
+      // A real reset changes data on every screen.
       if (!result.dry_run) void qc.invalidateQueries();
     },
   });

@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { MediaPlaceholder } from "@/components/portal/media-placeholder";
 import { useThumbnailUpload } from "@/lib/query/hooks/use-thumbnail-upload";
 import { IMAGE_ACCEPT_ATTR } from "@/lib/upload";
+import { COVER_HINT, coverDimensionsWarning, readImageSize } from "@/lib/upload/cover-guidance";
 
 /* =============================================================================
    Thumbnail card (design Screen 4, right column, top) — plan W9 item 4.
@@ -38,6 +39,7 @@ export function ThumbnailCard({
   disabled,
 }: ThumbnailCardProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const [sizeWarning, setSizeWarning] = React.useState<string | null>(null);
   const { replace, isPending, errorMessage, uploadedUrl, reset } =
     useThumbnailUpload({ sermonId });
 
@@ -56,13 +58,13 @@ export function ThumbnailCard({
         <img
           src={shown}
           alt={`Thumbnail for ${title}`}
-          className="aspect-video w-full rounded-10 border border-border object-cover"
+          className="aspect-square w-full max-w-[280px] rounded-10 border border-border object-cover"
         />
       ) : (
         <MediaPlaceholder
           scale="card"
-          caption="thumbnail 16:9 · 1280×720"
-          className="aspect-video rounded-10 border border-border"
+          caption="cover · square · 1080×1080"
+          className="aspect-square w-full max-w-[280px] rounded-10 border border-border"
         />
       )}
 
@@ -81,6 +83,13 @@ export function ThumbnailCard({
         </Alert>
       ) : null}
 
+      <p className="text-[12.5px] text-ink-muted">{COVER_HINT}</p>
+      {sizeWarning && !errorMessage ? (
+        <Alert variant="warning" title="Check this image">
+          {sizeWarning}
+        </Alert>
+      ) : null}
+
       <input
         ref={inputRef}
         type="file"
@@ -89,7 +98,12 @@ export function ThumbnailCard({
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
-          if (file) replace(file);
+          if (!file) return;
+          setSizeWarning(null);
+          replace(file);
+          void readImageSize(file).then((size) =>
+            setSizeWarning(size ? coverDimensionsWarning(size.width, size.height) : null),
+          );
         }}
       />
 

@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type ApiClient } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { queryKeys } from "@/lib/query/keys";
+import { uploadSignInImage } from "@/lib/upload/sign-in-image";
 
 export type ChurchSettings = components["schemas"]["ChurchSettingsAdmin"];
 export type ChurchSettingsUpdate = components["schemas"]["ChurchSettingsUpdate"];
@@ -112,4 +113,26 @@ export function useUpdateChurchSettings() {
       qc.setQueryData(queryKeys.settings.profile(), saved);
     },
   });
+}
+
+/**
+ * The sign-in screen image: upload (ticket → PUT → confirm) or remove. Each
+ * returns the saved settings row, written into the cache so the Profile form
+ * re-bases on the new `version` (changing the image bumps it).
+ */
+export function useSignInImage() {
+  const qc = useQueryClient();
+  const onSuccess = (saved: ChurchSettings) => {
+    qc.setQueryData(queryKeys.settings.profile(), saved);
+    void qc.invalidateQueries({ queryKey: queryKeys.settings.public() });
+  };
+  const upload = useMutation<ChurchSettings, Error, File>({
+    mutationFn: (file) => uploadSignInImage(file),
+    onSuccess,
+  });
+  const remove = useMutation<ChurchSettings, Error, void>({
+    mutationFn: () => unwrap(api.DELETE("/api/v1/admin/settings/sign-in-image")),
+    onSuccess,
+  });
+  return { upload, remove };
 }

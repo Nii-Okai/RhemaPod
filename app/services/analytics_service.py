@@ -428,8 +428,23 @@ async def overview(db: AsyncSession) -> dict:
         )
     )).scalar_one()
 
+    member_rows = (await db.execute(
+        select(User.is_active, func.count())
+        .where(User.role == UserRole.VIEWER)
+        .group_by(User.is_active)
+    )).all()
+    members = sum(int(n) for _, n in member_rows)
+    active_members = sum(int(n) for active, n in member_rows if active)
+
+    watched = (await db.execute(
+        select(func.coalesce(func.sum(PlaybackSession.watched_seconds), 0))
+    )).scalar_one()
+
     return {
         "total_users": total_users,
+        "members": members,
+        "active_members": active_members,
+        "watch_hours": _hours(int(watched or 0)),
         "active_subscribers": active_subs,
         "published_sermons": published,
         "total_plays": int(total_plays or 0),
