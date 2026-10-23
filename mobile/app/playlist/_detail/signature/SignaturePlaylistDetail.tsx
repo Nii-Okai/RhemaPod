@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Avatar, DetailError, IconButton, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
@@ -21,6 +21,7 @@ import { playlistQueueParams, shuffled } from '../playlistQueue';
 import { usePlaylistPreview } from '../usePlaylistPreview';
 import { SignatureAddToPlaylistSheet } from './SignatureAddToPlaylistSheet';
 import { SignaturePlaylistItemRow, SignatureSermonAddRow } from './SignatureSermonRows';
+import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 
 const GUTTER = spacing.lg;
 const MAX_COVER = 240;
@@ -62,6 +63,7 @@ export function SignaturePlaylistDetailScreen() {
   const removeItem = useRemovePlaylistItem(id ?? '');
   const addItem = useAddPlaylistItem(id ?? '');
   const recommended = useRecommended();
+  const pullToRefresh = usePullToRefresh([refetch]);
   const preview = usePlaylistPreview();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -126,7 +128,11 @@ export function SignaturePlaylistDetailScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      >
         {topBar(<IconButton icon="ellipsis-horizontal" accessibilityLabel="More options" onPress={() => setOptionsOpen(true)} />)}
 
         <View style={styles.coverWrap}>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Avatar, PlatformIcon, PressableScale, QueryState } from '../../../../components';
@@ -16,6 +16,7 @@ import { LEAF_SM } from '../../_home/signature/leaf';
 import { CatalogCollectionCard } from './CatalogCollectionCard';
 import { ResultRow } from './ResultRow';
 import { TopicTile, topicTones } from './TopicTile';
+import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 
 // Same as the classic Browse: a short grid with "See more" under it.
 const COLLAPSED_CATEGORY_COUNT = 6;
@@ -60,6 +61,7 @@ export function SignatureBrowseScreen() {
   const categories = useCategories();
   const speakers = useSpeakers();
   const prophetsCatalog = useProphetsCatalog();
+  const pullToRefresh = usePullToRefresh([categories, speakers, prophetsCatalog]);
   const [rawQuery, setRawQuery] = useState('');
   const [showAllCategories, setShowAllCategories] = useState(false);
 
@@ -133,6 +135,7 @@ export function SignatureBrowseScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
       >
         {hasQuery ? (
           <View style={styles.gutter}>

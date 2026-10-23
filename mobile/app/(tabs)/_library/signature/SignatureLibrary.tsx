@@ -20,6 +20,7 @@ import { LibrarySortSheet } from '../LibrarySortSheet';
 import { libraryItemTitle, sortLibraryItems, SORT_MODE_LABEL, type LibraryItem, type LibrarySortMode } from '../librarySort';
 import { DownloadGridTile, DownloadListRow, PlaylistGridTile, PlaylistListRow } from './LibraryItems';
 import { SegmentedControl } from './SegmentedControl';
+import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 
 const GUTTER = spacing.lg;
 const GRID_COLUMNS = 2;
@@ -53,7 +54,6 @@ export function SignatureLibraryScreen() {
   const continueWatching = useContinueWatching();
   const deletePlaylist = useDeletePlaylist();
 
-  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [layout, setLayout] = useState<LibraryLayout>('list');
   const [sortMode, setSortMode] = useState<LibrarySortMode>('recents');
@@ -61,11 +61,7 @@ export function SignatureLibraryScreen() {
   const [searchActive, setSearchActive] = useState(false);
   const [query, setQuery] = useState('');
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([playlists.refetch(), continueWatching.refetch()]);
-    setRefreshing(false);
-  };
+  const pullToRefresh = usePullToRefresh([playlists, continueWatching]);
 
   const closeSearch = () => {
     setSearchActive(false);
@@ -156,12 +152,7 @@ export function SignatureLibraryScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void onRefresh()}
-            tintColor={colors.accent.gold}
-            colors={[colors.accent.gold]}
-          />
+          <RefreshControl {...pullToRefresh} />
         }
       >
         <View style={[styles.gutter, styles.header]}>

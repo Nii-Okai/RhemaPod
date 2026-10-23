@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, QueryState } from '../../components';
@@ -7,6 +7,7 @@ import { SermonCard } from '../../components/sermon/SermonCard';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSearchResults } from '../../lib/query/hooks/useSearch';
+import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 const GRID_COLUMNS = 2;
 const GRID_GAP = spacing.md;
@@ -41,6 +42,7 @@ export default function CategoryDrillDownScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const results = useSearchResults({ category_id: id });
+  const pullToRefresh = usePullToRefresh([results]);
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
@@ -53,7 +55,12 @@ export default function CategoryDrillDownScreen() {
         </AppText>
         <View style={styles.headerSpacer} />
       </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      >
         <QueryState
           isLoading={results.isLoading}
           isError={results.isError}

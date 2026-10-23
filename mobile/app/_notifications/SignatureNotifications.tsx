@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { ArtScrim } from '../(tabs)/_home/signature/ArtScrim';
 import { Flame } from '../(tabs)/_home/signature/Flame';
 import { LEAF, leaf } from '../(tabs)/_home/signature/leaf';
 import { formatWhen, isFresh, splitNotifications } from './notificationTime';
+import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 const ROW_ART_WIDTH = 96;
 const ROW_LEAF = leaf(12, 3);
@@ -157,13 +158,11 @@ function Section({
  * and "Mark all read" clears everything listed.
  */
 export function SignatureNotificationsScreen() {
-  const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const newReleases = useNewReleases();
   const badge = useNotificationsBadge();
-  const [refreshing, setRefreshing] = useState(false);
 
   const items = newReleases.data ?? [];
   const { latest, fresh, earlier } = splitNotifications(items);
@@ -174,11 +173,7 @@ export function SignatureNotificationsScreen() {
     router.push({ pathname: '/player/[id]', params: { id: sermon.id } });
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await newReleases.refetch();
-    setRefreshing(false);
-  };
+  const pullToRefresh = usePullToRefresh([newReleases]);
 
   return (
     <View style={styles.screen}>
@@ -216,12 +211,7 @@ export function SignatureNotificationsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent.gold}
-            colors={[colors.accent.gold]}
-          />
+          <RefreshControl {...pullToRefresh} />
         }
       >
         <QueryState

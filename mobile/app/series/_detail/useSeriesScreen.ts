@@ -118,6 +118,7 @@ export function useSeriesScreen(id: string) {
   return {
     series,
     episodes,
+    history,
     episodeItems,
     historyMap,
     cta,
