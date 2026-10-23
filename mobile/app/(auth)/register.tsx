@@ -12,7 +12,7 @@ import { AuthScreen } from './_components/auth-screen';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
 import { OrDivider } from './_components/or-divider';
-import { MIN_PASSWORD_LENGTH, PasswordFlames } from './_components/password-flames';
+import { isServerCommonPassword, MIN_PASSWORD_LENGTH, PasswordFlames } from './_components/password-flames';
 import { SocialSignInButton } from './_components/social-sign-in-button';
 import { socialAuthErrorCopy, type SocialAuthErrorCopy, type SocialProvider } from './_components/socialAuthErrorCopy';
 
@@ -43,6 +43,10 @@ export default function RegisterScreen() {
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
       setFieldError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    if (isServerCommonPassword(password)) {
+      setFieldError('That password is too common. Choose something less predictable.');
       return;
     }
 
@@ -164,7 +168,7 @@ export default function RegisterScreen() {
             returnKeyType="done"
             onSubmitEditing={onSubmit}
           />
-          <PasswordFlames length={password.length} />
+          <PasswordFlames password={password} />
         </View>
       </View>
 

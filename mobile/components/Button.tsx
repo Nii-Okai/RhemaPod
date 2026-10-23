@@ -63,10 +63,14 @@ export interface LinkButtonProps extends Omit<PressableProps, 'style' | 'childre
  * any confirmed in-scope screen — don't add one here; a future need should follow the
  * admin portal's existing ghost-button convention rather than being invented fresh.
  */
-export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
+export const LinkButton = React.forwardRef<View, LinkButtonProps>(function LinkButton(
+  { label, disabled, ...rest },
+  ref,
+) {
   const styles = useStyles();
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
@@ -80,7 +84,7 @@ export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
       )}
     </Pressable>
   );
-}
+});
 
 const useStyles = createThemedStyles((colors) => ({
   primaryBase: {
