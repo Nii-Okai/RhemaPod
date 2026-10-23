@@ -42,6 +42,8 @@ const ALLOWED = new Set([
   'components/CastCloseHeader.tsx',
   // Artwork backdrop dim — a photo surface.
   'components/FittedArt.tsx',
+  // The queue's now-playing visualiser sits on the cover art.
+  'app/player/_player/QueueList.tsx',
 ]);
 
 const STATIC_IMPORT = /import \{[^}]*\b(colors|darkColors)\b[^}]*\} from '[./]*theme\/colors'/;

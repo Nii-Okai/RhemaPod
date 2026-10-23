@@ -611,6 +611,11 @@ describe('PlayerScreen — queue list', () => {
     expect(await findByText('Title sermon-2')).toBeTruthy();
   });
 
+  it('marks only the current item with the now-playing visualiser', async () => {
+    const { findAllByTestId } = renderWithQueue();
+    expect(await findAllByTestId('queue-now-playing')).toHaveLength(1);
+  });
+
   it('tapping another row jumps playback to it, staying on this screen (setParams, not replace)', async () => {
     const { findByLabelText } = renderWithQueue();
 

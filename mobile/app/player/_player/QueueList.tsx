@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { AppText, IconButton, PlatformIcon, Sheet } from '../../../components';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText, EqualizerBars, FittedArt, IconButton, PlatformIcon, Sheet } from '../../../components';
+import { darkColors as onArt } from '../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -22,6 +23,8 @@ export interface QueueListProps {
   onRemove: (itemId: string) => void;
   onDownload: (item: PlaylistItemPublic) => void;
   onShare: (item: PlaylistItemPublic) => void;
+  /** Whether the current item is actually playing — its visualiser moves only then. */
+  isPlaying?: boolean;
 }
 
 const THUMBNAIL_SIZE = 44;
@@ -55,6 +58,7 @@ export function QueueList({
   isPublic,
   items,
   currentIndex,
+  isPlaying = false,
   repeatEnabled,
   onToggleRepeat,
   onShuffleRemaining,
@@ -117,13 +121,18 @@ export function QueueList({
               accessibilityLabel={isCurrent ? `${item.sermon.title}, now playing` : `Play ${item.sermon.title}`}
               style={({ pressed }) => [styles.row, isCurrent && styles.rowCurrent, pressed && styles.rowPressed]}
             >
-              {item.sermon.thumbnail_url ? (
-                <Image source={{ uri: item.sermon.thumbnail_url }} style={styles.thumbnail} resizeMode="cover" />
-              ) : (
-                <View style={styles.thumbnailFallback}>
+              <View style={styles.thumbnail}>
+                {item.sermon.thumbnail_url ? (
+                  <FittedArt uri={item.sermon.thumbnail_url} />
+                ) : isCurrent ? null : (
                   <PlatformIcon name="musical-notes-outline" size={18} color={colors.text.tertiary} />
-                </View>
-              )}
+                )}
+                {isCurrent ? (
+                  <View style={styles.nowPlaying} testID="queue-now-playing">
+                    <EqualizerBars active={isPlaying} color={onArt.accent.goldText} size={16} />
+                  </View>
+                ) : null}
+              </View>
               <View style={styles.rowText}>
                 <AppText variant="ui.bodyLarge" numberOfLines={1} tone={isCurrent ? 'gold' : 'primary'}>
                   {item.sermon.title}
@@ -134,7 +143,6 @@ export function QueueList({
                   </AppText>
                 ) : null}
               </View>
-              {isCurrent ? <PlatformIcon name="play" size={14} color={colors.accent.gold} /> : null}
               <IconButton icon="ellipsis-horizontal" accessibilityLabel={`More options for ${item.sermon.title}`} onPress={() => setActionsFor(item)} />
             </Pressable>
           );
@@ -252,14 +260,17 @@ const useStyles = createThemedStyles((colors) => ({
     width: THUMBNAIL_SIZE,
     height: THUMBNAIL_SIZE,
     borderRadius: radius.sm,
-  },
-  thumbnailFallback: {
-    width: THUMBNAIL_SIZE,
-    height: THUMBNAIL_SIZE,
-    borderRadius: radius.sm,
+    overflow: 'hidden',
     backgroundColor: colors.surface.sunken,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The art dims behind the bars so they read on any cover; dark in both themes.
+  nowPlaying: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: onArt.overlay.chipFill,
   },
   rowText: {
     flex: 1,

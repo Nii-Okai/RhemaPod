@@ -612,13 +612,23 @@ function PlayerContent({
     />
   );
 
-  return <SignatureLayout sermonId={sermonId} detail={detail} queueContext={queueContext} video={video} sleepSheet={sleepSheet} />;
+  return (
+    <SignatureLayout
+      sermonId={sermonId}
+      detail={detail}
+      queueContext={queueContext}
+      isPlaying={isPlaying}
+      video={video}
+      sleepSheet={sleepSheet}
+    />
+  );
 }
 
 interface SignatureLayoutProps {
   sermonId: string;
   detail: SermonDetail;
   queueContext: QueueListProps | null;
+  isPlaying: boolean;
   video: React.ReactNode;
   sleepSheet: React.ReactNode;
 }
@@ -635,6 +645,7 @@ function SignatureLayout({
   sermonId,
   detail,
   queueContext,
+  isPlaying,
   video,
   sleepSheet,
 }: SignatureLayoutProps) {
@@ -650,7 +661,7 @@ function SignatureLayout({
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
-          <QueueList {...queueContext!} />
+          <QueueList {...queueContext!} isPlaying={isPlaying} />
         </View>
       ) : (
         <CommentsPanel sermonId={sermonId} variant="signature" />
