@@ -20,6 +20,7 @@ import { ProfileAvatarPicker } from '../ProfileAvatarPicker';
 import { ProfileDetailsSheet } from '../ProfileDetailsSheet';
 import { ThemeSwitch } from './ThemeSwitch';
 import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
+import { formatCacheSize, useMediaCacheUsage } from '../../../../lib/mediaCache/useMediaCacheUsage';
 
 const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
 const AVATAR_SIZE = 64;
@@ -140,6 +141,7 @@ export function SignatureYouScreen() {
   const pullToRefresh = usePullToRefresh([profileQuery]);
   const { preferences, isSaving, setAutoplayNextInSeries } = usePlaybackPreferences();
   const { wifiOnly, isSavingWifiOnly, setWifiOnly } = useDownloads();
+  const playCache = useMediaCacheUsage();
   const [playbackError, setPlaybackError] = React.useState<string | null>(null);
   const [appearanceError, setAppearanceError] = React.useState<string | null>(null);
 
@@ -249,6 +251,19 @@ export function SignatureYouScreen() {
             disabled={isSavingWifiOnly}
             accessibilityLabel="Wi-Fi only downloads"
           />
+          {/* The automatic play-cache only — downloads stay put. Hidden until there's
+              something to clear. */}
+          {playCache.bytes ? (
+            <LinkRow
+              icon="trash-outline"
+              label={playCache.clearing ? 'Clearing…' : 'Clear cached sermons'}
+              detail={`${formatCacheSize(playCache.bytes)} kept for faster replays. Downloads aren't affected.`}
+              accessibilityLabel={`Clear cached sermons, ${formatCacheSize(playCache.bytes)}`}
+              onPress={() => {
+                if (!playCache.clearing) void playCache.clear();
+              }}
+            />
+          ) : null}
         </Panel>
         {playbackError ? (
           <AppText variant="ui.badge" style={styles.errorText} accessibilityLiveRegion="polite">

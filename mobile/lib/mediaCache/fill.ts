@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system';
-import { realCanStartDownload } from '../downloads/network';
+import { isOnWifi } from '../downloads/network';
 import * as manifest from './manifest';
 import * as paths from './paths';
 import { emitCacheEvent } from './events';
@@ -9,9 +9,11 @@ import { FREE_SPACE_FLOOR_BYTES, STREAM_EXPIRY_MARGIN_MS } from './constants';
 import type { CacheKey } from './key';
 
 /**
- * The media-cache fill engine (plan S3, D15, D16, P2, P4, P6). The Wi-Fi gate
- * (`realCanStartDownload`) is the single source of truth Downloads also uses for "is this
- * device allowed to spend data right now" — it lives in `lib/downloads/network.ts`, not
+ * The media-cache fill engine (plan S3, D15, D16, P2, P4, P6). The network gate is
+ * `isOnWifi` — Wi-Fi only, always, whatever the Downloads "Wi-Fi only" toggle says (Nii's
+ * ask, 2026-10-23: don't spend data unnecessarily). Turning that toggle off is consent to
+ * spend mobile data on downloads the user starts; a cache fill is a whole-sermon transfer
+ * nobody asked for, so it never rides on that consent. It lives in `lib/downloads/network.ts`, not
  * `downloadManager.ts`, specifically so this file never has a module-graph edge back into
  * the Downloads manager (S8/S9 review: that edge was a real circular import,
  * `downloadManager -> mediaCache/dropSermon -> mediaCache/fill -> downloadManager`, fixed
@@ -114,7 +116,7 @@ async function realEnsureDir(dir: string): Promise<void> {
 function defaultDeps(): FillDeps {
   return {
     transfer: realTransfer,
-    canStartDownload: realCanStartDownload,
+    canStartDownload: isOnWifi,
     getFreeDiskStorage: () => FileSystem.getFreeDiskStorageAsync(),
     fs: { getSize: realGetSize, moveFile: realMoveFile, deleteFile: realDeleteFile, ensureDir: realEnsureDir },
     manifestInsert: manifest.insert,
@@ -235,7 +237,7 @@ export async function requestFill(request: FillRequest, deps: FillDeps = default
     return finish('skipped-expired');
   }
 
-  // D4: the same Wi-Fi gate Downloads uses, never a second implementation of it.
+  // Never on mobile data — see the doc comment at the top.
   if (!(await deps.canStartDownload())) {
     emitCacheEvent('fill-skip:network', { sermonId, mediaRefId: key.mediaRefId });
     return finish('skipped-network');
