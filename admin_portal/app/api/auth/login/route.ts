@@ -12,11 +12,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isApiError } from "@/lib/api/errors";
 import { createServerApiClient } from "@/lib/api/server";
-import { clientIpFrom } from "@/lib/auth/client-ip";
+import { clientIpFrom, forwardedForHeaders } from "@/lib/auth/client-ip";
+import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 import { setAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
-import { userAgentFrom } from "@/lib/auth/user-agent";
+import { userAgentFrom, userAgentHeaders } from "@/lib/auth/user-agent";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -94,6 +95,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Listener (viewer) accounts belong to the mobile app. The backend would 403
+  // every portal call anyway, but refusing here keeps them from landing in an
+  // empty staff shell — and the session just minted is revoked, not left live.
+  if (user.role === "viewer") {
+    await revokeSession(tokens.access_token, tokens.refresh_token, clientIp, req);
+    return NextResponse.json(
+      {
+        detail: "This portal is for church staff. Listeners sign in with the RhemaPod app.",
+        correlation_id: null,
+      },
+      { status: 403 },
+    );
+  }
+
   const res = NextResponse.json(user, { status: 200 });
   setAuthCookies(res, {
     accessToken: tokens.access_token,
@@ -102,4 +117,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     remember,
   });
   return res;
+}
+
+/** Best-effort `POST /auth/logout` for a session the BFF will not hand out. */
+async function revokeSession(
+  accessToken: string,
+  refreshToken: string,
+  clientIp: string | null,
+  req: NextRequest,
+): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE_URL}${BACKEND_API_PREFIX}/auth/logout`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+        ...forwardedForHeaders(clientIp),
+        ...userAgentHeaders(userAgentFrom(req.headers)),
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      cache: "no-store",
+    });
+    if (!res.ok) logError("bff_login_viewer_revoke_failed", { status: res.status });
+  } catch {
+    logError("bff_login_viewer_revoke_failed", { status: null });
+  }
 }

@@ -265,7 +265,18 @@ async def logout(
 async def change_password(
     data: ChangePasswordRequest, user: CurrentUserDep, db: DbDep, ctx: AuditCtx
 ) -> MessageResponse:
-    """Requires the current password — an access token alone is not enough."""
+    """Requires the current password — an access token alone is not enough.
+    Wrong guesses are capped per account like login, so a stolen access token
+    can't be used to brute-force the current password."""
+    if not await check_rate_limit(
+        f"change_password:{user.id}",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Try again shortly.",
+        )
     try:
         await auth_service.change_password(
             db, user.id, data.current_password, data.new_password, ctx=ctx
@@ -304,9 +315,16 @@ async def _dispatch_password_reset(
         )
 
 
+_FORGOT_PASSWORD_LIMIT = 3
+_FORGOT_PASSWORD_WINDOW_SECONDS = 15 * 60
+
+
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(
-    data: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: DbDep
+    data: ForgotPasswordRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: DbDep,
 ) -> MessageResponse:
     # This endpoint's whole purpose is to NOT be an account-enumeration oracle
     # (test_forgot_password_is_generic). Both branches must return in
@@ -315,6 +333,25 @@ async def forgot_password(
     # prod) are handed to BackgroundTasks so they never show up as a
     # response-latency signal. A Redis outage or a send failure is swallowed in
     # the background task; the status code and body are already fixed by then.
+    #
+    # Capped per address and per IP, same shape as `resend_verification`:
+    # without it anyone can flood a victim's inbox with reset mail. The cap is
+    # charged before the lookup, so a 429 says nothing about whether the
+    # address exists.
+    allowed = await check_rate_limit(
+        f"forgot_password:{data.email.lower()}",
+        _FORGOT_PASSWORD_LIMIT,
+        _FORGOT_PASSWORD_WINDOW_SECONDS,
+    ) and await check_rate_limit(
+        f"forgot_password_ip:{client_ip(request)}",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Try again in a few minutes.",
+        )
     user = await auth_service.get_user_by_email(db, data.email)
     if user is not None:
         token, jti = security.create_reset_token(str(user.id))
