@@ -164,7 +164,7 @@ export function SignatureHomeScreen() {
   // The catalogue is one speaker's; the header shows their avatar.
   const catalogSpeaker = catalogItems.find((item) => item.speaker_id && item.speaker_name) ?? null;
 
-  const goToSermon = (id: string) => router.push({ pathname: '/sermon/[id]', params: { id } });
+  const goToSermon = (id: string) => router.push({ pathname: '/player/[id]', params: { id } });
   const goToSeries = (id: string) => router.push({ pathname: '/series/[id]', params: { id } });
   const goToSeriesList = () => router.push(pathnameFor(routeByKey('series')));
 

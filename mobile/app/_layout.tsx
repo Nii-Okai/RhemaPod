@@ -112,8 +112,18 @@ function RootNavigator() {
             centered-title pattern every other drill-down screen here uses. Now matches
             `category/[id]` above. */}
         <Stack.Screen name="speaker/[id]" options={{ headerShown: false }} />
-        {/* W4.1 — minimal placeholder; W4.2 builds the real player and its own chrome. */}
-        <Stack.Screen name="player/[id]" options={{ headerShown: false }} />
+        {/* The player rises from the bottom (its header closes with a chevron-down) and can
+            be pulled down to dismiss. Every sermon tap in the app lands here directly, so
+            this is the only transition between picking a sermon and hearing it (Nii's ask,
+            2026-10-23: previously sermon detail slid up, then replaced itself with this). */}
+        <Stack.Screen
+          name="player/[id]"
+          options={{
+            headerShown: false,
+            gestureDirection: 'vertical',
+            animation: 'slide_from_bottom',
+          }}
+        />
         {/* W4.4 — series detail, another top-level stack route (plan L15):
             identical on every platform, reached from Home's Series shelf
             (W4.1), Browse, and the tablet Series rail tab. Distinct from the

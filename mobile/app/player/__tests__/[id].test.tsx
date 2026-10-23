@@ -242,11 +242,13 @@ describe('PlayerScreen — detail fetch error', () => {
   });
 });
 
-describe('PlayerScreen — not playable (deep-link guard)', () => {
-  it('shows a friendly message instead of crashing when media_refs is empty', async () => {
+describe('PlayerScreen — not playable', () => {
+  it('hands a sermon with no media to its detail page instead of the player', async () => {
     mockReads({ detail: { ...baseDetail, media_refs: [] } });
-    const { findByText } = renderPlayer();
-    await findByText("This sermon isn't available yet.");
+    renderPlayer();
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } }),
+    );
   });
 });
 

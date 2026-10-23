@@ -124,7 +124,7 @@ describe('SignatureNotificationsScreen', () => {
   it('opens a sermon and marks it read', async () => {
     const screen = renderScreen();
     fireEvent.press(await screen.findByLabelText('God the Holy Spirit, unread'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 's2' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 's2' } });
     expect(await screen.findByLabelText('God the Holy Spirit')).toBeTruthy();
     expect(screen.getByText('2 NEW')).toBeTruthy();
     await waitFor(() =>

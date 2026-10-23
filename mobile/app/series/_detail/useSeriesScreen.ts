@@ -5,7 +5,6 @@ import type { CastMedia } from '../../../lib/cast/castRequest';
 import { useCastPlayback } from '../../../lib/cast/useCastPlayback';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
 import { buildHistoryMap } from '../../../lib/format/episodeStatus';
-import { RELATED_PARAM, RELATED_PARAM_VALUE } from '../../../lib/navigation/detailTransition';
 import { useAddToDefaultLibrary } from '../../../lib/query/hooks/usePlaylists';
 import { useSeriesDetail, useSeriesEpisodes, useToggleSeriesLike } from '../../../lib/query/hooks/useSeries';
 import { useWatchHistory } from '../../../lib/query/hooks/useWatchHistory';
@@ -38,16 +37,10 @@ export function useSeriesScreen(id: string) {
   // 2026-10-01), however many Related/episode drill-down levels deep the user is —
   // rather than going back just one level.
   const onCloseAll = () => router.dismissAll();
-  // Pushes `sermon/related/[id]` (not the plain `sermon/[id]` route), used for the Play
-  // CTA, every episode row, and the Related tab alike (Isaac's ask, session 2026-10-01:
-  // an episode row tap is the same kind of drill-down a Related tap is, so it gets the
-  // same regular horizontal push/back-gesture and the destination's own back chevron —
-  // see `app/sermon/related/[id].tsx`'s own doc comment for why that's a second route
-  // rather than the plain `sermon/[id]` screen). Series detail itself is never one of
-  // the alternating "Related" routes (`nextRelatedSermonRoute`'s own doc comment), so
-  // every push from here always targets the same one, `sermon/related/[id]`.
-  const goToEpisode = (sermonId: string) =>
-    router.push({ pathname: '/sermon/related/[id]', params: { id: sermonId, [RELATED_PARAM]: RELATED_PARAM_VALUE } });
+  // Episodes open the player directly — one transition from the tap to playback (Nii's
+  // ask, 2026-10-23). A locked or not-yet-ready episode is handed on to its detail page
+  // by the player itself.
+  const goToEpisode = (sermonId: string) => router.push({ pathname: '/player/[id]', params: { id: sermonId } });
 
   // What goes on the TV for one episode: its title over the series name, its art (or the
   // series cover), from where the viewer stopped unless they finished it.

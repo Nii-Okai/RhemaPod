@@ -106,7 +106,7 @@ describe('SignatureBrowseScreen — nothing typed', () => {
   it('opens the catalog lead sermon, a category and the speaker', async () => {
     const screen = renderBrowse();
     fireEvent.press(await screen.findByLabelText(/^Prophet's Catalog collection/));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/sermon/[id]', params: { id: 'p1' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/player/[id]', params: { id: 'p1' } });
 
     fireEvent.press(screen.getByLabelText('Grace, 2 sermons'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/category/[id]', params: { id: 'c1', name: 'Grace' } });

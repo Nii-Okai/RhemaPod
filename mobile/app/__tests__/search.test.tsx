@@ -182,7 +182,7 @@ describe('SearchScreen — populated (suggestions + grouped results)', () => {
     expect(getByText(/storms of life/)).toBeTruthy();
 
     fireEvent.press(getByText('Anchored in the Storm'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
   });
 
   it('drops a suggestion that exactly matches a result title, instead of showing it twice', async () => {

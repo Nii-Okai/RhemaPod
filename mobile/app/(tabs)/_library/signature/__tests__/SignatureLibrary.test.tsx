@@ -322,7 +322,7 @@ describe('SignatureLibraryScreen', () => {
     rerender(<LibraryScreen />);
     expect(getByText('Pick up where you left off')).toBeTruthy();
     fireEvent.press(getByLabelText('Anchored in the Storm, 20:00 left'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-cw1' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-cw1' } });
   });
 
   it('shows the resume shelf loading and error states', () => {

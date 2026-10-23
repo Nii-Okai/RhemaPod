@@ -171,7 +171,7 @@ export function SignatureNotificationsScreen() {
 
   const open = (sermon: SermonListItem) => {
     badge.markRead(sermon.id);
-    router.push({ pathname: '/sermon/[id]', params: { id: sermon.id } });
+    router.push({ pathname: '/player/[id]', params: { id: sermon.id } });
   };
 
   const onRefresh = async () => {

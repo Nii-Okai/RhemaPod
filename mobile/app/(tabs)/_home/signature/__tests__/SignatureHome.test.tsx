@@ -137,7 +137,7 @@ describe('SignatureHomeScreen', () => {
     fireEvent.press(walk);
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/series/[id]', params: { id: 'se1' } });
     fireEvent.press(screen.getByLabelText('Resume Divine Patterns · Part 2'));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/sermon/[id]', params: { id: 'e2' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/player/[id]', params: { id: 'e2' } });
   });
 
   it('flows the verse onto one line however it was entered', async () => {

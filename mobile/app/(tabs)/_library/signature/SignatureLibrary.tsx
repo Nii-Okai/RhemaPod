@@ -112,7 +112,6 @@ export function SignatureLibraryScreen() {
 
   const goToPlayer = (sermonId: string) => router.push({ pathname: '/player/[id]', params: { id: sermonId } });
   const goToPlaylist = (playlistId: string) => router.push({ pathname: '/playlist/[id]', params: { id: playlistId } });
-  const goToSermon = (sermonId: string) => router.push({ pathname: '/sermon/[id]', params: { id: sermonId } });
   const createPlaylist = () => router.push('/playlist/create');
 
   const renderItem = (item: LibraryItem) => {
@@ -209,7 +208,7 @@ export function SignatureLibraryScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
                 {resumeItems.map((item, index) => (
                   <StaggerItem key={item.id} index={index}>
-                    <ResumeCard item={item} onPress={() => goToSermon(item.id)} />
+                    <ResumeCard item={item} onPress={() => goToPlayer(item.id)} />
                   </StaggerItem>
                 ))}
               </ScrollView>

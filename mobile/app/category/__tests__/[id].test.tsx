@@ -80,7 +80,7 @@ describe('CategoryDrillDownScreen', () => {
     );
 
     fireEvent.press(getByText('Anchored in the Storm'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
   });
 
   it('shows a loading state', () => {

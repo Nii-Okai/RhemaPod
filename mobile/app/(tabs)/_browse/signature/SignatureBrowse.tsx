@@ -83,7 +83,7 @@ export function SignatureBrowseScreen() {
   // Results for an older query stay up while the debounce catches up to the field.
   const settling = trimmed !== rawQuery.trim();
 
-  const goToSermon = (id: string) => router.push({ pathname: '/sermon/[id]', params: { id } });
+  const goToSermon = (id: string) => router.push({ pathname: '/player/[id]', params: { id } });
   const goToSeries = (id: string) => router.push({ pathname: '/series/[id]', params: { id } });
   const goToSpeaker = (speaker: Speaker) =>
     router.push({

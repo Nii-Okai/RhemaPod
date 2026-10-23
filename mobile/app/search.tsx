@@ -80,7 +80,7 @@ export default function SearchScreen() {
   );
 
   function goToSermon(id: string) {
-    router.push({ pathname: '/sermon/[id]', params: { id } });
+    router.push({ pathname: '/player/[id]', params: { id } });
   }
 
   function goToSeries(id: string) {

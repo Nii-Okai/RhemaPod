@@ -71,7 +71,7 @@ export default function CategoryDrillDownScreen() {
                 sermon={sermon}
                 width={cardWidth}
                 showMeta={false}
-                onPress={() => router.push({ pathname: '/sermon/[id]', params: { id: sermon.id } })}
+                onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
               />
             ))}
           </View>
