@@ -120,6 +120,13 @@ class LocalStream:
         return status
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
+        # The stub checks no signature, so on an internet-reachable host
+        # (staging) anyone could post a forged "ready" event. Nothing real
+        # sends webhooks to a stub there anyway.
+        if settings.is_internet_reachable:
+            raise StreamError(
+                "Unsigned Stream webhooks are refused outside local development"
+            )
         try:
             return json.loads(payload.decode())
         except Exception as exc:

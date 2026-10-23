@@ -8908,7 +8908,7 @@
     },
     "/api/v1/auth/change-password": {
       "post": {
-        "description": "Requires the current password \u2014 an access token alone is not enough.",
+        "description": "Requires the current password \u2014 an access token alone is not enough.\nWrong guesses are capped per account like login, so a stolen access token\ncan't be used to brute-force the current password.",
         "operationId": "change_password_api_v1_auth_change_password_post",
         "requestBody": {
           "content": {

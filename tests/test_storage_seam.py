@@ -5,6 +5,9 @@ Pure unit tests — no live R2/AWS, no MinIO. `S3Storage` is exercised only
 through client construction and `botocore.stub.Stubber`, never a real
 network call.
 """
+import uuid
+
+import pytest
 from botocore.stub import Stubber
 
 from app.core import storage as storage_module
@@ -156,3 +159,34 @@ def test_pinned_signing_time_does_not_leak_into_other_presigns():
 
     assert _query(after)["X-Amz-Date"] != "20200101T000000Z"
     assert _query(after)["X-Amz-Date"][:4] == str(datetime.now(timezone.utc).year)
+
+
+
+@pytest.mark.parametrize(
+    "filename, suffix",
+    [
+        ("cover.PNG", "png"),
+        ("clip.final.webp", "webp"),
+        ("noext", None),
+        ("x.png/../../avatars/someone-else/a", None),
+        ("x.jpg?download=1", None),
+        ("x." + "a" * 200, None),
+        ("x.", None),
+    ],
+)
+def test_object_keys_never_carry_a_client_controlled_path(filename, suffix):
+    """The extension comes from a client-supplied filename; anything that is not
+    a short alphanumeric extension falls back to the default."""
+    import uuid
+
+    from app.core.storage import avatar_key, playlist_cover_key, raw_key, thumbnail_key
+
+    entity = uuid.uuid4()
+    for key, slashes in (
+        (avatar_key(entity, filename), 2),
+        (playlist_cover_key(entity, filename), 2),
+        (thumbnail_key("sermons", entity, filename), 3),
+    ):
+        assert key.rsplit(".", 1)[-1] == (suffix or "jpg")
+        assert key.count("/") == slashes
+    assert raw_key(entity, filename).rsplit(".", 1)[-1] == (suffix or "bin")

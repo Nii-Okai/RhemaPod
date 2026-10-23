@@ -24,6 +24,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import io
+import re
 import threading
 import uuid
 import zlib
@@ -751,9 +752,20 @@ def set_archive_store(backend: ArchiveStore | None) -> None:
     _archive_backend = backend
 
 
+_SUFFIX_RE = re.compile(r"[a-z0-9]{1,10}")
+
+
+def _suffix(filename: str, default: str) -> str:
+    """The file extension for an object key. `filename` is client-supplied, so
+    anything that is not a short alphanumeric extension (`png/../x`, `jpg?a=b`,
+    a 2 KB string) falls back to `default` instead of landing in the key."""
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return suffix if _SUFFIX_RE.fullmatch(suffix) else default
+
+
 def raw_key(sermon_id: uuid.UUID, filename: str) -> str:
     """Key for the editor's original upload."""
-    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    suffix = _suffix(filename, "bin")
     return f"raw/{sermon_id}/{uuid.uuid4()}.{suffix}"
 
 
@@ -780,7 +792,7 @@ def thumbnail_key(kind: str, entity_id: uuid.UUID, filename: str) -> str:
     A fresh UUID per upload means replacing a thumbnail never collides with a
     cached copy of the old one at the same URL.
     """
-    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    suffix = _suffix(filename, "jpg")
     return f"thumbnails/{kind}/{entity_id}/{uuid.uuid4()}.{suffix}"
 
 
@@ -788,7 +800,7 @@ def avatar_key(user_id: uuid.UUID, filename: str) -> str:
     """Key for a profile picture — same shape as `thumbnail_key`, a fresh UUID per
     upload so replacing an avatar never collides with a cached copy of the old one
     at the same URL."""
-    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    suffix = _suffix(filename, "jpg")
     return f"avatars/{user_id}/{uuid.uuid4()}.{suffix}"
 
 
@@ -796,7 +808,7 @@ def playlist_cover_key(playlist_id: uuid.UUID, filename: str) -> str:
     """Key for a playlist cover image — same shape as `avatar_key`, a fresh
     UUID per upload so replacing a cover never collides with a cached copy of
     the old one at the same URL."""
-    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    suffix = _suffix(filename, "jpg")
     return f"playlist_covers/{playlist_id}/{uuid.uuid4()}.{suffix}"
 
 
