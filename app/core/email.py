@@ -228,25 +228,19 @@ async def send_email_verification(to: str, code: str) -> None:
     await _send(to, f"{code} is your {app} verification code", text, html)
 
 
-async def send_sign_in_method_linked(to: str, provider: str) -> None:
-    """ADR 0015's auto-link notice: an existing password-based account just
-    had a Google/Apple sign-in linked to it, and — because that link also
-    clears the account's old password (closes a pre-registration takeover:
-    an attacker could otherwise register the victim's email with a password
-    first and keep access after the victim links their real account) — the
-    account holder needs to know their old password no longer works.
+async def send_sign_in_method_linked(to: str, provider: str, *, password_removed: bool) -> None:
+    """ADR 0015's auto-link notice: an existing account just had a
+    Google/Apple sign-in linked to it. When the account had a password, the
+    link also cleared it (closes a pre-registration takeover: an attacker
+    could otherwise register the victim's email with a password first and
+    keep access after the victim links their real account), so the holder
+    needs to know their old password no longer works. An account that never
+    had one (e.g. created via the other provider) gets the plain notice —
+    telling it a password was removed would be false and alarming.
     `provider` is the display name ("Google"/"Apple"), not the enum value."""
     app = settings.app_name
-    text = (
-        f"{provider} sign-in was just connected to your {app} account, "
-        "and your previous password was removed as part of that.\n\n"
-        "If you'd like to set a new password (to sign in without "
-        f"{provider} too), use Forgot Password on the sign-in screen.\n\n"
-        "If you didn't do this, contact support right away."
-    )
-    html = _render_html(
-        heading=f"{provider} sign-in connected",
-        paragraphs=[
+    if password_removed:
+        paragraphs = [
             (
                 f"{provider} sign-in was just connected to your {app} account, and your "
                 "previous password was removed as part of that."
@@ -255,7 +249,19 @@ async def send_sign_in_method_linked(to: str, provider: str) -> None:
                 "If you'd like to set a new password (to sign in without "
                 f"{provider} too), use Forgot Password on the sign-in screen."
             ),
-        ],
-        footnote="If you didn't do this, contact support right away.",
+        ]
+    else:
+        paragraphs = [
+            (
+                f"{provider} sign-in was just connected to your {app} account. You can "
+                f"now sign in with {provider} as well as the way you signed in before."
+            ),
+        ]
+    footnote = "If you didn't do this, contact support right away."
+    text = "\n\n".join([*paragraphs, footnote])
+    html = _render_html(
+        heading=f"{provider} sign-in connected",
+        paragraphs=paragraphs,
+        footnote=footnote,
     )
     await _send(to, f"{provider} sign-in connected to your {app} account", text, html)
