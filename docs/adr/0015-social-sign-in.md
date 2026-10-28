@@ -1,16 +1,12 @@
 # ADR 0015 — Social sign-in: a separate identity table, hand-rolled async JWKS verification, auto-link closes a takeover hole
 
-- **Status:** Proposed. Not Accepted: this has not been through a device /
-  on-device verification pass (mobile's own unit tests mock the native
-  Google/Apple modules — `status.md` "[Step: mobile Sign in with
-  Google/Apple]", 2026-10-15 22:43 UTC), the migration (`c9b3e7a1f2d4`) has
-  been written and verified (`alembic heads` resolves to it as the sole head)
-  but **never run** against any real database, and `oauth_apple_enabled`
-  is left at its spec'd default of `False`. To flip to Accepted, at minimum:
-  (1) the migration applied to the real dev DB, (2) Isaac's Google Cloud
-  Console client IDs wired into `GOOGLE_OAUTH_CLIENT_IDS` and a real
-  end-to-end Google sign-in exercised on a physical device, not just the
-  mocked Jest suite.
+- **Status:** Accepted (2026-10-28). All three conditions below now hold:
+  migration `c9b3e7a1f2d4` is applied on the dev DB (since superseded as
+  head), Google sign-in has been exercised end-to-end on a physical device
+  (an identity linked 2026-10-16), and Apple sign-in was enabled and
+  exercised on a physical iPhone on 2026-10-28 — see "Update 2026-10-28"
+  at the end. The account-deletion / Apple token-revocation gap in §6 is
+  still open and is tracked as its own plan, not part of this ADR.
 - **Date:** 2026-10-15
 - **Scope:** Backend only — `app/core/oauth.py`, `app/services/oauth_service.py`,
   the two new routes in `app/api/auth.py` (`POST /auth/oauth/google`,
@@ -257,3 +253,29 @@ Staff always sign in via `/auth/login`.
   Isaac has not completed Apple Developer Program enrollment — flipping
   `oauth_apple_enabled` ahead of that would ship a button that works in
   tests and fails for every real user.
+
+## Update 2026-10-28 — Apple enabled in dev; auto-link notice corrected
+
+- **Enrollment done, Apple on.** Isaac enrolled in the Apple Developer
+  Program (team `FAND2W5VMM`). `mobile/app.json` now pins
+  `ios.appleTeamId` and re-lists the `expo-apple-authentication` config
+  plugin (removed earlier because the free Personal Team cannot provision
+  the `com.apple.developer.applesignin` entitlement). Dev sets
+  `OAUTH_APPLE_ENABLED=true`; `APPLE_OAUTH_AUDIENCES` keeps its default
+  (`com.niitech.rhemapod`). Commit `d64882a`.
+- **Verified on device.** A real Apple identity token was accepted by
+  `POST /auth/oauth/apple` and auto-linked (§4) to an existing Google-first
+  viewer on the same verified email — the account now holds both a GOOGLE
+  and an APPLE `user_identities` row. Not yet exercised on device: the
+  fresh-account path with name prefill (needs an Apple ID with no matching
+  account; Apple's `sub` is stable per team, so revoking and re-authorizing
+  the same Apple ID resolves back to the linked account).
+- **Auto-link notice fix.** `send_sign_in_method_linked` always claimed
+  "your previous password was removed", which is false for an account that
+  never had one (the Google-first case above). The service now records
+  whether a password existed before clearing it and passes
+  `password_removed`; the email only mentions a password when one was
+  actually removed. Commit `ac8f2a0`, covered in `tests/test_oauth.py`.
+- **Still deferred (§6):** in-app account deletion and Apple server-side
+  token revocation (guideline 5.1.1(v)). This blocks App Store submission,
+  not dev use, and gets its own ADR and plan.
