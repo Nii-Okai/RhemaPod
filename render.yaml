@@ -77,9 +77,10 @@ services:
     autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Free plans have no pre-deploy step, so migrate + preflight on every start.
-    # Safe here only because free means exactly one instance.
-    dockerCommand: sh -c "alembic upgrade head && python -m app.scripts.preflight && exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
+    # Free plans have no pre-deploy step, so the script migrates + runs the
+    # preflight on every start. A script, not an inline `sh -c "..."`: Render
+    # passes the quoted string through as one literal word.
+    dockerCommand: sh scripts/render-start.sh
     healthCheckPath: /health/live
     domains:
       - api.rhemapod.com
