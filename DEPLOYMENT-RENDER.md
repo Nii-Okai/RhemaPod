@@ -1,173 +1,186 @@
-# Deploying RhemaPod to Render (staging)
+# Deploying RhemaPod to Render (dev, free plans)
 
-Staging first, production later (§9). Everything is defined in `render.yaml`
-(a Render Blueprint); secrets are entered in the dashboard and never committed.
-`.env.render.example` lists every variable and where each one comes from.
+A hosted copy of the **local dev stack**: same configuration, same R2 `-dev`
+buckets, same Resend key, Stream and archive on their stubs, all on Render's free
+plans. Production is a separate exercise (§9).
+
+- `render.yaml` defines every resource. It's a Render Blueprint.
+- `.env.render.example` lists every variable and where each one comes from.
+- Your filled secrets go in `.env.render` at the repo root. That file is gitignored
+  and holds the same values your local stack uses.
 
 ## 0. What the Blueprint creates
 
 | Resource | Render type | Plan | Notes |
 |---|---|---|---|
-| `rhemapod-staging-db` | Postgres 17 | `0.1c-256mb` | Private network only. **Not** `free` — free Postgres expires after 30 days. |
-| `rhemapod-staging-kv` | Key Value | `256mb` | `noeviction` + persistence: refresh sessions live here. `free` has no persistence, so a restart would log everyone out. |
-| `rhemapod-api-staging` | Web (Docker) | `0.5c-512mb` | FastAPI. Pre-deploy runs `alembic upgrade head` + preflight. `api.rhemapod.com`. |
-| `rhemapod-admin-staging` | Web (Node 24) | `0.5c-512mb` | Next.js admin portal (`admin_portal/`). `admin.rhemapod.com`. |
-| `rhemapod-staging-hourly` | Cron (Docker) | `0.5c-512mb` | `expire_subscriptions`, `sweep_uploads`, `sweep_stream_jobs` at :07. |
-| `rhemapod-staging-daily` | Cron (Docker) | `0.5c-512mb` | `purge_audit_log`, `purge_comment_snapshots` at 03:23 UTC. |
+| `rhemapod-dev-db` | Postgres 17 | `free` | 1 GB, no backups, **expires 30 days after creation** (§8). One free database per workspace. |
+| `rhemapod-dev-kv` | Key Value | `free` | `noeviction`. No persistence, so a restart signs every user out. |
+| `rhemapod-dev-api` | Web (Docker) | `free` | FastAPI on `api.rhemapod.com`. Runs migrations and preflight on every start. |
+| `rhemapod-dev-admin` | Web (Node 24) | `free` | Next.js admin portal (`admin_portal/`) on `admin.rhemapod.com`. |
 
-All in `frankfurt` (closest Render region to West Africa and Europe). **`region`
-can't be changed after creation**; edit every `region:` line in `render.yaml`
-before the first sync if your congregation is elsewhere (`oregon`, `ohio`,
-`virginia`, `singapore`).
+Everything is in `frankfurt`. **You can't change a region after creation**, so edit
+every `region:` line before the first sync if you want somewhere else.
 
-Auto-deploy: every push to `dev` redeploys the API, portal and cron images.
+Every push to `dev` redeploys both web services.
 
-The mobile app is not hosted on Render. It just points at `https://api.rhemapod.com` (§7).
+### What free plans change
 
-## 1. Before you start (one-time, outside Render)
+- **Cold starts.** A free web service sleeps after about 15 idle minutes. The next request
+  waits roughly a minute while it wakes, and the API also runs migrations and preflight
+  on start. In the mobile app, the first call after a quiet spell can time out, so
+  retry it.
+- **No pre-deploy step.** Migrations run inside the API's start command. That's only
+  safe because a free service is always exactly one instance. Don't copy it to a paid,
+  scaled setup.
+- **No cron jobs.** Free has no cron plan, so the hourly and daily sweeps don't run
+  (§8).
+- **No Shell tab.** One-off scripts run from your laptop against the database's
+  external URL (§6).
+- **Monthly hour cap.** Free instance hours are capped per workspace each month. Two
+  web services that sleep when idle stay well under it.
 
-1. **R2 staging buckets.** In Cloudflare R2 create `sermon-raw-staging` and
-   `sermon-media-staging`. Block public access on both. Keep them separate from the
-   `-dev` buckets your laptop uses, so staging data and local test data never mix.
-2. **R2 API token** scoped to those two buckets only, with Object Read & Write.
-   Note the access key ID, the secret, and the account endpoint
-   `https://<account-id>.r2.cloudflarestorage.com`.
-3. **CORS on `sermon-raw-staging`.** The portal uploads from the browser straight to R2:
+## 1. Before you start
+
+1. **R2 CORS.** The portal uploads from the browser straight to `sermon-raw-dev`. Add
+   `https://admin.rhemapod.com` to that bucket's CORS `AllowedOrigins`, next to the
+   localhost origins already there:
    ```json
-   [{"AllowedOrigins":["https://admin.rhemapod.com"],"AllowedMethods":["PUT"],
-     "AllowedHeaders":["Content-Type"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]
+   [{"AllowedOrigins":["http://localhost:3000","https://admin.rhemapod.com"],
+     "AllowedMethods":["PUT"],"AllowedHeaders":["Content-Type"],
+     "ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]
    ```
-4. **Resend:** create a separate API key for staging, so you can revoke it on its own.
-   `rhemapod.com` is already verified there.
-5. **DNS access** for `rhemapod.com`. You'll add two CNAMEs in §5.
+2. **`.env.render`.** This file already exists at the repo root, filled with your local dev
+   values: `SECRET_KEY`, the three R2 values and the Resend key. To rebuild it, copy those five
+   keys from `.env` / `docker-compose.override.yml` into a copy of `.env.render.example` §D.
+3. **DNS access** for `rhemapod.com`, for the two CNAMEs in §5.
+
+The deployed dev stack and your laptop share the same R2 buckets and Resend key.
+Uploads from either one land in the same `-dev` buckets. That's intended for a dev deployment.
 
 ## 2. Get the Blueprint onto `dev`
 
-Render deploys `dev`. `render.yaml`, `.env.render.example`, this guide and the
+Render deploys `dev`. This guide, `render.yaml`, `.env.render.example` and the
 `DATABASE_URL` driver fix arrive on `chore/render-deploy`. Merge that branch into
-`dev` the same way you merge everything else.
+`dev` the way you merge everything else.
 
 ## 3. Create the services
 
-1. Render dashboard → **New → Blueprint** → connect the `Nii-Okai/RhemaPod` repo →
-   branch `dev`.
-2. Render reads `render.yaml` and lists the resources from §0. It then asks for the
-   four `sync: false` secrets on `rhemapod-api-staging`:
-   `OBJECT_STORE_ENDPOINT_URL`, `OBJECT_STORE_ACCESS_KEY_ID`,
-   `OBJECT_STORE_SECRET_ACCESS_KEY`, `SMTP_PASSWORD` (the values from §1).
-3. **Apply.** Render creates the database and Key Value first, then builds the API image. The
-   API's pre-deploy step migrates the empty database and runs the preflight, which
-   checks that the database, Redis and R2 are reachable with those credentials. If
-   a secret is wrong, **the deploy fails here and nothing goes live.** Fix the
-   variable and redeploy.
+1. Render dashboard → **New → Blueprint** → connect `Nii-Okai/RhemaPod` → branch `dev`.
+2. Render lists the four resources from §0 and asks for the five `sync: false` secrets on
+   `rhemapod-dev-api`. Copy them from `.env.render`. Alternatively, apply first, then use
+   **rhemapod-dev-api → Environment → Add from .env** and paste the file's contents.
+3. **Apply.** Render creates the database and Key Value, builds the API image, and starts
+   the container. The container then runs `alembic upgrade head`, then the preflight
+   (database, Redis and R2 reachable with these credentials), then uvicorn. A wrong secret
+   leaves the service failing to start. Its Logs tab shows the exact preflight line
+   that failed.
 
-The first API build takes a few minutes (it installs the uv lockfile in Docker). Later builds reuse the cache.
+The first API build takes a few minutes. Later builds reuse the cache.
 
 ## 4. Check the portal → API wiring
 
-The portal calls the API server-to-server over Render's private network, using
-`API_BASE_URL=http://rhemapod-api-staging:8000`.
+The portal reaches the API over Render's private network at
+`API_BASE_URL=http://rhemapod-dev-api:8000`.
 
-- Open the API service → **Connect → Internal** and confirm the host:port shown is
-  exactly `rhemapod-api-staging:8000`. If Render shows a suffixed host, update
-  `API_BASE_URL` in `render.yaml` (and in the portal's Environment tab) to match.
-- Sanity check from the API's **Shell** tab: `curl -s localhost:8000/health/ready`
-  should print `{"status":"ready", …}` with the database and Redis both `ok`.
+- Open **rhemapod-dev-api → Connect → Internal** and confirm it shows exactly
+  `rhemapod-dev-api:8000`. If Render shows a suffixed host, update `API_BASE_URL` on
+  the portal service (and in `render.yaml`) to match.
+- Check readiness from your laptop:
+  `curl -s https://rhemapod-dev-api.onrender.com/health/ready`. It should report `"status":"ready"`
+  with the database and Redis both `ok`.
 
 ## 5. Domains
 
-Each service has `domains:` set, so Render shows the target for each one under **Settings → Custom Domains**.
-
 | Record | Type | Value |
 |---|---|---|
-| `api.rhemapod.com` | CNAME | `rhemapod-api-staging.onrender.com` |
-| `admin.rhemapod.com` | CNAME | `rhemapod-admin-staging.onrender.com` |
+| `api.rhemapod.com` | CNAME | `rhemapod-dev-api.onrender.com` |
+| `admin.rhemapod.com` | CNAME | `rhemapod-dev-admin.onrender.com` |
 
-If DNS is on Cloudflare, set both records to **DNS only** (grey cloud) until Render shows the
-certificate as issued. Then `curl -sI https://api.rhemapod.com/health/live` should return `200`.
+On Cloudflare DNS, use **DNS only** (grey cloud) until Render shows each certificate as issued.
+After that, `curl -sI https://api.rhemapod.com/health/live` should return `200`.
 
-The app's CSRF and CORS checks (`PORTAL_ORIGIN`, `ALLOWED_ORIGINS`,
-`FRONTEND_BASE_URL`) expect the custom domains. **The portal won't accept logins
-on its `onrender.com` URL.** That's intended, so wait for DNS.
+The portal's CSRF origin and the API's CORS/reset-link settings expect these hostnames.
+**Logins on the `onrender.com` portal URL are rejected**, so wait for DNS.
+
+These are the hostnames production will want later. When production arrives, either
+move them across or put dev on `api-dev.` / `admin-dev.` instead (§9).
 
 ## 6. Seed and verify
 
-From `rhemapod-api-staging` → **Shell**:
+There's no Shell tab on free, so run the one-off scripts from your laptop:
 
-```bash
-python -m app.scripts.create_admin --email <your-email>   # prompts for a password
-python -m app.scripts.seed_verses                          # Home's verse of the day
-```
-
-`seed_staff` creates the fixed staff list. Run it only if you want those
-accounts on staging, and export its `STAFF_*_PASSWORD` variables inline in that shell
-(`.env.render.example` §F). Never add them to the service. **Don't run `seed_dev` on staging.**
+1. **rhemapod-dev-db → Info → Access Control.** Add your current public IP. Then copy the
+   **External Database URL**.
+2. From the repo root:
+   ```bash
+   export DATABASE_URL='<external database URL>'      # postgresql://… is fine; the app rewrites it
+   uv run python -m app.scripts.create_admin --email <your-email>   # prompts for a password
+   uv run python -m app.scripts.seed_verses
+   ```
+   The exported `DATABASE_URL` overrides the one in `.env`. Everything else (`SECRET_KEY`
+   and so on) comes from your local `.env`, which is the same set of values. Optional:
+   `seed_dev` works here too, because `ENVIRONMENT=development`.
+3. **Remove your IP from Access Control** when you're done.
 
 Then check each of the following:
 
-1. Sign in at `https://admin.rhemapod.com` with the admin you just created.
-2. **Real client IPs (`TRUSTED_PROXIES`).** In the portal's audit log, your login row's IP
-   should be your public IP. If it shows a `10.x.x.x` address, Render's proxy isn't
-   covered by `TRUSTED_PROXIES`. Every user then shares one per-IP rate-limit
-   bucket (20 req/min for the whole app). Note the address it shows and fix
-   `TRUSTED_PROXIES` before you invite testers. Keep it at `/8` or narrower; the app
-   refuses anything broader.
-3. **Staff client IPs.** `CLIENT_IP_HEADER` is unset on staging, so the API sees every portal request as
-   coming from the portal itself and staff share one rate limit. That's fine for a handful of
-   staff. Set it before production, once you've confirmed which header Render's
-   edge sets with the real client IP.
-4. Upload a short test sermon from the portal. That exercises the R2 CORS rule
-   and presigned PUT. Playback falls back to presigned R2 URLs, because Stream is a stub on
-   staging.
-5. **Cron jobs:** open each one in the dashboard and press **Trigger Run**. Both should exit 0.
+1. Sign in at `https://admin.rhemapod.com`.
+2. **Real client IPs.** The audit log row for your login should show your public IP. If it shows a
+   `10.x.x.x` address, Render's proxy isn't covered by `TRUSTED_PROXIES`. Every user then
+   shares one per-IP rate limit (20 requests per minute for everyone). Fix that before you
+   hand the app to testers. Entries must be `/8` or narrower; the app refuses anything broader.
+3. **Staff rate limit.** `CLIENT_IP_HEADER` is unset, so the API sees every staff member as the
+   portal itself and they share one rate limit. That's fine for a handful of staff.
+4. Upload a short test sermon. That exercises R2 CORS and the presigned PUT. Playback uses presigned R2
+   URLs, because Stream is a stub, exactly as it does locally.
+5. API docs are public at `https://api.rhemapod.com/docs`, because `DEBUG=true`. That's acceptable
+   for dev. It is the first thing to turn off on anything real.
 
-## 7. Point the mobile app at staging
+## 7. Point the mobile app at it
 
-- **Local dev client:** in `mobile/.env` set `EXPO_PUBLIC_API_BASE_URL=https://api.rhemapod.com`,
-  then `npx expo start --dev-client --clear`. `EXPO_PUBLIC_*` values are baked into the bundle,
+- **Dev client:** in `mobile/.env` set `EXPO_PUBLIC_API_BASE_URL=https://api.rhemapod.com`, then
+  `npx expo start --dev-client --clear`. `EXPO_PUBLIC_*` values are baked into the bundle,
   so a plain reload isn't enough.
-- **TestFlight / EAS builds:** set the same variable in that build profile's `env`
-  (`eas.json`) or as an EAS environment variable. It's public by design: the URL is not a secret.
-- Google and Apple sign-in work against staging as-is. The audience (aud) values in
-  `GOOGLE_OAUTH_CLIENT_IDS` and the default `com.niitech.rhemapod` don't depend on the
-  backend's hostname.
+- **TestFlight / EAS builds:** put the same variable in that build profile's `env`.
+- Google sign-in works as-is. **Apple sign-in needs the `feat/apple-sign-in` work merged into
+  `dev`**: until then the deployed API doesn't have the Apple pieces this branch added. The
+  env group already sets `OAUTH_APPLE_ENABLED=true`.
 
-## 8. Day 2
+## 8. Living with free plans
 
-- **Deploy:** merge to `dev`. Migrations run in the pre-deploy step, once per deploy rather than once per
-  instance, before traffic moves. A failing migration or preflight leaves the previous version live.
-- **Rollback:** Render dashboard → the service → **Events → Rollback**. Migrations are
-  additive by house rule, so the previous image runs against the newer schema. A
-  destructive migration breaks that assumption, so never ship one without a written down-path.
-- **Scale:** add instances, not workers. `UVICORN_WORKERS` stays at 1 (DEPLOYMENT.md §3).
-  Watch Postgres connections: each API instance can open `DB_POOL_SIZE + DB_MAX_OVERFLOW` = 10.
-- **Logs:** each service's Logs tab shows the structlog JSON. Add a log stream in workspace
-  settings when you pick a log platform.
-- **Secrets:** rotate in the API service's Environment tab, then **Save, rebuild and deploy**.
-  `SECRET_KEY` rotation logs out every user, because every JWT is signed with it.
-- **House-rule deviation:** secrets live in Render's encrypted environment variables, not AWS
-  Secrets Manager. For staging that's acceptable. Decide it explicitly for production
-  (§9) rather than letting it carry over by default.
+- **Database expiry.** Free Postgres expires 30 days after creation, and Render deletes it after a
+  short grace period. Before then, either upgrade it in place (`plan: 0.1c-256mb` in `render.yaml`)
+  or `pg_dump` it, recreate it, and restore. There are no automated backups on free; if the data
+  matters, `pg_dump` it yourself using the external URL as in §6.
+- **Scheduled jobs aren't running.** In practice:
+  - Stale uploads stay `awaiting_upload` and count toward the five-open-jobs cap per sermon.
+  - Audit rows past 365 days are never purged.
+  - Moderation snapshots past 90 days aren't cleared.
+  
+  For a dev stack that's fine. To run them by hand, use the same laptop + external URL
+  approach: `uv run python -m app.scripts.sweep_uploads` (likewise `expire_subscriptions`,
+  `sweep_stream_jobs`, `purge_audit_log`, `purge_comment_snapshots`).
+- **Sessions reset on restart.** Free Key Value doesn't persist, so a restart or redeploy of the
+  Key Value instance signs everyone out.
+- **Deploys:** merge to `dev`. Migrations run when the new container starts. **Rollback:** the
+  service's Events → Rollback. Migrations are additive by house rule, so an older image runs
+  against a newer schema.
+- **Secrets:** change them on rhemapod-dev-api → Environment, then Save, rebuild and deploy. Because
+  `SECRET_KEY` is shared with local dev, tokens minted locally are valid against the deployed API
+  and vice versa. Give the deployment its own key if that ever matters.
 
-## 9. Promoting to production (not yet)
+## 9. Moving beyond dev (later)
 
-Production is a **separate** Blueprint (`rhemapod-prod-*`, its own database, Key Value
-and buckets), not staging renamed. With `ENVIRONMENT=production` the API refuses to boot until
-all of the following are in place:
+A real staging or production environment is a separate Blueprint, not this one with the plans bumped.
+Its starting points:
 
-- [ ] Cloudflare Stream: `CF_ACCOUNT_ID`, `CF_STREAM_API_TOKEN`, `CF_STREAM_CUSTOMER_SUBDOMAIN`,
-      `CF_STREAM_WEBHOOK_SECRET`, `CF_STREAM_SIGNING_KEY_ID`, `CF_STREAM_SIGNING_KEY_PEM`
-      (DEPLOYMENT.md §12).
-- [ ] AWS Glacier Deep Archive: `ARCHIVE_STORE_*`, with storage class `DEEP_ARCHIVE` (DEPLOYMENT.md §12).
-- [ ] Production R2 buckets. The preflight rejects names containing `-dev` or `-staging`, and
-      raw and media must be different buckets.
-- [ ] `DEBUG=false`, `REQUIRE_EMAIL_VERIFICATION=true`, https-only `ALLOWED_ORIGINS` and `FRONTEND_BASE_URL`.
-- [ ] `TRUSTED_PROXIES` verified (§6.2), and `CLIENT_IP_HEADER` set on the portal (§6.3).
-- [ ] **Backups match the privacy policy.** The policy will say 30 days
-      (plan-account-deletion §A.7). Check how far back your Render Postgres plan can
-      recover. If it's less than 30 days, add a nightly `pg_dump` to a private R2 bucket with a 30-day
-      lifecycle rule, or change the published number. Don't leave them disagreeing.
-- [ ] Apple revocation key (`.p8`) and its settings, once account deletion ships (that plan's AD2/AD5).
-- [ ] Decide whether production secrets stay in Render's environment variables or move to AWS Secrets Manager.
-- [ ] Postgres and API plans sized for real load. Larger instance types also unlock
-      zero-downtime deploys with more than one API instance.
+- **Paid plans.** That brings back the pre-deploy step (migrations run once per deploy, not
+  per instance start), Shell, cron jobs, Postgres backups and persistent Key Value.
+- **Own credentials.** Its own buckets, R2 token, Resend key and a fresh `SECRET_KEY`. Never the dev values.
+- **Production configuration.** `ENVIRONMENT=production` and `DEBUG=false`. The production check then
+  refuses to boot without Cloudflare Stream (`CF_*`) and the Glacier archive (`ARCHIVE_STORE_*`)
+  (DEPLOYMENT.md §12), and without bucket names free of `-dev`/`-staging`.
+- **Backups vs the privacy policy.** The published backup retention is 30 days; make the backup window match it.
+- **Client IPs.** `TRUSTED_PROXIES` verified, and `CLIENT_IP_HEADER` set on the portal.
+- **Apple key.** The Apple revocation key (`.p8`), once account deletion ships.
+- **Secret storage.** Decide whether secrets stay in Render's environment variables or move to AWS Secrets Manager.

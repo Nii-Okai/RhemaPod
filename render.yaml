@@ -1,44 +1,42 @@
-# Render Blueprint — RhemaPod STAGING (DEPLOYMENT-RENDER.md is the runbook).
+# Render Blueprint — RhemaPod DEV deployment on free plans (DEPLOYMENT-RENDER.md).
 #
-# Secrets never live here. Values marked `sync: false` are prompted for in the
-# Render dashboard on first Blueprint sync; see .env.render.example for the list.
+# Mirrors the local dev stack's configuration. Secrets never live here: values
+# marked `sync: false` are entered in the Render dashboard (paste them from your
+# gitignored .env.render via "Add from .env"; see .env.render.example).
 # `region` is immutable after creation — change it before the first sync.
+#
+# Free-plan constraints this file works around:
+#   - no preDeployCommand → migrations run in the API's start command
+#   - no cron jobs on free → scheduled sweeps are not deployed (guide §8)
+#   - free Postgres expires 30 days after creation (guide §8)
 
 envVarGroups:
-  # Non-secret config shared by the API and every cron job. Env groups can't
-  # hold `sync: false` values or reference the database, so secrets and
-  # connection strings are attached per service below.
-  - name: rhemapod-staging
+  # Non-secret dev config, same values as docker-compose.yml / .override.yml
+  # except the URLs, which must point at the deployed hosts.
+  - name: rhemapod-dev
     envVars:
       - key: ENVIRONMENT
-        value: staging
+        value: development
       - key: DEBUG
-        value: "false"
+        value: "true"            # exposes /docs, /redoc, /openapi.json — dev only
       - key: LOG_LEVEL
         value: INFO
-      - key: SECRET_KEY
-        generateValue: true
       - key: FRONTEND_BASE_URL
         value: https://admin.rhemapod.com
       - key: ALLOWED_ORIGINS
         value: '["https://admin.rhemapod.com"]'
       # Render's proxies reach the container from its private 10.0.0.0/8
-      # network. Verify with the audit-log check in DEPLOYMENT-RENDER.md §6
-      # before trusting per-IP rate limits.
+      # network. Verify with the audit-log check in DEPLOYMENT-RENDER.md §6.
       - key: TRUSTED_PROXIES
         value: '["10.0.0.0/8"]'
-      - key: REQUIRE_EMAIL_VERIFICATION
-        value: "true"
-      - key: OAUTH_GOOGLE_ENABLED
-        value: "true"
       - key: GOOGLE_OAUTH_CLIENT_IDS
         value: 827558560538-it16fls8iu36e9c3fcp13beaf9u54ooe.apps.googleusercontent.com,827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com,827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com
       - key: OAUTH_APPLE_ENABLED
         value: "true"
       - key: OBJECT_STORE_RAW_BUCKET
-        value: sermon-raw-staging
+        value: sermon-raw-dev
       - key: OBJECT_STORE_MEDIA_BUCKET
-        value: sermon-media-staging
+        value: sermon-media-dev
       - key: SMTP_HOST
         value: smtp.resend.com
       - key: SMTP_PORT
@@ -55,49 +53,51 @@ envVarGroups:
         value: "5"
 
 databases:
-  - name: rhemapod-staging-db
+  - name: rhemapod-dev-db
     databaseName: rhemapod
-    plan: 0.1c-256mb
+    plan: free
     postgresMajorVersion: "17"
     region: frankfurt
-    ipAllowList: []          # private network only
+    ipAllowList: []          # private network only; open your IP temporarily for seeding (guide §6)
 
 services:
   - type: keyvalue
-    name: rhemapod-staging-kv
-    plan: 256mb              # free has no persistence: every restart would log everyone out
+    name: rhemapod-dev-kv
+    plan: free               # no persistence: a restart signs every user out
     region: frankfurt
     maxmemoryPolicy: noeviction   # refresh sessions live here; never evict them
-    persistenceMode: journal-snapshot
     ipAllowList: []          # private network only
 
   - type: web
-    name: rhemapod-api-staging
+    name: rhemapod-dev-api
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     branch: dev
     autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Migrations + preflight run once per deploy, before any instance starts.
-    preDeployCommand: alembic upgrade head && python -m app.scripts.preflight
+    # Free plans have no pre-deploy step, so migrate + preflight on every start.
+    # Safe here only because free means exactly one instance.
+    dockerCommand: sh -c "alembic upgrade head && python -m app.scripts.preflight && exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
     healthCheckPath: /health/live
     domains:
       - api.rhemapod.com
     envVars:
-      - fromGroup: rhemapod-staging
+      - fromGroup: rhemapod-dev
       - key: PORT
         value: "8000"
       - key: DATABASE_URL
         fromDatabase:
-          name: rhemapod-staging-db
+          name: rhemapod-dev-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: rhemapod-staging-kv
+          name: rhemapod-dev-kv
           property: connectionString
+      - key: SECRET_KEY
+        sync: false
       - key: OBJECT_STORE_ENDPOINT_URL
         sync: false
       - key: OBJECT_STORE_ACCESS_KEY_ID
@@ -108,9 +108,9 @@ services:
         sync: false
 
   - type: web
-    name: rhemapod-admin-staging
+    name: rhemapod-dev-admin
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     branch: dev
     autoDeployTrigger: commit
@@ -122,58 +122,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "24"
-      # Server-to-server over Render's private network; the browser never
-      # calls the API directly. Confirm the internal address in the API
-      # service's Connect panel (DEPLOYMENT-RENDER.md §4).
+      # Server-to-server over Render's private network. Confirm the internal
+      # address in the API service's Connect panel (DEPLOYMENT-RENDER.md §4).
       - key: API_BASE_URL
-        value: http://rhemapod-api-staging:8000
+        value: http://rhemapod-dev-api:8000
       - key: PORTAL_ORIGIN
         value: https://admin.rhemapod.com
-
-  # Scheduled jobs (DEPLOYMENT.md §5). They need only the shared config plus
-  # the database; Stream is a stub on staging, so sweep_stream_jobs is a no-op.
-  - type: cron
-    name: rhemapod-staging-hourly
-    runtime: docker
-    plan: 0.5c-512mb
-    region: frankfurt
-    branch: dev
-    schedule: "7 * * * *"
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    # Every job runs even if an earlier one fails; the run still exits non-zero
-    # so Render flags it.
-    dockerCommand: sh -c "rc=0; for j in expire_subscriptions sweep_uploads sweep_stream_jobs; do python -m app.scripts.$j || rc=1; done; exit $rc"
-    envVars:
-      - fromGroup: rhemapod-staging
-      - key: DATABASE_URL
-        fromDatabase:
-          name: rhemapod-staging-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: rhemapod-staging-kv
-          property: connectionString
-
-  - type: cron
-    name: rhemapod-staging-daily
-    runtime: docker
-    plan: 0.5c-512mb
-    region: frankfurt
-    branch: dev
-    schedule: "23 3 * * *"
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    dockerCommand: sh -c "rc=0; for j in purge_audit_log purge_comment_snapshots; do python -m app.scripts.$j || rc=1; done; exit $rc"
-    envVars:
-      - fromGroup: rhemapod-staging
-      - key: DATABASE_URL
-        fromDatabase:
-          name: rhemapod-staging-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: rhemapod-staging-kv
-          property: connectionString
