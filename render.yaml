@@ -1,0 +1,131 @@
+# Render Blueprint — RhemaPod DEV deployment on free plans (DEPLOYMENT-RENDER.md).
+#
+# Mirrors the local dev stack's configuration. Secrets never live here: values
+# marked `sync: false` are entered in the Render dashboard (paste them from your
+# gitignored .env.render via "Add from .env"; see .env.render.example).
+# `region` is immutable after creation — change it before the first sync.
+#
+# Free-plan constraints this file works around:
+#   - no preDeployCommand → migrations run in the API's start command
+#   - no cron jobs on free → scheduled sweeps are not deployed (guide §8)
+#   - free Postgres expires 30 days after creation (guide §8)
+
+envVarGroups:
+  # Non-secret dev config, same values as docker-compose.yml / .override.yml
+  # except the URLs, which must point at the deployed hosts.
+  - name: rhemapod-dev
+    envVars:
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "true"            # exposes /docs, /redoc, /openapi.json — dev only
+      - key: LOG_LEVEL
+        value: INFO
+      - key: FRONTEND_BASE_URL
+        value: https://admin.rhemapod.com
+      - key: ALLOWED_ORIGINS
+        value: '["https://admin.rhemapod.com"]'
+      # Render's proxies reach the container from its private 10.0.0.0/8
+      # network. Verify with the audit-log check in DEPLOYMENT-RENDER.md §6.
+      - key: TRUSTED_PROXIES
+        value: '["10.0.0.0/8"]'
+      - key: GOOGLE_OAUTH_CLIENT_IDS
+        value: 827558560538-it16fls8iu36e9c3fcp13beaf9u54ooe.apps.googleusercontent.com,827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com,827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com
+      - key: OAUTH_APPLE_ENABLED
+        value: "true"
+      - key: OBJECT_STORE_RAW_BUCKET
+        value: sermon-raw-dev
+      - key: OBJECT_STORE_MEDIA_BUCKET
+        value: sermon-media-dev
+      - key: SMTP_HOST
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        value: resend
+      - key: SMTP_FROM_EMAIL
+        value: RhemaPod <no-reply@rhemapod.com>
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+
+databases:
+  - name: rhemapod-dev-db
+    databaseName: rhemapod
+    plan: free
+    postgresMajorVersion: "17"
+    region: frankfurt
+    ipAllowList: []          # private network only; open your IP temporarily for seeding (guide §6)
+
+services:
+  - type: keyvalue
+    name: rhemapod-dev-kv
+    plan: free               # no persistence: a restart signs every user out
+    region: frankfurt
+    maxmemoryPolicy: noeviction   # refresh sessions live here; never evict them
+    ipAllowList: []          # private network only
+
+  - type: web
+    name: rhemapod-dev-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: dev
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Free plans have no pre-deploy step, so the script migrates + runs the
+    # preflight on every start. A script, not an inline `sh -c "..."`: Render
+    # passes the quoted string through as one literal word.
+    dockerCommand: sh scripts/render-start.sh
+    healthCheckPath: /health/live
+    domains:
+      - api.rhemapod.com
+    envVars:
+      - fromGroup: rhemapod-dev
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rhemapod-dev-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: rhemapod-dev-kv
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: OBJECT_STORE_ENDPOINT_URL
+        sync: false
+      - key: OBJECT_STORE_ACCESS_KEY_ID
+        sync: false
+      - key: OBJECT_STORE_SECRET_ACCESS_KEY
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+  - type: web
+    name: rhemapod-dev-admin
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: dev
+    autoDeployTrigger: commit
+    rootDir: admin_portal
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    domains:
+      - admin.rhemapod.com
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # Server-to-server over Render's private network. Confirm the internal
+      # address in the API service's Connect panel (DEPLOYMENT-RENDER.md §4).
+      - key: API_BASE_URL
+        value: http://rhemapod-dev-api:8000
+      - key: PORTAL_ORIGIN
+        value: https://admin.rhemapod.com

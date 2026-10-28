@@ -400,3 +400,19 @@ def test_archive_source_retention_days_rejects_zero():
 def test_archive_source_retention_days_default_is_14():
     s = _dev_settings()
     assert s.archive_source_retention_days == 14
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["postgres://u:p@db:5432/app", "postgresql://u:p@db:5432/app"],
+)
+def test_bare_postgres_url_gets_psycopg_driver(raw):
+    s = _dev_settings(database_url=raw, database_replica_url=raw)
+    assert s.database_url == "postgresql+psycopg://u:p@db:5432/app"
+    assert s.database_replica_url == "postgresql+psycopg://u:p@db:5432/app"
+
+
+def test_explicit_driver_url_is_left_alone():
+    s = _dev_settings(database_url="postgresql+psycopg://u:p@db/app")
+    assert s.database_url == "postgresql+psycopg://u:p@db/app"
+    assert _dev_settings().database_replica_url is None

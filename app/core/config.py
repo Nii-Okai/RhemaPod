@@ -312,6 +312,21 @@ class Settings(BaseSettings):
     oauth_apple_enabled: bool = False
     oauth_jwks_default_ttl_seconds: int = 3600
 
+    @field_validator("database_url", "database_replica_url")
+    @classmethod
+    def _force_psycopg_driver(cls, v: str | None) -> str | None:
+        """Managed Postgres hosts (Render, Heroku-style) hand out
+        `postgres://` / `postgresql://` URLs with no driver. SQLAlchemy would
+        then pick psycopg2 — not installed, and sync — so name the async-capable
+        psycopg 3 driver explicitly. A URL that already names a driver is left
+        alone."""
+        if v is None:
+            return v
+        for bare in ("postgres://", "postgresql://"):
+            if v.startswith(bare):
+                return "postgresql+psycopg://" + v[len(bare):]
+        return v
+
     @field_validator("google_oauth_client_ids", "apple_oauth_audiences", mode="before")
     @classmethod
     def _parse_comma_separated(cls, v: object) -> list[str]:
