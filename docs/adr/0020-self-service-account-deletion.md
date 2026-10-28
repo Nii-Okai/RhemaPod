@@ -1,6 +1,6 @@
 # ADR 0020: Self-service account deletion and Apple token revocation
 
-- Status: Proposed (flips to Accepted at `[HUMAN_GATE AD1]`)
+- Status: Accepted (2026-10-28, Isaac at `[HUMAN_GATE AD1]`)
 - Date: 2026-10-28
 - Deciders: Isaac (+ planner, architect, skeptic, security-reviewer, qa-strategist, scribe)
 - Plans: `plans/plan-account-deletion-backend.md` (§A.1-A.5, §A.7), `plans/plan-account-deletion-clients.md`
