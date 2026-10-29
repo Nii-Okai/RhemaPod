@@ -231,3 +231,43 @@ class StubAppleRevocationClient:
         outcome = self._outcomes.pop(0) if self._outcomes else None
         if outcome is not None:
             raise AppleRevocationError(outcome)
+
+
+_client: AppleRevocationClient | None = None
+
+
+def get_apple_revocation_client() -> AppleRevocationClient:
+    """Return the active revocation client (singleton), resolved at startup.
+
+    Mirrors `get_storage()`: `http` builds the real client from settings,
+    otherwise the recording stub so dev/test need no Apple account. Also the
+    FastAPI dependency, so tests override it via `app.dependency_overrides`.
+    """
+    global _client
+    if _client is None:
+        from app.core.config import get_settings
+
+        s = get_settings()
+        if s.apple_revocation_backend == "http":
+            if not (s.apple_key_id and s.apple_private_key and s.apple_client_id):
+                raise AppleRevocationError("misconfigured")
+            _client = HttpAppleRevocationClient(
+                team_id=s.apple_team_id,
+                key_id=s.apple_key_id,
+                private_key=s.apple_private_key.get_secret_value(),
+                client_id=s.apple_client_id,
+            )
+            log.info("apple_revocation_backend", backend="http", live=True)
+        elif s.is_production and s.oauth_apple_enabled:
+            # Belt-and-braces: production_preflight already blocks this.
+            raise AppleRevocationError("misconfigured")
+        else:
+            _client = StubAppleRevocationClient()
+            log.warning("apple_revocation_backend", backend="stub", live=False)
+    return _client
+
+
+def set_apple_revocation_client(client: AppleRevocationClient | None) -> None:
+    """Override the client (used by tests)."""
+    global _client
+    _client = client

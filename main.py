@@ -37,6 +37,7 @@ from app.core.middleware import (
     GlobalRateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
+from app.core.apple_revocation import get_apple_revocation_client
 from app.core.redis import check_redis
 from app.core.storage import get_storage
 from app.core.token_store import TokenStoreUnavailable
@@ -56,12 +57,14 @@ async def lifespan(app: FastAPI):
     # Resolve external backends at startup rather than on the first request, so
     # a misconfiguration is a failed deploy instead of a 500 for a real user.
     storage_backend = type(get_storage()).__name__
+    apple_revocation_backend = type(get_apple_revocation_client()).__name__
 
     logger.info(
         "startup",
         app=settings.app_name,
         environment=settings.environment,
         storage=storage_backend,
+        apple_revocation=apple_revocation_backend,
         email="smtp" if settings.email_is_live else "console",
     )
     yield

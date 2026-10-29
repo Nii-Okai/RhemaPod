@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 from collections.abc import Callable
 
 import httpx
@@ -9,6 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from pydantic import SecretStr
 from structlog.testing import capture_logs
 
 from app.core.apple_revocation import (
@@ -312,3 +315,198 @@ async def test_stub_on_call_runs_before_outcome() -> None:
         await stub.revoke_authorization("x")
     assert exc.value.reason == "misconfigured"
     assert seen == ["x"]
+
+
+# ── D5: settings, startup resolution, log redaction ───────────────────────────
+
+
+def _p256_pem() -> str:
+    return (
+        ec.generate_private_key(ec.SECP256R1())
+        .private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        .decode()
+    )
+
+
+def _fresh_settings(**kw):
+    from app.core.config import Settings
+
+    return Settings(**kw)
+
+
+def test_settings_defaults() -> None:
+    s = _fresh_settings()
+    assert s.apple_revocation_backend == "stub"
+    assert s.apple_team_id == "FAND2W5VMM"
+    assert s.apple_key_id is None
+    assert s.apple_private_key is None
+    assert s.account_deletion_reauth_max_age_seconds == 300
+    assert s.account_delete_rate_limit == 5
+    assert s.account_delete_rate_window_seconds == 3600
+    assert s.apple_client_id == s.apple_oauth_audiences[0]
+
+
+def test_client_id_explicit_wins_over_audience_default() -> None:
+    s = _fresh_settings(apple_client_id="com.example.other")
+    assert s.apple_client_id == "com.example.other"
+
+
+def test_unknown_backend_rejected() -> None:
+    with pytest.raises(ValueError, match="apple_revocation_backend"):
+        _fresh_settings(apple_revocation_backend="mock")
+
+
+def test_private_key_is_secret_and_hidden_in_repr() -> None:
+    pem = _p256_pem()
+    s = _fresh_settings(apple_private_key=pem)
+    assert "BEGIN PRIVATE KEY" not in repr(s)
+    assert "BEGIN PRIVATE KEY" not in str(s.apple_private_key)
+    assert s.apple_private_key.get_secret_value().startswith("-----BEGIN PRIVATE KEY-----\n")
+
+
+def test_private_key_accepts_real_multiline_pem() -> None:
+    from app.core.config import assert_ec_p256_pem
+
+    pem = _p256_pem()
+    s = _fresh_settings(apple_private_key=pem)
+    got = s.apple_private_key.get_secret_value()
+    assert got == pem.strip()
+    assert_ec_p256_pem(got)
+
+
+def test_private_key_accepts_single_line_with_literal_backslash_n() -> None:
+    from app.core.config import assert_ec_p256_pem
+
+    pem = _p256_pem()
+    escaped = pem.strip().replace("\n", "\\n")
+    assert "\n" not in escaped and "\\n" in escaped  # truly one line
+    s = _fresh_settings(apple_private_key=escaped)
+    got = s.apple_private_key.get_secret_value()
+    assert got == pem.strip()
+    assert_ec_p256_pem(got)
+
+
+def test_private_key_single_line_works_from_env(monkeypatch) -> None:
+    """The DEPLOYMENT.md §13 form: one double-quoted line, literal \\n."""
+    pem = _p256_pem()
+    monkeypatch.setenv("APPLE_PRIVATE_KEY", pem.strip().replace("\n", "\\n"))
+    assert _fresh_settings().apple_private_key.get_secret_value() == pem.strip()
+
+
+def test_blank_private_key_is_unset(monkeypatch) -> None:
+    monkeypatch.setenv("APPLE_PRIVATE_KEY", "")
+    assert _fresh_settings().apple_private_key is None
+
+
+@pytest.fixture
+def reset_client():
+    from app.core import apple_revocation as mod
+
+    mod.set_apple_revocation_client(None)
+    yield mod
+    mod.set_apple_revocation_client(None)
+
+
+def test_dev_boot_resolves_stub_with_live_false_warning(reset_client) -> None:
+    with capture_logs() as logs:
+        client = reset_client.get_apple_revocation_client()
+    assert isinstance(client, StubAppleRevocationClient)
+    assert any(
+        e["event"] == "apple_revocation_backend"
+        and e["log_level"] == "warning"
+        and e["live"] is False
+        for e in logs
+    )
+    assert reset_client.get_apple_revocation_client() is client  # singleton
+
+
+def test_http_backend_resolves_http_client(reset_client, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    s = get_settings()
+    monkeypatch.setattr(s, "apple_revocation_backend", "http")
+    monkeypatch.setattr(s, "apple_key_id", "ABC123DEFG")
+    monkeypatch.setattr(s, "apple_private_key", SecretStr(_p256_pem()))
+    assert isinstance(reset_client.get_apple_revocation_client(), HttpAppleRevocationClient)
+
+
+def test_http_backend_without_key_is_misconfigured(reset_client, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    s = get_settings()
+    monkeypatch.setattr(s, "apple_revocation_backend", "http")
+    monkeypatch.setattr(s, "apple_key_id", None)
+    with pytest.raises(AppleRevocationError) as exc:
+        reset_client.get_apple_revocation_client()
+    assert exc.value.reason == "misconfigured"
+
+
+SENSITIVE = [
+    "client_secret",
+    "authorization_code",
+    "identity_token",
+    "id_token",
+    "refresh_token",
+    "access_token",
+    "apple_private_key",
+    "password",
+]
+
+
+def _render(**event) -> str:
+    """Run the redaction processor then JSON-render, like configure_logging."""
+    from app.core.logging import redact_sensitive_keys
+
+    out = redact_sensitive_keys(None, "info", {"event": "x", **event})
+    return json.dumps(out)
+
+
+@pytest.mark.parametrize("key", SENSITIVE)
+@pytest.mark.parametrize(
+    "shape",
+    ["top", "nested_dict", "list_of_dicts", "case_variant"],
+)
+def test_redaction_processor(key: str, shape: str) -> None:
+    secret = "s3cr3t-value-123"
+    if shape == "top":
+        rendered = _render(**{key: secret})
+    elif shape == "nested_dict":
+        rendered = _render(outer={"inner": {key: secret}})
+    elif shape == "list_of_dicts":
+        rendered = _render(items=[{"ok": 1}, {key: secret}])
+    else:
+        rendered = _render(**{key.upper(): secret, "Nested": {key.title(): secret}})
+    assert secret not in rendered
+    assert "[REDACTED]" in rendered
+
+
+def test_redaction_leaves_other_keys_untouched() -> None:
+    out = json.loads(_render(user_id="u1", detail={"status": 400, "client_id": "c"}))
+    assert out["user_id"] == "u1"
+    assert out["detail"] == {"status": 400, "client_id": "c"}
+    assert "[REDACTED]" not in json.dumps(out)
+
+
+def test_configure_logging_installs_redaction_end_to_end() -> None:
+    import structlog
+
+    from app.core.logging import configure_logging
+
+    saved = structlog.get_config()
+    buf = io.StringIO()
+    try:
+        configure_logging(log_level="INFO", json_logs=True)
+        structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=buf))
+        structlog.get_logger("redaction-e2e").info(
+            "e2e", authorization_code="CODE-xyz", nested={"refresh_token": "RT-abc"}
+        )
+    finally:
+        structlog.configure(**saved)
+    line = json.loads(buf.getvalue().strip())
+    assert line["authorization_code"] == "[REDACTED]"
+    assert line["nested"]["refresh_token"] == "[REDACTED]"
+    assert "CODE-xyz" not in buf.getvalue() and "RT-abc" not in buf.getvalue()
