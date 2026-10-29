@@ -416,3 +416,11 @@ def test_explicit_driver_url_is_left_alone():
     s = _dev_settings(database_url="postgresql+psycopg://u:p@db/app")
     assert s.database_url == "postgresql+psycopg://u:p@db/app"
     assert _dev_settings().database_replica_url is None
+
+
+def test_redis_timeouts_default_to_two_seconds_and_are_overridable():
+    assert _dev_settings().redis_connect_timeout_seconds == 2.0
+    s = _dev_settings(redis_connect_timeout_seconds=10, redis_socket_timeout_seconds=10)
+    assert (s.redis_connect_timeout_seconds, s.redis_socket_timeout_seconds) == (10.0, 10.0)
+    with pytest.raises(ValueError):
+        _dev_settings(redis_connect_timeout_seconds=0)

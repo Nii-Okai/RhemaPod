@@ -39,7 +39,10 @@ Every push to `dev` redeploys both web services.
 - **Redis on free plans.** The free API couldn't reach the free Key Value instance over the
   private network: preflight reported `redis TimeoutError` with the correct internal URL, both
   resources Available in Frankfurt. So the Key Value instance allows `0.0.0.0/0`, and the API's
-  `REDIS_URL` is the **external** `rediss://` (TLS) URL, which you paste in yourself (§3). Redis is
+  `REDIS_URL` is the **external** `rediss://` (TLS) URL, which you paste in yourself (§3). Free Key Value
+  also takes about 2s to accept a connection, so the env group raises
+  `REDIS_CONNECT_TIMEOUT_SECONDS` / `REDIS_SOCKET_TIMEOUT_SECONDS` to 10. The app's 2s
+  default otherwise times out. Redis is
   then reachable from the internet, guarded only by its password. Acceptable for dev. On a paid
   plan, go back to `ipAllowList: []` and the internal URL.
 - **Monthly hour cap.** Free instance hours are capped per workspace each month. Two
