@@ -14,7 +14,7 @@ plans. Production is a separate exercise (§9).
 | Resource | Render type | Plan | Notes |
 |---|---|---|---|
 | `rhemapod-dev-db` | Postgres 17 | `free` | 1 GB, no backups, **expires 30 days after creation** (§8). One free database per workspace. |
-| `rhemapod-dev-kv` | Key Value | `free` | `noeviction`. No persistence, so a restart signs every user out. |
+| `rhemapod-dev-kv` | Key Value | `free` | `noeviction`. No persistence, so a restart signs every user out. **Open to external connections** (see "Redis on free plans" below). |
 | `rhemapod-dev-api` | Web (Docker) | `free` | FastAPI on `api.rhemapod.com`. Runs migrations and preflight on every start. |
 | `rhemapod-dev-admin` | Web (Node 24) | `free` | Next.js admin portal (`admin_portal/`) on `admin.rhemapod.com`. |
 
@@ -36,6 +36,12 @@ Every push to `dev` redeploys both web services.
   (§8).
 - **No Shell tab.** One-off scripts run from your laptop against the database's
   external URL (§6).
+- **Redis on free plans.** The free API couldn't reach the free Key Value instance over the
+  private network: preflight reported `redis TimeoutError` with the correct internal URL, both
+  resources Available in Frankfurt. So the Key Value instance allows `0.0.0.0/0`, and the API's
+  `REDIS_URL` is the **external** `rediss://` (TLS) URL, which you paste in yourself (§3). Redis is
+  then reachable from the internet, guarded only by its password. Acceptable for dev. On a paid
+  plan, go back to `ipAllowList: []` and the internal URL.
 - **Monthly hour cap.** Free instance hours are capped per workspace each month. Two
   web services that sleep when idle stay well under it.
 
@@ -66,8 +72,9 @@ Render deploys `dev`. This guide, `render.yaml`, `.env.render.example` and the
 ## 3. Create the services
 
 1. Render dashboard → **New → Blueprint** → connect `Nii-Okai/RhemaPod` → branch `dev`.
-2. Render lists the four resources from §0 and asks for the five `sync: false` secrets on
-   `rhemapod-dev-api`. Copy them from `.env.render`. Alternatively, apply first, then use
+2. Render lists the four resources from §0 and asks for the `sync: false` secrets on
+   `rhemapod-dev-api`: the five in `.env.render`, plus `REDIS_URL`, which is the **External** URL from
+   rhemapod-dev-kv → Connect. Copy them from `.env.render`. Alternatively, apply first, then use
    **rhemapod-dev-api → Environment → Add from .env** and paste the file's contents.
 3. **Apply.** Render creates the database and Key Value, builds the API image, and starts
    the container. The container then runs `alembic upgrade head`, then the preflight
