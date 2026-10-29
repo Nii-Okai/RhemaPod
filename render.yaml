@@ -47,6 +47,11 @@ envVarGroups:
         value: RhemaPod <no-reply@rhemapod.com>
       - key: SMTP_USE_TLS
         value: "true"
+      # Free Key Value takes ~2s just to connect (measured), past the 2s default.
+      - key: REDIS_CONNECT_TIMEOUT_SECONDS
+        value: "10"
+      - key: REDIS_SOCKET_TIMEOUT_SECONDS
+        value: "10"
       - key: DB_POOL_SIZE
         value: "5"
       - key: DB_MAX_OVERFLOW

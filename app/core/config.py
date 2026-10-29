@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
 
     redis_url: str = "redis://localhost:6379/0"
+    # Seconds. 2s fails fast in local dev and same-VPC production; a managed
+    # free tier (Render Key Value) can take longer than that just to connect.
+    redis_connect_timeout_seconds: float = Field(default=2.0, gt=0)
+    redis_socket_timeout_seconds: float = Field(default=2.0, gt=0)
 
     allowed_origins: list[str] = ["http://localhost:3000"]
 
