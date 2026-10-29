@@ -19,5 +19,6 @@ separately in the append-only `status.md` at the repo root — not in the plan.
 | `plan-media-cache.md` | Mobile media cache Phase 1 — silent LRU disk cache for streamed non-HLS audio, `/stream` re-validated, sign-out wiped (gates G0–G3) | shipped — merged to `dev` 2026-10-15 (`2e01215`), `[HUMAN_GATE G3]` crossed |
 | `plan-stripe-removal.md` | Remove Stripe entirely (endpoints, service, DTOs, payment seam, config, dependency, admin portal link); no IAP replacement yet (gates SR0–SR4) | shipped — all gates (SR0–SR4) crossed, S0–S9 done, merged into `dev` (`f7b5b55`). ADR 0016 written |
 | `plan-admin-settings.md` | Admin portal Settings: church profile + public settings contract, unified audit trail (incl. logins), usage reports + CSV export (gates AS0–AS7) | shipped — all gates (AS0–AS7) crossed, S0–S19 done, merged into `dev`. Independently re-verified before merge: backend 1793/1 skipped, admin portal 822/822, mobile 1010/1010. ADRs 0017–0019 written |
+| `plan-account-deletion-backend.md` + `plan-account-deletion-clients.md` | Self-service account deletion with Apple token revocation: backend erasure, mobile flow, public web deletion page (gates AD0–AD5) | in progress — merged into `dev` early on Isaac's instruction; D15/D16/AD5 remain. ADR 0020 |
 
 New plans go here.
