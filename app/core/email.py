@@ -26,10 +26,14 @@ _PAPER = "#f6f1ec"
 _CARD = "#ffffff"
 
 
-async def _send_console(to: str, subject: str, text: str) -> None:
+async def _send_console(to: str, subject: str, text: str, *, log_recipient: bool = True) -> None:
     """Development backend: log the message instead of delivering it. Only the
-    plain-text part — it carries the same link/code as the HTML part."""
-    log.info("email_send_console", to=to, subject=subject, body=text)
+    plain-text part — it carries the same link/code as the HTML part. With
+    `log_recipient=False` neither the address nor the body is logged."""
+    if log_recipient:
+        log.info("email_send_console", to=to, subject=subject, body=text)
+    else:
+        log.info("email_send_console", subject=subject)
 
 
 def _send_smtp_blocking(to: str, subject: str, text: str, html: str) -> None:
@@ -57,7 +61,9 @@ def _send_smtp_blocking(to: str, subject: str, text: str, html: str) -> None:
         server.quit()
 
 
-async def _send(to: str, subject: str, text: str, html: str) -> None:
+async def _send(
+    to: str, subject: str, text: str, html: str, *, log_recipient: bool = True
+) -> None:
     """Deliver an email.
 
     Uses SMTP when configured, otherwise logs (development only — the
@@ -66,15 +72,21 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
     smtplib is blocking, so it runs in a worker thread to avoid stalling the
     event loop. Exceptions propagate: callers such as staff invite creation
     depend on a failed send rolling the whole transaction back.
+
+    `log_recipient=False` keeps the address (and, on the console backend, the
+    body) out of the logs, for mail sent about an account that no longer exists.
     """
     if not settings.email_is_live:
-        await _send_console(to, subject, text)
+        await _send_console(to, subject, text, log_recipient=log_recipient)
         return
 
     import asyncio
 
     await asyncio.to_thread(_send_smtp_blocking, to, subject, text, html)
-    log.info("email_sent", to=to, subject=subject)
+    if log_recipient:
+        log.info("email_sent", to=to, subject=subject)
+    else:
+        log.info("email_sent", subject=subject)
 
 
 def _render_html(
@@ -285,4 +297,4 @@ async def send_account_deleted(to: str) -> None:
     html = _render_html(
         heading="Your account was deleted", paragraphs=paragraphs, footnote=footnote
     )
-    await _send(to, f"Your {app} account was deleted", text, html)
+    await _send(to, f"Your {app} account was deleted", text, html, log_recipient=False)

@@ -26,6 +26,7 @@ vs "what sustained rate" — the shape the mobile congestion problem this
 limiter exists for actually has (a congregation coming off silence, then
 settling into steady use).
 """
+import hashlib
 import time
 
 from app.core.config import get_settings
@@ -34,6 +35,15 @@ from app.core.redis import get_redis
 
 settings = get_settings()
 log = get_logger("rate_limit")
+
+
+def login_rate_limit_key(ip: str, email: str) -> str:
+    """The per-(ip, email) login bucket, shared by `/auth/login` and the
+    password branch of account deletion. The email is hashed (16 hex of
+    sha256 of the lowercased address) so Redis keys and anything that logs a
+    key never carry the address itself."""
+    digest = hashlib.sha256(email.lower().encode("utf-8")).hexdigest()[:16]
+    return f"login:{ip}:{digest}"
 
 
 class RateLimitUnavailable(Exception):

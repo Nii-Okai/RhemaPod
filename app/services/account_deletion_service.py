@@ -7,9 +7,10 @@ Split with the router (`POST /auth/me/delete`) in the order the plan pins:
 2. `prepare_account_deletion`: load the account and its linked providers and
    settle the Apple-fork preconditions (409s), *before* any proof is checked;
 3. router: verify the proof (it owns `_claim_oauth_token_once`);
-4. `delete_own_account`: lock the row, RESTRICT precheck, snapshot providers,
-   Apple revocation (before any data is touched), then the shared
-   `auth_service._erase_user` transaction, then the best-effort notice email.
+4. `delete_own_account`: unlocked RESTRICT precheck, Apple revocation (before
+   any data is touched, no lock held), then lock the row, re-check, snapshot
+   providers and run the shared `auth_service.erase_user` transaction. The
+   best-effort notice email is sent by the router after the response.
 
 Typed `ContentError`s carry the §A.2 status; the router maps them to HTTP.
 """
@@ -97,9 +98,9 @@ async def prepare_account_deletion(
     return DeletionTarget(user=user, subjects=subjects, skip_apple=skip_apple)
 
 
-def _restrict_conflict(parts: str | None = None) -> ContentError:
+def _restrict_conflict() -> ContentError:
     return ContentError(
-        _HISTORY_MESSAGE.format(parts=parts or "authored content"), status_code=409
+        _HISTORY_MESSAGE.format(parts="authored content"), status_code=409
     )
 
 
@@ -110,14 +111,45 @@ async def delete_own_account(
     *,
     apple_client: AppleRevocationClient,
     authorization_code: str | None,
-) -> None:
+) -> str:
     """Runs after the proof is verified. `authorization_code` is the fresh
-    Apple code (apple method only)."""
+    Apple code (apple method only). Returns the erased account's email, for the
+    notice (`send_deleted_notice`) the router sends after the response.
+
+    No row lock or open transaction spans the Apple network call (up to ~15s):
+    precheck unlocked, revoke, then lock + re-check + erase. A second concurrent
+    request carrying a different valid proof can therefore reach Apple too;
+    revocation is idempotent at Apple, so that is harmless. Concurrent deletes
+    still erase exactly once: the loser blocks on the row lock, finds no row
+    and gets a 401.
+    """
     user_id = target.user.id
 
-    # Serialise concurrent deletes of one account: the loser blocks here until
-    # the winner commits, then finds no row and gets a 401 instead of writing a
-    # second USER_DELETED row. Held across the Apple call on purpose.
+    # (a) RESTRICT history, unlocked. Must come before Apple: never revoke at
+    # Apple and then answer 409.
+    await auth_service.ensure_no_authored_history(db, user_id, _HISTORY_MESSAGE)
+
+    # (b) Apple, with nothing held. Ending the read transaction returns the
+    # pooled connection for the duration of the call.
+    await db.rollback()
+    apple_linked = AuthProvider.APPLE in target.subjects
+    details: dict = {}
+    if not apple_linked:
+        details["apple_revoked"] = None
+    elif authorization_code is not None:
+        await _revoke_apple(
+            apple_client, authorization_code, target.subjects[AuthProvider.APPLE]
+        )
+        details["apple_revoked"] = True
+    elif target.skip_apple:
+        details["apple_revoked"] = False
+        details["apple_skip_reason"] = "apple_unavailable"
+    else:
+        raise ContentError(APPLE_REAUTH_REQUIRED, status_code=409)
+
+    # (c) Serialise concurrent deletes of one account: the loser blocks here
+    # until the winner commits, then finds no row and gets a 401 instead of
+    # writing a second USER_DELETED row. Short: no network call under the lock.
     user = (await db.execute(
         select(User)
         .where(User.id == user_id)
@@ -127,34 +159,23 @@ async def delete_own_account(
     if user is None:
         raise ContentError("Could not validate credentials", status_code=401)
     ensure_viewer(user.role)
+    await auth_service.ensure_no_authored_history(db, user_id, _HISTORY_MESSAGE)
 
-    history = await auth_service._authored_history(db, user_id)
-    if history:
-        parts = ", ".join(
-            f"{auth_service._HISTORY_LABELS.get(name, name)} ({n})"
-            for name, n in sorted(history.items())
-        )
-        raise _restrict_conflict(parts)
-
-    # Snapshot taken after the lock, so the audit row reflects what was erased.
+    # Snapshot taken under the lock, so the audit row reflects what was erased.
     subjects = await _identity_subjects(db, user_id)
-    email = user.email
-    details: dict = {"self_service": True, "providers": sorted(p.value for p in subjects)}
-
-    if AuthProvider.APPLE not in subjects:
-        details["apple_revoked"] = None
-    elif authorization_code is not None:
-        await _revoke_apple(apple_client, authorization_code)
-        details["apple_revoked"] = True
-    elif target.skip_apple:
-        details["apple_revoked"] = False
-        details["apple_skip_reason"] = "apple_unavailable"
-    else:
-        # Apple appeared between prepare and the lock with no code to revoke.
+    if AuthProvider.APPLE in subjects and not apple_linked:
+        # Apple appeared after prepare with nothing revoked for it.
         raise ContentError(APPLE_REAUTH_REQUIRED, status_code=409)
+    email = user.email
+    details = {
+        "self_service": True,
+        "providers": sorted(p.value for p in subjects),
+        **details,
+    }
 
+    # (d)
     try:
-        revocation_deferred = await auth_service._erase_user(db, user, user, ctx, details)
+        revocation_deferred = await auth_service.erase_user(db, user, user, ctx, details)
     except IntegrityError:
         # Backstop for a RESTRICT row created after the precheck: nothing was
         # committed, so the account is intact.
@@ -163,7 +184,12 @@ async def delete_own_account(
         raise _restrict_conflict() from None
     if revocation_deferred:
         log.warning("refresh_revocation_deferred", user_id=str(user_id))
+    return email
 
+
+async def send_deleted_notice(email: str, user_id: uuid.UUID) -> None:
+    """Best-effort notice, run as a background task after the 204. The address
+    is never logged, success or failure."""
     try:
         await email_module.send_account_deleted(email)
     except Exception as exc:  # noqa: BLE001 - best-effort; the account is already gone
@@ -172,9 +198,11 @@ async def delete_own_account(
         )
 
 
-async def _revoke_apple(client: AppleRevocationClient, authorization_code: str) -> None:
+async def _revoke_apple(
+    client: AppleRevocationClient, authorization_code: str, expected_sub: str
+) -> None:
     try:
-        await client.revoke_authorization(authorization_code)
+        await client.revoke_authorization(authorization_code, expected_sub=expected_sub)
     except AppleRevocationError as exc:
         if exc.reason == "invalid_grant":
             raise ContentError(APPLE_EXPIRED_MESSAGE, status_code=400) from None

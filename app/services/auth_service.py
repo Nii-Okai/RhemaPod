@@ -885,6 +885,20 @@ async def _authored_history(db: AsyncSession, user_id: uuid.UUID) -> dict[str, i
     return counts
 
 
+async def ensure_no_authored_history(
+    db: AsyncSession, user_id: uuid.UUID, message_template: str
+) -> None:
+    """Raise a 409 `ContentError` when `user_id` has RESTRICT-FK history.
+    `message_template` carries a `{parts}` placeholder, filled with the
+    "label (count), ..." summary; each caller supplies its own wording."""
+    history = await _authored_history(db, user_id)
+    if history:
+        parts = ", ".join(
+            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
+        )
+        raise ContentError(message_template.format(parts=parts), status_code=409)
+
+
 async def delete_user(
     db: AsyncSession,
     target_id: uuid.UUID,
@@ -907,7 +921,7 @@ async def delete_user(
     What does go with the row (ON DELETE CASCADE / SET NULL) is the account's
     own listener data: sign-in identities, subscription, playlists, likes,
     comments. The audit row keeps the email as its target label for staff;
-    for a viewer it is pseudonymized (see `_erase_user`).
+    for a viewer it is pseudonymized (see `erase_user`).
     """
     if actor.role != _UserRole.ADMIN:
         raise ContentError("Only an admin can remove an account.", status_code=403)
@@ -921,21 +935,17 @@ async def delete_user(
             "Deactivate this account before removing it.", status_code=409
         )
 
-    history = await _authored_history(db, target.id)
-    if history:
-        parts = ", ".join(
-            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
-        )
-        raise ContentError(
-            f"This account can't be removed because it is linked to {parts}. "
-            "Keep it deactivated instead — it can't sign in.",
-            status_code=409,
-        )
+    await ensure_no_authored_history(
+        db,
+        target.id,
+        "This account can't be removed because it is linked to {parts}. "
+        "Keep it deactivated instead — it can't sign in.",
+    )
 
-    return await _erase_user(db, target, actor, ctx, {})
+    return await erase_user(db, target, actor, ctx, {})
 
 
-async def _erase_user(
+async def erase_user(
     db: AsyncSession,
     target: User,
     actor: User,

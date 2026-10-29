@@ -2,7 +2,10 @@
 
 Account deletion must revoke the user's Apple grant (App Store Guideline 5.1.1(v)). The
 single-use ``authorization_code`` from the client is exchanged for a refresh token at
-``/auth/token``, which is then revoked at ``/auth/revoke``.
+``/auth/token``, which is then revoked at ``/auth/revoke``. The ``id_token`` in the exchange
+response is verified (Apple JWKS, ``aud`` = our client id) and its ``sub`` must equal the
+caller's ``expected_sub``: a code minted for a different Apple identity is ``invalid_grant``
+and is never revoked.
 
 Two implementations sit behind the :class:`AppleRevocationClient` Protocol:
 
@@ -26,6 +29,7 @@ import httpx
 import jwt
 
 from app.core.logging import get_logger
+from app.core.oauth import OAuthTokenError, verify_apple_token_subject
 
 log = get_logger("apple_revocation")
 
@@ -50,8 +54,9 @@ class AppleRevocationError(Exception):
 
 
 class AppleRevocationClient(Protocol):
-    async def revoke_authorization(self, authorization_code: str) -> None:
-        """Exchange ``authorization_code`` and revoke the resulting refresh token.
+    async def revoke_authorization(self, authorization_code: str, *, expected_sub: str) -> None:
+        """Exchange ``authorization_code`` and revoke the resulting refresh token, provided
+        the exchange's ``id_token`` is for ``expected_sub``.
 
         Raises :class:`AppleRevocationError` on any failure.
         """
@@ -109,17 +114,37 @@ class HttpAppleRevocationClient:
             log.error("apple_client_secret_mint_failed", error_type=type(exc).__name__)
             raise AppleRevocationError("misconfigured") from exc
 
-    async def revoke_authorization(self, authorization_code: str) -> None:
+    async def revoke_authorization(self, authorization_code: str, *, expected_sub: str) -> None:
         client_secret = self._mint_client_secret()
         async with httpx.AsyncClient(
             base_url=APPLE_BASE_URL, timeout=self._timeout, transport=self._transport
         ) as http:
-            refresh_token = await self._exchange_code(http, authorization_code, client_secret)
+            refresh_token, id_token = await self._exchange_code(
+                http, authorization_code, client_secret
+            )
+            await self._check_subject(id_token, expected_sub)
             await self._revoke_token(http, refresh_token, client_secret)
+
+    async def _check_subject(self, id_token: str | None, expected_sub: str) -> None:
+        """Bind the code to the verified identity: the exchange's id_token must
+        verify against Apple's JWKS for our client id and carry `expected_sub`."""
+        if not id_token:
+            log.warning("apple_exchange_missing_id_token")
+            raise AppleRevocationError("invalid_grant")
+        try:
+            subject = await verify_apple_token_subject(id_token, self._client_id)
+        except OAuthTokenError as exc:
+            if exc.reason == "unavailable":
+                raise AppleRevocationError("unavailable") from exc
+            log.warning("apple_exchange_id_token_rejected", reason=exc.reason)
+            raise AppleRevocationError("invalid_grant") from exc
+        if subject != expected_sub:
+            log.warning("apple_exchange_subject_mismatch")
+            raise AppleRevocationError("invalid_grant")
 
     async def _exchange_code(
         self, http: httpx.AsyncClient, authorization_code: str, client_secret: str
-    ) -> str:
+    ) -> tuple[str, str | None]:
         # Never retried: the authorization code is single-use.
         try:
             response = await http.post(
@@ -141,8 +166,9 @@ class HttpAppleRevocationClient:
             except ValueError:
                 body = None
             token = body.get("refresh_token") if isinstance(body, dict) else None
+            id_token = body.get("id_token") if isinstance(body, dict) else None
             if isinstance(token, str) and token:
-                return token
+                return token, id_token if isinstance(id_token, str) else None
             log.warning("apple_exchange_malformed_response")
             raise AppleRevocationError("unavailable")
 
@@ -206,7 +232,9 @@ class StubAppleRevocationClient:
 
     ``outcomes`` items are ``None`` (success) or an :class:`AppleRevocationError` reason.
     ``on_call`` (optional, sync or async-free) runs before the outcome is applied, letting tests
-    snapshot state at the moment revocation is attempted.
+    snapshot state at the moment revocation is attempted. ``returned_sub`` simulates the
+    ``sub`` of the exchange's id_token: when set and different from ``expected_sub`` the
+    call fails ``invalid_grant`` (after ``on_call``, before any scripted outcome).
     """
 
     def __init__(
@@ -214,20 +242,26 @@ class StubAppleRevocationClient:
         outcomes: Iterable[AppleRevocationReason | None] = (),
         *,
         on_call: Callable[[str], Any] | None = None,
+        returned_sub: str | None = None,
     ) -> None:
         self.calls: list[str] = []
+        self.expected_subs: list[str] = []
+        self.returned_sub = returned_sub
         self._outcomes = list(outcomes)
         self._on_call = on_call
 
     def script(self, *outcomes: AppleRevocationReason | None) -> None:
         self._outcomes.extend(outcomes)
 
-    async def revoke_authorization(self, authorization_code: str) -> None:
+    async def revoke_authorization(self, authorization_code: str, *, expected_sub: str) -> None:
         self.calls.append(authorization_code)
+        self.expected_subs.append(expected_sub)
         if self._on_call is not None:
             result = self._on_call(authorization_code)
             if hasattr(result, "__await__"):
                 await result
+        if self.returned_sub is not None and self.returned_sub != expected_sub:
+            raise AppleRevocationError("invalid_grant")
         outcome = self._outcomes.pop(0) if self._outcomes else None
         if outcome is not None:
             raise AppleRevocationError(outcome)

@@ -29,6 +29,7 @@ SENSITIVE_LOG_KEYS: frozenset[str] = frozenset(
         "access_token",
         "apple_private_key",
         "password",
+        "raw_nonce",
     }
 )
 REDACTED = "[REDACTED]"

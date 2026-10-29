@@ -1,4 +1,4 @@
-"""D8 (plans/plan-account-deletion-backend.md): the shared `_erase_user` as
+"""D8 (plans/plan-account-deletion-backend.md): the shared `erase_user` as
 driven by admin `DELETE /users/{id}`.
 
 Viewer targets are erased completely, with no email left in the audit trail;

@@ -18,13 +18,13 @@ from app.core.logging import correlation_id, get_logger
 from app.core.net import client_ip
 from app.core.oauth import (
     OAuthTokenError,
+    ProviderConfig,
     VerifiedIdentity,
     unverified_exp,
-    unverified_iat,
     verify_apple_identity_token,
     verify_google_id_token,
 )
-from app.core.rate_limit import RateLimitUnavailable, check_rate_limit
+from app.core.rate_limit import RateLimitUnavailable, check_rate_limit, login_rate_limit_key
 from app.db.database import get_db
 from app.models.models import AuditAction, AuditOutcome, AuthProvider, UserRole
 from app.models.schemas import (
@@ -196,7 +196,7 @@ async def login(
     data: UserLogin, request: Request, db: DbDep, ctx: AuditCtx
 ) -> TokenPair | JSONResponse:
     client = client_ip(request)
-    rl_key = f"login:{client}:{data.email.lower()}"
+    rl_key = login_rate_limit_key(client, data.email)
     allowed = await check_rate_limit(
         rl_key, settings.login_rate_limit, settings.login_rate_window_seconds
     )
@@ -610,6 +610,9 @@ AppleRevocationDep = Annotated[AppleRevocationClient, Depends(get_apple_revocati
 _DELETE_LIMITER_UNAVAILABLE = "Account deletion is temporarily unavailable. Try again shortly."
 
 
+_IAT_FUTURE_LEEWAY_SECONDS = ProviderConfig.leeway_seconds  # the verifier's own clock-skew leeway
+
+
 def _reauth_failed() -> ContentError:
     # One message for every cause (wrong password, wrong provider, `sub`
     # mismatch, stale `iat`, nonce, replay): no account-state oracle.
@@ -628,8 +631,15 @@ async def _verify_oauth_deletion_proof(
         if subject is None or identity.subject != subject:
             log.info("account_delete_reauth_rejected", reason="subject_mismatch")
             raise _reauth_failed()
-        iat = unverified_iat(raw_token)
-        if iat is None or time.time() - iat > settings.account_deletion_reauth_max_age_seconds:
+        iat = identity.iat
+        now = time.time()
+        if (
+            iat is None
+            or now - iat > settings.account_deletion_reauth_max_age_seconds
+            # An `iat` further ahead than the verifier's clock leeway is not a
+            # fresh sign-in; it is a token minted to look fresh for longer.
+            or iat - now > _IAT_FUTURE_LEEWAY_SECONDS
+        ):
             log.info("account_delete_reauth_rejected", reason="stale_iat")
             raise _reauth_failed()
         await _claim_oauth_token_once(raw_token)
@@ -673,6 +683,7 @@ async def delete_me(
     db: DbDep,
     ctx: AuditCtx,
     apple_client: AppleRevocationDep,
+    background_tasks: BackgroundTasks,
 ) -> Response:
     """Delete the caller's own account (viewers only). One fresh proof goes in
     the same request: password, a fresh Google token, or a fresh Apple token
@@ -700,7 +711,7 @@ async def delete_me(
         if isinstance(data, PasswordDeletionRequest):
             # Password guesses draw down the same budget as /auth/login.
             login_allowed = await check_rate_limit(
-                f"login:{client_ip(request)}:{user.email.lower()}",
+                login_rate_limit_key(client_ip(request), user.email),
                 settings.login_rate_limit,
                 settings.login_rate_window_seconds,
             )
@@ -713,7 +724,7 @@ async def delete_me(
             db, user.id, method=data.method, apple_unavailable=data.apple_unavailable
         )
         await _verify_deletion_proof(data, target)
-        await account_deletion_service.delete_own_account(
+        email = await account_deletion_service.delete_own_account(
             db,
             target,
             ctx,
@@ -726,4 +737,8 @@ async def delete_me(
         raise HTTPException(
             status_code=exc.status_code, detail=exc.message, headers=exc.headers or None
         )
+    # After the response, so an SMTP stall can't delay the 204.
+    background_tasks.add_task(
+        account_deletion_service.send_deleted_notice, email, user.id
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

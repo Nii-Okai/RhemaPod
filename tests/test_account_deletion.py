@@ -20,6 +20,7 @@ from app.core.apple_revocation import (
     set_apple_revocation_client,
 )
 from app.core.config import get_settings
+from app.core.rate_limit import login_rate_limit_key
 from app.models.models import (
     AuditAction,
     AuditLog,
@@ -301,6 +302,19 @@ async def test_stale_iat_boundary_follows_the_setting(
     assert (await _post(pg_client, tu, _google(fresh))).status_code == 204
 
 
+async def test_future_iat_beyond_leeway_is_stale(
+    pg_client, sessions, make_user, apple, notices, _rsa_key
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    now = int(time.time())
+    # `nbf` absent, so only the freshness check can reject this one.
+    future = _g_token(_rsa_key, tu.id, iat=now + 3600, exp=now + 7200)
+    assert (await _post(pg_client, tu, _google(future))).status_code == 403
+    assert await _exists(sessions, tu.id)
+    skew = _g_token(_rsa_key, tu.id, iat=now + 10, exp=now + 600)  # inside leeway
+    assert (await _post(pg_client, tu, _google(skew))).status_code == 204
+
+
 async def test_replayed_identity_token_is_403(
     pg_client, sessions, make_user, apple, _rsa_key
 ):
@@ -409,6 +423,68 @@ async def test_apple_failure_deletes_nothing(
     assert spy_deleted == []
 
 
+async def test_apple_code_for_another_identity_is_400_and_deletes_nothing(
+    pg_client, sessions, make_user, published_sermon, _rsa_key
+):
+    """The exchange's id_token `sub` differs from the linked Apple subject:
+    invalid_grant (400), nothing erased."""
+    ks = await seed_kitchen_sink_viewer(sessions, make_user, published_sermon, active=True)
+    stub = StubAppleRevocationClient(returned_sub="a-someone-else")
+    set_apple_revocation_client(stub)
+    try:
+        headers = {"Authorization": "Bearer " + security.create_access_token(
+            str(ks.user_id), "viewer")}
+        r = await pg_client.post(
+            URL, json=_apple_body(_a_token(_rsa_key, ks.user_id)), headers=headers
+        )
+    finally:
+        set_apple_revocation_client(None)
+    assert r.status_code == 400
+    assert r.json()["detail"] == account_deletion_service.APPLE_EXPIRED_MESSAGE
+    assert stub.expected_subs == [f"a-{ks.user_id}"]
+    assert await _exists(sessions, ks.user_id)
+    assert await _deleted_rows(sessions, ks.user_id, ks.prior_audit_ids) == []
+
+
+async def test_no_row_lock_held_during_apple_call(
+    pg_client, sessions, make_user, published_sermon, _rsa_key
+):
+    """`FOR UPDATE NOWAIT` from another connection succeeds while the Apple call
+    is in flight (it raises LockNotAvailable if the delete held the row lock),
+    and no transaction of the request is left open on its connection."""
+    from sqlalchemy import text
+
+    ks = await seed_kitchen_sink_viewer(sessions, make_user, published_sermon, active=True)
+    outcome: dict = {}
+
+    async def on_call(code: str) -> None:
+        async with sessions() as s:
+            await s.execute(
+                text("SELECT id FROM users WHERE id = :i FOR UPDATE NOWAIT"), {"i": ks.user_id}
+            )
+            outcome["locked"] = True
+            idle = (await s.execute(text(
+                "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                "AND state = 'idle in transaction' AND pid <> pg_backend_pid()"
+            ))).scalar_one()
+            outcome["idle_in_txn"] = idle
+            await s.rollback()
+
+    stub = StubAppleRevocationClient(on_call=on_call)
+    set_apple_revocation_client(stub)
+    try:
+        headers = {"Authorization": "Bearer " + security.create_access_token(
+            str(ks.user_id), "viewer")}
+        r = await pg_client.post(
+            URL, json=_apple_body(_a_token(_rsa_key, ks.user_id)), headers=headers
+        )
+    finally:
+        set_apple_revocation_client(None)
+    assert r.status_code == 204, r.text
+    assert outcome == {"locked": True, "idle_in_txn": 0}
+    assert not await _exists(sessions, ks.user_id)
+
+
 async def test_misconfigured_logs_at_error_level(
     pg_client, sessions, make_user, apple, _rsa_key, capture_logs
 ):
@@ -448,10 +524,10 @@ async def test_integrity_error_backstop_is_409_not_500(
     stops the delete; the transaction (audit row included) rolls back."""
     ex = await _demoted_ex_staff(make_user, sessions, published_sermon)
 
-    async def blind(db, user_id):
-        return {}
+    async def blind(db, user_id, message_template):
+        return None
 
-    monkeypatch.setattr(auth_service, "_authored_history", blind)
+    monkeypatch.setattr(auth_service, "ensure_no_authored_history", blind)
     r = await _post(pg_client, ex, _pw())
     assert r.status_code == 409
     assert await _exists(sessions, ex.id)
@@ -477,8 +553,10 @@ async def test_sixth_attempt_is_429_even_from_different_ips(
 async def test_password_attempt_consumes_the_login_key(pg_client, sessions, make_user, apple):
     tu = await _viewer(make_user, sessions)
     await _post(pg_client, tu, _pw("wrong-password"))
-    keys = [k for k in _fake.store if k.startswith("ratelimit:login:") and tu.email.lower() in k]
+    keys = [k for k in _fake.store if k.startswith("ratelimit:login:")]
     assert len(keys) == 1 and _fake.store[keys[0]] == "1"
+    assert tu.email.lower() not in keys[0]  # hashed, never the address
+    assert keys[0] == "ratelimit:" + login_rate_limit_key("127.0.0.1", tu.email)
     await _post(pg_client, tu, _pw("wrong-password"))
     assert _fake.store[keys[0]] == "2"
     assert _fake.store[f"ratelimit:account_delete:{tu.id}"] == "2"
@@ -533,6 +611,18 @@ async def test_smtp_failure_still_204_with_rows_gone(
     assert tu.email not in capture_logs.text()
 
 
+async def test_notice_does_not_log_recipient_or_body(monkeypatch, capture_logs):
+    """Console backend: the account-deleted notice logs neither the address nor
+    the body; other emails still do."""
+    monkeypatch.setattr(email_module.settings, "smtp_host", "")
+    assert not email_module.settings.email_is_live
+    await email_module.send_account_deleted("gone@example.com")
+    await email_module.send_email_verification("kept@example.com", "123456")
+    text = capture_logs.text()
+    assert "gone@example.com" not in text and "was deleted at your request" not in text
+    assert "kept@example.com" in text
+
+
 async def test_storage_failure_still_204(pg_client, sessions, make_user, apple, notices):
     tu = await _viewer(make_user, sessions)
     async with sessions() as s:
@@ -572,7 +662,7 @@ async def test_concurrent_double_submit_deletes_once(
     )
     codes = sorted(r.status_code for r in results)
     assert codes.count(204) == 1, codes
-    assert set(codes) <= {204, 401, 409}, codes
+    assert set(codes) <= {204, 401}, codes
     assert len(await _deleted_rows(sessions, tu.id)) == 1
     assert not await _exists(sessions, tu.id)
     assert len(notices) == 1
