@@ -66,7 +66,13 @@ services:
     plan: free               # no persistence: a restart signs every user out
     region: frankfurt
     maxmemoryPolicy: noeviction   # refresh sessions live here; never evict them
-    ipAllowList: []          # private network only
+    # Free web services couldn't reach free Key Value over the private network
+    # (preflight: redis TimeoutError on the correct internal URL), so the API
+    # uses the external TLS URL instead. Dev only: Redis is internet-reachable,
+    # guarded by its password. Use a paid plan + [] for anything real.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: dev — API connects via external rediss:// URL
 
   - type: web
     name: rhemapod-dev-api
@@ -92,11 +98,9 @@ services:
         fromDatabase:
           name: rhemapod-dev-db
           property: connectionString
+      # External rediss:// URL from rhemapod-dev-kv → Connect → External.
       - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: rhemapod-dev-kv
-          property: connectionString
+        sync: false
       - key: SECRET_KEY
         sync: false
       - key: OBJECT_STORE_ENDPOINT_URL
