@@ -366,3 +366,19 @@ def unverified_exp(token: str) -> int | None:
         return None
     exp = payload.get("exp")
     return int(exp) if exp is not None else None
+
+
+def unverified_iat(token: str) -> int | None:
+    """`iat` of an already-verified provider token, read WITHOUT re-verifying
+    the signature (same contract as `unverified_exp`: proves nothing about
+    authenticity on its own). Used by account deletion to require a *fresh*
+    provider sign-in. Returns None if the claim is absent or not an integer,
+    which the caller treats as stale."""
+    try:
+        payload = jwt.decode(token, options={"verify_signature": False})
+    except jwt.InvalidTokenError:
+        return None
+    iat = payload.get("iat")
+    if isinstance(iat, bool) or not isinstance(iat, (int, float)):
+        return None
+    return int(iat)

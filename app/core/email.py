@@ -265,3 +265,24 @@ async def send_sign_in_method_linked(to: str, provider: str, *, password_removed
         footnote=footnote,
     )
     await _send(to, f"{provider} sign-in connected to your {app} account", text, html)
+
+
+async def send_account_deleted(to: str) -> None:
+    """Notice that the account was just deleted at the holder's own request
+    (ADR 0020). Sent after the delete has committed, to the address snapshotted
+    before it; best-effort, so a failure here never undoes or fails the delete.
+    Contact address is deliberately generic: the church's support inbox is not
+    a backend setting."""
+    app = settings.app_name
+    paragraphs = [
+        f"Your {app} account and the data tied to it (playlists, likes, comments, "
+        "sign-in methods) were deleted at your request.",
+        "Backups are purged within 30 days. If you signed in with Apple, you can also "
+        f"remove {app} under Settings > Apple Account > Sign in with Apple.",
+    ]
+    footnote = "If you didn't do this, contact support right away."
+    text = "\n\n".join([*paragraphs, footnote])
+    html = _render_html(
+        heading="Your account was deleted", paragraphs=paragraphs, footnote=footnote
+    )
+    await _send(to, f"Your {app} account was deleted", text, html)

@@ -993,7 +993,8 @@ async def test_au_me_06_user_public_shape(pg_client, make_user):
     keys = set((await pg_client.get(f"{API}/auth/me", headers=u.headers)).json())
     assert keys == {
         "id", "email", "full_name", "first_name", "last_name", "gender", "avatar_url",
-        "role", "is_active", "activated_at", "comments_terms_accepted_at", "created_at",
+        "role", "is_active", "has_password", "linked_providers",
+        "activated_at", "comments_terms_accepted_at", "created_at",
     }
 
 

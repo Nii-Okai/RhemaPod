@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -15,9 +15,11 @@ from app.models.models import (
     AuditAction,
     AuditLog,
     AuditOutcome,
+    AuthProvider,
     Gender,
     Playlist,
     User,
+    UserIdentity,
     UserRole,
 )
 from app.models.schemas import AvatarTicket, UserPublic, UserRegister
@@ -82,7 +84,31 @@ def _avatar_url(key: str | None) -> str | None:
     return storage_module.stable_image_url(key)
 
 
-def to_user_public(user: User) -> UserPublic:
+async def linked_providers_by_user(
+    db: AsyncSession, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[AuthProvider]]:
+    """OAuth providers linked to each of `user_ids`, in one query (no N+1 for
+    the members list). Users with no link are absent from the map."""
+    if not user_ids:
+        return {}
+    rows = (await db.execute(
+        select(UserIdentity.user_id, UserIdentity.provider)
+        .where(UserIdentity.user_id.in_(list(user_ids)))
+        .order_by(UserIdentity.provider)
+    )).all()
+    out: dict[uuid.UUID, list[AuthProvider]] = {}
+    for uid, provider in rows:
+        out.setdefault(uid, []).append(provider)
+    return out
+
+
+async def to_user_public_linked(db: AsyncSession, user: User) -> UserPublic:
+    """`to_user_public` with the account's linked providers filled in."""
+    providers = (await linked_providers_by_user(db, [user.id])).get(user.id, [])
+    return to_user_public(user, providers)
+
+
+def to_user_public(user: User, linked_providers: Sequence[AuthProvider] = ()) -> UserPublic:
     """Builds `UserPublic` field-by-field rather than `UserPublic.model_validate(user)`
     — `avatar_url` is derived from `avatar_key` (same reason `to_list_item` builds
     `SermonListItem` explicitly instead of blind-validating the ORM row), so a plain
@@ -97,6 +123,8 @@ def to_user_public(user: User) -> UserPublic:
         avatar_url=_avatar_url(user.avatar_key),
         role=user.role,
         is_active=user.is_active,
+        has_password=bool(user.password_hash),
+        linked_providers=list(linked_providers),
         activated_at=user.activated_at,
         comments_terms_accepted_at=user.comments_terms_accepted_at,
         created_at=user.created_at,

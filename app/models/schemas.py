@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.models.models import Gender, UserRole
+from app.models.models import AuthProvider, Gender, UserRole
 
 # Obvious values rejected regardless of length. Length is the dominant factor
 # in resistance to offline cracking, so we require 12 rather than imposing
@@ -104,6 +105,41 @@ class AppleSignInRequest(BaseModel):
     family_name: str | None = Field(default=None, max_length=100)
 
 
+class _AccountDeletionBase(BaseModel):
+    # Only meaningful with a non-Apple proof on an account that has Apple
+    # linked: skips Apple token revocation, never re-auth (ADR 0020).
+    apple_unavailable: bool = False
+
+
+class PasswordDeletionRequest(_AccountDeletionBase):
+    method: Literal["password"]
+    password: str = Field(min_length=1, max_length=256)
+
+
+class GoogleDeletionRequest(_AccountDeletionBase):
+    method: Literal["google"]
+    id_token: str = Field(min_length=1, max_length=4096)
+
+
+class AppleDeletionRequest(_AccountDeletionBase):
+    method: Literal["apple"]
+    identity_token: str = Field(min_length=1, max_length=4096)
+    raw_nonce: str = Field(min_length=1, max_length=512)
+    authorization_code: str = Field(min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def _flag_needs_non_apple_proof(self) -> "AppleDeletionRequest":
+        if self.apple_unavailable:
+            raise ValueError("apple_unavailable only applies to a non-Apple proof")
+        return self
+
+
+AccountDeletionRequest = Annotated[
+    Union[PasswordDeletionRequest, GoogleDeletionRequest, AppleDeletionRequest],
+    Field(discriminator="method"),
+]
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=12, max_length=128)
@@ -129,6 +165,10 @@ class UserPublic(BaseModel):
     avatar_url: str | None = None
     role: UserRole
     is_active: bool
+    # What the account can re-authenticate with (account deletion, ADR 0020):
+    # whether a password is set, and which OAuth providers are linked.
+    has_password: bool = False
+    linked_providers: list[AuthProvider] = Field(default_factory=list)
     # NULL while the staff invite is still outstanding; the timestamp the account
     # first set its own password otherwise. Lets the portal (resend-invite) tell a
     # pending account from an active one without a second call.
