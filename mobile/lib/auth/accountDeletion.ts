@@ -53,6 +53,10 @@ export function planReauth(profile: Profile, appleAvailable: boolean): ReauthPla
   };
 }
 
+/** Exact backend detail (`APPLE_UNAVAILABLE_MESSAGE`) that marks a 503 as "Apple didn't answer".
+ * Other 503s (rate-limit store, sign-in or deletion temporarily unavailable) share the status. */
+export const APPLE_UNAVAILABLE_DETAIL = 'Apple is unavailable right now. Try again shortly.';
+
 /** Consecutive Apple 503s before the screen offers deleting without revoking Apple. */
 export const APPLE_FAILURES_BEFORE_FALLBACK = 2;
 
@@ -63,8 +67,8 @@ export function deleteAccount(body: AccountDeletionRequest): Promise<void> {
 export type DeletionErrorKind =
   /** 403: the proof didn't check out. Never a sign-out: the session is still valid. */
   | 'reauth'
-  /** 400: Apple refused the authorization code (expired or reused). Ask Apple again. */
-  | 'appleExpired'
+  /** 400: the proof was rejected as malformed (on the Apple path: expired or reused code). */
+  | 'badRequest'
   /** 503 on the Apple path: Apple didn't answer. Nothing was deleted. */
   | 'appleUnavailable'
   /** 409: the account needs Apple, or support (Apple-only, authored content). */
@@ -85,7 +89,7 @@ export function deletionErrorFor(err: unknown, method: DeletionMethod): Deletion
   if (err.network) return { kind: 'network', message: err.message };
   switch (err.status) {
     case 400:
-      return { kind: 'appleExpired', message: err.message };
+      return { kind: 'badRequest', message: err.message };
     case 403:
       return { kind: 'reauth', message: REAUTH_MESSAGE };
     case 409:
@@ -93,9 +97,9 @@ export function deletionErrorFor(err: unknown, method: DeletionMethod): Deletion
     case 429:
       return { kind: 'rateLimited', message: err.message };
     case 503:
-      // The same status covers the rate-limit store being down; only an Apple-path 503
-      // counts toward the fallback offer.
-      return method === 'apple'
+      // The same status covers other outages; only Apple's own detail counts toward the
+      // fallback offer.
+      return method === 'apple' && err.message === APPLE_UNAVAILABLE_DETAIL
         ? { kind: 'appleUnavailable', message: err.message }
         : { kind: 'generic', message: err.message };
     default:
