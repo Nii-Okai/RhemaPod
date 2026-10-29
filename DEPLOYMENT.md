@@ -469,7 +469,7 @@ stripped of control characters and cut to 512 characters.
 plain `npm run dev` against a local backend records `127.0.0.1`, which is
 expected.
 
-## 13. Apple revocation key (account deletion)
+## 14. Apple revocation key (account deletion)
 
 Account deletion revokes the user's Sign in with Apple grant (App Store
 guideline 5.1.1(v)). That needs a server-side `.p8` key. Design: ADR 0020;
@@ -477,8 +477,9 @@ plan: `plans/plan-account-deletion-backend.md` (§A.4, §A.5).
 
 **Never commit the key, never log it.** The log pipeline redacts
 `apple_private_key`, `client_secret` and the token fields, but don't rely on
-that: keep the `.p8` outside the repo (`.gitignore` covers `.env*`, not `*.p8`)
-and delete the downloaded file once it is stored.
+that: keep the `.p8` outside the repo (`.gitignore` covers `.env*` and `*.p8`, but
+a password manager is the right home) and delete the downloaded file once it
+is stored.
 
 ### Settings
 
@@ -488,7 +489,7 @@ and delete the downloaded file once it is stored.
 | `APPLE_TEAM_ID` | `FAND2W5VMM` | |
 | `APPLE_KEY_ID` | none | 10-char Key ID shown when the key is created |
 | `APPLE_PRIVATE_KEY` | none | **PEM contents** (not a path). Secret |
-| `APPLE_CLIENT_ID` | first `OAUTH_APPLE_AUDIENCES` entry | Primary App ID, `com.niitech.rhemapod` |
+| `APPLE_CLIENT_ID` | first `APPLE_OAUTH_AUDIENCES` entry | Primary App ID, `com.niitech.rhemapod` |
 | `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` | `300` | Max age of the re-auth proof |
 | `ACCOUNT_DELETE_RATE_LIMIT` / `ACCOUNT_DELETE_RATE_WINDOW_SECONDS` | `5` / `3600` | Per-user limiter on `POST /auth/me/delete` |
 
@@ -526,21 +527,13 @@ To produce that line from the downloaded file:
 Store the key in the platform's secret store, never a file on disk or in the
 image:
 
-- **AWS (target design):** one Secrets Manager secret, JSON, injected as env
-  vars at task start. The name and shape below are proposed and become final
-  when AD2 approves them. The secret is created at the clients plan's AD5;
-  none exists yet.
-
-  ```json
-  {"APPLE_KEY_ID": "ABC123DEFG", "APPLE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"}
-  ```
-
-  Proposed name: `rhemapod/<env>/apple-revocation`. `APPLE_TEAM_ID`,
-  `APPLE_CLIENT_ID` and `APPLE_REVOCATION_BACKEND=http` are plain config, not
-  in the secret.
-- **Render (staging):** set the same variable names as encrypted environment
-  variables (secret values via the dashboard or env group, not `render.yaml`
-  literals).
+- **Render (current host; decided at AD2, 2026-10-29):** `APPLE_KEY_ID` and
+  `APPLE_PRIVATE_KEY` are encrypted environment variables on the API service,
+  set in the dashboard (`sync: false` in `render.yaml`, never a literal).
+  `APPLE_TEAM_ID`, `APPLE_CLIENT_ID` and `APPLE_REVOCATION_BACKEND=http` are
+  plain config. Set them at the clients plan's AD5; none are set yet.
+- **AWS:** no Secrets Manager entry until the app actually moves to AWS. Decide
+  the secret's name and shape then.
 
 ### 4. Preflight
 

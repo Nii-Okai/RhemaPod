@@ -5,6 +5,7 @@
 !.env.docker.example
 *.pem
 *.key
+*.p8
 
 # Python-generated files
 __pycache__/
