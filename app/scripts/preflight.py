@@ -189,6 +189,20 @@ async def _check_cdn() -> str:
     )
 
 
+async def _check_apple_revocation() -> str:
+    """Apple revocation config, no network call. `production_preflight` covers
+    production at Settings construction; this also covers staging."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    if not s.oauth_apple_enabled:
+        return "not required (OAUTH_APPLE_ENABLED is false)"
+    problems = s._apple_revocation_problems()
+    if problems:
+        raise RuntimeError("; ".join(problems))
+    return "http"
+
+
 async def _check_migrations() -> str:
     from sqlalchemy import text
     from app.db.database import primary_engine
@@ -223,6 +237,7 @@ async def _run() -> int:
         _check("archive", _check_archive()),
         _check("cdn", _check_cdn()),
         _check("stream", _check_stream()),
+        _check("apple", _check_apple_revocation()),
         _check("email", _check_email()),
     )
 

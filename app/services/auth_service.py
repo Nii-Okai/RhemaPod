@@ -1,8 +1,9 @@
+import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security, token_store
@@ -10,7 +11,17 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import check_rate_limit
 from app.core.token_store import TokenStoreUnavailable
-from app.models.models import AuditAction, AuditOutcome, Gender, User, UserRole
+from app.models.models import (
+    AuditAction,
+    AuditLog,
+    AuditOutcome,
+    AuthProvider,
+    Gender,
+    Playlist,
+    User,
+    UserIdentity,
+    UserRole,
+)
 from app.models.schemas import AvatarTicket, UserPublic, UserRegister
 from app.services import audit_service
 from app.services.audit_service import AuditContext, AuditTarget
@@ -73,7 +84,31 @@ def _avatar_url(key: str | None) -> str | None:
     return storage_module.stable_image_url(key)
 
 
-def to_user_public(user: User) -> UserPublic:
+async def linked_providers_by_user(
+    db: AsyncSession, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[AuthProvider]]:
+    """OAuth providers linked to each of `user_ids`, in one query (no N+1 for
+    the members list). Users with no link are absent from the map."""
+    if not user_ids:
+        return {}
+    rows = (await db.execute(
+        select(UserIdentity.user_id, UserIdentity.provider)
+        .where(UserIdentity.user_id.in_(list(user_ids)))
+        .order_by(UserIdentity.provider)
+    )).all()
+    out: dict[uuid.UUID, list[AuthProvider]] = {}
+    for uid, provider in rows:
+        out.setdefault(uid, []).append(provider)
+    return out
+
+
+async def to_user_public_linked(db: AsyncSession, user: User) -> UserPublic:
+    """`to_user_public` with the account's linked providers filled in."""
+    providers = (await linked_providers_by_user(db, [user.id])).get(user.id, [])
+    return to_user_public(user, providers)
+
+
+def to_user_public(user: User, linked_providers: Sequence[AuthProvider] = ()) -> UserPublic:
     """Builds `UserPublic` field-by-field rather than `UserPublic.model_validate(user)`
     — `avatar_url` is derived from `avatar_key` (same reason `to_list_item` builds
     `SermonListItem` explicitly instead of blind-validating the ORM row), so a plain
@@ -88,6 +123,8 @@ def to_user_public(user: User) -> UserPublic:
         avatar_url=_avatar_url(user.avatar_key),
         role=user.role,
         is_active=user.is_active,
+        has_password=bool(user.password_hash),
+        linked_providers=list(linked_providers),
         activated_at=user.activated_at,
         comments_terms_accepted_at=user.comments_terms_accepted_at,
         created_at=user.created_at,
@@ -848,6 +885,20 @@ async def _authored_history(db: AsyncSession, user_id: uuid.UUID) -> dict[str, i
     return counts
 
 
+async def ensure_no_authored_history(
+    db: AsyncSession, user_id: uuid.UUID, message_template: str
+) -> None:
+    """Raise a 409 `ContentError` when `user_id` has RESTRICT-FK history.
+    `message_template` carries a `{parts}` placeholder, filled with the
+    "label (count), ..." summary; each caller supplies its own wording."""
+    history = await _authored_history(db, user_id)
+    if history:
+        parts = ", ".join(
+            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
+        )
+        raise ContentError(message_template.format(parts=parts), status_code=409)
+
+
 async def delete_user(
     db: AsyncSession,
     target_id: uuid.UUID,
@@ -869,7 +920,8 @@ async def delete_user(
 
     What does go with the row (ON DELETE CASCADE / SET NULL) is the account's
     own listener data: sign-in identities, subscription, playlists, likes,
-    comments. The audit row keeps the email as its target label.
+    comments. The audit row keeps the email as its target label for staff;
+    for a viewer it is pseudonymized (see `erase_user`).
     """
     if actor.role != _UserRole.ADMIN:
         raise ContentError("Only an admin can remove an account.", status_code=403)
@@ -883,34 +935,102 @@ async def delete_user(
             "Deactivate this account before removing it.", status_code=409
         )
 
-    history = await _authored_history(db, target.id)
-    if history:
-        parts = ", ".join(
-            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
-        )
-        raise ContentError(
-            f"This account can't be removed because it is linked to {parts}. "
-            "Keep it deactivated instead — it can't sign in.",
-            status_code=409,
-        )
+    await ensure_no_authored_history(
+        db,
+        target.id,
+        "This account can't be removed because it is linked to {parts}. "
+        "Keep it deactivated instead — it can't sign in.",
+    )
 
+    return await erase_user(db, target, actor, ctx, {})
+
+
+async def erase_user(
+    db: AsyncSession,
+    target: User,
+    actor: User,
+    ctx: AuditContext,
+    details: dict,
+) -> bool:
+    """The one erasure path, shared by admin `delete_user` and self-service
+    deletion (§A.3 steps 6, 8-10 of plans/plan-account-deletion-backend.md).
+    Callers own authz and preconditions (deactivated-first, RESTRICT precheck,
+    re-auth, Apple revocation); this owns the data.
+
+    1. Snapshots the email, avatar key and every playlist cover key.
+    2. One transaction: for a *viewer* target, NULLs the email-bearing audit
+       columns on rows that name the user (`actor_email`, `target_label`),
+       writes the `USER_DELETED` row with no email for the user, deletes the
+       row (FK cascades run here) and commits. Staff targets keep today's
+       snapshot label (ADR 0018 accountability).
+    3. Best-effort after commit, never raising: refresh-token revocation and
+       object deletes (`orphaned_object` is logged, with the key and never
+       the email, when one fails).
+
+    `details` is merged over `{"role": ...}` into the audit row. When
+    `actor` is the target, the row's `actor_email` is NULL too. Returns
+    `revocation_deferred` (the token store was unreachable).
+    """
+    user_id = target.id
     email, role = target.email, target.role.value
-    await audit_service.record(
+    is_viewer = target.role == _UserRole.VIEWER
+    object_keys = await _owned_object_keys(db, target)
+
+    if is_viewer:
+        await db.execute(
+            update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_email=None)
+        )
+        await db.execute(
+            update(AuditLog)
+            .where(AuditLog.target_id == user_id, AuditLog.target_type == "user")
+            .values(target_label=None)
+        )
+    row = await audit_service.record(
         db, AuditAction.USER_DELETED,
-        actor=actor, target=_user_target(target), details={"role": role},
+        actor=actor,
+        target=AuditTarget(
+            type="user", id=user_id, label=None if is_viewer else email
+        ),
+        details={"role": role, **details},
         outcome=AuditOutcome.SUCCESS, ctx=ctx,
     )
+    if is_viewer and actor.id == user_id:
+        row.actor_email = None
     await db.delete(target)
     await db.commit()
 
     revocation_deferred = False
     try:
-        await token_store.revoke_refresh(str(target_id))
+        await token_store.revoke_refresh(str(user_id))
     except TokenStoreUnavailable:
         # The row is gone, so no token can authenticate anyway.
         revocation_deferred = True
-    log.info("user_deleted", user_id=str(target_id), email=email, by=str(actor.id))
+
+    from app.core import storage as storage_module
+
+    store = storage_module.get_storage()
+    for key in object_keys:
+        try:
+            await asyncio.to_thread(
+                store.delete_object, settings.object_store_media_bucket, key
+            )
+        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
+            log.warning("orphaned_object", key=key, user_id=str(user_id))
+
+    log.info("user_deleted", user_id=str(user_id), by=str(actor.id))
     return revocation_deferred
+
+
+async def _owned_object_keys(db: AsyncSession, user: User) -> list[str]:
+    """Storage keys the account owns: its avatar and every playlist cover,
+    de-duplicated, NULLs dropped. Read before the delete cascades them away."""
+    covers = (await db.execute(
+        select(Playlist.cover_key).where(
+            Playlist.user_id == user.id, Playlist.cover_key.is_not(None)
+        )
+    )).scalars().all()
+    keys = [user.avatar_key, *covers]
+    return list(dict.fromkeys(k for k in keys if k))
 
 
 async def resend_invite(

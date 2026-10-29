@@ -1,10 +1,10 @@
 import ipaddress
 import os
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Recognised deployment environments. An unrecognised value is rejected rather
@@ -47,6 +47,22 @@ def _r2_endpoint_host_is_valid(endpoint_url: str) -> bool:
     return host.endswith(".r2.cloudflarestorage.com")
 
 
+def assert_ec_p256_pem(pem: str) -> None:
+    """Raise ValueError unless `pem` is an unencrypted EC P-256 private key.
+    Parses only; makes no network call. Never echoes key material."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    try:
+        key = serialization.load_pem_private_key(pem.encode(), password=None)
+    except Exception as exc:  # cryptography raises several types for bad PEMs
+        raise ValueError("not a loadable unencrypted PEM private key") from exc
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
+        key.curve, ec.SECP256R1
+    ):
+        raise ValueError("not an EC P-256 key (Apple requires ES256)")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Local/dev only. .env is gitignored; .env.example is committed docs of
@@ -55,6 +71,10 @@ class Settings(BaseSettings):
         # and have no .env file at all.
         env_file=".env",
         env_file_encoding="utf-8",
+        # A failed validation (e.g. the preflight rejecting a wrong-curve
+        # APPLE_PRIVATE_KEY) must not echo the offending raw values — which
+        # include secrets — into boot logs / stderr.
+        hide_input_in_errors=True,
     )
 
     app_name: str = "Rhema Pod"
@@ -316,6 +336,23 @@ class Settings(BaseSettings):
     oauth_apple_enabled: bool = False
     oauth_jwks_default_ttl_seconds: int = 3600
 
+    # --- Account deletion + Apple token revocation (ADR 0020) ---
+    # `stub` records calls and never reaches Apple; `http` calls
+    # appleid.apple.com. Production with oauth_apple_enabled refuses `stub`
+    # (production_preflight). apple_private_key is the .p8 PEM *contents*, not
+    # a path; like cf_stream_signing_key_pem it accepts a single line with
+    # literal "\n" escapes — see normalize_apple_private_key below.
+    apple_revocation_backend: Literal["http", "stub"] = "stub"
+    apple_team_id: str = "FAND2W5VMM"
+    apple_key_id: str | None = None
+    apple_private_key: SecretStr | None = None
+    # Defaults to apple_oauth_audiences[0] (see default_apple_client_id).
+    apple_client_id: str | None = None
+    # Max age of the re-auth proof accepted by POST /auth/me/delete.
+    account_deletion_reauth_max_age_seconds: int = 300
+    account_delete_rate_limit: int = 5
+    account_delete_rate_window_seconds: int = 3600
+
     @field_validator("database_url", "database_replica_url")
     @classmethod
     def _force_psycopg_driver(cls, v: str | None) -> str | None:
@@ -387,6 +424,25 @@ class Settings(BaseSettings):
         if v is None:
             return v
         return v.replace("\\n", "\n")
+
+    @field_validator("apple_private_key", mode="before")
+    @classmethod
+    def normalize_apple_private_key(cls, v: object) -> object:
+        """Same idiom as normalize_signing_key_pem: undo "\\n"-escaping so the
+        PEM is always real multi-line text, and a real multi-line value
+        round-trips unchanged. Blank means unset."""
+        if isinstance(v, SecretStr):
+            v = v.get_secret_value()
+        if not isinstance(v, str):
+            return v
+        v = v.replace("\\n", "\n").strip()
+        return v or None
+
+    @model_validator(mode="after")
+    def default_apple_client_id(self) -> "Settings":
+        if not self.apple_client_id and self.apple_oauth_audiences:
+            self.apple_client_id = self.apple_oauth_audiences[0]
+        return self
 
     @field_validator("environment")
     @classmethod
@@ -496,6 +552,29 @@ class Settings(BaseSettings):
                     "bypassable"
                 )
         return v
+
+    def _apple_revocation_problems(self) -> list[str]:
+        """Config-only checks (no network) for the Apple revocation seam.
+        Shared with app/scripts/preflight.py, which also covers staging."""
+        problems: list[str] = []
+        if self.apple_revocation_backend != "http":
+            problems.append(
+                "APPLE_REVOCATION_BACKEND must be 'http' while OAUTH_APPLE_ENABLED "
+                "is true (the stub never revokes the user's Apple grant, which "
+                "App Store account-deletion rules require)"
+            )
+        if not self.apple_key_id:
+            problems.append("APPLE_KEY_ID is required while OAUTH_APPLE_ENABLED is true")
+        if self.apple_private_key is None:
+            problems.append(
+                "APPLE_PRIVATE_KEY is required while OAUTH_APPLE_ENABLED is true"
+            )
+        else:
+            try:
+                assert_ec_p256_pem(self.apple_private_key.get_secret_value())
+            except ValueError as exc:
+                problems.append(f"APPLE_PRIVATE_KEY is unusable: {exc}")
+        return problems
 
     @model_validator(mode="after")
     def production_preflight(self) -> "Settings":
@@ -616,6 +695,8 @@ class Settings(BaseSettings):
                 "is true (without it every Apple identity token fails "
                 "audience verification, and /auth/oauth/apple is unusable)"
             )
+        if self.oauth_apple_enabled:
+            problems.extend(self._apple_revocation_problems())
         if not self.require_email_verification:
             problems.append(
                 "REQUIRE_EMAIL_VERIFICATION must be true (it exists only so the "

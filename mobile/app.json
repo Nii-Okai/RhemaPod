@@ -12,6 +12,8 @@
     "ios": {
       "supportsTabletMode": true,
       "bundleIdentifier": "com.niitech.rhemapod",
+      "appleTeamId": "FAND2W5VMM",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to.",
         "ITSAppUsesNonExemptEncryption": false
@@ -72,7 +74,8 @@
           }
         }
       ],
-      "react-native-google-cast"
+      "react-native-google-cast",
+      "expo-apple-authentication"
     ],
     "scheme": "rhemapod",
     "extra": {

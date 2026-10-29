@@ -18,6 +18,8 @@ const target = (over: Partial<UserPublic>): UserPublic => ({
   full_name: "Target One",
   role: "editor",
   is_active: true,
+  has_password: false,
+  linked_providers: [],
   activated_at: "2025-01-01T00:00:00Z",
   created_at: "2024-06-21T10:00:00Z",
   ...over,

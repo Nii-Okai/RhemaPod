@@ -88,8 +88,9 @@ async def list_members(
     rows, total = await auth_service.list_members(
         db, limit=limit, offset=offset, search=q, status=status_filter
     )
+    providers = await auth_service.linked_providers_by_user(db, [u.id for u in rows])
     return Page[UserPublic](
-        items=[auth_service.to_user_public(u) for u in rows],
+        items=[auth_service.to_user_public(u, providers.get(u.id, ())) for u in rows],
         total=total, limit=limit, offset=offset,
     )
 
@@ -165,7 +166,7 @@ async def change_role(
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
-    return auth_service.to_user_public(updated)
+    return await auth_service.to_user_public_linked(db, updated)
 
 
 @router.patch("/{user_id}/active", response_model=UserActiveResponse)
@@ -194,7 +195,7 @@ async def set_active(
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return UserActiveResponse(
-        user=auth_service.to_user_public(updated),
+        user=await auth_service.to_user_public_linked(db, updated),
         revocation_deferred=revocation_deferred,
     )
 

@@ -5,27 +5,33 @@ from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import email as email_module
 from app.core import security, token_store
+from app.core.apple_revocation import AppleRevocationClient, get_apple_revocation_client
 from app.core.config import get_settings
 from app.core.dependencies import AuditCtx, CurrentUserDep, require_role
 from app.core.logging import correlation_id, get_logger
 from app.core.net import client_ip
 from app.core.oauth import (
     OAuthTokenError,
+    ProviderConfig,
     VerifiedIdentity,
     unverified_exp,
     verify_apple_identity_token,
     verify_google_id_token,
 )
-from app.core.rate_limit import check_rate_limit
+from app.core.rate_limit import RateLimitUnavailable, check_rate_limit, login_rate_limit_key
 from app.db.database import get_db
-from app.models.models import AuditAction, AuditOutcome, UserRole
+from app.models.models import AuditAction, AuditOutcome, AuthProvider, UserRole
 from app.models.schemas import (
+    AccountDeletionRequest,
+    AppleDeletionRequest,
+    GoogleDeletionRequest,
+    PasswordDeletionRequest,
     AppleSignInRequest,
     AvatarResponse,
     AvatarTicket,
@@ -46,7 +52,13 @@ from app.models.schemas import (
     UserRegister,
     VerifyEmailRequest,
 )
-from app.services import audit_service, auth_service, comments_service, oauth_service
+from app.services import (
+    account_deletion_service,
+    audit_service,
+    auth_service,
+    comments_service,
+    oauth_service,
+)
 from app.services.audit_service import AuditContext
 from app.services.auth_service import AuthError
 from app.services.content_service import ContentError
@@ -184,7 +196,7 @@ async def login(
     data: UserLogin, request: Request, db: DbDep, ctx: AuditCtx
 ) -> TokenPair | JSONResponse:
     client = client_ip(request)
-    rl_key = f"login:{client}:{data.email.lower()}"
+    rl_key = login_rate_limit_key(client, data.email)
     allowed = await check_rate_limit(
         rl_key, settings.login_rate_limit, settings.login_rate_window_seconds
     )
@@ -514,7 +526,7 @@ async def read_me(user: CurrentUserDep, db: DbDep) -> UserPublic:
     record = await auth_service.get_user_by_id(db, user.id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return auth_service.to_user_public(record)
+    return await auth_service.to_user_public_linked(db, record)
 
 
 @router.patch("/me", response_model=UserPublic)
@@ -537,7 +549,7 @@ async def update_me(data: ProfileUpdate, user: CurrentUserDep, db: DbDep) -> Use
             detail=exc.message,
             headers=exc.headers or None,
         )
-    return auth_service.to_user_public(record)
+    return await auth_service.to_user_public_linked(db, record)
 
 
 @router.patch("/me/profile", response_model=UserPublic)
@@ -566,7 +578,7 @@ async def update_me_profile(data: ProfileDetailsUpdate, user: CurrentUserDep, db
             detail=exc.message,
             headers=exc.headers or None,
         )
-    return auth_service.to_user_public(record)
+    return await auth_service.to_user_public_linked(db, record)
 
 
 @router.post("/me/avatar/upload-ticket", response_model=AvatarTicket, status_code=status.HTTP_201_CREATED)
@@ -590,3 +602,143 @@ async def avatar_confirm(avatar_key: str, user: CurrentUserDep, db: DbDep) -> Av
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     return AvatarResponse(avatar_url=url)
+
+
+# ── Self-service account deletion (ADR 0020) ─────────────────────────────────
+AppleRevocationDep = Annotated[AppleRevocationClient, Depends(get_apple_revocation_client)]
+
+_DELETE_LIMITER_UNAVAILABLE = "Account deletion is temporarily unavailable. Try again shortly."
+
+
+_IAT_FUTURE_LEEWAY_SECONDS = ProviderConfig.leeway_seconds  # the verifier's own clock-skew leeway
+
+
+def _reauth_failed() -> ContentError:
+    # One message for every cause (wrong password, wrong provider, `sub`
+    # mismatch, stale `iat`, nonce, replay): no account-state oracle.
+    return ContentError(account_deletion_service.REAUTH_FAILED_MESSAGE, status_code=403)
+
+
+async def _verify_oauth_deletion_proof(
+    provider: AuthProvider,
+    verify,
+    raw_token: str,
+    target: account_deletion_service.DeletionTarget,
+) -> None:
+    try:
+        identity = await verify()
+        subject = target.subjects.get(provider)
+        if subject is None or identity.subject != subject:
+            log.info("account_delete_reauth_rejected", reason="subject_mismatch")
+            raise _reauth_failed()
+        iat = identity.iat
+        now = time.time()
+        if (
+            iat is None
+            or now - iat > settings.account_deletion_reauth_max_age_seconds
+            # An `iat` further ahead than the verifier's clock leeway is not a
+            # fresh sign-in; it is a token minted to look fresh for longer.
+            or iat - now > _IAT_FUTURE_LEEWAY_SECONDS
+        ):
+            log.info("account_delete_reauth_rejected", reason="stale_iat")
+            raise _reauth_failed()
+        await _claim_oauth_token_once(raw_token)
+    except OAuthTokenError as exc:
+        if exc.reason == "unavailable":
+            raise ContentError(
+                _OAUTH_TOKEN_ERROR_RESPONSES["unavailable"][1], status_code=503
+            ) from None
+        log.info("account_delete_reauth_rejected", reason=exc.reason)
+        raise _reauth_failed() from None
+
+
+async def _verify_deletion_proof(
+    data: AccountDeletionRequest, target: account_deletion_service.DeletionTarget
+) -> None:
+    if isinstance(data, PasswordDeletionRequest):
+        if not security.verify_password(data.password, target.user.password_hash):
+            log.info("account_delete_reauth_rejected", reason="password")
+            raise _reauth_failed()
+    elif isinstance(data, GoogleDeletionRequest):
+        await _verify_oauth_deletion_proof(
+            AuthProvider.GOOGLE,
+            lambda: verify_google_id_token(data.id_token),
+            data.id_token,
+            target,
+        )
+    else:
+        await _verify_oauth_deletion_proof(
+            AuthProvider.APPLE,
+            lambda: verify_apple_identity_token(data.identity_token, data.raw_nonce),
+            data.identity_token,
+            target,
+        )
+
+
+@router.post("/me/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    data: AccountDeletionRequest,
+    user: CurrentUserDep,
+    request: Request,
+    db: DbDep,
+    ctx: AuditCtx,
+    apple_client: AppleRevocationDep,
+    background_tasks: BackgroundTasks,
+) -> Response:
+    """Delete the caller's own account (viewers only). One fresh proof goes in
+    the same request: password, a fresh Google token, or a fresh Apple token
+    plus its authorization code (revoked at Apple before anything is erased).
+    Errors: 403 staff or failed re-auth (one generic message), 409 Apple
+    re-auth required / Apple-only account / authored history, 400 Apple code
+    rejected, 429 limiter, 503 Apple or the limiter store unavailable."""
+    try:
+        account_deletion_service.ensure_viewer(user.role)
+
+        try:
+            allowed = await check_rate_limit(
+                f"account_delete:{user.id}",
+                settings.account_delete_rate_limit,
+                settings.account_delete_rate_window_seconds,
+                fail_open=False,
+            )
+        except RateLimitUnavailable:
+            raise ContentError(_DELETE_LIMITER_UNAVAILABLE, status_code=503) from None
+        if not allowed:
+            raise ContentError(
+                "Too many deletion attempts. Try again later.", status_code=429
+            )
+
+        if isinstance(data, PasswordDeletionRequest):
+            # Password guesses draw down the same budget as /auth/login.
+            login_allowed = await check_rate_limit(
+                login_rate_limit_key(client_ip(request), user.email),
+                settings.login_rate_limit,
+                settings.login_rate_window_seconds,
+            )
+            if not login_allowed:
+                raise ContentError(
+                    "Too many login attempts. Try again shortly.", status_code=429
+                )
+
+        target = await account_deletion_service.prepare_account_deletion(
+            db, user.id, method=data.method, apple_unavailable=data.apple_unavailable
+        )
+        await _verify_deletion_proof(data, target)
+        email = await account_deletion_service.delete_own_account(
+            db,
+            target,
+            ctx,
+            apple_client=apple_client,
+            authorization_code=(
+                data.authorization_code if isinstance(data, AppleDeletionRequest) else None
+            ),
+        )
+    except ContentError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail=exc.message, headers=exc.headers or None
+        )
+    # After the response, so an SMTP stall can't delay the 204.
+    background_tasks.add_task(
+        account_deletion_service.send_deleted_notice, email, user.id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

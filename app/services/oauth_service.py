@@ -339,6 +339,9 @@ async def sign_in_with_identity(
 
     # Auto-link: closes the pre-registration takeover hole described in the
     # module docstring. All in one transaction with the identity-row insert.
+    # Captured first so the notice only claims a password was removed when
+    # one actually existed (a Google-first account linking Apple has none).
+    had_password = existing_user.password_hash is not None
     existing_user.password_hash = None
     # The provider verified this address, so an account still waiting on its
     # sign-up code is now proven too.
@@ -381,7 +384,9 @@ async def sign_in_with_identity(
     # on, same swallow-and-log posture as `auth.py`'s own
     # `_dispatch_password_reset`.
     try:
-        await email_module.send_sign_in_method_linked(existing_user.email, provider_name)
+        await email_module.send_sign_in_method_linked(
+            existing_user.email, provider_name, password_removed=had_password
+        )
     except Exception as exc:
         log.warning(
             "sign_in_method_linked_email_failed",

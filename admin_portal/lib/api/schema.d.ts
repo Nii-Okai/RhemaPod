@@ -915,6 +915,8 @@ export interface paths {
         /**
          * Change Password
          * @description Requires the current password — an access token alone is not enough.
+         *     Wrong guesses are capped per account like login, so a stolen access token
+         *     can't be used to brute-force the current password.
          */
         post: operations["change_password_api_v1_auth_change_password_post"];
         delete?: never;
@@ -1035,6 +1037,31 @@ export interface paths {
         put?: never;
         /** Avatar Upload Ticket */
         post: operations["avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Me
+         * @description Delete the caller's own account (viewers only). One fresh proof goes in
+         *     the same request: password, a fresh Google token, or a fresh Apple token
+         *     plus its authorization code (revoked at Apple before anything is erased).
+         *     Errors: 403 staff or failed re-auth (one generic message), 409 Apple
+         *     re-auth required / Apple-only account / authored history, 400 Apple code
+         *     rejected, 429 limiter, 503 Apple or the limiter store unavailable.
+         */
+        post: operations["delete_me_api_v1_auth_me_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2870,6 +2897,25 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** AppleDeletionRequest */
+        AppleDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /** Authorization Code */
+            authorization_code: string;
+            /** Identity Token */
+            identity_token: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "apple";
+            /** Raw Nonce */
+            raw_nonce: string;
+        };
         /**
          * AppleSignInRequest
          * @description Apple's signed identity token plus the raw nonce the client generated
@@ -3024,6 +3070,14 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * AuthProvider
+         * @description OAuth identity provider a `UserIdentity` row is linked against. Only
+         *     ``viewer``-role accounts ever gain one (ADR 0015) — staff always sign in
+         *     via `/auth/login`.
+         * @enum {string}
+         */
+        AuthProvider: "google" | "apple";
         /** AvatarResponse */
         AvatarResponse: {
             /** Avatar Url */
@@ -3608,6 +3662,21 @@ export interface components {
          * @enum {string}
          */
         Gender: "male" | "female";
+        /** GoogleDeletionRequest */
+        GoogleDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /** Id Token */
+            id_token: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "google";
+        };
         /**
          * GoogleSignInRequest
          * @description Google's signed ID token from the mobile app's native Google Sign-In
@@ -3836,6 +3905,21 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PasswordDeletionRequest */
+        PasswordDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "password";
+            /** Password */
+            password: string;
         };
         /** PlaylistCoverResponse */
         PlaylistCoverResponse: {
@@ -5091,6 +5175,11 @@ export interface components {
             full_name?: string | null;
             gender?: components["schemas"]["Gender"] | null;
             /**
+             * Has Password
+             * @default false
+             */
+            has_password: boolean;
+            /**
              * Id
              * Format: uuid
              */
@@ -5099,6 +5188,8 @@ export interface components {
             is_active: boolean;
             /** Last Name */
             last_name?: string | null;
+            /** Linked Providers */
+            linked_providers?: components["schemas"]["AuthProvider"][];
             role: components["schemas"]["UserRole"];
         };
         /** UserRegister */
@@ -6991,6 +7082,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AvatarTicket"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_me_api_v1_auth_me_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordDeletionRequest"] | components["schemas"]["GoogleDeletionRequest"] | components["schemas"]["AppleDeletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

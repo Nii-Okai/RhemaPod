@@ -1,6 +1,10 @@
-"""Two Redis-backed rate limiters, both failing OPEN: if Redis is unavailable,
-requests are allowed rather than blocking traffic — availability beats
-throttling here, and a Redis outage is not itself an attack signal.
+"""Two Redis-backed rate limiters, both failing OPEN by default: if Redis is
+unavailable, requests are allowed rather than blocking traffic —
+availability beats throttling here, and a Redis outage is not itself an
+attack signal. ``check_rate_limit`` alone offers a per-call ``fail_open=False``
+opt-out (raises ``RateLimitUnavailable``) for a route where the limiter is the
+only cap on a destructive, credential-guessable action (account deletion, see
+ADR 0020); no other call site uses it.
 
 This is the deliberate opposite of ``token_store.py``, where the credential
 paths fail CLOSED (503) on the same outage: never issue or revoke a token we
@@ -22,6 +26,7 @@ vs "what sustained rate" — the shape the mobile congestion problem this
 limiter exists for actually has (a congregation coming off silence, then
 settling into steady use).
 """
+import hashlib
 import time
 
 from app.core.config import get_settings
@@ -32,8 +37,31 @@ settings = get_settings()
 log = get_logger("rate_limit")
 
 
-async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
-    """Return True if the request is allowed, False if the limit is exceeded."""
+def login_rate_limit_key(ip: str, email: str) -> str:
+    """The per-(ip, email) login bucket, shared by `/auth/login` and the
+    password branch of account deletion. The email is hashed (16 hex of
+    sha256 of the lowercased address) so Redis keys and anything that logs a
+    key never carry the address itself."""
+    digest = hashlib.sha256(email.lower().encode("utf-8")).hexdigest()[:16]
+    return f"login:{ip}:{digest}"
+
+
+class RateLimitUnavailable(Exception):
+    """Redis failed during a ``check_rate_limit(..., fail_open=False)`` call.
+
+    The caller maps this to 503; it is never raised on the default
+    (fail-open) path.
+    """
+
+
+async def check_rate_limit(
+    key: str, limit: int, window_seconds: int, *, fail_open: bool = True
+) -> bool:
+    """Return True if the request is allowed, False if the limit is exceeded.
+
+    On a Redis error: ``fail_open=True`` (default) allows the request;
+    ``fail_open=False`` raises ``RateLimitUnavailable``.
+    """
     r = get_redis()
     redis_key = f"ratelimit:{key}"
     try:
@@ -43,6 +71,8 @@ async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
         return current <= limit
     except Exception:
         log.warning("rate_limit_unavailable", key=key)
+        if not fail_open:
+            raise RateLimitUnavailable(key) from None
         return True  # fail open
 
 

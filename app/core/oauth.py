@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 import httpx
@@ -248,6 +248,16 @@ class VerifiedIdentity:
     # `oauth_service.sign_in_with_identity`'s fresh-account-creation branch
     # (never on auto-link, never on a repeat sign-in — see that module).
     picture: str | None
+    # The verified token's `iat` (a required claim, so always present after
+    # verification). Account deletion uses it to demand a *fresh* sign-in.
+    iat: int | None = None
+
+
+def _iat(payload: dict[str, Any]) -> int | None:
+    iat = payload.get("iat")
+    if isinstance(iat, bool) or not isinstance(iat, (int, float)):
+        return None
+    return int(iat)
 
 
 def _as_bool(v: Any) -> bool:
@@ -325,6 +335,7 @@ async def verify_google_id_token(token: str) -> VerifiedIdentity:
         given_name=payload.get("given_name"),
         family_name=payload.get("family_name"),
         picture=payload.get("picture"),
+        iat=_iat(payload),
     )
 
 
@@ -349,7 +360,17 @@ async def verify_apple_identity_token(token: str, raw_nonce: str) -> VerifiedIde
         given_name=None,
         family_name=None,
         picture=None,
+        iat=_iat(payload),
     )
+
+
+async def verify_apple_token_subject(token: str, audience: str) -> str:
+    """`sub` of an Apple-issued token verified against Apple's JWKS for exactly
+    one audience (our own client id). Used on the `/auth/token` exchange
+    response, where the token carries no nonce, to bind an authorization code to
+    the identity it was issued for."""
+    payload = await _verify_token(token, replace(APPLE, audience=lambda: [audience]))
+    return payload["sub"]
 
 
 def unverified_exp(token: str) -> int | None:

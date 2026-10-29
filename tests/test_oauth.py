@@ -204,6 +204,75 @@ async def test_auto_link_clears_password_and_revokes_sessions(pg_client, _rsa_ke
     assert identities[0].provider == AuthProvider.GOOGLE
 
 
+def _capture_linked_notices(monkeypatch) -> list[dict]:
+    from app.core import email as email_module
+
+    sent: list[dict] = []
+
+    async def sender(to, provider, *, password_removed):
+        sent.append({"to": to, "provider": provider, "password_removed": password_removed})
+
+    monkeypatch.setattr(email_module, "send_sign_in_method_linked", sender)
+    return sent
+
+
+async def test_auto_link_notice_says_password_removed_when_one_existed(
+    pg_client, _rsa_key, monkeypatch
+):
+    sent = _capture_linked_notices(monkeypatch)
+    email = f"pw-holder-{uuid.uuid4().hex[:8]}@example.com"
+    reg = await pg_client.post("/api/v1/auth/register", json={"email": email, "password": PW})
+    assert reg.status_code == 201, reg.text
+
+    sub = f"google-sub-{uuid.uuid4().hex[:8]}"
+    resp = await _google_sign_in(pg_client, _rsa_key, sub, email=email, aud=_GOOGLE_AUD)
+    assert resp.status_code == 200, resp.text
+
+    assert sent == [{"to": email, "provider": "Google", "password_removed": True}]
+
+
+async def test_auto_link_notice_omits_password_claim_for_passwordless_account(
+    pg_client, _rsa_key, monkeypatch, db_rows
+):
+    # Google-first account (never had a password) then linking Apple on the
+    # same verified email — the case that sent a false "password removed".
+    sent = _capture_linked_notices(monkeypatch)
+    email = f"google-first-{uuid.uuid4().hex[:8]}@example.com"
+    first = await _google_sign_in(
+        pg_client, _rsa_key, f"google-sub-{uuid.uuid4().hex[:8]}", email=email, aud=_GOOGLE_AUD
+    )
+    assert first.status_code == 200, first.text
+    assert sent == []
+
+    resp = await _apple_sign_in(pg_client, _rsa_key, f"apple-sub-{uuid.uuid4().hex[:8]}", email=email)
+    assert resp.status_code == 200, resp.text
+
+    assert sent == [{"to": email, "provider": "Apple", "password_removed": False}]
+    rows = await db_rows(User, email=email)
+    identities = await db_rows(UserIdentity, user_id=rows[0].id)
+    assert {i.provider for i in identities} == {AuthProvider.GOOGLE, AuthProvider.APPLE}
+
+
+@pytest.mark.parametrize("password_removed", [True, False])
+async def test_linked_notice_copy_matches_password_state(monkeypatch, password_removed):
+    from app.core import email as email_module
+
+    captured: list[tuple] = []
+
+    async def fake_send(to, subject, text, html):
+        captured.append((subject, text, html))
+
+    monkeypatch.setattr(email_module, "_send", fake_send)
+    await email_module.send_sign_in_method_linked(
+        "a@example.com", "Apple", password_removed=password_removed
+    )
+
+    (_, text, html), = captured
+    for body in (text, html):
+        assert ("password was removed" in body) is password_removed
+        assert "contact support" in body
+
+
 async def test_deactivated_account_rejected_at_auto_link(pg_client, _rsa_key, make_user, db_rows):
     """Security-reviewer finding: the auto-link branch must check `is_active`
     before any of its side effects (password wipe, session revoke, identity

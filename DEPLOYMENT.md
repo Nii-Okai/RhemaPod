@@ -468,3 +468,99 @@ stripped of control characters and cut to 512 characters.
 `docker-compose.yml` has no admin portal service and sets neither variable;
 plain `npm run dev` against a local backend records `127.0.0.1`, which is
 expected.
+
+## 14. Apple revocation key (account deletion)
+
+Account deletion revokes the user's Sign in with Apple grant (App Store
+guideline 5.1.1(v)). That needs a server-side `.p8` key. Design: ADR 0020;
+plan: `plans/plan-account-deletion-backend.md` (§A.4, §A.5).
+
+**Never commit the key, never log it.** The log pipeline redacts
+`apple_private_key`, `client_secret` and the token fields, but don't rely on
+that: keep the `.p8` outside the repo (`.gitignore` covers `.env*` and `*.p8`, but
+a password manager is the right home) and delete the downloaded file once it
+is stored.
+
+### Settings
+
+| Variable | Default | Notes |
+|---|---|---|
+| `APPLE_REVOCATION_BACKEND` | `stub` | `http` or `stub`. Stay on `stub` until the mobile clients plan's AD3 |
+| `APPLE_TEAM_ID` | `FAND2W5VMM` | |
+| `APPLE_KEY_ID` | none | 10-char Key ID shown when the key is created |
+| `APPLE_PRIVATE_KEY` | none | **PEM contents** (not a path). Secret |
+| `APPLE_CLIENT_ID` | first `APPLE_OAUTH_AUDIENCES` entry | Primary App ID, `com.niitech.rhemapod` |
+| `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` | `300` | Max age of the re-auth proof |
+| `ACCOUNT_DELETE_RATE_LIMIT` / `ACCOUNT_DELETE_RATE_WINDOW_SECONDS` | `5` / `3600` | Per-user limiter on `POST /auth/me/delete` |
+
+Only `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` are secrets/provisioned; the rest
+are config.
+
+### 1. Create the key (Apple Developer, by hand)
+
+1. developer.apple.com -> Certificates, Identifiers & Profiles -> Keys -> `+`.
+2. Name it (e.g. `rhemapod-siwa-revoke`). Tick **Sign in with Apple** only,
+   nothing else.
+3. Configure -> choose the primary App ID `com.niitech.rhemapod` (team
+   `FAND2W5VMM`) -> Save -> Continue -> Register.
+4. Note the **Key ID**, then **Download** the `.p8`. Apple lets you download it
+   once.
+
+### 2. Local placement
+
+Put the values in the gitignored `.env`, or the gitignored
+`docker-compose.override.yml` if you run via compose. The PEM goes in as
+contents, on one line, double-quoted, newlines written as `\n`:
+
+```bash
+APPLE_REVOCATION_BACKEND=http   # leave as stub until you actually test revocation
+APPLE_KEY_ID=ABC123DEFG
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+```
+
+To produce that line from the downloaded file:
+`awk 'NF {printf "%s\\n", $0}' AuthKey_ABC123DEFG.p8`. `.env.example` and
+`.env.docker.example` carry placeholders only.
+
+### 3. Deployed environments
+
+Store the key in the platform's secret store, never a file on disk or in the
+image:
+
+- **Render (current host; decided at AD2, 2026-10-29):** `APPLE_KEY_ID` and
+  `APPLE_PRIVATE_KEY` are encrypted environment variables on the API service,
+  set in the dashboard (`sync: false` in `render.yaml`, never a literal).
+  `APPLE_TEAM_ID`, `APPLE_CLIENT_ID` and `APPLE_REVOCATION_BACKEND=http` are
+  plain config. Set them at the clients plan's AD5; none are set yet.
+- **AWS:** no Secrets Manager entry until the app actually moves to AWS. Decide
+  the secret's name and shape then.
+
+### 4. Preflight
+
+With `oauth_apple_enabled` on, `python -m app.scripts.preflight` (and app
+startup in production) refuses to boot when:
+
+- `APPLE_REVOCATION_BACKEND` is `stub`;
+- `APPLE_KEY_ID` or `APPLE_PRIVATE_KEY` is missing;
+- the PEM does not load, or is not an EC P-256 key.
+
+It makes **no network call**: a wrong Key ID, revoked key or wrong team passes
+preflight and surfaces at the first real deletion as `invalid_client`
+(logged at error level, returned as 503). Smoke-test a real revocation with a
+throwaway Apple account after every key change.
+
+### 5. Rotation
+
+Apple allows overlapping keys, so rotation has no downtime window.
+
+1. Create a new key (step 1 above). Keep the old one active.
+2. Store the new `APPLE_KEY_ID` + `APPLE_PRIVATE_KEY` (local `.env`, then the
+   deployed secret).
+3. Deploy. Preflight must pass.
+4. Verify: run a throwaway-account deletion; revocation must return success.
+5. Only then revoke the old key in the Apple Developer portal and delete its
+   `.p8` everywhere.
+
+If step 4 fails, the old key is still active: roll the secret back. The same
+steps, minus the "old key" parts, apply if a key leaks; revoke it immediately
+rather than after verification.
