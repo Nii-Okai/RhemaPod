@@ -528,6 +528,46 @@
         "title": "AnnouncementUpdate",
         "type": "object"
       },
+      "AppleDeletionRequest": {
+        "properties": {
+          "apple_unavailable": {
+            "default": false,
+            "title": "Apple Unavailable",
+            "type": "boolean"
+          },
+          "authorization_code": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Authorization Code",
+            "type": "string"
+          },
+          "identity_token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Identity Token",
+            "type": "string"
+          },
+          "method": {
+            "const": "apple",
+            "title": "Method",
+            "type": "string"
+          },
+          "raw_nonce": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Raw Nonce",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "identity_token",
+          "raw_nonce",
+          "authorization_code"
+        ],
+        "title": "AppleDeletionRequest",
+        "type": "object"
+      },
       "AppleSignInRequest": {
         "description": "Apple's signed identity token plus the raw nonce the client generated\nfor this attempt (ADR 0015) \u2014 the server re-derives `sha256(raw_nonce)`\nand checks it against the token's own `nonce` claim. `given_name`/\n`family_name` are Apple's one-time-only name delivery: Apple's identity\ntoken never carries a name, so the client forwards whatever\n`ASAuthorizationAppleIDCredential.fullName` returned on the FIRST\nauthorization only (it's None on every subsequent sign-in) \u2014 used only to\nprefill a brand-new account's profile, dropped otherwise.\n`authorization_code` is accepted for forward-compatibility (a future\nserver-side revocation flow, ADR 0015 \u00a7\"Apple token revocation deferred\")\nbut is not exchanged or used anywhere in this phase.",
         "properties": {
@@ -881,6 +921,15 @@
         ],
         "title": "AuditWipeRequest",
         "type": "object"
+      },
+      "AuthProvider": {
+        "description": "OAuth identity provider a `UserIdentity` row is linked against. Only\n``viewer``-role accounts ever gain one (ADR 0015) \u2014 staff always sign in\nvia `/auth/login`.",
+        "enum": [
+          "google",
+          "apple"
+        ],
+        "title": "AuthProvider",
+        "type": "string"
       },
       "AvatarResponse": {
         "properties": {
@@ -2492,6 +2541,32 @@
         "title": "Gender",
         "type": "string"
       },
+      "GoogleDeletionRequest": {
+        "properties": {
+          "apple_unavailable": {
+            "default": false,
+            "title": "Apple Unavailable",
+            "type": "boolean"
+          },
+          "id_token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Id Token",
+            "type": "string"
+          },
+          "method": {
+            "const": "google",
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "id_token"
+        ],
+        "title": "GoogleDeletionRequest",
+        "type": "object"
+      },
       "GoogleSignInRequest": {
         "description": "Google's signed ID token from the mobile app's native Google Sign-In\nflow (ADR 0015). Verified server-side in `app/core/oauth.py` \u2014 nothing\nhere is trusted until the signature, issuer, and audience all check out.",
         "properties": {
@@ -2998,6 +3073,32 @@
           "offset"
         ],
         "title": "Page[UserPublic]",
+        "type": "object"
+      },
+      "PasswordDeletionRequest": {
+        "properties": {
+          "apple_unavailable": {
+            "default": false,
+            "title": "Apple Unavailable",
+            "type": "boolean"
+          },
+          "method": {
+            "const": "password",
+            "title": "Method",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "password"
+        ],
+        "title": "PasswordDeletionRequest",
         "type": "object"
       },
       "PlaylistCoverResponse": {
@@ -6371,6 +6472,11 @@
               }
             ]
           },
+          "has_password": {
+            "default": false,
+            "title": "Has Password",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6390,6 +6496,13 @@
               }
             ],
             "title": "Last Name"
+          },
+          "linked_providers": {
+            "items": {
+              "$ref": "#/components/schemas/AuthProvider"
+            },
+            "title": "Linked Providers",
+            "type": "array"
           },
           "role": {
             "$ref": "#/components/schemas/UserRole"
@@ -9757,6 +9870,65 @@
           }
         ],
         "summary": "Avatar Upload Ticket",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/delete": {
+      "post": {
+        "description": "Delete the caller's own account (viewers only). One fresh proof goes in\nthe same request: password, a fresh Google token, or a fresh Apple token\nplus its authorization code (revoked at Apple before anything is erased).\nErrors: 403 staff or failed re-auth (one generic message), 409 Apple\nre-auth required / Apple-only account / authored history, 400 Apple code\nrejected, 429 limiter, 503 Apple or the limiter store unavailable.",
+        "operationId": "delete_me_api_v1_auth_me_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "apple": "#/components/schemas/AppleDeletionRequest",
+                    "google": "#/components/schemas/GoogleDeletionRequest",
+                    "password": "#/components/schemas/PasswordDeletionRequest"
+                  },
+                  "propertyName": "method"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PasswordDeletionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleDeletionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AppleDeletionRequest"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Me",
         "tags": [
           "auth"
         ]

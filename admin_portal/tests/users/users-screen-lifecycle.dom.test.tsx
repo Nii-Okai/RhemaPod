@@ -101,6 +101,8 @@ const user = (over: Partial<UserPublic>): UserPublic => ({
   full_name: "User One",
   role: "editor",
   is_active: true,
+  has_password: false,
+  linked_providers: [],
   activated_at: "2025-02-01T00:00:00Z",
   created_at: "2024-06-21T10:00:00Z",
   ...over,
