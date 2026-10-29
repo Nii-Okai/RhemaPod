@@ -89,15 +89,16 @@ The first API build takes a few minutes. Later builds reuse the cache.
 
 ## 4. Check the portal → API wiring
 
-The portal reaches the API over Render's private network at
-`API_BASE_URL=http://rhemapod-dev-api:8000`.
+The portal's server calls the API at its **public** URL, `API_BASE_URL=https://api.rhemapod.com`.
+Free services can't reach each other over Render's private network: with the internal
+`http://rhemapod-dev-api:8000` the portal logged `bff_auth_upstream_unreachable` and showed
+"The service is unavailable". On paid plans, switch back to the internal address. It's faster,
+and it doesn't leave Render's network.
 
-- Open **rhemapod-dev-api → Connect → Internal** and confirm it shows exactly
-  `rhemapod-dev-api:8000`. If Render shows a suffixed host, update `API_BASE_URL` on
-  the portal service (and in `render.yaml`) to match.
-- Check readiness from your laptop:
-  `curl -s https://rhemapod-dev-api.onrender.com/health/ready`. It should report `"status":"ready"`
-  with the database and Redis both `ok`.
+This means the portal only works once `api.rhemapod.com` resolves (§5).
+
+Readiness check from your laptop: `curl -s https://api.rhemapod.com/health/ready` should report
+`"status":"ready"` with the database and Redis both `ok`.
 
 ## 5. Domains
 

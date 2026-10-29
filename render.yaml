@@ -132,9 +132,10 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "24"
-      # Server-to-server over Render's private network. Confirm the internal
-      # address in the API service's Connect panel (DEPLOYMENT-RENDER.md §4).
+      # Public URL, not http://rhemapod-dev-api:8000: free services can't reach
+      # each other over Render's private network (the BFF's fetch failed with
+      # bff_auth_upstream_unreachable). Switch back on paid plans.
       - key: API_BASE_URL
-        value: http://rhemapod-dev-api:8000
+        value: https://api.rhemapod.com
       - key: PORTAL_ORIGIN
         value: https://admin.rhemapod.com
