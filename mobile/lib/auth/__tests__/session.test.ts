@@ -12,6 +12,7 @@ import { clearQueryCache } from '../../query/clearQueryCache';
 import { downloadManager } from '../../downloads/downloadManager';
 import * as fill from '../../mediaCache/fill';
 import * as session from '../session';
+import { forgetGoogleAccount } from '../googleSignIn';
 
 jest.mock('expo-secure-store', () => {
   let store: Record<string, string> = {};
@@ -53,6 +54,8 @@ jest.mock('../../query/clearQueryCache', () => ({ clearQueryCache: jest.fn().moc
 jest.mock('../../downloads/downloadManager', () => ({
   downloadManager: { wipeAllDownloads: jest.fn().mockResolvedValue(undefined) },
 }));
+
+jest.mock('../googleSignIn', () => ({ forgetGoogleAccount: jest.fn().mockResolvedValue(undefined) }));
 
 const mockedAuthClient = authClient as jest.Mocked<typeof authClient>;
 const mockedClearMediaCache = clearMediaCache as jest.Mock;
@@ -424,5 +427,35 @@ describe('session bootstrap', () => {
     expect(status).toBe('signedOut');
     expect(mockedAuthClient.refresh).not.toHaveBeenCalled();
     expect(mockedSecureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('finishAccountDeletion', () => {
+  it('tears the device down like a sign-out, without a logout call, and forgets Google', async () => {
+    mockedAuthClient.login.mockResolvedValueOnce({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 900,
+    });
+    await session.signIn('user@example.com', 'password123456');
+
+    await session.finishAccountDeletion();
+
+    // The server already revoked every session; a logout would just 401.
+    expect(mockedAuthClient.logout).not.toHaveBeenCalled();
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
+    expect(session.getAccessToken()).toBeNull();
+    expect(session.getStatus()).toBe('signedOut');
+    expect(mockedClearMediaCache).toHaveBeenCalled();
+    expect(mockedClearQueryCache).toHaveBeenCalled();
+    expect(mockedWipeAllDownloads).toHaveBeenCalled();
+    expect(forgetGoogleAccount).toHaveBeenCalled();
+  });
+
+  it('still signs out when a wipe step throws', async () => {
+    (forgetGoogleAccount as jest.Mock).mockRejectedValueOnce(new Error('native'));
+    mockedSecureStore.deleteItemAsync.mockRejectedValueOnce(new Error('keychain'));
+    await expect(session.finishAccountDeletion()).resolves.toBeUndefined();
+    expect(session.getStatus()).toBe('signedOut');
   });
 });

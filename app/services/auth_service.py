@@ -974,7 +974,7 @@ async def erase_user(
     user_id = target.id
     email, role = target.email, target.role.value
     is_viewer = target.role == _UserRole.VIEWER
-    object_keys = await _owned_object_keys(db, target)
+    object_keys, object_prefixes = await _owned_objects(db, target)
 
     if is_viewer:
         await db.execute(
@@ -1008,29 +1008,52 @@ async def erase_user(
 
     from app.core import storage as storage_module
 
-    store = storage_module.get_storage()
-    for key in object_keys:
-        try:
-            await asyncio.to_thread(
-                store.delete_object, settings.object_store_media_bucket, key
-            )
-        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
-            log.warning("orphaned_object", key=key, user_id=str(user_id))
+    await asyncio.to_thread(
+        _delete_owned_objects,
+        storage_module.get_storage(), settings.object_store_media_bucket,
+        object_keys, object_prefixes, user_id,
+    )
 
     log.info("user_deleted", user_id=str(user_id), by=str(actor.id))
     return revocation_deferred
 
 
-async def _owned_object_keys(db: AsyncSession, user: User) -> list[str]:
-    """Storage keys the account owns: its avatar and every playlist cover,
-    de-duplicated, NULLs dropped. Read before the delete cascades them away."""
-    covers = (await db.execute(
-        select(Playlist.cover_key).where(
-            Playlist.user_id == user.id, Playlist.cover_key.is_not(None)
-        )
-    )).scalars().all()
-    keys = [user.avatar_key, *covers]
-    return list(dict.fromkeys(k for k in keys if k))
+async def _owned_objects(
+    db: AsyncSession, user: User
+) -> tuple[list[str], list[str]]:
+    """What the account owns in storage, read before the delete cascades it
+    away: the keys its rows point at (avatar, every playlist cover;
+    de-duplicated, NULLs dropped) and the per-owner prefixes those uploads
+    live under (`avatars/{user_id}/`, `playlist_covers/{playlist_id}/`), so
+    replaced or never-confirmed uploads are erased too."""
+    playlists = (await db.execute(
+        select(Playlist.id, Playlist.cover_key).where(Playlist.user_id == user.id)
+    )).all()
+    keys = [user.avatar_key, *(cover for _, cover in playlists)]
+    prefixes = [
+        f"avatars/{user.id}/",
+        *(f"playlist_covers/{playlist_id}/" for playlist_id, _ in playlists),
+    ]
+    return list(dict.fromkeys(k for k in keys if k)), prefixes
+
+
+def _delete_owned_objects(
+    store, bucket: str, keys: list[str], prefixes: list[str], user_id: uuid.UUID
+) -> None:
+    """Best-effort, in a worker thread: one listing per prefix, then one delete
+    per key. A prefix that can't be listed still has its known keys deleted;
+    a failure is logged with the key or prefix, never the email."""
+    targets = dict.fromkeys(keys)
+    for prefix in prefixes:
+        try:
+            targets.update(dict.fromkeys(store.list_keys(bucket, prefix)))
+        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
+            log.warning("orphaned_prefix", prefix=prefix, user_id=str(user_id))
+    for key in targets:
+        try:
+            store.delete_object(bucket, key)
+        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
+            log.warning("orphaned_object", key=key, user_id=str(user_id))
 
 
 async def resend_invite(

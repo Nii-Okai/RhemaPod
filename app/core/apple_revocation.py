@@ -125,6 +125,25 @@ class HttpAppleRevocationClient:
             await self._check_subject(id_token, expected_sub)
             await self._revoke_token(http, refresh_token, client_secret)
 
+    async def check_credentials(self) -> None:
+        """Prove Apple accepts our ``client_secret`` without revoking anything:
+        exchange a code that can't be valid. ``invalid_grant`` means the team,
+        key id, key and client id are right (Apple judged the code, not us);
+        anything else raises. For ``app.scripts.check_apple_key``, never the
+        request path."""
+        client_secret = self._mint_client_secret()
+        async with httpx.AsyncClient(
+            base_url=APPLE_BASE_URL, timeout=self._timeout, transport=self._transport
+        ) as http:
+            try:
+                await self._exchange_code(http, "rhemapod-credential-check", client_secret)
+            except AppleRevocationError as exc:
+                if exc.reason == "invalid_grant":
+                    return
+                raise
+        # A 200 for a made-up code would mean Apple isn't who answered.
+        raise AppleRevocationError("misconfigured", "Apple accepted an invalid code")
+
     async def _check_subject(self, id_token: str | None, expected_sub: str) -> None:
         """Bind the code to the verified identity: the exchange's id_token must
         verify against Apple's JWKS for our client id and carry `expected_sub`."""

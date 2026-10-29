@@ -66,3 +66,21 @@ export async function performGoogleSignIn(): Promise<string | null> {
   }
   return idToken;
 }
+
+/**
+ * Drops the app's Google grant and the cached Google session on this device, after the
+ * account it signed in to was deleted. Best-effort, like the `revokeAccess()` above: there
+ * may be no Google session at all.
+ */
+export async function forgetGoogleAccount(): Promise<void> {
+  try {
+    await GoogleSignin.revokeAccess();
+  } catch {
+    // Nothing to revoke.
+  }
+  try {
+    await GoogleSignin.signOut();
+  } catch {
+    // Already signed out.
+  }
+}

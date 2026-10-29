@@ -33,6 +33,16 @@ envVarGroups:
         value: 827558560538-it16fls8iu36e9c3fcp13beaf9u54ooe.apps.googleusercontent.com,827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com,827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com
       - key: OAUTH_APPLE_ENABLED
         value: "true"
+      # Account deletion revokes the user's Sign in with Apple grant (ADR 0020,
+      # DEPLOYMENT.md §14). With OAUTH_APPLE_ENABLED the start-time preflight
+      # refuses the stub, so these must be set. The key ID and team ID are
+      # identifiers, not secrets; the .p8 itself is APPLE_PRIVATE_KEY below.
+      - key: APPLE_REVOCATION_BACKEND
+        value: http
+      - key: APPLE_TEAM_ID
+        value: FAND2W5VMM
+      - key: APPLE_KEY_ID
+        value: F8JN4PAKLB
       - key: OBJECT_STORE_RAW_BUCKET
         value: sermon-raw-dev
       - key: OBJECT_STORE_MEDIA_BUCKET
@@ -115,6 +125,10 @@ services:
       - key: OBJECT_STORE_SECRET_ACCESS_KEY
         sync: false
       - key: SMTP_PASSWORD
+        sync: false
+      # Full contents of AuthKey_<APPLE_KEY_ID>.p8 (the PEM text, not a path).
+      # Real newlines or "\n" escapes both work.
+      - key: APPLE_PRIVATE_KEY
         sync: false
 
   - type: web

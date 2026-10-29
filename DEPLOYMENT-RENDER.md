@@ -153,9 +153,13 @@ Then check each of the following:
   `npx expo start --dev-client --clear`. `EXPO_PUBLIC_*` values are baked into the bundle,
   so a plain reload isn't enough.
 - **TestFlight / EAS builds:** put the same variable in that build profile's `env`.
-- Google sign-in works as-is. **Apple sign-in needs the `feat/apple-sign-in` work merged into
-  `dev`**: until then the deployed API doesn't have the Apple pieces this branch added. The
-  env group already sets `OAUTH_APPLE_ENABLED=true`.
+- Google sign-in works as-is. Apple sign-in and account deletion are on `dev`. The env group
+  sets `OAUTH_APPLE_ENABLED=true` plus the Apple revocation config (`APPLE_REVOCATION_BACKEND=http`,
+  `APPLE_TEAM_ID`, `APPLE_KEY_ID`). **One secret is yours to add:** `APPLE_PRIVATE_KEY` on
+  rhemapod-dev-api → Environment, set to the full text of `AuthKey_F8JN4PAKLB.p8` (paste the file
+  as is; Render keeps the newlines). Without it the start-time preflight fails and the deploy
+  doesn't go live. Then run `python -m app.scripts.check_apple_key` from the service's Shell tab:
+  `invalid_grant` there means Apple accepted the key (DEPLOYMENT.md §14).
 
 ## 8. Living with free plans
 
@@ -193,5 +197,6 @@ Its starting points:
   (DEPLOYMENT.md §12), and without bucket names free of `-dev`/`-staging`.
 - **Backups vs the privacy policy.** The published backup retention is 30 days; make the backup window match it.
 - **Client IPs.** `TRUSTED_PROXIES` verified, and `CLIENT_IP_HEADER` set on the portal.
-- **Apple key.** The Apple revocation key (`.p8`), once account deletion ships.
+- **Apple key.** Reuse the `.p8` or create a separate one per environment; either way set
+  `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` there (DEPLOYMENT.md §14).
 - **Secret storage.** Decide whether secrets stay in Render's environment variables or move to AWS Secrets Manager.

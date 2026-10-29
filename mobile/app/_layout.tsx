@@ -170,6 +170,9 @@ function RootNavigator() {
             report, session 2026-10-16: "use preestablish navigation style" — this had no
             `options` at all, same gap `speaker/[id]` had session 2026-10-11). */}
         <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
+        {/* Me > Delete account (ADR 0020). Own bare-chevron header, same pattern; no
+            swipe-back mid-request, the screen's own back button is disabled while it runs. */}
+        <Stack.Screen name="delete-account" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     </>
   );

@@ -13,6 +13,7 @@ import { resetOnboardingSeen } from '../../../lib/settings/onboardingSeen';
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
   useRouter: jest.fn(() => ({ replace: jest.fn(), push: jest.fn() })),
+  useLocalSearchParams: jest.fn(() => ({})),
 }));
 
 jest.mock('../../../lib/settings/onboardingSeen', () => ({

@@ -136,7 +136,8 @@ Hard delete through existing cascades. Comments are flat, so there is no anonymi
 - Negative: password guessing against delete is bounded per account (5/hour) rather than per IP; the shared login key is per IP + email only. A user can lock themselves out of deletion for an hour.
 - Negative: delete availability now depends on Redis (fail closed) and, for Apple users, on Apple being reachable. `apple_unavailable` is the escape hatch for accounts with another factor; Apple-only accounts must go through support.
 - Negative: admin-initiated deletion leaves any Apple grant live until the user revokes it manually.
-- Negative: R2 object cleanup is best-effort; failures leave orphans (logged as `orphaned_object` for a sweep).
+- Negative: R2 object cleanup is best-effort; failures leave orphans (logged as `orphaned_object` or `orphaned_prefix` for a sweep).
+- Implementation note (clients plan): erasure deletes every object under the account's own prefixes (`avatars/{user_id}/`, `playlist_covers/{playlist_id}/`), not only the keys the rows point at, so replaced avatars and never-confirmed uploads go too (`Storage.list_keys`). The mobile flow lives at `mobile/app/delete-account.tsx` (Me > Delete account) and the public page at `admin_portal/app/(public)/delete-account`. `python -m app.scripts.check_apple_key` proves the Apple credentials against Apple without revoking anything.
 - Neutral: `UserPublic` gains two additive fields, so the OpenAPI contract and generated types for `admin_portal` and `mobile` are regenerated.
 - Neutral: new settings and secrets (`APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_CLIENT_ID`, the `.p8`, `APPLE_REVOCATION_BACKEND`, `account_deletion_reauth_max_age_seconds`) with a preflight and a key runbook in DEPLOYMENT.md.
 

@@ -300,6 +300,28 @@ export async function signOut(): Promise<void> {
 }
 
 /**
+ * After `POST /auth/me/delete` answered 204. The server already erased the account and
+ * revoked every refresh token, so there is no logout call to make: tear the device down
+ * exactly as a sign-out does (tokens, media cache, downloads, query cache), and also drop the
+ * app's Google grant so the next Google sign-in starts from the account picker. Never throws:
+ * the account is gone either way.
+ */
+export async function finishAccountDeletion(): Promise<void> {
+  try {
+    await clearSession();
+  } catch (err) {
+    if (__DEV__) console.warn('[session] clearing the session after deletion failed', err);
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see applyTokenPair's comment
+    await (require('./googleSignIn') as typeof import('./googleSignIn')).forgetGoogleAccount();
+  } catch (err) {
+    if (__DEV__) console.warn('[session] forgetting the Google account failed', err);
+  }
+  setStatus('signedOut');
+}
+
+/**
  * Single-flight refresh (plan §A.3 #6 / W3.2's core requirement). Concurrent
  * callers — e.g. several 401s from `lib/api/client.ts` fired by a cold
  * Home screen's parallel queries — must share exactly one in-flight

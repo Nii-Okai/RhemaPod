@@ -1,7 +1,7 @@
 /* global __DEV__ */
 import React, { useRef, useState } from 'react';
 import { View, type TextInput } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -24,6 +24,8 @@ export default function SignInScreen() {
   const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const appleAvailable = useAppleSignInAvailable();
   const router = useRouter();
+  // Set by the delete-account screen after a 204.
+  const { deleted } = useLocalSearchParams<{ deleted?: string }>();
 
   const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
@@ -153,6 +155,12 @@ export default function SignInScreen() {
         </>
       }
     >
+      {deleted === '1' ? (
+        <InlineAlert variant="success" title="Your account was deleted.">
+          We've sent a confirmation to your email. You're welcome back any time.
+        </InlineAlert>
+      ) : null}
+
       {socialButtons}
 
       <OrDivider label="or with email" />

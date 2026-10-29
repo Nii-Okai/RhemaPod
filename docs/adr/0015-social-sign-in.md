@@ -193,6 +193,7 @@ Staff always sign in via `/auth/login`.
   gated behind a real cost: completing enrollment in the Apple Developer
   Program ($99/yr), on his own timeline, not a technical blocker.
 - **Apple server-side token revocation is out of scope for this phase.**
+  (Since delivered by ADR 0020: revoked at account deletion, with no stored token.)
   Apple's App Store account-deletion requirement (guideline 5.1.1(v)) expects
   an app that lets a user delete their account in-app to also revoke that
   user's Apple grant server-side, which requires a stored, encrypted Apple

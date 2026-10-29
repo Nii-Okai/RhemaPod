@@ -17,6 +17,7 @@ from app.models.models import (
     AuditAction,
     AuditLog,
     Base,
+    Playlist,
     SermonComment,
     User,
     UserRole,
@@ -211,6 +212,58 @@ async def test_object_missing_from_store_is_not_an_error(
     ks = await seed_kitchen_sink_viewer(sessions, make_user, published_sermon)
     r = await _delete(pg_client, ks.user_id, admin.headers)
     assert r.status_code == 204, r.text
+
+
+async def test_storage_sweeps_replaced_and_unconfirmed_uploads(
+    pg_client, sessions, make_user, published_sermon
+):
+    """Erasure covers every object under the account's own prefixes (an avatar
+    replaced earlier, a cover upload never confirmed), not only the keys the
+    rows point at, and leaves another account's objects alone."""
+    admin = await make_user(role="admin")
+    ks = await seed_kitchen_sink_viewer(sessions, make_user, published_sermon)
+    async with sessions() as s:
+        playlist_ids = (await s.execute(
+            select(Playlist.id).where(Playlist.user_id == ks.user_id)
+        )).scalars().all()
+    stale = [
+        storage_module.avatar_key(ks.user_id, "old.jpg"),
+        storage_module.playlist_cover_key(playlist_ids[0], "unconfirmed.jpg"),
+    ]
+    survivor = storage_module.avatar_key(ks.other_id, "theirs.jpg")
+    store = storage_module.get_storage()
+    for key in [*stale, survivor]:
+        store.put_object(BUCKET, key, b"img", "image/jpeg")
+    spy = _install_spy()
+
+    r = await _delete(pg_client, ks.user_id, admin.headers)
+    assert r.status_code == 204, r.text
+    assert sorted(spy.deleted) == sorted(
+        (BUCKET, k) for k in [ks.avatar_key, *ks.cover_keys, *stale]
+    )
+    assert store.object_exists(BUCKET, survivor)
+    assert not any(store.object_exists(BUCKET, k) for k in stale)
+
+
+async def test_unlistable_prefix_logs_and_still_deletes_known_keys(
+    pg_client, sessions, make_user, published_sermon, capture_logs
+):
+    admin = await make_user(role="admin")
+    ks = await seed_kitchen_sink_viewer(sessions, make_user, published_sermon)
+    spy = _install_spy()
+
+    def _list_fails(bucket, prefix):
+        raise RuntimeError("list down")
+
+    spy.list_keys = _list_fails
+    r = await _delete(pg_client, ks.user_id, admin.headers)
+    assert r.status_code == 204, r.text
+    assert sorted(spy.deleted) == sorted(
+        (BUCKET, k) for k in [ks.avatar_key, *ks.cover_keys]
+    )
+    prefixes = [e["prefix"] for e in capture_logs.records if e["event"] == "orphaned_prefix"]
+    assert f"avatars/{ks.user_id}/" in prefixes and len(prefixes) == 4  # avatar + 3 playlists
+    assert ks.email not in capture_logs.text()
 
 
 async def test_revocation_deferred_when_token_store_down(

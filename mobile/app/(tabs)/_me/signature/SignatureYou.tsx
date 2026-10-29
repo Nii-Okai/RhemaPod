@@ -128,6 +128,7 @@ function LinkRow({
  *  - Playback & downloads: autoplay next in series and Wi-Fi-only downloads;
  *  - Library: Announcements and Blocked users;
  *  - Help & safety: Contact us, Comment guidelines, and the legal links once they're set;
+ *  - Account: Delete account (`app/delete-account.tsx`);
  *  - Sign out.
  */
 export function SignatureYouScreen() {
@@ -311,6 +312,18 @@ export function SignatureYouScreen() {
               onPress={() => void Linking.openURL(privacyPolicyUrl)}
             />
           ) : null}
+        </Panel>
+      </Group>
+
+      {/* App Review 5.1.1(v): deletion is two taps from the Me tab. */}
+      <Group label="Account">
+        <Panel>
+          <LinkRow
+            icon="trash-outline"
+            label="Delete account"
+            detail="Permanently remove your account and data"
+            onPress={() => router.push('/delete-account')}
+          />
         </Panel>
       </Group>
 

@@ -174,6 +174,12 @@ class Storage(Protocol):
 
     def delete_object(self, bucket: str, key: str) -> None: ...
 
+    def list_keys(self, bucket: str, prefix: str) -> list[str]:
+        """Every key under `prefix`. Account erasure sweeps a user's own
+        prefixes with this, so replaced avatars/covers and uploads that were
+        never confirmed go too, not only the key the row points at."""
+        ...
+
     def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
         """Open a readable stream on an object, alongside its HEAD metadata.
         The archive copy path (R1.9) reads the raw master through this to
@@ -247,6 +253,9 @@ class LocalStorage:
     def delete_object(self, bucket: str, key: str) -> None:
         self._objects.discard((bucket, key))
         self._storage_class.pop((bucket, key), None)
+
+    def list_keys(self, bucket: str, prefix: str) -> list[str]:
+        return sorted(k for b, k in self._objects if b == bucket and k.startswith(prefix))
 
     def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
         """Stub read. No real bytes ever reached this backend — like
@@ -407,6 +416,22 @@ class S3Storage:
             raise StorageError(
                 f"Could not delete object (S3 error {code})."
             ) from exc
+
+    def list_keys(self, bucket: str, prefix: str) -> list[str]:
+        """Paginated ListObjectsV2 (1000 keys a page). Any failure is raised:
+        a caller that can't list must not assume the prefix is empty."""
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        keys: list[str] = []
+        try:
+            for page in self._client.get_paginator("list_objects_v2").paginate(
+                Bucket=bucket, Prefix=prefix
+            ):
+                keys.extend(obj["Key"] for obj in page.get("Contents", ()))
+        except (BotoCoreError, ClientError) as exc:
+            log.error("s3_list_keys_failed", bucket=bucket, prefix=prefix)
+            raise StorageError("Could not list objects.") from exc
+        return keys
 
     def open_read(self, bucket: str, key: str) -> tuple[BinaryIO, ObjectHead]:
         from botocore.exceptions import ClientError

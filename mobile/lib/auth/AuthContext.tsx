@@ -12,6 +12,8 @@ interface AuthContextValue {
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerification: (email: string) => Promise<{ message: string }>;
   signOut: () => Promise<void>;
+  /** Local teardown after the server deleted the account (`session.finishAccountDeletion`). */
+  finishAccountDeletion: () => Promise<void>;
   signInWithGoogle: (idToken: string) => Promise<void>;
   signInWithApple: (
     identityToken: string,
@@ -52,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verifyEmail: session.verifyEmail,
       resendVerification: session.resendVerification,
       signOut: session.signOut,
+      finishAccountDeletion: session.finishAccountDeletion,
       signInWithGoogle: session.signInWithGoogle,
       signInWithApple: session.signInWithApple,
     }),

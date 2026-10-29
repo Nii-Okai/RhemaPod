@@ -148,6 +148,7 @@ describe('SignatureYouScreen', () => {
     expect(screen.getByText('Announcements')).toBeTruthy();
     expect(screen.getByText('Blocked users')).toBeTruthy();
     expect(screen.getByText('Comment guidelines')).toBeTruthy();
+    expect(screen.getByText('Delete account')).toBeTruthy();
     expect(screen.getByText('Sign out')).toBeTruthy();
   });
 
@@ -223,6 +224,8 @@ describe('SignatureYouScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/announcements');
     fireEvent.press(screen.getByText('Blocked users'));
     expect(mockPush).toHaveBeenCalledWith('/blocked-users');
+    fireEvent.press(screen.getByText('Delete account'));
+    expect(mockPush).toHaveBeenCalledWith('/delete-account');
 
     fireEvent.press(screen.getByText('Comment guidelines'));
     expect(await screen.findByText(/RhemaPod Comment Guidelines/)).toBeTruthy();

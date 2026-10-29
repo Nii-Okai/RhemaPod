@@ -94,6 +94,53 @@ def test_s3_delete_object_infra_fault_raises():
             raise AssertionError("expected StorageError for a non-404 delete failure")
 
 
+# ── list_keys: paginated, failures raise ─────────────────────────────────────
+def test_s3_list_keys_follows_pagination():
+    st = S3Storage(_cfg())
+    with Stubber(st._client) as stub:
+        stub.add_response(
+            "list_objects_v2",
+            {"Contents": [{"Key": "avatars/u/1.jpg"}], "IsTruncated": True,
+             "NextContinuationToken": "t2"},
+            {"Bucket": "media", "Prefix": "avatars/u/"},
+        )
+        stub.add_response(
+            "list_objects_v2",
+            {"Contents": [{"Key": "avatars/u/2.jpg"}], "IsTruncated": False},
+            {"Bucket": "media", "Prefix": "avatars/u/", "ContinuationToken": "t2"},
+        )
+        assert st.list_keys("media", "avatars/u/") == ["avatars/u/1.jpg", "avatars/u/2.jpg"]
+
+
+def test_s3_list_keys_empty_prefix_is_empty_list():
+    st = S3Storage(_cfg())
+    with Stubber(st._client) as stub:
+        stub.add_response("list_objects_v2", {"KeyCount": 0, "IsTruncated": False})
+        assert st.list_keys("media", "avatars/none/") == []
+
+
+def test_s3_list_keys_failure_raises():
+    st = S3Storage(_cfg())
+    with Stubber(st._client) as stub:
+        stub.add_client_error(
+            "list_objects_v2", service_error_code="AccessDenied", http_status_code=403,
+        )
+        try:
+            st.list_keys("media", "avatars/u/")
+        except StorageError:
+            pass
+        else:
+            raise AssertionError("expected StorageError when listing fails")
+
+
+def test_local_storage_list_keys_matches_prefix_and_bucket():
+    st = LocalStorage()
+    st.put_object("media", "avatars/u/1.jpg", b"x", "image/jpeg")
+    st.put_object("media", "avatars/v/1.jpg", b"x", "image/jpeg")
+    st.put_object("other", "avatars/u/2.jpg", b"x", "image/jpeg")
+    assert st.list_keys("media", "avatars/u/") == ["avatars/u/1.jpg"]
+
+
 def test_local_storage_delete_object_missing_key_is_success():
     st = LocalStorage()
     st.delete_object("sermon-raw", "raw/does/not/exist.mp4")  # must not raise

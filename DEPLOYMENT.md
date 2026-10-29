@@ -485,7 +485,7 @@ is stored.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `APPLE_REVOCATION_BACKEND` | `stub` | `http` or `stub`. Stay on `stub` until the mobile clients plan's AD3 |
+| `APPLE_REVOCATION_BACKEND` | `stub` | `http` or `stub`. Must be `http` wherever `OAUTH_APPLE_ENABLED` is true (preflight enforces it); `stub` is for local dev and tests |
 | `APPLE_TEAM_ID` | `FAND2W5VMM` | |
 | `APPLE_KEY_ID` | none | 10-char Key ID shown when the key is created |
 | `APPLE_PRIVATE_KEY` | none | **PEM contents** (not a path). Secret |
@@ -530,8 +530,10 @@ image:
 - **Render (current host; decided at AD2, 2026-10-29):** `APPLE_KEY_ID` and
   `APPLE_PRIVATE_KEY` are encrypted environment variables on the API service,
   set in the dashboard (`sync: false` in `render.yaml`, never a literal).
-  `APPLE_TEAM_ID`, `APPLE_CLIENT_ID` and `APPLE_REVOCATION_BACKEND=http` are
-  plain config. Set them at the clients plan's AD5; none are set yet.
+  `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_REVOCATION_BACKEND=http` are
+  plain config in the `rhemapod-dev` env group (`render.yaml`);
+  `APPLE_CLIENT_ID` falls back to `APPLE_OAUTH_AUDIENCES`. Only
+  `APPLE_PRIVATE_KEY` is entered by hand (DEPLOYMENT-RENDER.md §7).
 - **AWS:** no Secrets Manager entry until the app actually moves to AWS. Decide
   the secret's name and shape then.
 
@@ -546,8 +548,18 @@ startup in production) refuses to boot when:
 
 It makes **no network call**: a wrong Key ID, revoked key or wrong team passes
 preflight and surfaces at the first real deletion as `invalid_client`
-(logged at error level, returned as 503). Smoke-test a real revocation with a
-throwaway Apple account after every key change.
+(logged at error level, returned as 503). After every key change, prove the
+credentials against Apple with
+
+```sh
+python -m app.scripts.check_apple_key
+```
+
+It sends Apple a deliberately invalid authorization code: `invalid_grant`
+means Apple accepted the client secret (team, key ID, key and client ID are
+right), `invalid_client` means one of them is wrong. Nothing is revoked. On
+Render, run it from the API service's **Shell** tab. Then smoke-test a real
+revocation with a throwaway Apple account.
 
 ### 5. Rotation
 

@@ -255,6 +255,33 @@ async def test_revoke_invalid_client_is_misconfigured_and_not_retried(make) -> N
     assert wire.count("/auth/revoke") == 1
 
 
+# ── check_credentials (app.scripts.check_apple_key) ─────────────────────────
+async def test_check_credentials_passes_on_invalid_grant(make) -> None:
+    client, wire = make()
+    wire.queues["/auth/token"] = [_err(400, "invalid_grant")]
+    assert await client.check_credentials() is None
+    assert wire.count("/auth/token") == 1 and wire.count("/auth/revoke") == 0
+    assert wire.form("/auth/token")["client_secret"]
+
+
+@pytest.mark.parametrize(
+    ("response", "reason"),
+    [
+        (_err(400, "invalid_client"), "misconfigured"),
+        (httpx.Response(503), "unavailable"),
+        (httpx.Response(200, json={"refresh_token": "x"}), "misconfigured"),
+    ],
+    ids=["invalid-client", "5xx", "code-accepted"],
+)
+async def test_check_credentials_fails_otherwise_and_never_revokes(make, response, reason) -> None:
+    client, wire = make()
+    wire.queues["/auth/token"] = [response]
+    with pytest.raises(AppleRevocationError) as exc:
+        await client.check_credentials()
+    assert exc.value.reason == reason
+    assert wire.count("/auth/revoke") == 0
+
+
 async def test_client_secret_jwt_claims_and_signature(make, keypair) -> None:
     client, wire = make()
     wire.queues["/auth/token"] = [_ok_exchange()]
