@@ -24,19 +24,29 @@ import asyncio
 
 from app.core.logging import get_logger
 from app.db.database import PrimarySession
-from app.services.retention_service import purge_audit_log
+from app.services.retention_service import run_retention_once
 
 log = get_logger("audit_purge")
 
 
 async def _run() -> None:
+    # Same advisory-locked, single-transaction path as the in-process
+    # scheduler, so a cron run and the loop never double-run. It also covers
+    # the comment-snapshot purge; both are idempotent.
     async with PrimarySession() as db:
-        deleted, nulled = await purge_audit_log(db)
-        await db.commit()
-    log.info("audit_log_purged", deleted=deleted, nulled=nulled)
+        result = await run_retention_once(db)
+    if result.skipped:
+        log.info("audit_log_purge_skipped")
+        print("[-] Skipped: another retention run holds the lock.")
+        return
+    log.info(
+        "audit_log_purged",
+        deleted=result.audit_deleted,
+        nulled=result.audit_network_nulled,
+    )
     print(
-        f"[+] Deleted {deleted} auth audit row(s); "
-        f"nulled ip/user_agent on {nulled} row(s)."
+        f"[+] Deleted {result.audit_deleted} auth audit row(s); "
+        f"nulled ip/user_agent on {result.audit_network_nulled} row(s)."
     )
 
 

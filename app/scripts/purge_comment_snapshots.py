@@ -1,5 +1,6 @@
 """CLI wrapper: null `body_snapshot` on moderation-log rows older than 90 days
-(logic lives in `app/services/retention_service.py`).
+(logic lives in `app/services/retention_service.py`; it runs the full
+advisory-locked retention pass, so it is safe next to the in-process loop).
 
 A hard delete keeps the removed text in `comment_moderation_log.body_snapshot`
 so a moderator's decision can be reviewed. The text is not kept forever: this
@@ -17,17 +18,23 @@ import asyncio
 
 from app.core.logging import get_logger
 from app.db.database import PrimarySession
-from app.services.retention_service import purge_snapshots
+from app.services.retention_service import run_retention_once
 
 log = get_logger("comment_snapshot_purge")
 
 
 async def _run() -> None:
+    # Same advisory-locked, single-transaction path as the in-process
+    # scheduler, so a cron run and the loop never double-run. It also covers
+    # the audit purge; both are idempotent.
     async with PrimarySession() as db:
-        purged = await purge_snapshots(db)
-        await db.commit()
-    log.info("comment_snapshots_purged", purged=purged)
-    print(f"[+] Purged {purged} comment snapshot(s).")
+        result = await run_retention_once(db)
+    if result.skipped:
+        log.info("comment_snapshots_purge_skipped")
+        print("[-] Skipped: another retention run holds the lock.")
+        return
+    log.info("comment_snapshots_purged", purged=result.snapshots_nulled)
+    print(f"[+] Purged {result.snapshots_nulled} comment snapshot(s).")
 
 
 def main() -> None:
