@@ -8,16 +8,24 @@ The comment guidelines move out of the database into the static file
 `app/content/comment_guidelines.txt` (plan-ad5-amendment-1, ADR 0017
 Addendum 1), so the column is dropped. **This is destructive**, so:
 
-* `upgrade()` first reads the stored text and aborts if it differs from the
-  canonical text this migration freezes below. A staff edit would otherwise
-  be destroyed silently; the operator reconciles first (reset the row to the
-  canonical text, or move the edit into the file) and re-runs.
+* `upgrade()` first reads the stored text under `SELECT ... FOR UPDATE` and
+  aborts if it differs from the canonical text this migration freezes below.
+  The row lock is held to the end of the transaction, so a concurrent staff
+  edit cannot slip in between the comparison and the drop. A staff edit
+  would otherwise be destroyed silently; the operator reconciles first
+  (reset the row to the canonical text, or move the edit into the file) and
+  re-runs.
 * `downgrade()` restores the column exactly as `e5a68425e539` created it
   (`TEXT NOT NULL`, no default), holding the canonical text. The upgrade
   guard guarantees nothing else was lost.
 
 `_CANONICAL` is the text `e5a68425e539` seeded, copied verbatim: migrations
 must not import app code, which changes while migrations must not.
+
+Deploy order: the code that no longer maps `comment_guidelines` must be
+serving before this runs; code that still selects the column errors once it
+is dropped. Roll back with `alembic downgrade d9e0f1a2b3c4` before
+redeploying older code. See DEPLOYMENT.md.
 """
 from typing import Sequence, Union
 
@@ -48,7 +56,7 @@ By clicking Agree & Accept, you promise to keep your interactions respectful, sa
 
 def upgrade() -> None:
     stored = op.get_bind().execute(
-        sa.text("SELECT comment_guidelines FROM church_settings WHERE id = 1")
+        sa.text("SELECT comment_guidelines FROM church_settings WHERE id = 1 FOR UPDATE")
     ).scalar_one_or_none()
     if stored is not None and stored != _CANONICAL:
         raise RuntimeError(

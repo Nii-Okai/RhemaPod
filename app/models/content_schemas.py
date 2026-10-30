@@ -1060,9 +1060,10 @@ SETTINGS_EDITABLE_FIELDS = (
 class ChurchSettingsPublic(BaseModel):
     """`GET /settings/public` — what the mobile app reads, unauthenticated.
     No `updated_by_id` or `updated_at`. `version` plus the guidelines digest
-    form the weak ETag. `comment_guidelines` comes from the static file
-    `app/content/comment_guidelines.txt`, not from the row. The mobile app renders contact email, comment guidelines and the two
-    legal URLs in v1; the other fields are returned but not yet shown."""
+    form the weak ETag. `comment_guidelines` comes from the static
+    file `app/content/comment_guidelines.txt`, not from the row. The mobile
+    app renders contact email, comment guidelines and the two legal URLs in
+    v1; the other fields are returned but not yet shown."""
 
     model_config = ConfigDict(from_attributes=True)
 

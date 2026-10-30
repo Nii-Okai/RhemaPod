@@ -561,31 +561,21 @@ def test_combined_chain_upgrade_downgrade_upgrade_all_three(throwaway_db):
 # ── S11: church_settings ─────────────────────────────────────────────────
 
 
-def _ts_comments_terms_text() -> str:
-    """`COMMENTS_TERMS_TEXT` straight out of the mobile source, so a change
-    on either side without the other fails here rather than in the app."""
-    import re
+def _load_migration(revision: str):
+    import importlib.util
 
-    ts = (REPO_ROOT / "mobile/lib/content/commentsCompliance.ts").read_text(encoding="utf-8")
-    match = re.search(r"export const COMMENTS_TERMS_TEXT = `(.*?)`;", ts, re.S)
-    assert match, "COMMENTS_TERMS_TEXT template literal not found"
-    text = match.group(1)
-    # A template literal with escapes or interpolation would not be the
-    # literal runtime string; refuse rather than compare the wrong thing.
-    assert "\\" not in text and "${" not in text
-    return text
+    path = next((REPO_ROOT / "alembic/versions").glob(f"{revision}_*.py"))
+    spec = importlib.util.spec_from_file_location(f"migration_{revision}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _original_guidelines() -> str:
-    """The text `e5a68425e539` seeded and `_CANONICAL` freezes: the mobile
-    constant minus the "Last updated" block GA0 added to the file. Pins the
-    body byte-for-byte."""
-    import re
-
-    text = _ts_comments_terms_text()
-    original, n = re.subn(r"^Last updated: [^\n]+\n\n", "", text, count=1, flags=re.M)
-    assert n == 1, "mobile constant has no 'Last updated' line"
-    return original
+    """The text `e5a68425e539` seeded, read from that (frozen) migration
+    module. Deliberately not derived from any live content: neither the
+    app/content file nor the mobile constant may move this."""
+    return _load_migration("e5a68425e539")._COMMENT_GUIDELINES
 
 
 def test_church_settings_migration_round_trip(throwaway_db):
@@ -727,21 +717,12 @@ def test_drop_guidelines_upgrade_aborts_on_edited_text(throwaway_db):
     assert "a7c3e9f1b2d4" not in _alembic(alembic_url, "current")
 
 
-def test_drop_guidelines_canonical_matches_the_file_text():
-    """`_CANONICAL` is the ORIGINAL text (what the database holds). The file
-    adds only the GA0 "Last updated" line, so the two are equal once that
-    block is removed. When the file text next changes for real, rewrite this
-    to compare against a git-pinned constant instead (plan-ad5-amendment-1
-    §G.3): the migration's frozen copy must never follow the file."""
-    import importlib.util
-    import re
+def test_drop_guidelines_canonical_matches_the_seed():
+    """`_CANONICAL` in the drop migration equals the text `e5a68425e539`
+    seeded; both are frozen, so this never changes.
 
-    from app.content import COMMENT_GUIDELINES
-
-    path = next((REPO_ROOT / "alembic/versions").glob(f"{_DROP_GUIDELINES_REVISION}_*.py"))
-    spec = importlib.util.spec_from_file_location("drop_guidelines_migration", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    without_date = re.sub(r"^Last updated: [^\n]+\n\n", "", COMMENT_GUIDELINES, count=1, flags=re.M)
-    assert module._CANONICAL == without_date == _original_guidelines()
+    When the guidelines text next changes: edit
+    `app/content/comment_guidelines.txt` and the mobile
+    `COMMENTS_TERMS_TEXT` together (the live pin in test_church_settings.py
+    keeps those two equal). Never touch the migrations or `_CANONICAL`."""
+    assert _load_migration(_DROP_GUIDELINES_REVISION)._CANONICAL == _original_guidelines()

@@ -5,7 +5,8 @@ reads (plan-admin-settings §A.4.3/§A.5, step S12).
   (`settings:public:v2:<guidelines digest>`, 300s). The comment guidelines
   are the static file `app/content/comment_guidelines.txt`, not a row
   column; the digest in the key and the ETag means a deploy that changes the
-  text never serves a body cached or validated under the old one. Redis being down only costs a DB read.
+  text never serves a body cached or validated under the old one.
+  Redis being down only costs a DB read.
 * `update` is the one writer. It is optimistic: the caller sends the
   `version` it loaded, the write is `UPDATE ... WHERE version = :v`, and
   zero rows updated is a 409. The `settings.updated` audit row is in the
