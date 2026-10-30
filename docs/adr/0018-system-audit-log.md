@@ -117,7 +117,7 @@ the approved 365, and a value below 1 is rejected when the app starts.
 
 ## Addendum (2026-10-30): 30-day network-data retention
 
-- **Status:** Proposed (flips to Accepted at `[HUMAN_GATE P1]` of [plan-ad5-retention-and-legal-pages](../../plans/plan-ad5-retention-and-legal-pages.md)).
+- **Status:** Accepted (2026-10-30, at `[HUMAN_GATE P1]` of [plan-ad5-retention-and-legal-pages](../../plans/plan-ad5-retention-and-legal-pages.md)).
 
 `audit_log` is append-only with exactly two exceptions:
 

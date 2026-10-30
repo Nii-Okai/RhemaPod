@@ -44,7 +44,8 @@ export default function PrivacyPage() {
           <LegalList>
             <li>
               <strong>Your account.</strong> Your email address, your name, and
-              details you add to your profile, such as a profile photo. If you
+              details you add to your profile, such as a profile photo and,
+              if you choose, your gender (male or female). If you
               use a password, we store only a one-way hash of it, not the
               password.
             </li>
@@ -108,7 +109,7 @@ export default function PrivacyPage() {
         <LegalSection title="What we do not do">
           <p>
             The app has no analytics, crash-reporting, advertising or push
-            notification software. We do not use your data for advertising.
+            notification software.
           </p>
         </LegalSection>
 
@@ -157,7 +158,6 @@ export default function PrivacyPage() {
             process data outside Ghana. Our server and database are hosted in
             Germany (EU).
           </p>
-          <p>We do not sell personal data.</p>
         </LegalSection>
 
         <LegalSection title="Our logs">
@@ -257,15 +257,13 @@ export default function PrivacyPage() {
             <a className="font-medium text-clay-600 underline" href={`mailto:${CONTACT_EMAIL}`}>
               {CONTACT_EMAIL}
             </a>{" "}
-            from the address on your account. You can also contact Ghana&rsquo;s
-            Data Protection Commission.
+            from the address on your account.
           </p>
         </LegalSection>
 
         <LegalSection title="Age">
           <p>
-            You must be at least 13 to use RhemaPod. If you think a child under
-            13 has an account, email us and we will delete it.
+            You must be at least 13 to use RhemaPod.
           </p>
         </LegalSection>
 
