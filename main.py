@@ -41,7 +41,11 @@ from app.core.apple_revocation import get_apple_revocation_client
 from app.core.redis import check_redis
 from app.core.storage import get_storage
 from app.core.token_store import TokenStoreUnavailable
-from app.db.database import check_db, primary_engine
+from app.db.database import PrimarySession, check_db, primary_engine
+from app.services.retention_scheduler import (
+    start_retention_scheduler,
+    stop_retention_scheduler,
+)
 
 settings = get_settings()
 log = get_logger("app")
@@ -67,9 +71,20 @@ async def lifespan(app: FastAPI):
         apple_revocation=apple_revocation_backend,
         email=settings.email_backend_label,
     )
-    yield
-    logger.info("shutdown")
-    await primary_engine.dispose()
+    retention_task = None
+    if settings.retention_scheduler_enabled:
+        retention_task = start_retention_scheduler(session_factory=PrimarySession)
+    elif settings.environment != "test":
+        logger.warning("retention_scheduler_disabled")
+    try:
+        yield
+    finally:
+        logger.info("shutdown")
+        try:
+            if retention_task is not None:
+                await stop_retention_scheduler(retention_task)
+        finally:
+            await primary_engine.dispose()
 
 
 app = FastAPI(

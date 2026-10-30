@@ -144,11 +144,13 @@ uv run python -m app.scripts.sweep_stream_jobs
 One more runs **daily** (plan-admin-settings §A.7, ADR 0018):
 
 ```bash
-# Daily — audit-log retention as Isaac approved it: deletes auth.* rows
-# older than AUDIT_AUTH_RETENTION_DAYS (365) and nulls ip/user_agent on every
-# other row older than AUDIT_NETWORK_RETENTION_DAYS (365). Both default to
-# the approved 365; a value below 1 stops the app from starting. Without this
-# job, login IPs are kept indefinitely, contradicting the published retention.
+# Daily — audit-log retention (ADR 0018 addendum, 2026-10-30): deletes auth.*
+# rows older than AUDIT_AUTH_RETENTION_DAYS (365) and nulls ip/user_agent on
+# EVERY row (auth.* included) older than AUDIT_NETWORK_RETENTION_DAYS (30).
+# A value below 1 stops the app from starting. Without this job, login IPs
+# are kept indefinitely, contradicting the published 30-day retention.
+# If RETENTION_SCHEDULER_ENABLED=true the app runs this in-process once a day
+# (lock-guarded); keep it false wherever this CLI runs on a real scheduler.
 uv run python -m app.scripts.purge_audit_log
 ```
 

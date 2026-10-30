@@ -281,11 +281,17 @@ class Settings(BaseSettings):
 
     # System audit log retention (plan-admin-settings §A.7, values Isaac
     # approved at AS0). `auth.*` rows are hard-deleted past this age.
-    audit_auth_retention_days: int = Field(default=365, ge=1)
-    # Every other `audit_log` row keeps its row (who/what/when of a role
-    # change, a settings edit, etc.) but has `ip`/`user_agent` nulled past
-    # this age — the network identifier goes, the decision trail doesn't.
-    audit_network_retention_days: int = Field(default=365, ge=1)
+    audit_auth_retention_days: int = Field(default=365, ge=30)
+    # Every `audit_log` row (`auth.*` included) keeps its row (who/what/when
+    # of a role change, a settings edit, etc.) but has `ip`/`user_agent`
+    # nulled past this age — the network identifier goes, the decision trail
+    # doesn't. ADR 0018 addendum 2026-10-30: 30 days.
+    audit_network_retention_days: int = Field(default=30, ge=1)
+
+    # Run the daily retention purge (audit ip/user-agent, comment snapshots) in
+    # the API process. Off by default; on for Render dev and compose. Deployed
+    # envs with a real scheduler leave it off and run the CLI (ADR 0018).
+    retention_scheduler_enabled: bool = False
 
     # Max failed logins per IP+email window (enforced via Redis)
     login_rate_limit: int = 10
@@ -806,6 +812,18 @@ class Settings(BaseSettings):
                 "ARCHIVE_DELETE_SOURCE is true but the live store and/or "
                 "the archive store is still a stub — refusing to enable "
                 "source deletion without both being real, live credentials."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def audit_auth_outlives_network_retention(self) -> "Settings":
+        """`auth.*` rows are deleted after the auth window; their ip/UA is
+        nulled after the (shorter) network window. An auth window shorter than
+        the network window would make the nulling rule unreachable and is
+        almost certainly a swapped pair of env vars."""
+        if self.audit_auth_retention_days < self.audit_network_retention_days:
+            raise ValueError(
+                "AUDIT_AUTH_RETENTION_DAYS must be >= AUDIT_NETWORK_RETENTION_DAYS."
             )
         return self
 

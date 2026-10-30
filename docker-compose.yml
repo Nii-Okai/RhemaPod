@@ -74,6 +74,7 @@ services:
     environment:
       <<: *app-env
       DEBUG: "true"
+      RETENTION_SCHEDULER_ENABLED: "true"
       UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
     ports:
       - "8000:8000"
@@ -125,6 +126,8 @@ services:
   #     docker compose --profile ops run --rm comment-snapshot-purge
   # Nulls moderation-log body snapshots older than 90 days. Schedule it daily
   # on a real scheduler in deployed environments, same as the periodic jobs above.
+  # Also runs in-process (with the audit ip/UA purge) when the api service has
+  # RETENTION_SCHEDULER_ENABLED=true; both are idempotent and advisory-lock guarded.
   comment-snapshot-purge:
     build:
       context: .

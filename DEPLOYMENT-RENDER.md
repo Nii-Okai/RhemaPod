@@ -175,10 +175,16 @@ Then check each of the following:
   matters, `pg_dump` it yourself using the external URL as in §6.
 - **Scheduled jobs aren't running.** In practice:
   - Stale uploads stay `awaiting_upload` and count toward the five-open-jobs cap per sermon.
-  - Audit rows past 365 days are never purged.
-  - Moderation snapshots past 90 days aren't cleared.
   
-  For a dev stack that's fine. To run them by hand, use the same laptop + external URL
+  The retention purges are the exception: the API runs them in-process once a day
+  (`RETENTION_SCHEDULER_ENABLED=true` in `render.yaml`): `ip`/`user_agent` nulled after 30 days,
+  `auth.*` audit rows deleted after 365, moderation snapshots cleared after 90. Free web
+  services spin down when idle, so the 24 h sleep rarely completes; in practice it runs about
+  once per wake, after a short startup delay. That's acceptable because the UPDATEs are
+  idempotent and lock-guarded. The real fix is a Render cron job (or an ECS scheduled task) that
+  runs the CLI, with `RETENTION_SCHEDULER_ENABLED=false`. See the ADR 0018 addendum.
+  
+  For a dev stack the rest is fine. To run them by hand, use the same laptop + external URL
   approach: `uv run python -m app.scripts.sweep_uploads` (likewise `expire_subscriptions`,
   `sweep_stream_jobs`, `purge_audit_log`, `purge_comment_snapshots`).
 - **Sessions reset on restart.** Free Key Value doesn't persist, so a restart or redeploy of the
