@@ -14,8 +14,8 @@
  * Since plan-admin-settings S18 both are editable by staff and served by
  * `GET /settings/public` (`useChurchContent()`); these constants are now the FALLBACK,
  * used offline, on error and on first launch. Do not delete them: App Store guideline
- * 1.2 needs the contact address available without a network. The server row was seeded
- * from these exact values, and a backend test fails if the two drift apart.
+ * 1.2 needs the contact address available without a network. These equal
+ * `app/content/comment_guidelines.txt`; a backend test pins them.
  */
 export const CONTACT_EMAIL = 'contact@rhemapod.com';
 
