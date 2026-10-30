@@ -246,15 +246,18 @@ async def test_stop_does_not_swallow_caller_cancellation():
     assert caller.cancelled()
 
 
-async def test_disabled_warning_logged_at_startup(monkeypatch, capsys):
-    # main's module logger is cached before `capture_logs` can patch it, so
-    # assert on the emitted JSON line instead.
+async def test_disabled_warning_logged_at_startup(monkeypatch):
+    # The lifespan reconfigures structlog on entry, which would replace the
+    # processors `capture_logs` installs; skip that for the capture.
+    monkeypatch.setattr(main, "configure_logging", lambda *a, **k: None)
     monkeypatch.setattr(main.settings, "retention_scheduler_enabled", False)
     monkeypatch.setattr(main.settings, "environment", "production")
-    async with main.lifespan(main.app):
-        pass
-    assert "retention_scheduler_disabled" in capsys.readouterr().out
+    with capture_logs() as logs:
+        async with main.lifespan(main.app):
+            pass
+    assert any(e["event"] == "retention_scheduler_disabled" for e in logs)
     monkeypatch.setattr(main.settings, "environment", "test")
-    async with main.lifespan(main.app):
-        pass
-    assert "retention_scheduler_disabled" not in capsys.readouterr().out
+    with capture_logs() as logs:
+        async with main.lifespan(main.app):
+            pass
+    assert not any(e["event"] == "retention_scheduler_disabled" for e in logs)
