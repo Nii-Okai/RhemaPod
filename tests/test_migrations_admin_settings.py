@@ -55,6 +55,9 @@ _ROLLUPS_REVISION = "dbdcee764ca3"
 _PRE_AUDIT_REVISION = "a517c3beba93"
 _AUDIT_REVISION = "8c596c67f0ae"
 _CHURCH_SETTINGS_REVISION = "e5a68425e539"
+# Sits on top of d9e0f1a2b3c4 and drops church_settings.comment_guidelines.
+_PRE_DROP_GUIDELINES_REVISION = "d9e0f1a2b3c4"
+_DROP_GUIDELINES_REVISION = "a7c3e9f1b2d4"
 
 _CANDIDATE_DSNS = [
     os.environ.get("TEST_PG_DSN"),
@@ -573,6 +576,18 @@ def _ts_comments_terms_text() -> str:
     return text
 
 
+def _original_guidelines() -> str:
+    """The text `e5a68425e539` seeded and `_CANONICAL` freezes: the mobile
+    constant minus the "Last updated" block GA0 added to the file. Pins the
+    body byte-for-byte."""
+    import re
+
+    text = _ts_comments_terms_text()
+    original, n = re.subn(r"^Last updated: [^\n]+\n\n", "", text, count=1, flags=re.M)
+    assert n == 1, "mobile constant has no 'Last updated' line"
+    return original
+
+
 def test_church_settings_migration_round_trip(throwaway_db):
     alembic_url, inspect_dsn = throwaway_db
 
@@ -580,7 +595,7 @@ def test_church_settings_migration_round_trip(throwaway_db):
     cols = _columns(inspect_dsn, "church_settings")
     assert cols["id"][:2] == ("smallint", "NO")
     assert cols["contact_email"][:2] == ("character varying", "NO")
-    assert cols["comment_guidelines"][:2] == ("text", "NO")
+    assert "comment_guidelines" not in cols  # dropped by _DROP_GUIDELINES_REVISION
     assert cols["version"] == ("integer", "NO", "1")
     assert cols["updated_by_id"] == ("uuid", "YES", None)
     for nullable in ("church_name", "app_display_name", "tagline", "about",
@@ -597,8 +612,9 @@ def test_church_settings_migration_round_trip(throwaway_db):
 
 
 def test_church_settings_seed_row(throwaway_db):
+    """Runs at the revision that seeds the row; the column is dropped later."""
     alembic_url, inspect_dsn = throwaway_db
-    _alembic(alembic_url, "upgrade", "head")
+    _alembic(alembic_url, "upgrade", _CHURCH_SETTINGS_REVISION)
 
     with psycopg.connect(inspect_dsn, connect_timeout=5) as conn:
         rows = conn.execute(
@@ -613,7 +629,7 @@ def test_church_settings_seed_row(throwaway_db):
     assert (id_, church, app_name, email) == (
         1, "Watered Garden Church", "RhemaPod", "contact@rhemapod.com",
     )
-    assert guidelines == _ts_comments_terms_text()  # byte-for-byte
+    assert guidelines == _original_guidelines()  # byte-for-byte
     assert guidelines.split("\n", 1)[0] == "RhemaPod Comment Guidelines"
     assert (terms, privacy) == (None, None)
     assert others == [None] * 6
@@ -627,13 +643,13 @@ def test_church_settings_check_rejects_a_second_row(throwaway_db):
     with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
-                "INSERT INTO church_settings (id, contact_email, comment_guidelines) "
-                "VALUES (2, 'x@example.com', 'g')"
+                "INSERT INTO church_settings (id, contact_email) "
+                "VALUES (2, 'x@example.com')"
             )
         with pytest.raises(psycopg.errors.UniqueViolation):
             conn.execute(
-                "INSERT INTO church_settings (id, contact_email, comment_guidelines) "
-                "VALUES (1, 'x@example.com', 'g')"
+                "INSERT INTO church_settings (id, contact_email) "
+                "VALUES (1, 'x@example.com')"
             )
 
 
@@ -659,3 +675,73 @@ def test_church_settings_migration_introduces_no_alembic_drift(throwaway_db):
     _alembic(alembic_url, "upgrade", "head")
     out = _alembic(alembic_url, "check")
     assert "No new upgrade operations detected" in out
+
+
+# ── ad5-amendment-1: drop church_settings.comment_guidelines ────────────────
+
+
+def _guidelines_value(dsn: str) -> str:
+    with psycopg.connect(dsn, connect_timeout=5) as conn:
+        return conn.execute(
+            "SELECT comment_guidelines FROM church_settings WHERE id = 1"
+        ).fetchone()[0]
+
+
+def test_drop_guidelines_upgrade_removes_the_column(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", _PRE_DROP_GUIDELINES_REVISION)
+    assert "comment_guidelines" in _columns(inspect_dsn, "church_settings")
+
+    _alembic(alembic_url, "upgrade", "head")
+    assert "comment_guidelines" not in _columns(inspect_dsn, "church_settings")
+
+
+def test_drop_guidelines_downgrade_restores_not_null_canonical_text(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", "head")
+    assert "comment_guidelines" not in _columns(inspect_dsn, "church_settings")
+
+    _alembic(alembic_url, "downgrade", _PRE_DROP_GUIDELINES_REVISION)
+    col = _columns(inspect_dsn, "church_settings")["comment_guidelines"]
+    assert col == ("text", "NO", None)  # TEXT NOT NULL, no server default
+    assert _guidelines_value(inspect_dsn) == _original_guidelines()
+
+    _alembic(alembic_url, "upgrade", "head")  # re-upgrade: guard passes on canonical text
+    assert "comment_guidelines" not in _columns(inspect_dsn, "church_settings")
+
+
+def test_drop_guidelines_upgrade_aborts_on_edited_text(throwaway_db):
+    alembic_url, inspect_dsn = throwaway_db
+    _alembic(alembic_url, "upgrade", _PRE_DROP_GUIDELINES_REVISION)
+    with psycopg.connect(inspect_dsn, autocommit=True, connect_timeout=5) as conn:
+        conn.execute("UPDATE church_settings SET comment_guidelines = 'edited'")
+
+    with pytest.raises(AssertionError) as exc:
+        _alembic(alembic_url, "upgrade", "head")
+    assert "differs from the canonical text" in str(exc.value)
+    assert "edited" not in str(exc.value)  # the stored text is not echoed
+
+    # Nothing was dropped or changed.
+    assert "comment_guidelines" in _columns(inspect_dsn, "church_settings")
+    assert _guidelines_value(inspect_dsn) == "edited"
+    assert "a7c3e9f1b2d4" not in _alembic(alembic_url, "current")
+
+
+def test_drop_guidelines_canonical_matches_the_file_text():
+    """`_CANONICAL` is the ORIGINAL text (what the database holds). The file
+    adds only the GA0 "Last updated" line, so the two are equal once that
+    block is removed. When the file text next changes for real, rewrite this
+    to compare against a git-pinned constant instead (plan-ad5-amendment-1
+    §G.3): the migration's frozen copy must never follow the file."""
+    import importlib.util
+    import re
+
+    from app.content import COMMENT_GUIDELINES
+
+    path = next((REPO_ROOT / "alembic/versions").glob(f"{_DROP_GUIDELINES_REVISION}_*.py"))
+    spec = importlib.util.spec_from_file_location("drop_guidelines_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    without_date = re.sub(r"^Last updated: [^\n]+\n\n", "", COMMENT_GUIDELINES, count=1, flags=re.M)
+    assert module._CANONICAL == without_date == _original_guidelines()
