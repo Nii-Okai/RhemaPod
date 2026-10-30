@@ -47,6 +47,10 @@ envVarGroups:
         value: sermon-raw-dev
       - key: OBJECT_STORE_MEDIA_BUCKET
         value: sermon-media-dev
+      # Render free web services block outbound SMTP (25/465/587), so mail goes
+      # through Resend's HTTPS API. SMTP_* below stay set but unused.
+      - key: EMAIL_TRANSPORT
+        value: resend_api
       - key: SMTP_HOST
         value: smtp.resend.com
       - key: SMTP_PORT
@@ -125,6 +129,9 @@ services:
       - key: OBJECT_STORE_SECRET_ACCESS_KEY
         sync: false
       - key: SMTP_PASSWORD
+        sync: false
+      # Same value as the Resend SMTP password (the Resend API key).
+      - key: RESEND_API_KEY
         sync: false
       # Full contents of AuthKey_<APPLE_KEY_ID>.p8 (the PEM text, not a path).
       # Real newlines or "\n" escapes both work.

@@ -1,8 +1,9 @@
 """Pluggable email sender.
 
 Every message goes out as multipart text + HTML through one seam, `_send`:
-SMTP when configured (production uses Resend's SMTP relay — see
-DEPLOYMENT.md §7), otherwise a console backend that logs the message (and any
+SMTP or Resend's HTTPS API when configured (production uses Resend's SMTP
+relay — see DEPLOYMENT.md §7; Render's free tier blocks SMTP, so dev uses
+EMAIL_TRANSPORT=resend_api), otherwise a console backend that logs the message (and any
 action link) so the invite, reset and verification flows are fully
 exercisable without a mail server. Callers never know which is active.
 """
@@ -10,11 +11,22 @@ from __future__ import annotations
 
 from html import escape
 
+import httpx
+
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
 settings = get_settings()
 log = get_logger("email")
+
+# Pinned: the API key is only ever sent to this host.
+RESEND_API_URL = "https://api.resend.com/emails"
+RESEND_API_HOST = "api.resend.com"
+_RESEND_TIMEOUT_SECONDS = 10.0
+
+
+class EmailDeliveryError(RuntimeError):
+    """The Resend HTTPS API rejected or failed to accept a message."""
 
 # Brand palette, mirrored from admin_portal/app/globals.css. Inline styles
 # only: most mail clients drop <style> blocks and every web font.
@@ -61,6 +73,43 @@ def _send_smtp_blocking(to: str, subject: str, text: str, html: str) -> None:
         server.quit()
 
 
+async def _send_resend_api(
+    to: str,
+    subject: str,
+    text: str,
+    html: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    """POST the message to Resend over HTTPS (port 443, no thread needed).
+
+    Raises on any non-2xx and on transport errors (httpx.TimeoutException etc.
+    propagate), like the SMTP path, so callers' handling is unchanged. The
+    error carries status + Resend's error name only, never the key or body.
+    """
+    api_key = settings.resend_api_key
+    if api_key is None or not settings.smtp_from_email:
+        raise EmailDeliveryError("resend_api transport is not configured")
+    async with httpx.AsyncClient(timeout=_RESEND_TIMEOUT_SECONDS, transport=transport) as client:
+        resp = await client.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {api_key.get_secret_value()}"},
+            json={
+                "from": settings.smtp_from_email,
+                "to": [to],
+                "subject": subject,
+                "text": text,
+                "html": html,
+            },
+        )
+    if not resp.is_success:
+        try:
+            detail = str(resp.json().get("name", ""))[:80]
+        except (ValueError, AttributeError):
+            detail = ""
+        raise EmailDeliveryError(f"resend api returned {resp.status_code} {detail}".strip())
+
+
 async def _send(
     to: str, subject: str, text: str, html: str, *, log_recipient: bool = True
 ) -> None:
@@ -80,9 +129,12 @@ async def _send(
         await _send_console(to, subject, text, log_recipient=log_recipient)
         return
 
-    import asyncio
+    if settings.email_transport == "resend_api":
+        await _send_resend_api(to, subject, text, html)
+    else:
+        import asyncio
 
-    await asyncio.to_thread(_send_smtp_blocking, to, subject, text, html)
+        await asyncio.to_thread(_send_smtp_blocking, to, subject, text, html)
     if log_recipient:
         log.info("email_sent", to=to, subject=subject)
     else:

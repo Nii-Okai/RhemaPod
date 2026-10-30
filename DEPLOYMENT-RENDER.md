@@ -63,6 +63,12 @@ Every push to `dev` redeploys both web services.
    keys from `.env` / `docker-compose.override.yml` into a copy of `.env.render.example` §D.
 3. **DNS access** for `rhemapod.com`, for the two CNAMEs in §5.
 
+**Email goes over HTTPS, not SMTP.** Render free web services block outbound SMTP
+(ports 25/465/587) since 2025-09-26, so `smtp.resend.com:587` times out. The Blueprint sets
+`EMAIL_TRANSPORT=resend_api` (POST to `https://api.resend.com/emails` on 443). Set
+`RESEND_API_KEY` on the API service to the same value as `SMTP_PASSWORD`; `SMTP_FROM_EMAIL`
+is reused as the From address. Preflight shows `email resend_api: api.resend.com`.
+
 The deployed dev stack and your laptop share the same R2 buckets and Resend key.
 Uploads from either one land in the same `-dev` buckets. That's intended for a dev deployment.
 
