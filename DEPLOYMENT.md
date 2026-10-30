@@ -578,3 +578,44 @@ Apple allows overlapping keys, so rotation has no downtime window.
 If step 4 fails, the old key is still active: roll the secret back. The same
 steps, minus the "old key" parts, apply if a key leaks; revoke it immediately
 rather than after verification.
+
+---
+
+## 15. Restores, imports and erased accounts
+
+Account erasure (self-service deletion, ADR 0020, and staff user deletion)
+removes the user from the live database only. Anything that brings older data
+back can **resurrect an account that was erased after that data was captured**:
+
+- restoring a database backup (production backups are planned with **90-day
+  retention**, decided 2026-10-30, which is also the figure the account-deleted
+  notice email quotes), and
+- importing an admin data export (admin data import, merge mode).
+
+After any restore or import, re-run erasure for every user deleted since the
+snapshot:
+
+1. **Identify them.** `user.deleted` audit rows newer than the snapshot time;
+   `target_id` is the erased user's id (`target_label` is already null for
+   viewers):
+
+   ```sql
+   SELECT target_id, created_at FROM audit_log
+   WHERE action = 'user.deleted' AND created_at > :snapshot_time;
+   ```
+
+   For an **import** run this on the live database as is. For a **backup
+   restore** the restored `audit_log` stops at the snapshot, so take that list
+   *before* restoring (dump the query result from the live database first). If
+   that was not possible, fall back to the `user_deleted` structured log events
+   (they carry `user_id`) in the log platform.
+2. **Re-erase.** For each id still present after the restore, delete the
+   account through the normal deletion path so the same cleanup (sessions,
+   identities, storage objects, Apple revocation where applicable) runs.
+3. Confirm: none of the ids remain in `user`, and a fresh `user.deleted` audit
+   row exists for each re-erasure.
+
+Admin data exports are copies of personal data. Store them only where access is
+restricted, do not keep them longer than the task that needed them, and delete
+them (including downloads on staff machines) when done. An export is itself
+outside the 90-day backup window and is never purged automatically.
