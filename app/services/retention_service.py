@@ -35,6 +35,17 @@ SNAPSHOT_RETENTION = timedelta(days=90)
 RETENTION_ADVISORY_LOCK_KEY = 0x5245_5445_4E54_494F
 
 
+class RetentionError(Exception):
+    """A retention run failed at `step` (`lock`, `audit_purge`,
+    `snapshot_purge` or `commit`). The original error is `__cause__`; its
+    message is never copied here because SQLAlchemy messages embed bound
+    parameters (audit row contents)."""
+
+    def __init__(self, step: str) -> None:
+        super().__init__(f"retention step failed: {step}")
+        self.step = step
+
+
 @dataclass(frozen=True)
 class RetentionResult:
     skipped: bool = False
@@ -87,7 +98,9 @@ async def purge_snapshots(db: AsyncSession, now: datetime | None = None) -> int:
 async def run_retention_once(db: AsyncSession, now: datetime | None = None) -> RetentionResult:
     """Run every purge in one transaction, guarded by a Postgres advisory lock
     so only one instance does the work. If the lock is held elsewhere, change
-    nothing and return `skipped=True`. Commits on success, rolls back on error."""
+    nothing and return `skipped=True`. Commits on success; on error rolls back
+    and raises `RetentionError(step)` chained to the original."""
+    step = "lock"
     try:
         got_lock = (
             await db.execute(select(func.pg_try_advisory_xact_lock(RETENTION_ADVISORY_LOCK_KEY)))
@@ -95,10 +108,18 @@ async def run_retention_once(db: AsyncSession, now: datetime | None = None) -> R
         if not got_lock:
             await db.rollback()
             return RetentionResult(skipped=True)
+        step = "audit_purge"
         deleted, nulled = await purge_audit_log(db, now)
+        step = "snapshot_purge"
         snapshots = await purge_snapshots(db, now)
+        step = "commit"
         await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise RetentionError(step) from exc
     except BaseException:
+        # Cancellation / shutdown: roll back (releases the xact lock) and let
+        # it propagate untouched.
         await db.rollback()
         raise
     return RetentionResult(

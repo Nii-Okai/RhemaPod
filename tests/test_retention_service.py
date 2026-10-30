@@ -21,6 +21,7 @@ from app.models.models import (
 )
 from app.services.retention_service import (
     RETENTION_ADVISORY_LOCK_KEY,
+    RetentionError,
     RetentionResult,
     run_retention_once,
 )
@@ -165,8 +166,10 @@ async def test_failure_rolls_back_and_releases_lock(pg_client, sessions, monkeyp
         raise RuntimeError("boom")
 
     monkeypatch.setattr(svc, "purge_snapshots", boom)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RetentionError) as info:
         await _run(sessions)
+    assert info.value.step == "snapshot_purge"
+    assert isinstance(info.value.__cause__, RuntimeError)
     assert (await _audit_row(sessions, rid)).ip == "203.0.113.7"  # audit nulling rolled back
     monkeypatch.undo()
     assert (await _run(sessions)).audit_network_nulled == 1  # lock was released
@@ -184,3 +187,21 @@ async def test_network_retention_days_validated():
     assert Settings(**env).audit_network_retention_days == 30
     with pytest.raises(ValidationError):
         Settings(**env, audit_network_retention_days=0)
+
+
+async def test_auth_retention_floor_and_ordering():
+    from app.core.config import Settings
+
+    env = {
+        "secret_key": "test-suite-signing-key-2b9f3a7c1e4d8065af12cd93",
+        "database_url": "postgresql+psycopg://u:p@db/app",
+        "redis_url": "redis://r:6379/0",
+        "environment": "development",
+    }
+    assert Settings(**env, audit_auth_retention_days=30).audit_auth_retention_days == 30
+    with pytest.raises(ValidationError):
+        Settings(**env, audit_auth_retention_days=29)
+    with pytest.raises(ValidationError):
+        Settings(**env, audit_auth_retention_days=60, audit_network_retention_days=90)
+    ok = Settings(**env, audit_auth_retention_days=90, audit_network_retention_days=90)
+    assert ok.audit_auth_retention_days == 90
