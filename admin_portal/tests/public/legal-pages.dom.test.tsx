@@ -25,7 +25,7 @@ describe.each(PAGES)("public $route page", ({ title, Page }) => {
     const hrefs = within(nav)
       .getAllByRole("link")
       .map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/privacy", "/terms", "/support", "/delete-account"]);
+    expect(hrefs).toEqual(["/privacy", "/terms", "/guidelines", "/support", "/delete-account"]);
     hrefs.forEach((h) => expect(h).toMatch(/^\/[a-z-]+$/));
   });
 });
@@ -111,8 +111,8 @@ describe("public legal routes", () => {
     }
   });
 
-  it("has no /guidelines route (guidelines stay in-app, staff-edited)", () => {
-    expect(existsSync(`${root}app/(public)/guidelines`)).toBe(false);
+  it("serves /guidelines from the public group only", () => {
+    expect(existsSync(`${root}app/(public)/guidelines/page.tsx`)).toBe(true);
     expect(existsSync(`${root}app/(portal)/guidelines`)).toBe(false);
     expect(existsSync(`${root}app/guidelines`)).toBe(false);
   });

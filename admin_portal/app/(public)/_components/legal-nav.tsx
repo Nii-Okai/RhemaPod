@@ -1,11 +1,12 @@
 const LINKS = [
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
+  { href: "/guidelines", label: "Guidelines" },
   { href: "/support", label: "Support" },
   { href: "/delete-account", label: "Delete account" },
 ] as const;
 
-/** Links the four public pages. Relative hrefs: the pages share one host. */
+/** Links the five public pages. Relative hrefs: the pages share one host. */
 export function LegalNav() {
   return (
     <nav aria-label="Legal" data-testid="legal-nav">

@@ -82,8 +82,9 @@ export default function TermsPage() {
             You are responsible for what you post. The{" "}
             <a className="font-medium text-clay-600 underline" href="/guidelines">
               Community Guidelines
-            </a>{" "}
-            apply to every comment, and you agree to follow them when you
+            </a>
+            , also shown in the app before you first comment, apply to every
+            comment, and you agree to follow them when you
             comment.
           </p>
           <p>
