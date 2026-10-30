@@ -1,8 +1,7 @@
 import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 
-import { LegalNav } from "../_components/legal-nav";
+import { LegalHeader } from "../_components/legal-header";
 import { LegalList } from "../_components/legal-section";
-import { Wordmark } from "../_components/wordmark";
 
 export const metadata = { title: "Community Guidelines · RhemaPod" };
 
@@ -13,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 const CONTACT_EMAIL = "contact@rhemapod.com";
 const SUCCESS_REVALIDATE_SECONDS = 3600;
+const FETCH_TIMEOUT_MS = 5000;
+const MAX_GUIDELINES_CHARS = 20_000;
 
 async function fetchGuidelines(cache: RequestInit["cache"] | undefined): Promise<string | null> {
   try {
@@ -20,6 +21,8 @@ async function fetchGuidelines(cache: RequestInit["cache"] | undefined): Promise
     // so a non-2xx never outlives the request; a network error throws and is never cached.
     const res = await fetch(`${API_BASE_URL}${BACKEND_API_PREFIX}/settings/public`, {
       headers: { accept: "application/json" },
+      // Render free-tier cold starts can hang; abort falls back to the static text.
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       ...(cache === "no-store"
         ? { cache: "no-store" as const }
         : { next: { revalidate: SUCCESS_REVALIDATE_SECONDS } }),
@@ -27,7 +30,9 @@ async function fetchGuidelines(cache: RequestInit["cache"] | undefined): Promise
     if (!res.ok) return null;
     const body: unknown = await res.json();
     const text = (body as { comment_guidelines?: unknown } | null)?.comment_guidelines;
-    return typeof text === "string" && text.trim() !== "" ? text : null;
+    return typeof text === "string" && text.trim() !== "" && text.length <= MAX_GUIDELINES_CHARS
+      ? text
+      : null;
   } catch {
     return null;
   }
@@ -79,11 +84,12 @@ export default async function GuidelinesPage() {
 
   return (
     <main className="min-h-screen bg-surface px-16 py-[48px] sm:px-[8vw]">
-      <article className="mx-auto flex max-w-[680px] flex-col gap-28">
-        <Wordmark size={26} />
-        <LegalNav />
+      <div className="mx-auto flex max-w-[680px] flex-col gap-28">
+        <LegalHeader />
+        <article className="flex flex-col gap-28">
         {text === null ? <Fallback /> : <Guidelines text={text} />}
-      </article>
+        </article>
+      </div>
     </main>
   );
 }

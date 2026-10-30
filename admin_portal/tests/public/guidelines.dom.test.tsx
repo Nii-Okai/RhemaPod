@@ -88,4 +88,52 @@ describe("/guidelines", () => {
     await renderPage();
     expect(screen.getByText(/can.t be loaded right now/)).toBeInTheDocument();
   });
+
+  describe("fetch contract", () => {
+    const spyWith = (impl: () => Promise<Response>) => {
+      const spy = vi.fn<typeof fetch>().mockImplementation(impl);
+      vi.stubGlobal("fetch", spy);
+      return spy;
+    };
+
+    it("good 200: exactly one call, revalidate 3600, 5s abort signal", async () => {
+      const spy = spyWith(async () => json({ comment_guidelines: TEXT }));
+      await renderPage();
+      expect(spy).toHaveBeenCalledTimes(1);
+      const init = spy.mock.calls[0][1] as RequestInit & { next?: { revalidate?: number } };
+      expect(init.next?.revalidate).toBe(3600);
+      expect(init.cache).toBeUndefined();
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("empty-field 200: second call is no-store", async () => {
+      const spy = spyWith(async () => json({ comment_guidelines: "" }));
+      await renderPage();
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect((spy.mock.calls[0][1] as { next?: { revalidate?: number } }).next?.revalidate).toBe(3600);
+      expect(spy.mock.calls[1][1]?.cache).toBe("no-store");
+      expect(spy.mock.calls[1][1]?.signal).toBeInstanceOf(AbortSignal);
+      expect(screen.getByText(/can.t be loaded right now/)).toBeInTheDocument();
+    });
+
+    it("non-2xx: fallback after the retry (two calls, second no-store)", async () => {
+      const spy = spyWith(async () => json({ detail: "boom" }, 503));
+      await renderPage();
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy.mock.calls[1][1]?.cache).toBe("no-store");
+      expect(screen.getByText(/can.t be loaded right now/)).toBeInTheDocument();
+    });
+
+    it("timeout/abort: fallback", async () => {
+      spyWith(async () => Promise.reject(new DOMException("timed out", "TimeoutError")));
+      await renderPage();
+      expect(screen.getByText(/can.t be loaded right now/)).toBeInTheDocument();
+    });
+
+    it("oversized guidelines text: fallback", async () => {
+      spyWith(async () => json({ comment_guidelines: `Title\n\n${"x".repeat(20_001)}` }));
+      await renderPage();
+      expect(screen.getByText(/can.t be loaded right now/)).toBeInTheDocument();
+    });
+  });
 });

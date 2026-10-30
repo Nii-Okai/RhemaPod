@@ -1,6 +1,5 @@
-import { LegalNav } from "../_components/legal-nav";
+import { LegalHeader } from "../_components/legal-header";
 import { LegalList, LegalSection } from "../_components/legal-section";
-import { Wordmark } from "../_components/wordmark";
 
 export const metadata = { title: "Support · RhemaPod" };
 
@@ -13,9 +12,9 @@ const CONTACT_EMAIL = "contact@rhemapod.com";
 export default function SupportPage() {
   return (
     <main className="min-h-screen bg-surface px-16 py-[48px] sm:px-[8vw]">
-      <article className="mx-auto flex max-w-[680px] flex-col gap-28">
-        <Wordmark size={26} />
-        <LegalNav />
+      <div className="mx-auto flex max-w-[680px] flex-col gap-28">
+        <LegalHeader />
+        <article className="flex flex-col gap-28">
         <header className="flex flex-col gap-6">
           <h1 className="font-serif text-[40px] leading-[1.08] tracking-[-0.025em] text-ink">
             Support
@@ -75,7 +74,8 @@ export default function SupportPage() {
             </li>
           </LegalList>
         </LegalSection>
-      </article>
+        </article>
+      </div>
     </main>
   );
 }

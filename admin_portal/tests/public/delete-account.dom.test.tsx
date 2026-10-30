@@ -24,11 +24,26 @@ describe("public delete-account page", () => {
     expect(screen.getByText(/Sign-in records are deleted after 365 days/)).toBeInTheDocument();
     expect(screen.getByText(/Other security and audit records are kept/)).toBeInTheDocument();
     expect(screen.getByText(/cleared\s+after 90 days/)).toBeInTheDocument();
-    expect(screen.getByText(/backups are kept for up to 90 days/)).toBeInTheDocument();
+    expect(screen.getByText(/keep database backups, they are kept for up to 90\s+days/)).toBeInTheDocument();
     expect(screen.getByText(/erase deleted accounts again/)).toBeInTheDocument();
     expect(screen.getByText(/up to 15 minutes/)).toBeInTheDocument();
     expect(screen.queryByText(/up to 30 days/)).toBeNull();
     expect(screen.getByRole("heading", { name: "Remove Sign in with Apple yourself" })).toBeInTheDocument();
+  });
+
+  it("lists the same deleted data as the privacy page", () => {
+    render(<DeleteAccountPage />);
+    const text = (screen.getByRole("heading", { name: "What's deleted" }).parentElement?.textContent ?? "").replace(/\s+/g, " ");
+    for (const item of ["playlists and their covers", "subscription record", "daily listening records", "the reports you filed"]) {
+      expect(text).toContain(item);
+    }
+  });
+
+  it("keeps the nav and wordmark in a header outside the article", () => {
+    render(<DeleteAccountPage />);
+    const nav = screen.getByRole("navigation", { name: "Legal" });
+    expect(nav.closest("article")).toBeNull();
+    expect(nav.closest("header")).not.toBeNull();
   });
 
   it("lives outside the authenticated (portal) group, with no middleware gating it", () => {

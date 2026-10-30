@@ -1,6 +1,5 @@
-import { LegalNav } from "../_components/legal-nav";
+import { LegalHeader } from "../_components/legal-header";
 import { LegalList, LegalSection } from "../_components/legal-section";
-import { Wordmark } from "../_components/wordmark";
 
 export const metadata = { title: "Privacy Policy · RhemaPod" };
 
@@ -14,9 +13,9 @@ const CONTACT_EMAIL = "contact@rhemapod.com";
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-surface px-16 py-[48px] sm:px-[8vw]">
-      <article className="mx-auto flex max-w-[680px] flex-col gap-28">
-        <Wordmark size={26} />
-        <LegalNav />
+      <div className="mx-auto flex max-w-[680px] flex-col gap-28">
+        <LegalHeader />
+        <article className="flex flex-col gap-28">
         <header className="flex flex-col gap-6">
           <h1 className="font-serif text-[40px] leading-[1.08] tracking-[-0.025em] text-ink">
             Privacy Policy
@@ -82,8 +81,8 @@ export default function PrivacyPage() {
             <li>
               <strong>Abuse-prevention counters.</strong> To limit repeated
               requests, we count them by IP address or by a sign-in email
-              address (the sign-in counter uses a hashed form of the email).
-              These counters are temporary; see below.
+              address. Email addresses in these counters are always hashed. These
+              counters are temporary; see below.
             </li>
           </LegalList>
           <p>
@@ -153,13 +152,19 @@ export default function PrivacyPage() {
               playback address to the device you chose on your local network.
             </li>
           </LegalList>
+          <p>
+            Our service providers (hosting, email delivery and media delivery)
+            process data outside Ghana. Our server and database are hosted in
+            Germany (EU).
+          </p>
           <p>We do not sell personal data.</p>
         </LegalSection>
 
         <LegalSection title="Our logs">
           <p>
             Our application logs record each request&rsquo;s method, path, status,
-            timing and a request ID, and the ID of the signed-in account. They do
+            timing and a request ID. Some event log lines carry an internal
+            account ID, for example when an email address is verified. They do
             not contain email recipients, verification codes or email addresses
             in rate-limit keys, and we have turned off the web server&rsquo;s
             access log.
@@ -197,10 +202,10 @@ export default function PrivacyPage() {
               record is cleared after 90 days.
             </li>
             <li>
-              <strong>Production backups:</strong> kept for up to 90 days. Deleting
-              your account does not change copies in backups or in administrator
-              exports. If we restore a backup, we erase deleted accounts again
-              under our runbook.
+              <strong>Backups:</strong> if we keep database backups, they are kept for
+              up to 90 days; if we ever restore one, we erase deleted accounts
+              again. Deleting your account does not change copies in backups or
+              in administrator exports.
             </li>
             <li>
               <strong>Abuse-prevention counters:</strong> last up to 15 minutes.
@@ -276,7 +281,8 @@ export default function PrivacyPage() {
             this page.
           </p>
         </LegalSection>
-      </article>
+        </article>
+      </div>
     </main>
   );
 }
