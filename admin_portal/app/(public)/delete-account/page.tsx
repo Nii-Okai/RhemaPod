@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { LegalNav } from "../_components/legal-nav";
 import { Wordmark } from "../_components/wordmark";
 
 export const metadata = { title: "Delete your account · RhemaPod" };
@@ -25,6 +26,7 @@ export default function DeleteAccountPage() {
     <main className="min-h-screen bg-surface px-16 py-[48px] sm:px-[8vw]">
       <article className="mx-auto flex max-w-[680px] flex-col gap-28">
         <Wordmark size={26} />
+        <LegalNav />
         <header className="flex flex-col gap-6">
           <h1 className="font-serif text-[40px] leading-[1.08] tracking-[-0.025em] text-ink">
             Delete your RhemaPod account
