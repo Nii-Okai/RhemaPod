@@ -114,3 +114,18 @@ the approved 365, and a value below 1 is rejected when the app starts.
 ## Addendum (2026-10-29): erasure of a deleted viewer's identifiers
 
 `audit_log` is append-only, with one exception: when a **viewer** account is deleted (self-service or by an admin), the same transaction nulls `actor_email` and `target_label` on that user's rows. The row itself (who by id, what, when, outcome) stays, and pseudonymized `auth.*` rows still age out at 365 days. Staff rows are never touched, and an admin's own `actor_email` is kept on the rows for the deletions they perform. See [ADR 0020](0020-self-service-account-deletion.md).
+
+## Addendum (2026-10-30): 30-day network-data retention
+
+- **Status:** Proposed (flips to Accepted at `[HUMAN_GATE P1]` of [plan-ad5-retention-and-legal-pages](../../plans/plan-ad5-retention-and-legal-pages.md)).
+
+`audit_log` is append-only with exactly two exceptions:
+
+1. Viewer erasure (see the 2026-10-29 addendum above and [ADR 0020](0020-self-service-account-deletion.md)).
+2. `ip` and `user_agent` are nulled on **every** row, `auth.*` included, once the row is older than `AUDIT_NETWORK_RETENTION_DAYS`. The default is **30** (was 365; `ge=1` still applies). The cutoff stays strict (`created_at < now - N days`).
+
+This supersedes the network-data part of §6 and the 365-day retention disclosure in Consequences. The `auth.*` hard delete after 365 days (`AUDIT_AUTH_RETENTION_DAYS`) is unchanged. The privacy text must state 30 days for IP/User-Agent.
+
+**Execution.** Both purges (audit and moderation snapshots) move into `app/services/retention_service.py`, and the CLI scripts become thin wrappers. An in-process daily loop (`app/services/retention_scheduler.py`) calls `run_retention_once`. It is gated by `RETENTION_SCHEDULER_ENABLED` (default `false`; on in `render.yaml` and compose `api`). A Postgres advisory lock makes concurrent instances skip instead of double-run. A failed run is logged and never takes the API down.
+
+**Render free caveat.** Free web services spin down when idle, so the 24 h sleep rarely completes. In practice the job runs about once per wake, after the startup delay. That is acceptable because the UPDATEs are idempotent and lock-guarded. The real fix is a Render cron job or an ECS scheduled task once the app leaves free. At that point set `RETENTION_SCHEDULER_ENABLED=false` in that env and run the CLI scripts instead.
