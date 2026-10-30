@@ -19,7 +19,7 @@ const MAILTO = `mailto:${DELETION_CONTACT_EMAIL}?subject=${encodeURIComponent(
  * reviewers read it too. Static on purpose: no session, no data fetching, so it
  * works signed out and on any device. An admin fulfils emailed requests with
  * the portal's delete-user action, which cannot revoke Apple, hence the manual
- * Apple steps. Retention numbers match ADR 0020 (30 / 90 / 365 days).
+ * Apple steps. Retention figures match the published privacy page.
  */
 export default function DeleteAccountPage() {
   return (
@@ -75,15 +75,25 @@ export default function DeleteAccountPage() {
 
         <Section title="What's kept, and for how long">
           <ul className="list-disc space-y-4 pl-20">
-            <li>Encrypted database backups, for up to 30 days, then overwritten.</li>
             <li>
-              Copies of comments that someone reported, kept for moderation for
-              up to 90 days.
+              IP address and user agent on security records are removed after 30
+              days.
+            </li>
+            <li>Sign-in records are deleted after 365 days.</li>
+            <li>
+              Other security and audit records are kept, with your email
+              removed when your account is deleted.
             </li>
             <li>
-              A security log of account events with your email removed, for up
-              to 365 days.
+              Moderation records are kept without a link to your account. The
+              copy of a comment&rsquo;s text saved with the record is cleared
+              after 90 days.
             </li>
+            <li>
+              Production backups are kept for up to 90 days. If we restore a
+              backup, we erase deleted accounts again.
+            </li>
+            <li>Abuse-prevention counters last up to 15 minutes.</li>
           </ul>
         </Section>
 
