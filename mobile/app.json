@@ -74,7 +74,8 @@
         }
       ],
       "react-native-google-cast",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "./plugins/withMinPodsDeploymentTarget"
     ],
     "scheme": "rhemapod",
     "extra": {
