@@ -101,7 +101,7 @@ v1.
 
 ## Addendum 1 (2026-10-30): comment guidelines become a code-sourced public document
 
-- **Status:** Proposed (flips to Accepted at `[HUMAN_GATE P4]`). The text above is unchanged.
+- **Status:** Accepted (2026-10-30, at `[HUMAN_GATE P4]`). The text above is unchanged.
 - **Deciders:** Isaac (chat, 2026-10-30; `[HUMAN_GATE GA0]` passed) (+ planner, scribe)
 - **Relates to:** `plans/plan-ad5-amendment-1-guidelines.md` §G.1-§G.7 and the GA0 decisions at
   its end; `plans/plan-ad5-retention-and-legal-pages.md` (base plan, P2 answer 7).
