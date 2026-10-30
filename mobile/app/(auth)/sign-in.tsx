@@ -9,7 +9,6 @@ import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
 import { performAppleSignIn, useAppleSignInAvailable } from '../../lib/auth/appleSignIn';
 import { performGoogleSignIn } from '../../lib/auth/googleSignIn';
-import { resetOnboardingSeen } from '../../lib/settings/onboardingSeen';
 import { AuthScreen } from './_components/auth-screen';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
@@ -101,11 +100,6 @@ export default function SignInScreen() {
     }
   }
 
-  async function onReplayOnboardingPress() {
-    await resetOnboardingSeen();
-    router.replace('/onboarding');
-  }
-
   const socialButtons = (
     <View style={styles.socialStack}>
       <SocialSignInButton
@@ -151,7 +145,6 @@ export default function SignInScreen() {
               <LinkButton label="Create an account" />
             </Link>
           </View>
-          {__DEV__ ? <LinkButton label="Dev: Replay onboarding" onPress={onReplayOnboardingPress} /> : null}
         </>
       }
     >

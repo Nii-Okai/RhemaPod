@@ -8,16 +8,11 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { useRouter } from 'expo-router';
-import { resetOnboardingSeen } from '../../../lib/settings/onboardingSeen';
 
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
   useRouter: jest.fn(() => ({ replace: jest.fn(), push: jest.fn() })),
   useLocalSearchParams: jest.fn(() => ({})),
-}));
-
-jest.mock('../../../lib/settings/onboardingSeen', () => ({
-  resetOnboardingSeen: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -64,7 +59,6 @@ const mockedAppleAuth = AppleAuthentication as unknown as {
 };
 const mockedDigestStringAsync = Crypto.digestStringAsync as jest.Mock;
 const mockedUseRouter = useRouter as jest.Mock;
-const mockedResetOnboardingSeen = resetOnboardingSeen as jest.Mock;
 
 function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
   const value = {
@@ -84,7 +78,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockedDigestStringAsync.mockResolvedValue('hashed-nonce');
   mockedUseRouter.mockReturnValue({ replace: jest.fn(), push: jest.fn() });
-  mockedResetOnboardingSeen.mockResolvedValue(undefined);
   Platform.OS = 'ios';
 });
 
@@ -239,22 +232,6 @@ describe('SignInScreen', () => {
       fireEvent.press(await findByText('Continue with Google'));
 
       expect(await findByText("Google sign-in isn't available right now")).toBeTruthy();
-    });
-  });
-
-  describe('dev-only onboarding replay', () => {
-    it('resets the onboarding-seen flag and navigates to /onboarding', async () => {
-      mockAuth();
-      const replace = jest.fn();
-      mockedUseRouter.mockReturnValue({ replace });
-
-      const { findByText } = render(<SignInScreen />);
-      fireEvent.press(await findByText('Dev: Replay onboarding'));
-
-      await waitFor(() => {
-        expect(mockedResetOnboardingSeen).toHaveBeenCalled();
-      });
-      expect(replace).toHaveBeenCalledWith('/onboarding');
     });
   });
 });
