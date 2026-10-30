@@ -37,13 +37,24 @@ settings = get_settings()
 log = get_logger("rate_limit")
 
 
+def email_digest(email: str) -> str:
+    """16 hex of sha256 of the lowercased address: the form in which an email
+    may appear in a Redis rate-limit key (and so in any log that echoes one)."""
+    return hashlib.sha256(email.lower().encode("utf-8")).hexdigest()[:16]
+
+
+def key_prefix(key: str) -> str:
+    """Text before the first ':' — the only part of a limiter key that is safe
+    to log or put in an exception message."""
+    return key.split(":", 1)[0]
+
+
 def login_rate_limit_key(ip: str, email: str) -> str:
     """The per-(ip, email) login bucket, shared by `/auth/login` and the
     password branch of account deletion. The email is hashed (16 hex of
     sha256 of the lowercased address) so Redis keys and anything that logs a
     key never carry the address itself."""
-    digest = hashlib.sha256(email.lower().encode("utf-8")).hexdigest()[:16]
-    return f"login:{ip}:{digest}"
+    return f"login:{ip}:{email_digest(email)}"
 
 
 class RateLimitUnavailable(Exception):
@@ -70,9 +81,9 @@ async def check_rate_limit(
             await r.expire(redis_key, window_seconds)
         return current <= limit
     except Exception:
-        log.warning("rate_limit_unavailable", key=key)
+        log.warning("rate_limit_unavailable", key_prefix=key_prefix(key))
         if not fail_open:
-            raise RateLimitUnavailable(key) from None
+            raise RateLimitUnavailable(key_prefix(key)) from None
         return True  # fail open
 
 
@@ -187,5 +198,5 @@ async def check_token_bucket(key: str, capacity: int, refill_per_minute: int) ->
         raw = await _run_token_bucket(r, redis_key, capacity, refill_rate, now)
         return bool(int(raw))
     except Exception:
-        log.warning("rate_limit_unavailable", key=key)
+        log.warning("rate_limit_unavailable", key_prefix=key_prefix(key))
         return True  # fail open

@@ -90,4 +90,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # Port is fixed at 8000 (matches EXPOSE and the HEALTHCHECK). sh -c so
 # $UVICORN_WORKERS expands; exec so uvicorn stays PID 1 and receives SIGTERM
 # directly.
-CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1} --no-access-log"]

@@ -38,11 +38,16 @@ _PAPER = "#f6f1ec"
 _CARD = "#ffffff"
 
 
+_CONSOLE_BODY_ENVIRONMENTS = {"development", "test"}
+
+
 async def _send_console(to: str, subject: str, text: str, *, log_recipient: bool = True) -> None:
     """Development backend: log the message instead of delivering it. Only the
-    plain-text part — it carries the same link/code as the HTML part. With
-    `log_recipient=False` neither the address nor the body is logged."""
-    if log_recipient:
+    plain-text part — it carries the same link/code as the HTML part. The
+    address and body (live codes and reset links) are logged only when the
+    environment is development/test and `log_recipient` is set; anywhere else
+    only the subject is logged."""
+    if log_recipient and settings.environment.lower() in _CONSOLE_BODY_ENVIRONMENTS:
         log.info("email_send_console", to=to, subject=subject, body=text)
     else:
         log.info("email_send_console", subject=subject)
@@ -122,8 +127,9 @@ async def _send(
     event loop. Exceptions propagate: callers such as staff invite creation
     depend on a failed send rolling the whole transaction back.
 
-    `log_recipient=False` keeps the address (and, on the console backend, the
-    body) out of the logs, for mail sent about an account that no longer exists.
+    `log_recipient=False` keeps the address and body out of the console
+    backend's dev/test log, for mail sent about an account that no longer
+    exists. The live `email_sent` log never carries the address.
     """
     if not settings.email_is_live:
         await _send_console(to, subject, text, log_recipient=log_recipient)
@@ -135,10 +141,8 @@ async def _send(
         import asyncio
 
         await asyncio.to_thread(_send_smtp_blocking, to, subject, text, html)
-    if log_recipient:
-        log.info("email_sent", to=to, subject=subject)
-    else:
-        log.info("email_sent", subject=subject)
+    # Never the address: it is personal data and log retention outlives the account.
+    log.info("email_sent", subject=subject)
 
 
 def _render_html(
@@ -289,7 +293,7 @@ async def send_email_verification(to: str, code: str) -> None:
         footnote=f"The code expires in {minutes} minutes. "
         "If you didn't create an account, you can ignore this email.",
     )
-    await _send(to, f"{code} is your {app} verification code", text, html)
+    await _send(to, f"Your {app} verification code", text, html)
 
 
 async def send_sign_in_method_linked(to: str, provider: str, *, password_removed: bool) -> None:
@@ -341,7 +345,7 @@ async def send_account_deleted(to: str) -> None:
     paragraphs = [
         f"Your {app} account and the data tied to it (playlists, likes, comments, "
         "sign-in methods) were deleted at your request.",
-        "Backups are purged within 30 days. If you signed in with Apple, you can also "
+        "Backups are purged within 90 days. If you signed in with Apple, you can also "
         f"remove {app} under Settings > Apple Account > Sign in with Apple.",
     ]
     footnote = "If you didn't do this, contact support right away."

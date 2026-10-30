@@ -196,6 +196,10 @@ Then check each of the following:
   `SECRET_KEY` is shared with local dev, tokens minted locally are valid against the deployed API
   and vice versa. Give the deployment its own key if that ever matters.
 
+Restoring a database or importing an admin data export can bring back
+accounts erased since the snapshot; see the "Restores, imports and erased
+accounts" section (15) in `DEPLOYMENT.md` for the re-erasure steps.
+
 ## 9. Moving beyond dev (later)
 
 A real staging or production environment is a separate Blueprint, not this one with the plans bumped.

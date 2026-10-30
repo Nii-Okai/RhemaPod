@@ -121,7 +121,7 @@ Admin `delete_user` now uses the same shared `_erase_user` (cascades, audit pseu
 
 ### 7. Retention
 
-- **Backups:** 30 days. Deleted data can persist in backups for up to 30 days.
+- **Backups:** 90 days (was 30; changed 2026-10-30 to match the planned production backup retention). Deleted data can persist in backups for up to 90 days; restores follow the re-erasure runbook in DEPLOYMENT.md §15.
 - **Pseudonymized viewer audit rows:** 365 days (existing `audit_auth_retention_days`, no config change).
 
 ### 8. Deletion semantics
