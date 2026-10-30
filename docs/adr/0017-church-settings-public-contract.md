@@ -96,3 +96,88 @@ v1.
   and an auth requirement would add a token refresh to every app launch for public information.
 - **Rendering the legal documents in-app:** rejected by Isaac (D2). The documents live with their
   owner and change on their own schedule.
+
+---
+
+## Addendum 1 (2026-10-30): comment guidelines become a code-sourced public document
+
+- **Status:** Proposed (flips to Accepted at `[HUMAN_GATE P4]`). The text above is unchanged.
+- **Deciders:** Isaac (chat, 2026-10-30; `[HUMAN_GATE GA0]` passed) (+ planner, scribe)
+- **Relates to:** `plans/plan-ad5-amendment-1-guidelines.md` §G.1-§G.7 and the GA0 decisions at
+  its end; `plans/plan-ad5-retention-and-legal-pages.md` (base plan, P2 answer 7).
+
+### What is reversed
+- **§1 (seed row):** `comment_guidelines` is no longer a column of the settings row. The
+  `e5a68425e539` seed stays as history.
+- **§4 ("guidelines are text", staff-editable):** the guidelines are still text, but staff no
+  longer edit them. They are a public legal document whose text lives in the backend repo, and
+  the admin-portal editor is removed (§G.5). Reverses P2 answer 7 (option b) for guidelines only.
+  `terms_of_use_url` and `privacy_policy_url` are unchanged.
+
+### Decisions
+1. **Source file (§G.1).** `app/content/comment_guidelines.txt` is the only editable source.
+   `app/content/__init__.py` loads it once at import (a missing or empty file fails startup) and
+   exposes `COMMENT_GUIDELINES` and `COMMENT_GUIDELINES_DIGEST` (first 12 hex chars of the
+   SHA-256 of the UTF-8 bytes). `.txt`, not `.md`: `.dockerignore` excludes `*.md` (the file
+   would be missing from the API image), and mobile `TermsSheet` renders the text verbatim, so
+   Markdown syntax would show up literally. The file ends with one `\n`, which the loader strips.
+   Mobile `COMMENTS_TERMS_TEXT` must equal the loaded string byte for byte; a backend test pins
+   it.
+2. **"Last updated" line (GA0 decision 2).** The file carries a "Last updated: <date>" line, so
+   the `/guidelines` page and the app show the same date from one copy. The mobile constant and
+   the pin test change with it. A text change is one commit that edits the file and
+   `mobile/lib/content/commentsCompliance.ts` together.
+3. **PATCH returns 422 (§G.2).** `comment_guidelines` is removed from `ChurchSettingsUpdate`,
+   `SETTINGS_TEXT_FIELDS` and `SETTINGS_REQUIRED_FIELDS`. `extra="forbid"` already yields FastAPI's
+   `extra_forbidden` 422. Ignoring the field was rejected: a stale portal tab would get a 200 for
+   an edit that never happened. Response shapes keep `comment_guidelines: str`, now filled from
+   the file, so the OpenAPI response contract is unchanged. This is a public contract change
+   (reviewed at `[HUMAN_GATE GA1]`).
+4. **ETag and cache key (§G.2).** The public ETag becomes `W/"<version>-<digest>"` and
+   `etag_matches` compares the full opaque tag, so a client holding `W/"1"` cannot get a 304 for
+   a body whose guidelines changed in a deploy. The Redis key becomes
+   `settings:public:v2:<digest>`; orphaned v1 keys expire on their 300 s TTL. Clients treat the
+   ETag as opaque (RFC 9110); none parses it. `version` in the body keeps its meaning (the row's
+   optimistic-concurrency token).
+5. **Column drop (§G.3).** A new Alembic revision (`down_revision = d9e0f1a2b3c4`) drops
+   `church_settings.comment_guidelines`. It is destructive, by Isaac's choice, and guarded:
+   upgrade raises `RuntimeError` if the stored text differs from a frozen `_CANONICAL` copy in the
+   migration (migrations do not import app code), so staff edits are never destroyed silently.
+   Downgrade re-adds the column nullable, fills `_CANONICAL`, then sets `NOT NULL`, with no
+   `server_default`, matching `e5a68425e539`. Downgrade restores canonical text, not any earlier
+   edit; the guard guarantees there was none. If staff edited the Render dev row, the original
+   text stays in the file and the dev row is reset to it before the migration runs (GA0
+   decision 3, GA1 pre-check).
+6. **Public page (§G.4).** `/guidelines` on the admin portal fetches `GET /settings/public`
+   server-side at request time (not build time), without credentials, caches success for at most
+   1 hour, and shows fallback copy on failure.
+7. **Change record (§G.1).** Git is the record of what changed and when. `audit_log`
+   `settings.updated` no longer covers guidelines; historic rows listing `comment_guidelines` in
+   `changed` stay (append-only).
+8. **Acceptance unchanged (§G.7, GA0 decision 1).** `users.comments_terms_accepted_at` stays a
+   single nullable timestamp. Editing the file never forces re-acceptance, and the digest is not
+   stored per user. Git history now reconstructs the text in force at any acceptance time. If a
+   change ever needs re-acceptance, a reviewed one-off
+   `UPDATE users SET comments_terms_accepted_at = NULL` does it, as its own gate. Versioned
+   acceptance is a possible follow-up.
+
+### Consequences
+- Positive: one source for API, portal page and mobile fallback, guarded by two pin tests; an
+  exact text-per-date history in git; no staff path to edit legal text.
+- Negative: wording changes need a deploy, not an admin click. The migration is destructive and
+  can crash-loop Render boot if the dev row was edited (mitigated by the GA1 pre-check). The
+  third text copy (`_CANONICAL`) is pinned only while the file is unchanged; the first real text
+  edit must rewrite that test against a git-pinned constant (§G.3). A stale portal tab saving
+  Settings during the deploy gets a 422. `/guidelines` depends on API uptime (1 hour cache plus
+  fallback copy).
+- Neutral: `GET /settings/public` and `GET /admin/settings` shapes are unchanged; the ETag string
+  format changes.
+
+### Alternatives considered
+- **Keep it staff-editable (ADR above):** reversed by Isaac; the guidelines are now a legal
+  document, so edits go through review.
+- **Markdown file or build-time portal import:** rejected. `.dockerignore` drops `*.md`, the
+  portal builds from `rootDir: admin_portal` and cannot read `../app/content`, and a build-time
+  API fetch couples `next build` to API uptime (§G.1, §G.4).
+- **Ignore the field on PATCH (200):** rejected, see decision 3.
+- **Store a digest per acceptance now:** deferred; not needed to meet this amendment (§G.7).
