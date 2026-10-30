@@ -2,7 +2,10 @@
 reads (plan-admin-settings §A.4.3/§A.5, step S12).
 
 * `get_public` serves `GET /settings/public` through Redis cache-aside
-  (`settings:public:v1`, 300s). Redis being down only costs a DB read.
+  (`settings:public:v2:<guidelines digest>`, 300s). The comment guidelines
+  are the static file `app/content/comment_guidelines.txt`, not a row
+  column; the digest in the key and the ETag means a deploy that changes the
+  text never serves a body cached or validated under the old one. Redis being down only costs a DB read.
 * `update` is the one writer. It is optimistic: the caller sends the
   `version` it loaded, the write is `UPDATE ... WHERE version = :v`, and
   zero rows updated is a 409. The `settings.updated` audit row is in the
@@ -16,6 +19,7 @@ from __future__ import annotations
 from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import content
 from app.core.logging import get_logger
 from app.core.redis import cache_aside, get_redis
 from app.models.content_schemas import (
@@ -31,10 +35,13 @@ from app.services.content_service import ContentError
 
 log = get_logger("settings")
 
-PUBLIC_CACHE_KEY = "settings:public:v1"
 PUBLIC_CACHE_TTL = 300
 _SETTINGS_ID = 1
 _DELETED_ACCOUNT = "Deleted account"
+
+
+def public_cache_key() -> str:
+    return f"settings:public:v2:{content.COMMENT_GUIDELINES_DIGEST}"
 
 
 async def _load(db: AsyncSession) -> ChurchSettings:
@@ -54,7 +61,7 @@ async def get_public(db: AsyncSession) -> dict:
         row = await _load(db)
         return _to_public(row).model_dump(mode="json")
 
-    return await cache_aside(PUBLIC_CACHE_KEY, PUBLIC_CACHE_TTL, _source)
+    return await cache_aside(public_cache_key(), PUBLIC_CACHE_TTL, _source)
 
 
 async def get_admin(db: AsyncSession) -> ChurchSettingsAdmin:
@@ -63,7 +70,15 @@ async def get_admin(db: AsyncSession) -> ChurchSettingsAdmin:
 
 
 def _to_public(row: ChurchSettings) -> ChurchSettingsPublic:
-    public = ChurchSettingsPublic.model_validate(row)
+    # `comment_guidelines` is not a column; it comes from the static file.
+    fields = {
+        name: getattr(row, name)
+        for name in ChurchSettingsPublic.model_fields
+        if name not in ("comment_guidelines", "sign_in_image_url")
+    }
+    public = ChurchSettingsPublic(
+        **fields, comment_guidelines=content.COMMENT_GUIDELINES
+    )
     public.sign_in_image_url = content_service._thumbnail_url(row.sign_in_image_key)
     return public
 
@@ -81,7 +96,7 @@ async def _to_admin(db: AsyncSession, row: ChurchSettings) -> ChurchSettingsAdmi
 
 async def invalidate_public_cache() -> None:
     try:
-        await get_redis().delete(PUBLIC_CACHE_KEY)
+        await get_redis().delete(public_cache_key())
     except Exception:
         log.warning("settings_cache_invalidation_failed")
 
@@ -161,8 +176,10 @@ async def update(
 
 
 def etag_for(version: int) -> str:
-    """Weak validator from the row version (§A.5): any edit bumps it."""
-    return f'W/"{version}"'
+    """Weak validator (§A.5): the row version, which any edit bumps, plus the
+    guidelines digest, which changes when a deploy changes the file text.
+    Opaque to clients."""
+    return f'W/"{version}-{content.COMMENT_GUIDELINES_DIGEST}"'
 
 
 def etag_matches(if_none_match: str | None, version: int) -> bool:
@@ -171,7 +188,7 @@ def etag_matches(if_none_match: str | None, version: int) -> bool:
         return False
     if if_none_match.strip() == "*":
         return True
-    wanted = f'"{version}"'
+    wanted = f'"{version}-{content.COMMENT_GUIDELINES_DIGEST}"'
     for candidate in if_none_match.split(","):
         tag = candidate.strip()
         if tag.startswith("W/"):

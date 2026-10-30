@@ -1012,8 +1012,10 @@ class ChurchSettings(Base):
     gets a 409 instead of silently overwriting. `updated_by_id` has no FK,
     like `audit_log.actor_id`: erasing an account must not touch or be
     blocked by this row. Legal documents are hosted elsewhere and stored as
-    URLs only (D2/D2a); `comment_guidelines` is inline text because viewers
-    accept it in-app before their first comment.
+    URLs only (D2/D2a). The comment guidelines are not a column: they are the
+    static file `app/content/comment_guidelines.txt` (plan-ad5-amendment-1).
+    The `comment_guidelines` column stays in the database, unmapped, until
+    the migration that drops it.
     """
 
     __tablename__ = "church_settings"
@@ -1027,7 +1029,6 @@ class ChurchSettings(Base):
     contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     website_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    comment_guidelines: Mapped[str] = mapped_column(Text, nullable=False)
     terms_of_use_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     privacy_policy_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     copyright_notice: Mapped[str | None] = mapped_column(String(300), nullable=True)

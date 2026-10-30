@@ -21,6 +21,8 @@ export const CONTACT_EMAIL = 'contact@rhemapod.com';
 
 export const COMMENTS_TERMS_TEXT = `RhemaPod Comment Guidelines
 
+Last updated: 30 October 2026
+
 Welcome to RhemaPod, the media platform of Watered Garden Church, Ghana. To keep our community Christ-centered, respectful, and edifying, all users must agree to the following rules before commenting on sermons:
 
 • Edify and Encourage: Use your words to build up others, share testimonies, and discuss the Word of God respectfully.
