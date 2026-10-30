@@ -80,6 +80,28 @@ describe("/privacy text", () => {
   });
 });
 
+describe("/privacy P3 legal review decisions", () => {
+  it("names gender as an optional profile detail", () => {
+    const { container } = render(<PrivacyPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(text).toMatch(/details you add to your profile, such as a profile photo and, if you choose, your gender \(male or female\)/);
+  });
+
+  it("keeps the 13+ minimum age and drops the sale, advertising, under-13 and regulator statements", () => {
+    for (const Page of [PrivacyPage, TermsPage]) {
+      const { container, unmount } = render(<Page />);
+      const text = (container.textContent ?? "").replace(/\s+/g, " ");
+      expect(text).not.toMatch(/do not sell personal data/i);
+      expect(text).not.toMatch(/do not use your data for advertising/i);
+      expect(text).not.toMatch(/child under 13/i);
+      expect(text).not.toMatch(/Data Protection Commission/i);
+      unmount();
+    }
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent ?? "").toMatch(/You must be at least 13 to use RhemaPod\./);
+  });
+});
+
 describe("/terms text", () => {
   it("states 13+, Ghana law and courts, and the store-cancellation sentence", () => {
     const { container } = render(<TermsPage />);
