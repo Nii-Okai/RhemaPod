@@ -26,6 +26,7 @@
       },
       "package": "com.niitech.rhemapod",
       "permissions": [
+        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -44,7 +45,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false
+          "microphonePermission": "RhemaPod does not record audio. This permission is required by the audio component the app uses for sermon playback."
         }
       ],
       [
