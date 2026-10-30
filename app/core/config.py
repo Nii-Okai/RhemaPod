@@ -268,6 +268,11 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
+    # Transport. "smtp" (default) uses smtp_*; "resend_api" posts to Resend's
+    # HTTPS API (port 443) for hosts that block outbound SMTP, e.g. Render's
+    # free tier. resend_api needs resend_api_key + smtp_from_email (the From).
+    email_transport: Literal["smtp", "resend_api"] = "smtp"
+    resend_api_key: SecretStr | None = None
 
     # Sermon comments: auto-hide once this many DISTINCT reporters have
     # reported a comment (counted since the last moderator restore; plan
@@ -405,7 +410,16 @@ class Settings(BaseSettings):
 
     @property
     def email_is_live(self) -> bool:
+        if self.email_transport == "resend_api":
+            return bool(self.resend_api_key and self.smtp_from_email)
         return bool(self.smtp_host and self.smtp_from_email)
+
+    @property
+    def email_backend_label(self) -> str:
+        """Short transport name for startup logs and preflight output."""
+        if not self.email_is_live:
+            return "console"
+        return self.email_transport
 
     @property
     def stream_is_live(self) -> bool:
@@ -650,8 +664,13 @@ class Settings(BaseSettings):
             )
         if not self.email_is_live:
             problems.append(
-                "SMTP_HOST and SMTP_FROM_EMAIL are required "
-                "(without them invite and reset emails are only logged)"
+                (
+                    "RESEND_API_KEY and SMTP_FROM_EMAIL are required when "
+                    "EMAIL_TRANSPORT=resend_api"
+                    if self.email_transport == "resend_api"
+                    else "SMTP_HOST and SMTP_FROM_EMAIL are required"
+                )
+                + " (without them invite and reset emails are only logged)"
             )
         if not self.stream_is_live:
             problems.append(

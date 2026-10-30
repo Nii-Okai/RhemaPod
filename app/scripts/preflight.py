@@ -161,12 +161,17 @@ async def _check_stream() -> str:
 
 async def _check_email() -> str:
     from app.core.config import get_settings
+    from app.core.email import RESEND_API_HOST
 
     s = get_settings()
     if not s.email_is_live:
         if s.is_production:
             raise RuntimeError("console email backend active in production")
+        if s.email_transport == "resend_api":
+            raise RuntimeError("EMAIL_TRANSPORT=resend_api needs RESEND_API_KEY and SMTP_FROM_EMAIL")
         return "console (development)"
+    if s.email_transport == "resend_api":
+        return f"resend_api: {RESEND_API_HOST}"
     return f"smtp: {s.smtp_host}:{s.smtp_port}"
 
 

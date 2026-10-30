@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
         environment=settings.environment,
         storage=storage_backend,
         apple_revocation=apple_revocation_backend,
-        email="smtp" if settings.email_is_live else "console",
+        email=settings.email_backend_label,
     )
     yield
     logger.info("shutdown")
