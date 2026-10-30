@@ -54,8 +54,20 @@ describe("/privacy text", () => {
     expect(screen.getByText(/cleared after 90 days/)).toBeInTheDocument();
     expect(screen.getByText(/Sign-in records:/)).toBeInTheDocument();
     expect(screen.getByText(/deleted after 365 days/)).toBeInTheDocument();
-    expect(screen.getByText(/kept for up to 90 days/)).toBeInTheDocument();
+    expect(screen.getByText(/they are kept for\s+up to 90 days/)).toBeInTheDocument();
     expect(screen.getByText(/last up to 15 minutes/)).toBeInTheDocument();
+  });
+
+  it("makes only claims that are true: logs, counters, backups, cross-border", () => {
+    const { container } = render(<PrivacyPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(text).not.toMatch(/ID of the signed-in account/);
+    expect(text).toMatch(/Some event log lines carry an internal account ID, for example when an email address is verified/);
+    expect(text).toMatch(/Email addresses in these counters are always hashed/);
+    expect(text).not.toMatch(/sign-in counter uses a hashed/);
+    expect(text).toMatch(/if we keep database backups, they are kept for up to 90 days; if we ever restore one, we erase deleted accounts again/i);
+    expect(text).not.toMatch(/Production backups/);
+    expect(text).toMatch(/process data outside Ghana\. Our server and database are hosted in Germany \(EU\)/);
   });
 
   it("names the controller and Act 843, with no GDPR/CCPA or registration number", () => {

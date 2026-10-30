@@ -140,14 +140,14 @@ describe('SignatureYouScreen', () => {
     expect(screen.getByText("Shown as 'Ada N.' on comments.")).toBeTruthy();
     expect(screen.getByText('Edit profile')).toBeTruthy();
     expect(screen.getByLabelText('Change profile picture')).toBeTruthy();
-    for (const heading of ['APPEARANCE', 'PLAYBACK & DOWNLOADS', 'LIBRARY', 'HELP & SAFETY']) {
+    for (const heading of ['APPEARANCE', 'PLAYBACK & DOWNLOADS', 'LIBRARY', 'HELP & SAFETY', 'LEGAL', 'ACCOUNT']) {
       expect(screen.getByText(heading)).toBeTruthy();
     }
     expect(screen.getByLabelText('Autoplay next in series')).toBeTruthy();
     expect(screen.getByLabelText('Wi-Fi only downloads')).toBeTruthy();
     expect(screen.getByText('Announcements')).toBeTruthy();
     expect(screen.getByText('Blocked users')).toBeTruthy();
-    expect(screen.getByText('Comment guidelines')).toBeTruthy();
+    expect(screen.getByText('Community guidelines')).toBeTruthy();
     expect(screen.getByText('Delete account')).toBeTruthy();
     expect(screen.getByText('Sign out')).toBeTruthy();
   });
@@ -227,7 +227,7 @@ describe('SignatureYouScreen', () => {
     fireEvent.press(screen.getByText('Delete account'));
     expect(mockPush).toHaveBeenCalledWith('/delete-account');
 
-    fireEvent.press(screen.getByText('Comment guidelines'));
+    fireEvent.press(screen.getByText('Community guidelines'));
     expect(await screen.findByText(/RhemaPod Comment Guidelines/)).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Edit profile'));
@@ -244,6 +244,9 @@ describe('SignatureYouScreen', () => {
     expect(openURL).toHaveBeenCalledWith(`mailto:${CONTACT_EMAIL}`);
     expect(screen.queryByText('Terms of use')).toBeNull();
     expect(screen.queryByText('Privacy policy')).toBeNull();
+    // Legal still shows Community guidelines (in-app sheet) with no URLs set; Contact us stays in Help & safety.
+    expect(screen.getByText('LEGAL')).toBeTruthy();
+    expect(screen.getByText('Community guidelines')).toBeTruthy();
     screen.unmount();
 
     settings = {
@@ -257,5 +260,7 @@ describe('SignatureYouScreen', () => {
     expect(openURL).toHaveBeenCalledWith('https://wateredgarden.org/terms');
     fireEvent.press(screen.getByText('Privacy policy'));
     expect(openURL).toHaveBeenCalledWith('https://wateredgarden.org/privacy');
+    expect(screen.getByText('Community guidelines')).toBeTruthy();
+    expect(screen.getByLabelText(`Contact us at hello@wateredgarden.org`)).toBeTruthy();
   });
 });

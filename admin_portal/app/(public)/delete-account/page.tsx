@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
-
-import { LegalNav } from "../_components/legal-nav";
-import { Wordmark } from "../_components/wordmark";
+import { LegalHeader } from "../_components/legal-header";
+import { LegalSection } from "../_components/legal-section";
 
 export const metadata = { title: "Delete your account · RhemaPod" };
 
@@ -19,14 +17,14 @@ const MAILTO = `mailto:${DELETION_CONTACT_EMAIL}?subject=${encodeURIComponent(
  * reviewers read it too. Static on purpose: no session, no data fetching, so it
  * works signed out and on any device. An admin fulfils emailed requests with
  * the portal's delete-user action, which cannot revoke Apple, hence the manual
- * Apple steps. Retention numbers match ADR 0020 (30 / 90 / 365 days).
+ * Apple steps. Retention figures match the published privacy page.
  */
 export default function DeleteAccountPage() {
   return (
     <main className="min-h-screen bg-surface px-16 py-[48px] sm:px-[8vw]">
-      <article className="mx-auto flex max-w-[680px] flex-col gap-28">
-        <Wordmark size={26} />
-        <LegalNav />
+      <div className="mx-auto flex max-w-[680px] flex-col gap-28">
+        <LegalHeader />
+        <article className="flex flex-col gap-28">
         <header className="flex flex-col gap-6">
           <h1 className="font-serif text-[40px] leading-[1.08] tracking-[-0.025em] text-ink">
             Delete your RhemaPod account
@@ -37,7 +35,7 @@ export default function DeleteAccountPage() {
           </p>
         </header>
 
-        <Section title="Delete it in the app">
+        <LegalSection title="Delete it in the app">
           <ol className="list-decimal space-y-4 pl-20">
             <li>Open RhemaPod and sign in.</li>
             <li>
@@ -52,9 +50,9 @@ export default function DeleteAccountPage() {
             If you signed in with Apple, deleting in the app also removes
             RhemaPod from your Apple ID.
           </p>
-        </Section>
+        </LegalSection>
 
-        <Section title="Or ask us to delete it">
+        <LegalSection title="Or ask us to delete it">
           <p>
             If you can&rsquo;t use the app, email{" "}
             <a className="font-medium text-clay-600 underline" href={MAILTO}>
@@ -64,30 +62,42 @@ export default function DeleteAccountPage() {
             RhemaPod account&rdquo;. We&rsquo;ll confirm by email once
             it&rsquo;s done.
           </p>
-        </Section>
+        </LegalSection>
 
-        <Section title="What's deleted">
+        <LegalSection title="What's deleted">
           <p>
-            Your profile and photo, your sign-in methods, playlists, comments,
-            likes, watch history, notes and settings.
+            Your account and profile, your profile photo, your sign-in links,
+            playlists and their covers, comments, likes, subscription record,
+            blocks, listening history (including daily listening records) and
+            the reports you filed.
           </p>
-        </Section>
+        </LegalSection>
 
-        <Section title="What's kept, and for how long">
+        <LegalSection title="What's kept, and for how long">
           <ul className="list-disc space-y-4 pl-20">
-            <li>Encrypted database backups, for up to 30 days, then overwritten.</li>
             <li>
-              Copies of comments that someone reported, kept for moderation for
-              up to 90 days.
+              IP address and user agent on security records are removed after 30
+              days.
+            </li>
+            <li>Sign-in records are deleted after 365 days.</li>
+            <li>
+              Other security and audit records are kept, with your email
+              removed when your account is deleted.
             </li>
             <li>
-              A security log of account events with your email removed, for up
-              to 365 days.
+              Moderation records are kept without a link to your account. The
+              copy of a comment&rsquo;s text saved with the record is cleared
+              after 90 days.
             </li>
+            <li>
+              If we keep database backups, they are kept for up to 90 days; if
+              we ever restore one, we erase deleted accounts again.
+            </li>
+            <li>Abuse-prevention counters last up to 15 minutes.</li>
           </ul>
-        </Section>
+        </LegalSection>
 
-        <Section title="Subscriptions">
+        <LegalSection title="Subscriptions">
           <p>
             Deleting your account doesn&rsquo;t cancel a subscription bought
             through the App Store or Google Play. Cancel it in{" "}
@@ -106,9 +116,9 @@ export default function DeleteAccountPage() {
             </a>{" "}
             first.
           </p>
-        </Section>
+        </LegalSection>
 
-        <Section title="Remove Sign in with Apple yourself">
+        <LegalSection title="Remove Sign in with Apple yourself">
           <p>
             If we delete your account from an email request, or you deleted it
             on Android, remove RhemaPod from your Apple ID yourself:
@@ -124,17 +134,9 @@ export default function DeleteAccountPage() {
               in with Apple &gt; RhemaPod.
             </li>
           </ul>
-        </Section>
-      </article>
+        </LegalSection>
+        </article>
+      </div>
     </main>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-8 text-[15px] leading-[1.6] text-ink">
-      <h2 className="font-serif text-[24px] leading-[1.2] text-ink">{title}</h2>
-      {children}
-    </section>
   );
 }

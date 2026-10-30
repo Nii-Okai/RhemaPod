@@ -127,7 +127,8 @@ function LinkRow({
  *  - Appearance as one three-way switch (`ThemeSwitch`);
  *  - Playback & downloads: autoplay next in series and Wi-Fi-only downloads;
  *  - Library: Announcements and Blocked users;
- *  - Help & safety: Contact us, Comment guidelines, and the legal links once they're set;
+ *  - Help & safety: Contact us;
+ *  - Legal: Privacy policy and Terms of use once their links are set, and Community guidelines;
  *  - Account: Delete account (`app/delete-account.tsx`);
  *  - Sign out.
  */
@@ -296,15 +297,12 @@ export function SignatureYouScreen() {
               if (!contactPending) void Linking.openURL(`mailto:${contactEmail}`);
             }}
           />
-          <LinkRow icon="chatbubble-outline" label="Comment guidelines" onPress={() => setGuidelinesOpen(true)} />
-          {/* Hosted elsewhere (ADR 0017 D2); each row exists only once its link is set. */}
-          {termsOfUseUrl ? (
-            <LinkRow
-              icon="document-text-outline"
-              label="Terms of use"
-              onPress={() => void Linking.openURL(termsOfUseUrl)}
-            />
-          ) : null}
+        </Panel>
+      </Group>
+
+      <Group label="Legal">
+        <Panel>
+          {/* Hosted elsewhere (ADR 0017 D2); each link row exists only once its URL is set. */}
           {privacyPolicyUrl ? (
             <LinkRow
               icon="shield-checkmark-outline"
@@ -312,6 +310,14 @@ export function SignatureYouScreen() {
               onPress={() => void Linking.openURL(privacyPolicyUrl)}
             />
           ) : null}
+          {termsOfUseUrl ? (
+            <LinkRow
+              icon="document-text-outline"
+              label="Terms of use"
+              onPress={() => void Linking.openURL(termsOfUseUrl)}
+            />
+          ) : null}
+          <LinkRow icon="chatbubble-outline" label="Community guidelines" onPress={() => setGuidelinesOpen(true)} />
         </Panel>
       </Group>
 
