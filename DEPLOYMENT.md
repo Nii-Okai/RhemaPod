@@ -49,6 +49,20 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 Run migrations as a separate step before rolling instances — concurrent
 `alembic upgrade` from several starting containers will race.
 
+### Dropping `church_settings.comment_guidelines` (revision `a7c3e9f1b2d4`)
+
+The comment guidelines now live in `app/content/comment_guidelines.txt`; the
+migration drops the column. Code that still maps the column errors once it is
+gone, so the new code must be serving **before** the drop runs. For prod, run
+it as two releases: code first, `alembic upgrade head` second. The migration
+locks the row and aborts if the stored text differs from the canonical seed
+(a staff edit would otherwise be lost); reconcile and re-run.
+
+Rollback: `alembic downgrade d9e0f1a2b3c4` **before** redeploying older code
+(it restores the column holding the canonical text). Exports taken before this
+revision cannot be imported after it (the `schema_revision` guard refuses
+them); take a fresh export after the migration.
+
 ### API schema (`openapi.json`)
 
 `uv run python -m app.scripts.dump_openapi` regenerates `openapi.json` at the

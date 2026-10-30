@@ -1,6 +1,7 @@
 /**
  * `GET /settings/public` — the church's contact email, comment guidelines and legal links,
- * editable by staff in the admin portal (plan-admin-settings S18, ADR 0017). Public read:
+ * contact email and links editable by staff in the admin portal; guidelines from the
+ * backend's text file (plan-admin-settings S18, ADR 0017). Public read:
  * no auth on the endpoint, so it works signed out.
  *
  * The app must never depend on it. `useChurchContent()` always returns usable values:

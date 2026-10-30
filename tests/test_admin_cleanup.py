@@ -287,7 +287,7 @@ async def test_reset_is_admin_only(client, engine):
 # ── Sign-in image ────────────────────────────────────────────────────────────
 async def _seed_settings(engine):
     async with _session(engine)() as s:
-        s.add(ChurchSettings(id=1, contact_email="c@example.com", comment_guidelines="Be kind"))
+        s.add(ChurchSettings(id=1, contact_email="c@example.com"))
         await s.commit()
 
 

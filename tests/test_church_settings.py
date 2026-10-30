@@ -15,6 +15,7 @@ migration `e5a68425e539` seeds it, since the test databases are built with
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -25,8 +26,10 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.content as content_module
 import app.core.redis as redis_module
 import app.services.settings_service as settings_service_module
+from app.content import COMMENT_GUIDELINES, COMMENT_GUIDELINES_DIGEST
 from app.models.models import AuditAction, AuditLog, ChurchSettings
 from app.services.audit_service import AuditTarget
 from tests.conftest import _fake
@@ -39,9 +42,14 @@ ADMIN = "/api/v1/admin/settings"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _guidelines() -> str:
+def _mobile_terms_text() -> str:
     ts = (REPO_ROOT / "mobile/lib/content/commentsCompliance.ts").read_text(encoding="utf-8")
-    return re.search(r"export const COMMENTS_TERMS_TEXT = `(.*?)`;", ts, re.S).group(1)
+    m = re.search(r"export const COMMENTS_TERMS_TEXT = `(.*?)`;", ts, re.S)
+    body = m.group(1)
+    # A template literal with escapes or interpolation would not be the same
+    # bytes as the runtime string; refuse to compare it.
+    assert "\\" not in body and "${" not in body
+    return body
 
 
 async def _seed_settings(Session) -> None:
@@ -51,7 +59,6 @@ async def _seed_settings(Session) -> None:
             church_name="Watered Garden Church",
             app_display_name="RhemaPod",
             contact_email="contact@rhemapod.com",
-            comment_guidelines=_guidelines(),
         ))
         await s.commit()
 
@@ -165,11 +172,11 @@ async def test_public_settings_need_no_auth(lite):
     assert r.status_code == 200
     body = r.json()
     assert body["contact_email"] == "contact@rhemapod.com"
-    assert body["comment_guidelines"] == _guidelines()
+    assert body["comment_guidelines"] == COMMENT_GUIDELINES
     assert body["terms_of_use_url"] is None and body["privacy_policy_url"] is None
     assert body["version"] == 1
     assert "updated_by" not in body and "updated_by_id" not in body
-    assert r.headers["etag"] == 'W/"1"'
+    assert r.headers["etag"] == f'W/"1-{COMMENT_GUIDELINES_DIGEST}"'
     assert r.headers["cache-control"] == "public, max-age=300"
 
 
@@ -177,7 +184,7 @@ async def test_public_settings_304_on_matching_etag(lite, redis_backend):
     client, _, _ = lite
     etag = (await client.get(PUBLIC)).headers["etag"]
 
-    for header in (etag, '"1"', f'"9", {etag}', "*"):
+    for header in (etag, etag[2:], f'"9", {etag}', "*"):
         r = await client.get(PUBLIC, headers={"If-None-Match": header})
         assert r.status_code == 304, header
         assert r.content == b""
@@ -185,6 +192,27 @@ async def test_public_settings_304_on_matching_etag(lite, redis_backend):
 
     r = await client.get(PUBLIC, headers={"If-None-Match": 'W/"0"'})
     assert r.status_code == 200
+    # A pre-digest validator ('W/"1"') must not 304 a body whose guidelines
+    # may have changed in a deploy.
+    for stale in ('W/"1"', '"1"'):
+        r = await client.get(PUBLIC, headers={"If-None-Match": stale})
+        assert r.status_code == 200, stale
+
+
+async def test_digest_change_changes_etag_and_cache_key(lite, redis_backend, monkeypatch):
+    client, _, _ = lite
+    old_etag = (await client.get(PUBLIC)).headers["etag"]
+    old_key = settings_service_module.public_cache_key()
+    assert old_key == f"settings:public:v2:{COMMENT_GUIDELINES_DIGEST}"
+    assert await redis_backend.get(old_key) is not None
+
+    monkeypatch.setattr(content_module, "COMMENT_GUIDELINES_DIGEST", "0123456789ab")
+    r = await client.get(PUBLIC)
+    assert r.headers["etag"] == 'W/"1-0123456789ab"' != old_etag
+    assert settings_service_module.public_cache_key() == "settings:public:v2:0123456789ab"
+    assert await redis_backend.get("settings:public:v2:0123456789ab") is not None
+    # The old validator no longer 304s.
+    assert (await client.get(PUBLIC, headers={"If-None-Match": old_etag})).status_code == 200
 
 
 async def test_public_settings_are_cached(lite, redis_backend):
@@ -197,7 +225,7 @@ async def test_public_settings_are_cached(lite, redis_backend):
         await s.commit()
 
     assert (await client.get(PUBLIC)).json()["tagline"] is None
-    await redis_backend.delete(settings_service_module.PUBLIC_CACHE_KEY)
+    await redis_backend.delete(settings_service_module.public_cache_key())
     assert (await client.get(PUBLIC)).json()["tagline"] == "sneaky"
 
 
@@ -220,9 +248,9 @@ async def test_patch_invalidates_the_public_cache(lite, redis_backend):
 
     after = await client.get(PUBLIC)
     assert after.json()["privacy_policy_url"] == "https://wateredgarden.org/privacy"
-    assert after.headers["etag"] == 'W/"2"'
+    assert after.headers["etag"] == f'W/"2-{COMMENT_GUIDELINES_DIGEST}"'
     # The old validator no longer matches.
-    stale = await client.get(PUBLIC, headers={"If-None-Match": 'W/"1"'})
+    stale = await client.get(PUBLIC, headers={"If-None-Match": f'W/"1-{COMMENT_GUIDELINES_DIGEST}"'})
     assert stale.status_code == 200
 
 
@@ -359,8 +387,8 @@ async def test_clearing_an_optional_field_with_null(pg):
     {"tagline": "x"},                                          # version missing
     {"version": 1, "contact_email": None},                     # required, can't clear
     {"version": 1, "contact_email": "not-an-email"},
-    {"version": 1, "comment_guidelines": "   "},               # empty after trim
-    {"version": 1, "comment_guidelines": "g" * 10_001},
+    {"version": 1, "comment_guidelines": "Be kind"},           # no longer editable
+    {"version": 1, "comment_guidelines": None},
     {"version": 1, "privacy_policy_url": "http://wateredgarden.org/privacy"},
     {"version": 1, "terms_of_use_url": "javascript:alert(1)"},
     {"version": 1, "website_url": "https://"},
@@ -377,8 +405,41 @@ async def test_invalid_patches_are_422(lite, payload):
     assert (await _row(Session)).version == 1
 
 
-async def test_guidelines_at_the_limit_are_accepted(lite):
+async def test_patch_carrying_guidelines_is_extra_forbidden(lite):
+    client, Session, mgr = lite
+    r = await client.patch(ADMIN, json={"version": 1, "comment_guidelines": "x"}, headers=mgr)
+    assert r.status_code == 422
+    err = r.json()["errors"][0]
+    assert (err["field"], err["type"]) == ("comment_guidelines", "extra_forbidden")
+    assert (await _row(Session)).version == 1
+
+
+async def test_patch_without_guidelines_still_works_and_bumps_version(lite):
     client, _, mgr = lite
-    r = await client.patch(ADMIN, json={"version": 1, "comment_guidelines": "g" * 10_000},
-                           headers=mgr)
+    r = await client.patch(ADMIN, json={"version": 1, "tagline": "Hi"}, headers=mgr)
     assert r.status_code == 200
+    assert r.json()["version"] == 2
+    assert r.json()["comment_guidelines"] == COMMENT_GUIDELINES
+
+
+async def test_admin_get_returns_file_text(lite):
+    client, _, mgr = lite
+    r = await client.get(ADMIN, headers=mgr)
+    assert r.status_code == 200
+    assert r.json()["comment_guidelines"] == COMMENT_GUIDELINES
+
+
+# ── the guidelines file is the source of truth ──────────────────────────────
+
+
+async def test_guidelines_file_matches_mobile_fallback_byte_for_byte():
+    assert COMMENT_GUIDELINES == _mobile_terms_text()
+
+
+async def test_guidelines_file_shape():
+    raw = (REPO_ROOT / "app/content/comment_guidelines.txt").read_bytes()
+    assert raw.endswith(b"\n") and not raw.endswith(b"\n\n")
+    assert raw.decode("utf-8").removesuffix("\n") == COMMENT_GUIDELINES
+    assert COMMENT_GUIDELINES.split("\n", 1)[0] == "RhemaPod Comment Guidelines"
+    assert re.search(r"^Last updated: .+$", COMMENT_GUIDELINES, re.M)
+    assert COMMENT_GUIDELINES_DIGEST == hashlib.sha256(raw[:-1]).hexdigest()[:12]

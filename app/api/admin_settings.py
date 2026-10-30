@@ -2,7 +2,7 @@
 
 * `GET /settings/public` — no auth. The mobile app's source for contact
   email, comment guidelines and legal links. Served from Redis cache-aside,
-  with `ETag: W/"<version>"` and `Cache-Control: public, max-age=300`; a
+  with `ETag: W/"<version>-<guidelines digest>"` and `Cache-Control: public, max-age=300`; a
   matching `If-None-Match` gets a bodiless 304.
 * `GET /admin/settings`, `PATCH /admin/settings` — manager and admin.
   PATCH is a partial update guarded by `version` (409 when stale) and

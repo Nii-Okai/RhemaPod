@@ -1333,7 +1333,7 @@
         "type": "object"
       },
       "ChurchSettingsPublic": {
-        "description": "`GET /settings/public` \u2014 what the mobile app reads, unauthenticated.\nNo `updated_by_id` or `updated_at`. `version` is also the weak ETag.\nThe mobile app renders contact email, comment guidelines and the two\nlegal URLs in v1; the other fields are returned but not yet shown.",
+        "description": "`GET /settings/public` \u2014 what the mobile app reads, unauthenticated.\nNo `updated_by_id` or `updated_at`. `version` plus the guidelines digest\nform the weak ETag. `comment_guidelines` comes from the static\nfile `app/content/comment_guidelines.txt`, not from the row. The mobile\napp renders contact email, comment guidelines and the two legal URLs in\nv1; the other fields are returned but not yet shown.",
         "properties": {
           "about": {
             "anyOf": [
@@ -1489,7 +1489,7 @@
       },
       "ChurchSettingsUpdate": {
         "additionalProperties": false,
-        "description": "Partial update. Omit a field to leave it unchanged; send `null` to\nclear an optional one (`contact_email` and `comment_guidelines` can be\nchanged but never cleared). `version` must be the one the editor loaded:\na stale value is a 409, never a silent overwrite.\n\nText is normalised like comments (NFC, control characters stripped,\nwhitespace trimmed); an optional field left empty after that is stored\nas null. URLs must be absolute `https`.",
+        "description": "Partial update. Omit a field to leave it unchanged; send `null` to\nclear an optional one (`contact_email` can be changed but never cleared;\nthe comment guidelines are not editable and a body carrying them is a\n422). `version` must be the one the editor loaded: a stale value is a\n409, never a silent overwrite.\n\nText is normalised like comments (NFC, control characters stripped,\nwhitespace trimmed); an optional field left empty after that is stored\nas null. URLs must be absolute `https`.",
         "properties": {
           "about": {
             "anyOf": [
@@ -1534,17 +1534,6 @@
               }
             ],
             "title": "Church Name"
-          },
-          "comment_guidelines": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comment Guidelines"
           },
           "contact_email": {
             "anyOf": [

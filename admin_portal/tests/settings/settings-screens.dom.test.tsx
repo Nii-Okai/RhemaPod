@@ -129,6 +129,30 @@ describe("ProfileScreen", () => {
     expect(screen.getByText(/Last saved .* by m@x\.dev/)).toBeTruthy();
   });
 
+  it("has no guidelines editor, shows the read-only note, and never sends comment_guidelines", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get("*/api/bff/admin/settings", () => HttpResponse.json(SETTINGS)),
+      http.patch("*/api/bff/admin/settings", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        bodies.push(body);
+        return HttpResponse.json({ ...SETTINGS, ...body, version: 2, updated_by: "m@x.dev" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWith(<ProfileScreen />);
+
+    await screen.findByLabelText("Tagline");
+    expect(screen.queryByLabelText(/comment guidelines/i)).toBeNull();
+    expect(screen.getByText(/public document at \/guidelines/)).toBeTruthy();
+
+    await user.type(screen.getByLabelText("Tagline"), " x");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText("Settings saved");
+    expect(bodies).toHaveLength(1);
+    expect("comment_guidelines" in bodies[0]).toBe(false);
+  });
+
   it("on 409 keeps the edits, shows the banner, and Load latest re-bases the form", async () => {
     let current = SETTINGS;
     server.use(

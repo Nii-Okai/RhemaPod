@@ -3221,9 +3221,11 @@ export interface components {
         /**
          * ChurchSettingsPublic
          * @description `GET /settings/public` — what the mobile app reads, unauthenticated.
-         *     No `updated_by_id` or `updated_at`. `version` is also the weak ETag.
-         *     The mobile app renders contact email, comment guidelines and the two
-         *     legal URLs in v1; the other fields are returned but not yet shown.
+         *     No `updated_by_id` or `updated_at`. `version` plus the guidelines digest
+         *     form the weak ETag. `comment_guidelines` comes from the static
+         *     file `app/content/comment_guidelines.txt`, not from the row. The mobile
+         *     app renders contact email, comment guidelines and the two legal URLs in
+         *     v1; the other fields are returned but not yet shown.
          */
         ChurchSettingsPublic: {
             /** About */
@@ -3258,9 +3260,10 @@ export interface components {
         /**
          * ChurchSettingsUpdate
          * @description Partial update. Omit a field to leave it unchanged; send `null` to
-         *     clear an optional one (`contact_email` and `comment_guidelines` can be
-         *     changed but never cleared). `version` must be the one the editor loaded:
-         *     a stale value is a 409, never a silent overwrite.
+         *     clear an optional one (`contact_email` can be changed but never cleared;
+         *     the comment guidelines are not editable and a body carrying them is a
+         *     422). `version` must be the one the editor loaded: a stale value is a
+         *     409, never a silent overwrite.
          *
          *     Text is normalised like comments (NFC, control characters stripped,
          *     whitespace trimmed); an optional field left empty after that is stored
@@ -3275,8 +3278,6 @@ export interface components {
             app_display_name?: string | null;
             /** Church Name */
             church_name?: string | null;
-            /** Comment Guidelines */
-            comment_guidelines?: string | null;
             /** Contact Email */
             contact_email?: string | null;
             /** Contact Phone */

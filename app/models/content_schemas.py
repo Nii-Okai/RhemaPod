@@ -1036,10 +1036,10 @@ class Page(BaseModel, Generic[_T]):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SETTINGS_URL_MAX = 2048
-COMMENT_GUIDELINES_MAX = 10_000
 
 # Editable text fields: name -> (max length, multiline). Lengths match the
-# `church_settings` columns; `comment_guidelines` is the plan's 1–10,000.
+# `church_settings` columns. The comment guidelines are not editable: they
+# are served from `app/content/comment_guidelines.txt`.
 SETTINGS_TEXT_FIELDS: dict[str, tuple[int, bool]] = {
     "church_name": (200, False),
     "app_display_name": (100, False),
@@ -1047,12 +1047,11 @@ SETTINGS_TEXT_FIELDS: dict[str, tuple[int, bool]] = {
     "about": (5000, True),
     "contact_phone": (40, False),
     "address": (500, True),
-    "comment_guidelines": (COMMENT_GUIDELINES_MAX, True),
     "copyright_notice": (300, False),
 }
 SETTINGS_URL_FIELDS = ("website_url", "terms_of_use_url", "privacy_policy_url")
 # Columns that are NOT NULL: a PATCH may change them but never clear them.
-SETTINGS_REQUIRED_FIELDS = ("contact_email", "comment_guidelines")
+SETTINGS_REQUIRED_FIELDS = ("contact_email",)
 SETTINGS_EDITABLE_FIELDS = (
     *SETTINGS_TEXT_FIELDS, *SETTINGS_URL_FIELDS, "contact_email",
 )
@@ -1060,9 +1059,11 @@ SETTINGS_EDITABLE_FIELDS = (
 
 class ChurchSettingsPublic(BaseModel):
     """`GET /settings/public` — what the mobile app reads, unauthenticated.
-    No `updated_by_id` or `updated_at`. `version` is also the weak ETag.
-    The mobile app renders contact email, comment guidelines and the two
-    legal URLs in v1; the other fields are returned but not yet shown."""
+    No `updated_by_id` or `updated_at`. `version` plus the guidelines digest
+    form the weak ETag. `comment_guidelines` comes from the static
+    file `app/content/comment_guidelines.txt`, not from the row. The mobile
+    app renders contact email, comment guidelines and the two legal URLs in
+    v1; the other fields are returned but not yet shown."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1096,9 +1097,10 @@ class ChurchSettingsAdmin(ChurchSettingsPublic):
 
 class ChurchSettingsUpdate(BaseModel):
     """Partial update. Omit a field to leave it unchanged; send `null` to
-    clear an optional one (`contact_email` and `comment_guidelines` can be
-    changed but never cleared). `version` must be the one the editor loaded:
-    a stale value is a 409, never a silent overwrite.
+    clear an optional one (`contact_email` can be changed but never cleared;
+    the comment guidelines are not editable and a body carrying them is a
+    422). `version` must be the one the editor loaded: a stale value is a
+    409, never a silent overwrite.
 
     Text is normalised like comments (NFC, control characters stripped,
     whitespace trimmed); an optional field left empty after that is stored
@@ -1116,7 +1118,6 @@ class ChurchSettingsUpdate(BaseModel):
     contact_phone: str | None = None
     website_url: str | None = None
     address: str | None = None
-    comment_guidelines: str | None = None
     terms_of_use_url: str | None = None
     privacy_policy_url: str | None = None
     copyright_notice: str | None = None

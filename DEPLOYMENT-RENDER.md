@@ -192,6 +192,13 @@ Then check each of the following:
 - **Deploys:** merge to `dev`. Migrations run when the new container starts. **Rollback:** the
   service's Events → Rollback. Migrations are additive by house rule, so an older image runs
   against a newer schema.
+- **Dropping `comment_guidelines` (`a7c3e9f1b2d4`).** Migrate-then-start in the single
+  container means a window of a few seconds where the previous instance still maps the dropped
+  column and errors on settings reads; the 300s cache masks most of it. Acceptable for dev. Prod
+  runs this as two releases (code, then migration); see DEPLOYMENT.md §3. Rollback is
+  `alembic downgrade d9e0f1a2b3c4` before redeploying an older image (the Events → Rollback
+  note above does not cover this destructive migration). Exports taken before this revision
+  can't be imported after it.
 - **Secrets:** change them on rhemapod-dev-api → Environment, then Save, rebuild and deploy. Because
   `SECRET_KEY` is shared with local dev, tokens minted locally are valid against the deployed API
   and vice versa. Give the deployment its own key if that ever matters.
