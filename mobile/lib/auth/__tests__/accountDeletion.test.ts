@@ -1,5 +1,5 @@
 import { ApiError, networkError } from '../../api/errors';
-import { deletionErrorFor, planReauth } from '../accountDeletion';
+import { APPLE_UNAVAILABLE_DETAIL, deletionErrorFor, planReauth } from '../accountDeletion';
 
 jest.mock('../../api/typedClient', () => ({ api: { post: jest.fn() } }));
 
@@ -32,15 +32,28 @@ describe('planReauth', () => {
 
 describe('deletionErrorFor', () => {
   it.each([
-    [400, 'apple', 'appleExpired'],
+    [400, 'apple', 'badRequest'],
     [403, 'password', 'reauth'],
     [409, 'password', 'conflict'],
     [429, 'password', 'rateLimited'],
-    [503, 'apple', 'appleUnavailable'],
     [503, 'password', 'generic'],
     [500, 'google', 'generic'],
   ] as const)('%s on %s -> %s', (status, method, kind) => {
     expect(deletionErrorFor(new ApiError(status, 'detail'), method).kind).toBe(kind);
+  });
+
+  it('counts only the exact Apple detail as appleUnavailable', () => {
+    expect(deletionErrorFor(new ApiError(503, APPLE_UNAVAILABLE_DETAIL), 'apple').kind).toBe('appleUnavailable');
+  });
+
+  it.each([
+    'Account deletion is temporarily unavailable. Try again shortly.',
+    'Sign-in temporarily unavailable',
+    'Authentication service temporarily unavailable. Please retry.',
+  ])('maps an Apple-path 503 with another detail (%s) to generic', (detail) => {
+    const err = deletionErrorFor(new ApiError(503, detail), 'apple');
+    expect(err.kind).toBe('generic');
+    expect(err.message).toBe(detail);
   });
 
   it('gives a 403 one generic message (no account-state hints)', () => {

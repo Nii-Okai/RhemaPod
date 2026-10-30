@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, IconButton, LinkButton, PrimaryButton } from '../components';
@@ -71,6 +71,21 @@ export default function DeleteAccountScreen() {
   // `apple_unavailable: true`. Revocation is skipped, re-auth never is.
   const [fallbackMethod, setFallbackMethod] = useState<DeletionMethod | null>(null);
 
+  // Synchronous guards: state lags a render behind, so a fast second tap or a hardware back
+  // during the request would slip through. `busy` stays true from the first press through the
+  // post-204 wipe and navigation; only failure paths release it.
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => busy.current);
+    return () => {
+      mounted.current = false;
+      sub.remove();
+      setPassword('');
+    };
+  }, []);
+
   const profile = profileQuery.data;
   const plan = profile ? planReauth(profile, appleAvailable) : null;
   const method: DeletionMethod | null = fallbackMethod ?? plan?.primary ?? null;
@@ -94,7 +109,7 @@ export default function DeleteAccountScreen() {
     const result = await performAppleSignIn();
     if (result === null) return null;
     if (!result.authorizationCode) {
-      setError({ kind: 'appleExpired', message: "Apple didn't confirm the sign-in. Try again." });
+      setError({ kind: 'badRequest', message: "Apple didn't confirm the sign-in. Try again." });
       return null;
     }
     return {
@@ -107,28 +122,36 @@ export default function DeleteAccountScreen() {
   }
 
   async function onDelete() {
-    if (!method || submitting) return;
+    if (!method || busy.current) return;
+    busy.current = true;
     setError(null);
     setSubmitting(true);
-    let deleted = false;
     try {
       const body = await buildBody(method);
-      if (body === null) return; // cancelled at the provider's own sheet, or no password
+      if (body === null) {
+        release(); // cancelled at the provider's own sheet, or no password
+        return;
+      }
       await deleteAccount(body);
-      deleted = true;
     } catch (err) {
       const next = deletionErrorFor(err, method);
+      release();
+      if (!mounted.current) return;
       setError(next);
+      setPassword('');
       setAppleFailures((n) => (next.kind === 'appleUnavailable' ? n + 1 : 0));
       // "Apple re-auth required": Apple was linked after this screen loaded.
       if (next.kind === 'conflict') void profileQuery.refetch();
-    } finally {
-      setSubmitting(false);
+      return;
     }
-    if (deleted) {
-      await finishAccountDeletion();
-      router.replace({ pathname: '/(auth)/sign-in', params: { deleted: '1' } });
-    }
+    // Deleted. Stay locked (busy + submitting) through the wipe and the redirect.
+    await finishAccountDeletion();
+    router.replace({ pathname: '/(auth)/sign-in', params: { deleted: '1' } });
+  }
+
+  function release() {
+    busy.current = false;
+    if (mounted.current) setSubmitting(false);
   }
 
   const header = (

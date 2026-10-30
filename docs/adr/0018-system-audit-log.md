@@ -110,3 +110,7 @@ the approved 365, and a value below 1 is rejected when the app starts.
 - **Writing `auth.login_failed` inline:** rejected. The account lookup would make failed logins
   for real accounts measurably slower, which reveals whether an email is registered.
 - **Native Postgres enums for `action`/`outcome`:** rejected (D8), per migration `f3a9c7d2b4e1`.
+
+## Addendum (2026-10-29): erasure of a deleted viewer's identifiers
+
+`audit_log` is append-only, with one exception: when a **viewer** account is deleted (self-service or by an admin), the same transaction nulls `actor_email` and `target_label` on that user's rows. The row itself (who by id, what, when, outcome) stays, and pseudonymized `auth.*` rows still age out at 365 days. Staff rows are never touched, and an admin's own `actor_email` is kept on the rows for the deletions they perform. See [ADR 0020](0020-self-service-account-deletion.md).

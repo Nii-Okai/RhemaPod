@@ -550,6 +550,9 @@ SENSITIVE = [
     "apple_private_key",
     "password",
     "raw_nonce",
+    "token",
+    "secret",
+    "authorization",
 ]
 
 

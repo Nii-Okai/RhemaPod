@@ -138,6 +138,14 @@ Hard delete through existing cascades. Comments are flat, so there is no anonymi
 - Negative: admin-initiated deletion leaves any Apple grant live until the user revokes it manually.
 - Negative: R2 object cleanup is best-effort; failures leave orphans (logged as `orphaned_object` or `orphaned_prefix` for a sweep).
 - Implementation note (clients plan): erasure deletes every object under the account's own prefixes (`avatars/{user_id}/`, `playlist_covers/{playlist_id}/`), not only the keys the rows point at, so replaced avatars and never-confirmed uploads go too (`Storage.list_keys`). The mobile flow lives at `mobile/app/delete-account.tsx` (Me > Delete account) and the public page at `admin_portal/app/(public)/delete-account`. `python -m app.scripts.check_apple_key` proves the Apple credentials against Apple without revoking anything.
+- Implementation notes (backend D8, D9, D11; no contract change):
+  - `erase_user` is shared by admin and self-service deletion. Viewer audit rows are pseudonymized; on admin deletes the admin's own `actor_email` is kept.
+  - Apple is called with no DB lock or transaction held. The service then takes `FOR UPDATE` on the user and re-checks state before erasing.
+  - The Apple `authorization_code` is bound to the verified identity: the id_token returned by the code exchange is JWKS-verified and its `sub` must match the account's Apple `sub`.
+  - The OAuth proof is claimed once, before Apple is called. A 400 or 503 from Apple therefore forces a fresh re-authentication.
+  - For Apple-linked accounts the 409s are evaluated before proof verification. This reveals nothing beyond `GET /auth/me`.
+  - The notice email is sent after the response; the recipient is not logged.
+  - Login and delete limiter keys hash the email. The per-user delete limiter fails closed.
 - Neutral: `UserPublic` gains two additive fields, so the OpenAPI contract and generated types for `admin_portal` and `mobile` are regenerated.
 - Neutral: new settings and secrets (`APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_CLIENT_ID`, the `.p8`, `APPLE_REVOCATION_BACKEND`, `account_deletion_reauth_max_age_seconds`) with a preflight and a key runbook in DEPLOYMENT.md.
 
