@@ -66,6 +66,9 @@ envVarGroups:
         value: "5"
       - key: DB_MAX_OVERFLOW
         value: "5"
+      # In-process daily audit ip/UA + comment-snapshot purge (ADR 0018).
+      - key: RETENTION_SCHEDULER_ENABLED
+        value: "true"
 
 databases:
   - name: rhemapod-dev-db

@@ -283,6 +283,11 @@ class Settings(BaseSettings):
     # doesn't. ADR 0018 addendum 2026-10-30: 30 days.
     audit_network_retention_days: int = Field(default=30, ge=1)
 
+    # Run the daily retention purge (audit ip/user-agent, comment snapshots) in
+    # the API process. Off by default; on for Render dev and compose. Deployed
+    # envs with a real scheduler leave it off and run the CLI (ADR 0018).
+    retention_scheduler_enabled: bool = False
+
     # Max failed logins per IP+email window (enforced via Redis)
     login_rate_limit: int = 10
     login_rate_window_seconds: int = 60
