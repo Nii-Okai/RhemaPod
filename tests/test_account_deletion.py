@@ -668,6 +668,62 @@ async def test_concurrent_double_submit_deletes_once(
     assert len(notices) == 1
 
 
+# ── Apple authorization_code replay / concurrency (D16) ──────────────────────
+async def test_apple_code_replay_after_success_revokes_once_and_deletes_once(
+    pg_client, sessions, make_user, apple, notices, _rsa_key
+):
+    """Same authorization_code resent with a fresh, valid identity token after a
+    successful deletion: the account is gone (401), no second revoke call."""
+    tu = await _viewer(make_user, sessions, password=None, apple=True)
+    r1 = await _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-1"), "n-1", "code-A"))
+    assert r1.status_code == 204
+    r2 = await _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-2"), "n-2", "code-A"))
+    assert r2.status_code == 401
+    assert apple.calls == ["code-A"]
+    assert len(await _deleted_rows(sessions, tu.id)) == 1
+    assert len(notices) == 1
+
+
+async def test_apple_code_resent_after_503_retries_revoke_and_then_deletes(
+    pg_client, sessions, make_user, apple, notices, _rsa_key
+):
+    """First attempt fails (Apple 503): nothing is erased. The same code resent
+    with a fresh proof is simply attempted again (no code ledger): a second
+    revoke call, then the deletion completes once."""
+    tu = await _viewer(make_user, sessions, password=None, apple=True)
+    apple.script("unavailable")
+    r1 = await _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-1"), "n-1", "code-A"))
+    assert r1.status_code == 503
+    assert await _exists(sessions, tu.id)
+    assert await _deleted_rows(sessions, tu.id) == []
+    r2 = await _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-2"), "n-2", "code-A"))
+    assert r2.status_code == 204
+    assert apple.calls == ["code-A", "code-A"]
+    assert not await _exists(sessions, tu.id)
+    assert len(await _deleted_rows(sessions, tu.id)) == 1
+    assert len(notices) == 1
+
+
+async def test_concurrent_apple_deletes_erase_once(
+    pg_client, sessions, make_user, apple, notices, _rsa_key
+):
+    """Two racing Apple-linked deletes with different valid proofs: exactly one
+    204, one audit row, one notice. Revoke is idempotent at Apple, so the loser
+    may also have called it before losing the row lock (<= 2 calls)."""
+    tu = await _viewer(make_user, sessions, password=None, apple=True)
+    results = await asyncio.gather(
+        _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-1"), "n-1", "code-1")),
+        _post(pg_client, tu, _apple_body(_a_token(_rsa_key, tu.id, "n-2"), "n-2", "code-2")),
+    )
+    codes = sorted(r.status_code for r in results)
+    assert codes.count(204) == 1, codes
+    assert set(codes) <= {204, 401, 409}, codes
+    assert 1 <= len(apple.calls) <= 2
+    assert not await _exists(sessions, tu.id)
+    assert len(await _deleted_rows(sessions, tu.id)) == 1
+    assert len(notices) == 1
+
+
 # ── UserPublic additive fields ───────────────────────────────────────────────
 async def test_me_exposes_has_password_and_linked_providers(
     pg_client, sessions, make_user
