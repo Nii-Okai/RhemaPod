@@ -35,7 +35,6 @@ export const EDITABLE_SETTINGS_FIELDS = [
   "contact_phone",
   "website_url",
   "address",
-  "comment_guidelines",
   "terms_of_use_url",
   "privacy_policy_url",
   "copyright_notice",
@@ -54,7 +53,7 @@ export function toDraft(settings: ChurchSettings): SettingsDraft {
 /**
  * The PATCH body: only fields that differ from `base`, plus `version`. An
  * optional field emptied in the form is sent as `null` (clear it); the
- * backend refuses to clear `contact_email` / `comment_guidelines`.
+ * backend refuses to clear `contact_email`.
  */
 export function buildSettingsPatch(
   base: ChurchSettings,

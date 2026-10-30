@@ -26,8 +26,8 @@ import {
    ProfileScreen — Settings › Profile (plan-admin-settings S17, ADR 0017).
 
    One form over the single `church_settings` row, in three cards: Church,
-   Contact, and App content (what the mobile app shows: comment guidelines and
-   the two legal links). Save sends only the fields that changed, plus the
+   Contact, and App content (what the mobile app shows: the two legal links and
+   the copyright notice). Save sends only the fields that changed, plus the
    `version` the form was loaded at.
 
    A 409 means someone else saved since this form loaded. The form keeps the
@@ -73,17 +73,8 @@ const SECTIONS: ReadonlyArray<{ title: string; description: string; fields: Fiel
   {
     title: "App content",
     description:
-      "Shown in the mobile app. Editing the guidelines doesn’t ask people who already accepted them to accept again.",
+      "Shown in the mobile app. Comment guidelines are a public document at /guidelines. Changes are made in the app’s source, not here.",
     fields: [
-      {
-        field: "comment_guidelines",
-        label: "Comment guidelines",
-        multiline: true,
-        rows: 14,
-        maxLength: 10_000,
-        required: true,
-        hint: "The first line is shown as the title.",
-      },
       {
         field: "terms_of_use_url",
         label: "Terms of use link",
@@ -303,8 +294,7 @@ function ProfileForm({
               !dirty ||
               update.isPending ||
               conflict ||
-              draft.contact_email.trim() === "" ||
-              draft.comment_guidelines.trim() === ""
+              draft.contact_email.trim() === ""
             }
           >
             {update.isPending ? "Saving…" : "Save changes"}

@@ -29,6 +29,14 @@ export const SETTINGS: ChurchSettings = {
 };
 
 describe("buildSettingsPatch", () => {
+  it("never includes comment_guidelines, even if the row carries a different one", () => {
+    const base = { ...SETTINGS, comment_guidelines: "old" };
+    const draft = { ...toDraft(base), tagline: "T" };
+    const patch = buildSettingsPatch(base, draft);
+    expect("comment_guidelines" in patch).toBe(false);
+    expect("comment_guidelines" in toDraft(base)).toBe(false);
+  });
+
   it("sends only changed fields plus the loaded version", () => {
     const draft = { ...toDraft(SETTINGS), tagline: "Rooted in the Word" };
     expect(buildSettingsPatch(SETTINGS, draft)).toEqual({
