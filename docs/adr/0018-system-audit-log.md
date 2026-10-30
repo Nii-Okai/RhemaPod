@@ -129,3 +129,11 @@ This supersedes the network-data part of §6 and the 365-day retention disclosur
 **Execution.** Both purges (audit and moderation snapshots) move into `app/services/retention_service.py`, and the CLI scripts become thin wrappers. An in-process daily loop (`app/services/retention_scheduler.py`) calls `run_retention_once`. It is gated by `RETENTION_SCHEDULER_ENABLED` (default `false`; on in `render.yaml` and compose `api`). A Postgres advisory lock makes concurrent instances skip instead of double-run. A failed run is logged and never takes the API down.
 
 **Render free caveat.** Free web services spin down when idle, so the 24 h sleep rarely completes. In practice the job runs about once per wake, after the startup delay. That is acceptable because the UPDATEs are idempotent and lock-guarded. The real fix is a Render cron job or an ECS scheduled task once the app leaves free. At that point set `RETENTION_SCHEDULER_ENABLED=false` in that env and run the CLI scripts instead.
+
+**Follow-up (R4 review).**
+
+- **Cadence.** On Render free the purge runs about once per wake, 60 to 90 s after boot (60 s delay plus up to 30 s jitter). The guarantee is "at least daily while the service is running", not "daily". A skipped run (lock held by another instance) is retried once after 5 minutes.
+- **Observability without a heartbeat table.** The loop logs `retention_scheduler_disabled` at startup when the flag is off, `retention_run_failed` with `step`, error class, and (for DB errors) driver class and SQLSTATE, and `retention_not_running` after 3 consecutive skipped or failed runs. Messages are never logged because SQLAlchemy messages embed bound parameters. A persisted last-run record would need a schema change and is out of scope.
+- **CLI.** `purge_audit_log` and `purge_comment_snapshots` now call `run_retention_once`: same advisory lock, one transaction, so they are safe cron jobs next to the in-process loop. Each runs the full pass (both are idempotent); output stays counts-only.
+- **Config.** `AUDIT_AUTH_RETENTION_DAYS` has `ge=30` and must be >= `AUDIT_NETWORK_RETENTION_DAYS`.
+- **First production run is unbatched.** The initial purge is a single UPDATE/DELETE per table in one transaction. If audit volume grows, batch by id as a follow-up.

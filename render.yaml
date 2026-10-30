@@ -66,7 +66,10 @@ envVarGroups:
         value: "5"
       - key: DB_MAX_OVERFLOW
         value: "5"
-      # In-process daily audit ip/UA + comment-snapshot purge (ADR 0018).
+      # In-process audit ip/UA + comment-snapshot purge (ADR 0018). On free
+      # tier the service sleeps when idle, so this runs about once per wake
+      # (60-90s after boot): retention is "at least daily while running".
+      # The first run is unbatched; batch by id if audit volume grows.
       - key: RETENTION_SCHEDULER_ENABLED
         value: "true"
 
