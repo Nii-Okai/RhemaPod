@@ -24,7 +24,12 @@ from app.core.oauth import (
     verify_apple_identity_token,
     verify_google_id_token,
 )
-from app.core.rate_limit import RateLimitUnavailable, check_rate_limit, login_rate_limit_key
+from app.core.rate_limit import (
+    RateLimitUnavailable,
+    check_rate_limit,
+    email_digest,
+    login_rate_limit_key,
+)
 from app.db.database import get_db
 from app.models.models import AuditAction, AuditOutcome, AuthProvider, UserRole
 from app.models.schemas import (
@@ -157,7 +162,7 @@ async def resend_verification(
     )
     email = data.email.lower()
     allowed = await check_rate_limit(
-        f"resend_verification:{email}",
+        f"resend_verification:{email_digest(email)}",
         _RESEND_VERIFICATION_LIMIT,
         _RESEND_VERIFICATION_WINDOW_SECONDS,
     ) and await check_rate_limit(
@@ -351,7 +356,7 @@ async def forgot_password(
     # charged before the lookup, so a 429 says nothing about whether the
     # address exists.
     allowed = await check_rate_limit(
-        f"forgot_password:{data.email.lower()}",
+        f"forgot_password:{email_digest(data.email)}",
         _FORGOT_PASSWORD_LIMIT,
         _FORGOT_PASSWORD_WINDOW_SECONDS,
     ) and await check_rate_limit(

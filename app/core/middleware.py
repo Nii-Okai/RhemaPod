@@ -168,11 +168,11 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         if capacity <= 0 or refill_per_minute <= 0:
             return await call_next(request)
 
-        from app.core.rate_limit import check_token_bucket
+        from app.core.rate_limit import check_token_bucket, key_prefix
 
         allowed = await check_token_bucket(key, capacity, refill_per_minute)
         if not allowed:
-            log.warning("rate_limit_exceeded", key=key)
+            log.warning("rate_limit_exceeded", key_prefix=key_prefix(key))
             retry_after = max(1, -(-60 // refill_per_minute))  # ceil(60 / rate)
             return JSONResponse(
                 status_code=429,
