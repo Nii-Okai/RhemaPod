@@ -13,7 +13,8 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.models import CommentModerationLog, ModerationAction
-from app.scripts.purge_comment_snapshots import purge_snapshots
+from app.scripts import purge_comment_snapshots as script  # imported up front so `capture_logs` patches its logger
+from app.services.retention_service import purge_snapshots
 from tests.comments_pg import (  # noqa: F401
     capture_logs,
     db_rows,
@@ -65,7 +66,9 @@ async def snapshots(db_rows) -> dict[uuid.UUID, str | None]:
 
 async def purge(sessions, now=NOW) -> int:
     async with sessions() as s:
-        return await purge_snapshots(s, now)
+        count = await purge_snapshots(s, now)
+        await s.commit()
+        return count
 
 
 async def test_pg_01_boundary_is_strict(seed_log, sessions, db_rows):
@@ -132,8 +135,6 @@ async def test_pg_06_empty_table(sessions):
 
 
 async def test_pg_07_logs_only_counts(seed_log, sessions, capture_logs, monkeypatch, capsys):
-    from app.scripts import purge_comment_snapshots as script
-
     await seed_log(NOW - timedelta(days=200), snapshot="SENTINEL-SNAPSHOT-5c1e")
 
     class _Session:

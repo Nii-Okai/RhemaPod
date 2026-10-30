@@ -32,8 +32,8 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.models import AuditAction, AuditLog, AuditOutcome
-from app.scripts.purge_audit_log import purge_audit_log
 from app.services.audit_service import AuditContext, AuditTarget, record, record_detached
+from app.services.retention_service import purge_audit_log
 
 pytestmark = pytest.mark.asyncio
 
@@ -284,6 +284,7 @@ async def test_purge_deletes_auth_rows_past_retention_boundary(pg_client, pg_eng
 
     async with sessions() as s:
         deleted, nulled = await purge_audit_log(s, now=_NOW)
+        await s.commit()
     assert (deleted, nulled) == (1, 0)
 
     async with sessions() as s:
@@ -294,6 +295,7 @@ async def test_purge_deletes_auth_rows_past_retention_boundary(pg_client, pg_eng
     # The next run takes the exact-boundary row.
     async with sessions() as s:
         deleted2, _ = await purge_audit_log(s, now=_NOW + timedelta(seconds=1))
+        await s.commit()
     assert deleted2 == 1
 
 
@@ -308,6 +310,7 @@ async def test_purge_nulls_ip_ua_on_non_auth_rows_past_network_retention(pg_clie
 
     async with sessions() as s:
         deleted, nulled = await purge_audit_log(s, now=_NOW)
+        await s.commit()
     assert (deleted, nulled) == (0, 1)
 
     got = await _get(sessions, row_id)
@@ -328,6 +331,7 @@ async def test_purge_leaves_recent_rows_untouched(pg_client, pg_engine, sessions
 
     async with sessions() as s:
         deleted, nulled = await purge_audit_log(s, now=_NOW)
+        await s.commit()
     assert (deleted, nulled) == (0, 0)
 
     assert (await _get(sessions, recent_auth)) is not None
@@ -338,7 +342,7 @@ async def test_purge_leaves_recent_rows_untouched(pg_client, pg_engine, sessions
 
 async def test_purge_halts_if_retention_values_unset():
     """§A.7: this plan "doesn't ship a number Isaac hasn't approved." The
-    approved values (365/365) are the `Settings` fields' own defaults
+    approved values (365 for `auth.*` delete, 30 for ip/UA nulling) are the `Settings` fields' own defaults
     (`app/core/config.py`), matching every other retention knob in that
     file (`archive_source_retention_days`, `comments_auto_hide_threshold`,
     ...) — none of them are an optional/unset field a deploy could leave
@@ -352,7 +356,7 @@ async def test_purge_halts_if_retention_values_unset():
 
     base = Settings(**_SETTINGS_BASE_ENV)
     assert base.audit_auth_retention_days == 365
-    assert base.audit_network_retention_days == 365
+    assert base.audit_network_retention_days == 30
 
     with pytest.raises(ValidationError):
         Settings(**_SETTINGS_BASE_ENV, audit_auth_retention_days=0)
