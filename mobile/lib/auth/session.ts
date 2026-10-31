@@ -296,6 +296,14 @@ export async function signOut(): Promise<void> {
     }
   }
   await clearSession();
+  try {
+    // Revoke while the SDK can still find the account, so the next Google sign-in gets a
+    // fresh ID token instead of the cached one the backend rejects as a replay.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see applyTokenPair's comment
+    await (require('./googleSignIn') as typeof import('./googleSignIn')).forgetGoogleAccount();
+  } catch (err) {
+    if (__DEV__) console.warn('[session] forgetting the Google account failed', err);
+  }
   setStatus('signedOut');
 }
 
