@@ -223,3 +223,55 @@ Its starting points:
 - **Apple key.** Reuse the `.p8` or create a separate one per environment; either way set
   `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` there (DEPLOYMENT.md §14).
 - **Secret storage.** Decide whether secrets stay in Render's environment variables or move to AWS Secrets Manager.
+
+## 10. Share static site (open.rhemapod.com)
+
+Serves the https share links (ADR 0021, `plans/plan-share-links.md`): the Universal Link / App Link
+association files and a static fallback page. No API calls, no admin surface.
+
+| Item | Value |
+|---|---|
+| Service | `rhemapod-open`, Render Static Site, `free` |
+| Source | `open_site/` (hand-written HTML/CSS/JS, no build step) |
+| Definition | `render.yaml` (routes and headers live there) |
+| Branch | tracks `dev` until a prod stack exists (then move it to the prod branch) |
+
+Any merge to `dev` that touches `open_site/` redeploys the permanent share host. Review those diffs.
+
+### DNS
+
+- Add **one** record: `CNAME open -> <rhemapod-open>.onrender.com`. Render shows the exact target when you add the custom domain.
+- On Cloudflare keep it **DNS only (grey cloud)**. A proxied record breaks certificate issuance and can rewrite the AASA response.
+- Change no other record. `rhemapod.com` and `www` are not used by this site.
+
+### Validate the association files
+
+Run these after the first deploy and after any change to `open_site/.well-known/`.
+
+```
+curl -sI https://open.rhemapod.com/.well-known/apple-app-site-association
+curl -sI https://open.rhemapod.com/.well-known/assetlinks.json
+curl -s  https://app-site-association.cdn-apple.com/a/v1/open.rhemapod.com
+curl -s "https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://open.rhemapod.com&relation=delegate_permission/common.handle_all_urls"
+```
+
+Expect: 200, `Content-Type: application/json`, no redirect, for both files. Apple's CDN returns the same
+body as the origin (it can lag by hours). Google lists `com.niitech.rhemapod` with the EAS SHA-256.
+On a device, `adb shell pm get-app-links com.niitech.rhemapod` shows `open.rhemapod.com: verified`.
+Also check that `/privacy` returns a 301 to `admin.rhemapod.com/privacy`, and that `/sermon/<any-uuid>`
+returns the fallback page with `X-Robots-Tag: noindex`.
+
+Do this before any native build: a wrong AASA at build time can leave links dead until the next app update.
+
+### Before the first Play release (L1)
+
+Append the Play app-signing SHA-256 (Play Console, App integrity) to
+`open_site/.well-known/assetlinks.json`, keeping the EAS one. Nothing else changes. Verify with the
+DAL API above (both fingerprints listed) and `pm get-app-links` on a Play-installed build. Tracked in
+`plans/plan-share-links.md` §L1 and rides `[HUMAN_GATE M11]`.
+
+### Rollback
+
+Delete `rhemapod-open` and remove the `open` CNAME, or just empty the path components in AASA and the
+assetlinks statements and redeploy to stop app interception without removing the site (iOS honours it
+after Apple's CDN refreshes). See the plan's Rollback section.
