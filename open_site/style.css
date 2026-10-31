@@ -63,15 +63,16 @@ a:focus-visible { outline: 3px solid var(--clay-600); outline-offset: 3px; }
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px 12px;
+  gap: 12px;
   margin: 24px 0 0;
 }
 .badges a { display: inline-flex; }
 .badge-apple { height: 48px; width: auto; }
 /* Google's generic PNG carries built-in transparent padding; 64px renders it level with the 48px Apple badge. */
 .badge-google { height: 64px; width: auto; margin: -8px 0; }
-.hint { margin: 16px 0 0; color: var(--ink-muted); font-size: 14px; }
+.hint { margin: 0 0 16px; color: var(--ink-muted); font-size: 14px; }
+.context { margin: 0 0 12px; color: var(--ink); font-size: 16px; }
 .lead { margin: 0 0 16px; color: var(--ink-muted); font-size: 15px; }
 footer { margin-top: 24px; font-size: 14px; }
 footer ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px 20px; justify-content: center; flex-wrap: wrap; }
-footer a { color: var(--clay-600); font-weight: 500; }
+footer a { display: inline-block; min-height: 44px; line-height: 44px; padding: 0 6px; color: var(--clay-600); font-weight: 500; }
