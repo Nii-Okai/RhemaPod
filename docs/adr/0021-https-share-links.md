@@ -58,7 +58,7 @@ Serve share links from a dedicated Render Static Site (`rhemapod-open`, built fr
 ### 6. App handling
 
 - `app/+native-intent.tsx` allows only `/(sermon|series|playlist)/<uuid>`. `/playlist/create`, unknown paths, query junk and foreign hosts go home. Existing legitimate inbound `rhemapod://` uses are inventoried and preserved first (plan S6).
-- **Stash-and-replay:** a content link arriving signed out is held in memory (one slot, last wins, 15-minute TTL), the user signs in, then it replays once. Sign-out clears it. Nothing is written to disk.
+- **Stash-and-replay:** a content link arriving signed out is held in memory (one slot, last wins, 60-minute TTL — Isaac 2026-10-31, to cover sign-up with email verification), the user signs in, then it replays once. Sign-out clears it. Nothing is written to disk.
 - A cold start builds the stack home → target so Back lands on home.
 - Each of sermon, series and playlist has a calm "no longer available" state for 404, unpublished and invisible items.
 - Share message is title, truncated description, link. The image attachment is dropped so messengers show a link card. This reverses the 2026-10-09 thumbnail request; Isaac accepted it at SL0.

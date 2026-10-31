@@ -3,7 +3,7 @@ import { act, render } from '@testing-library/react-native';
 import { AuthProvider, useAuthGuard } from '../AuthContext';
 import * as session from '../session';
 import type { AuthStatus } from '../types';
-import { clearPendingLink, stashPendingLink, takePendingLink } from '../../linking/pendingLink';
+import { clearPendingLink, PENDING_LINK_TTL_MS, stashPendingLink, takePendingLink } from '../../linking/pendingLink';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -111,7 +111,7 @@ describe('shared-link replay', () => {
     mockSegments = ['(tabs)', 'home'];
     const now = Date.now();
     stashPendingLink('/sermon/a');
-    jest.spyOn(Date, 'now').mockReturnValue(now + 16 * 60 * 1000);
+    jest.spyOn(Date, 'now').mockReturnValue(now + PENDING_LINK_TTL_MS + 1);
     render(tree());
     expect(mockPush).not.toHaveBeenCalled();
     jest.restoreAllMocks();
