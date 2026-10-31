@@ -397,6 +397,10 @@ async def test_renames_are_reflected_in_cached_catalog(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Old Series", "tier": "free"}, headers=editor,
     )).json()
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=manager,
+    )
+    assert r.status_code == 200, r.text
     sid = (await client.post(
         "/api/v1/sermons",
         json={

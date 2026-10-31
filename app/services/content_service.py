@@ -248,7 +248,7 @@ def to_list_item(
         speaker_name=names.speakers.get(sermon.speaker_id),
         category_id=sermon.category_id,
         category_name=names.categories.get(sermon.category_id),
-        series_id=sermon.series_id,
+        series_id=None if sermon.series_id in names.hidden_series else sermon.series_id,
         series_title=names.series.get(sermon.series_id),
         episode_number=sermon.episode_number,
         tier=tier,
@@ -299,9 +299,16 @@ class RefNames:
     speakers: dict = field(default_factory=dict)
     categories: dict = field(default_factory=dict)
     series: dict = field(default_factory=dict)
+    # Series ids referenced by the batch that this viewer must not see (draft
+    # series for non-staff). `to_list_item` nulls series_id/series_title for them.
+    hidden_series: set = field(default_factory=set)
 
 
-async def load_ref_names(db: AsyncSession, sermons: list[Sermon]) -> RefNames:
+async def load_ref_names(
+    db: AsyncSession, sermons: list[Sermon], *, include_draft_series: bool = False
+) -> RefNames:
+    """`include_draft_series` is True only for staff reads; everyone else
+    (viewers, anonymous, cached public catalog) gets draft series suppressed."""
     speaker_ids = {s.speaker_id for s in sermons if s.speaker_id}
     category_ids = {s.category_id for s in sermons if s.category_id}
     series_ids = {s.series_id for s in sermons if s.series_id}
@@ -318,10 +325,13 @@ async def load_ref_names(db: AsyncSession, sermons: list[Sermon]) -> RefNames:
         )).all()
         names.categories = {i: n for i, n in rows}
     if series_ids:
-        rows = (await db.execute(
-            select(Series.id, Series.title).where(Series.id.in_(series_ids))
-        )).all()
+        series_stmt = select(Series.id, Series.title).where(Series.id.in_(series_ids))
+        if not include_draft_series:
+            series_stmt = series_stmt.where(Series.status == SermonStatus.PUBLISHED)
+        rows = (await db.execute(series_stmt)).all()
         names.series = {i: t for i, t in rows}
+        if not include_draft_series:
+            names.hidden_series = series_ids - set(names.series)
     return names
 
 
@@ -766,7 +776,9 @@ async def _assemble_sermon_detail(
         series = await db.get(Series, sermon.series_id)
     tier = effective_tier(sermon, series)
     has_sub = await _has_subscription(db, user)
-    names = await load_ref_names(db, [sermon])
+    names = await load_ref_names(
+        db, [sermon], include_draft_series=staff_sees_full_counts(user)
+    )
 
     # A sermon carries exactly one rendition (video or audio, never both — mobile
     # download UI's own assumption), so the first media_ref's type is the whole
@@ -1459,7 +1471,7 @@ async def review_queue_page(
     )).all()
 
     sermons = [row[0] for row in rows]
-    names = await load_ref_names(db, sermons)
+    names = await load_ref_names(db, sermons, include_draft_series=True)
     series_map = await series_for(db, sermons)
 
     media_counts: dict[uuid.UUID, int] = {}

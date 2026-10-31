@@ -189,7 +189,9 @@ async def search_sermons(
         series_map = {s.id: s for s in series_rows}
 
     has_sub = await _has_subscription(db, user)
-    names = await load_ref_names(db, rows)
+    names = await load_ref_names(
+        db, rows, include_draft_series=staff_sees_full_counts(user)
+    )
     items = []
     for sermon in rows:
         resolved = effective_tier(sermon, series_map.get(sermon.series_id))

@@ -29,7 +29,7 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.services.content_service import ContentError, effective_tier, load_ref_names, to_list_item
+from app.services.content_service import ContentError, effective_tier, load_ref_names, staff_sees_full_counts, to_list_item
 
 log = get_logger("analytics")
 
@@ -316,7 +316,10 @@ async def continue_watching(
         )).scalars().all()
         series_map = {s.id: s for s in found}
 
-    names = await load_ref_names(db, [sermon for _, sermon in rows])
+    names = await load_ref_names(
+        db, [sermon for _, sermon in rows],
+        include_draft_series=staff_sees_full_counts(user),
+    )
     items = []
     for session, sermon in rows:
         base = to_list_item(
