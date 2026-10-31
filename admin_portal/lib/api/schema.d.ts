@@ -3962,7 +3962,7 @@ export interface components {
             description?: string | null;
             /**
              * Is Public
-             * @default true
+             * @default false
              */
             is_public: boolean;
             /** Name */
@@ -3991,6 +3991,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Owner */
+            is_owner: boolean;
             /** Is Public */
             is_public: boolean;
             /** Item Count */

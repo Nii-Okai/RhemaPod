@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Avatar, DetailError, DetailNotAvailable, IconButton, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
@@ -19,6 +19,7 @@ import { PlaylistCoverPicker } from '../PlaylistCoverPicker';
 import { PlaylistDetailsSheet } from '../PlaylistDetailsSheet';
 import { PlaylistOptionsSheet } from '../PlaylistOptionsSheet';
 import { playlistQueueParams, shuffled } from '../playlistQueue';
+import { useMakePlaylistPublic } from '../useMakePlaylistPublic';
 import { usePlaylistPreview } from '../usePlaylistPreview';
 import { SignatureAddToPlaylistSheet } from './SignatureAddToPlaylistSheet';
 import { SignaturePlaylistItemRow, SignatureSermonAddRow } from './SignatureSermonRows';
@@ -63,6 +64,7 @@ export function SignaturePlaylistDetailScreen() {
   const { data: playlist, isLoading, isError, error, refetch } = usePlaylist(id);
   const removeItem = useRemovePlaylistItem(id ?? '');
   const addItem = useAddPlaylistItem(id ?? '');
+  const makePublic = useMakePlaylistPublic(id ?? '');
   const recommended = useRecommended();
   const pullToRefresh = usePullToRefresh([refetch]);
   const preview = usePlaylistPreview();
@@ -119,12 +121,27 @@ export function SignaturePlaylistDetailScreen() {
     .join(' · ')
     .toUpperCase();
 
-  const share = () =>
+  const isOwner = playlist.is_owner;
+  const openShareSheet = () =>
     void shareContent({
       title: playlist.name,
       description: playlist.description,
       deepLinkPath: `playlist/${playlist.id}`,
     });
+  // Sharing a private playlist first asks to make it public (the link is useless to a
+  // recipient otherwise): No does nothing, Yes PATCHes and opens the share sheet only once
+  // that succeeded. The flow itself is shared with the Name & details toggle.
+  const share = () => {
+    if (!isOwner || playlist.is_public) {
+      openShareSheet();
+      return;
+    }
+    makePublic.confirmAndMakePublic({
+      onSuccess: openShareSheet,
+      onFailure: (message) => Alert.alert("Couldn't share this playlist", message),
+    });
+  };
+  const shareDisabled = isOwner && !playlist.is_public && (!makePublic.ready || makePublic.busy);
   const addRecommended = (sermonId: string) => {
     setAddingRecommendedId(sermonId);
     addItem.mutate(sermonId, { onSettled: () => setAddingRecommendedId(null) });
@@ -143,16 +160,24 @@ export function SignaturePlaylistDetailScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
       >
-        {topBar(<IconButton icon="ellipsis-horizontal" accessibilityLabel="More options" onPress={() => setOptionsOpen(true)} />)}
+        {topBar(
+          isOwner ? (
+            <IconButton icon="ellipsis-horizontal" accessibilityLabel="More options" onPress={() => setOptionsOpen(true)} />
+          ) : undefined,
+        )}
 
         <View style={styles.coverWrap}>
           <View style={[styles.coverShadow, LEAF]}>
-            <PlaylistCoverPicker
-              playlistId={playlist.id}
-              coverUrl={playlist.cover_url}
-              size={coverSize}
-              cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={coverSize} shape={LEAF} />}
-            />
+            {isOwner ? (
+              <PlaylistCoverPicker
+                playlistId={playlist.id}
+                coverUrl={playlist.cover_url}
+                size={coverSize}
+                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={coverSize} shape={LEAF} />}
+              />
+            ) : (
+              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={coverSize} shape={LEAF} />
+            )}
           </View>
         </View>
 
@@ -198,7 +223,7 @@ export function SignaturePlaylistDetailScreen() {
                 Play
               </AppText>
             </PressableScale>
-          ) : (
+          ) : isOwner ? (
             <PressableScale
               onPress={() => setAddOpen(true)}
               accessibilityRole="button"
@@ -210,14 +235,14 @@ export function SignaturePlaylistDetailScreen() {
                 Add to this playlist
               </AppText>
             </PressableScale>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.actions}>
-          <Action icon="add" label="Add" onPress={() => setAddOpen(true)} />
+          {isOwner ? <Action icon="add" label="Add" onPress={() => setAddOpen(true)} /> : null}
           <Action icon="shuffle" label="Shuffle" onPress={() => startQueue(shuffled(ids()))} disabled={!hasItems} />
-          <Action icon="share-outline" label="Share" onPress={share} />
-          <Action icon="pencil" label="Edit" onPress={() => setDetailsOpen(true)} />
+          <Action icon="share-outline" label="Share" onPress={share} disabled={shareDisabled} />
+          {isOwner ? <Action icon="pencil" label="Edit" onPress={() => setDetailsOpen(true)} /> : null}
         </View>
 
         {hasItems ? (
@@ -235,7 +260,7 @@ export function SignaturePlaylistDetailScreen() {
                     item={item}
                     position={index + 1}
                     onPress={() => router.push({ pathname: '/player/[id]', params: { id: item.sermon.id } })}
-                    onRemove={() => removeItem.mutate(item.id)}
+                    onRemove={isOwner ? () => removeItem.mutate(item.id) : undefined}
                     isPreviewPlaying={preview.activeSermonId === item.sermon.id}
                     isPreviewLoading={preview.isLoading(item.sermon.id)}
                     onTogglePreview={() => preview.toggle(item.sermon.id)}
@@ -246,7 +271,7 @@ export function SignaturePlaylistDetailScreen() {
           </View>
         ) : null}
 
-        {recommendedSermons.length > 0 ? (
+        {isOwner && recommendedSermons.length > 0 ? (
           <View style={styles.section}>
             <AppText variant="display.section" accessibilityRole="header">
               Recommended sermons
@@ -265,26 +290,30 @@ export function SignaturePlaylistDetailScreen() {
         ) : null}
       </ScrollView>
 
-      <PlaylistOptionsSheet
-        visible={optionsOpen}
-        onClose={() => setOptionsOpen(false)}
-        onShare={share}
-        onAdd={() => setAddOpen(true)}
-        onEditDetails={() => setDetailsOpen(true)}
-      />
-      <PlaylistDetailsSheet
-        visible={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        playlist={playlist}
-        onDeleted={() => router.back()}
-      />
-      <SignatureAddToPlaylistSheet
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        playlistId={playlist.id}
-        existingItemIdBySermonId={existingItemIdBySermonId}
-        onRemove={(itemId) => removeItem.mutate(itemId)}
-      />
+      {isOwner ? (
+        <>
+          <PlaylistOptionsSheet
+            visible={optionsOpen}
+            onClose={() => setOptionsOpen(false)}
+            onShare={share}
+            onAdd={() => setAddOpen(true)}
+            onEditDetails={() => setDetailsOpen(true)}
+          />
+          <PlaylistDetailsSheet
+            visible={detailsOpen}
+            onClose={() => setDetailsOpen(false)}
+            playlist={playlist}
+            onDeleted={() => router.back()}
+          />
+          <SignatureAddToPlaylistSheet
+            visible={addOpen}
+            onClose={() => setAddOpen(false)}
+            playlistId={playlist.id}
+            existingItemIdBySermonId={existingItemIdBySermonId}
+            onRemove={(itemId) => removeItem.mutate(itemId)}
+          />
+        </>
+      ) : null}
     </View>
   );
 }

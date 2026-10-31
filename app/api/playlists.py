@@ -1,13 +1,13 @@
 """Viewer-owned playlists (Isaac's ask, session 2026-10-10): the Library tab's
-"create playlists" half. Every route here requires sign-in and is scoped to
-the caller's own playlists — there's no cross-user playlist visibility in
-this app, so a playlist id that exists but isn't yours 404s exactly like one
-that doesn't exist at all.
+"create playlists" half. Every route requires sign-in. Writes are owner-only; a
+playlist id that exists but isn't yours 404s exactly like one that doesn't
+exist. `GET /{id}` additionally lets a signed-in non-owner read a public
+playlist (no block either way) — every other non-owner case is that same 404.
 """
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUserDep
@@ -53,13 +53,20 @@ async def list_playlists(user: CurrentUserDep, db: DbDep) -> list[PlaylistPublic
 
 @router.post("", response_model=PlaylistPublic, status_code=status.HTTP_201_CREATED)
 async def create_playlist(data: PlaylistCreate, user: CurrentUserDep, db: DbDep) -> PlaylistPublic:
-    return await playlists_service.create_playlist(
-        db, await _record(db, user), data.name, data.description, data.is_public
-    )
+    try:
+        return await playlists_service.create_playlist(
+            db, await _record(db, user), data.name, data.description, data.is_public
+        )
+    except ContentError as exc:
+        raise _err(exc)
 
 
 @router.get("/{playlist_id}", response_model=PlaylistDetail)
-async def get_playlist(playlist_id: uuid.UUID, user: CurrentUserDep, db: DbDep) -> PlaylistDetail:
+async def get_playlist(
+    playlist_id: uuid.UUID, user: CurrentUserDep, db: DbDep, response: Response
+) -> PlaylistDetail:
+    # Per-viewer content (owner vs recipient); never let a shared cache keep it.
+    response.headers["Cache-Control"] = "private, no-store"
     try:
         return await playlists_service.get_playlist_detail(db, await _record(db, user), playlist_id)
     except ContentError as exc:

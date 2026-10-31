@@ -64,7 +64,7 @@ describe('CreatePlaylistScreen', () => {
 
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith('/playlists', {
-        body: { name: 'Road Trip', description: null, is_public: true },
+        body: { name: 'Road Trip', description: null, is_public: false },
       }),
     );
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/playlist/[id]', params: { id: 'new-playlist' } });

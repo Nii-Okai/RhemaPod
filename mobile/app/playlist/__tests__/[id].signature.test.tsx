@@ -1,7 +1,9 @@
 import React from 'react';
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import PlaylistDetailScreen from '../[id]';
+import { Alert } from 'react-native';
+import Share from 'react-native-share';
 import { ApiError } from '../../../lib/api/errors';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
@@ -134,6 +136,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     name: 'Morning Dew',
     description: null,
     is_public: true,
+    is_owner: true,
     cover_url: null,
     owner_name: 'Nii Okai',
     item_count: 0,
@@ -152,7 +155,9 @@ function detail(overrides: Record<string, unknown> = {}) {
  * answering both the same way. */
 function mockPlaylistGet(playlistDetail: ReturnType<typeof detail>, recommended: unknown[] = []) {
   mockedGet.mockImplementation((path: string) =>
-    Promise.resolve(path === '/me/recommended' ? recommended : playlistDetail),
+    Promise.resolve(
+      path === '/me/recommended' ? recommended : path === '/auth/me' ? { id: 'u1', full_name: 'Nii Kwame Okai' } : playlistDetail,
+    ),
   );
 }
 
@@ -309,5 +314,173 @@ describe('Signature playlist detail', () => {
     expect(mockBack).toHaveBeenCalled();
     // `within` imported for parity with the classic suite's helpers.
     expect(within).toBeDefined();
+  });
+});
+
+describe('Signature playlist detail: share and read-only view', () => {
+  const mockedShare = Share.open as jest.Mock;
+  let alertSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    mockedShare.mockReset();
+    mockedShare.mockResolvedValue({});
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+  afterEach(() => alertSpy.mockRestore());
+
+  function pressAlertButton(label: string) {
+    const buttons = alertSpy.mock.calls[0]![2] as { text: string; onPress?: () => void }[];
+    buttons.find((b) => b.text === label)!.onPress?.();
+  }
+
+  it('shares a public playlist straight away with no prompt and no PATCH', async () => {
+    mockPlaylistGet(detail({ is_public: true }));
+    const { findByLabelText } = renderScreen();
+    fireEvent.press(await findByLabelText('Share'));
+
+    await waitFor(() => expect(mockedShare).toHaveBeenCalledTimes(1));
+    expect(mockedShare.mock.calls[0]![0].message).toContain('/playlist/p1');
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
+  it('private: asks first, naming the owner as First L.; No does nothing', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    const { findByLabelText } = renderScreen();
+    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/auth/me', expect.anything()));
+    fireEvent.press(await findByLabelText('Share'));
+
+    expect(alertSpy.mock.calls[0]![0]).toBe('Make this playlist public?');
+    expect(alertSpy.mock.calls[0]![1]).toBe(
+      "Anyone with the link can see it and its sermons. Your name shows as 'Nii O.'.",
+    );
+    pressAlertButton('No');
+    expect(mockedPatch).not.toHaveBeenCalled();
+    expect(mockedShare).not.toHaveBeenCalled();
+  });
+
+  it('private + Yes: PATCHes is_public true, then opens the share sheet', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    mockedPatch.mockResolvedValue(detail({ is_public: true }));
+    const { findByLabelText } = renderScreen();
+    fireEvent.press(await findByLabelText('Share'));
+    pressAlertButton('Yes');
+
+    await waitFor(() => expect(mockedShare).toHaveBeenCalledTimes(1));
+    expect(mockedPatch).toHaveBeenCalledWith('/playlists/{playlist_id}', {
+      params: { path: { playlist_id: 'p1' } },
+      body: { is_public: true },
+    });
+    expect(mockedPatch.mock.invocationCallOrder[0]!).toBeLessThan(mockedShare.mock.invocationCallOrder[0]!);
+  });
+
+  it('private + Yes + 422: shows the server message and does not share', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    mockedPatch.mockRejectedValue(new ApiError(422, 'Links are not allowed in public playlists'));
+    const { findByLabelText } = renderScreen();
+    fireEvent.press(await findByLabelText('Share'));
+    pressAlertButton('Yes');
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(2));
+    expect(alertSpy.mock.calls[1]![1]).toBe('Links are not allowed in public playlists');
+    expect(mockedShare).not.toHaveBeenCalled();
+  });
+
+  it('private + Yes + network failure: shows a generic error and does not share', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    mockedPatch.mockRejectedValue(new ApiError(0, 'Could not reach the server. Check your connection.', null, true));
+    const { findByLabelText } = renderScreen();
+    fireEvent.press(await findByLabelText('Share'));
+    pressAlertButton('Yes');
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(2));
+    expect(alertSpy.mock.calls[1]![1]).toBe("Couldn't make this playlist public. Try again.");
+    expect(mockedShare).not.toHaveBeenCalled();
+  });
+
+  it('is_owner false: read-only, with the owner label, Play, Share and Shuffle only', async () => {
+    mockPlaylistGet(
+      detail({ is_owner: false, owner_name: 'Ada N.', item_count: 2, items: twoItems }),
+      [{ ...sermon, id: 'rec-1', title: 'Recommended One' }],
+    );
+    const { findByText, getByText, getByLabelText, queryByLabelText, queryByText } = renderScreen();
+
+    expect(await findByText('Morning Dew')).toBeTruthy();
+    expect(getByText('Ada N.')).toBeTruthy();
+    expect(getByLabelText('Play this playlist')).toBeTruthy();
+    expect(getByLabelText('Share')).toBeTruthy();
+    expect(getByLabelText('Shuffle')).toBeTruthy();
+    for (const label of ['More options', 'Edit', 'Add', 'Add to this playlist', 'Change playlist cover']) {
+      expect(queryByLabelText(label)).toBeNull();
+    }
+    expect(queryByLabelText('Remove Anchored in the Storm from this playlist')).toBeNull();
+    expect(queryByLabelText(/reorder|drag/i)).toBeNull();
+    expect(queryByText('Recommended sermons')).toBeNull();
+
+    // Playing a sermon still works.
+    fireEvent.press(getByLabelText('Play Anchored in the Storm'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
+  });
+
+  it('double-tapping Share on a private playlist opens one prompt, then one PATCH and one share sheet', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    mockedPatch.mockResolvedValue(detail({ is_public: true }));
+    const { findByLabelText } = renderScreen();
+    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/auth/me', expect.anything()));
+    const share = await findByLabelText('Share');
+    fireEvent.press(share);
+    fireEvent.press(share);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    pressAlertButton('Yes');
+    fireEvent.press(share);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockedShare).toHaveBeenCalledTimes(1));
+    expect(mockedPatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('No re-arms the prompt so a later Share asks again', async () => {
+    mockPlaylistGet(detail({ is_public: false }));
+    const { findByLabelText } = renderScreen();
+    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/auth/me', expect.anything()));
+    fireEvent.press(await findByLabelText('Share'));
+    pressAlertButton('No');
+    fireEvent.press(await findByLabelText('Share'));
+    expect(alertSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('private: Share is disabled while the profile loads, and never prompts with a placeholder name', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/auth/me' ? new Promise(() => {}) : Promise.resolve(path === '/me/recommended' ? [] : detail({ is_public: false })),
+    );
+    const { findByLabelText } = renderScreen();
+    const share = await findByLabelText('Share');
+    expect(share.props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(share);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('a recipient whose cached playlist turns private (refetch 404) gets the not-available state', async () => {
+    const client = createTestQueryClient();
+    mockPlaylistGet(detail({ is_owner: false, owner_name: 'Ada N.', item_count: 2, items: twoItems }));
+    const { findByText, queryByText } = render(
+      <QueryClientProvider client={client}>
+        <PlaylistDetailScreen />
+      </QueryClientProvider>,
+    );
+    expect(await findByText('Anchored in the Storm')).toBeTruthy();
+
+    mockedGet.mockRejectedValue(new ApiError(404, 'Playlist not found'));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['playlists', 'detail', 'p1'] });
+    });
+    expect(await findByText("This playlist isn't available")).toBeTruthy();
+    expect(queryByText('Anchored in the Storm')).toBeNull();
+  });
+
+  it('shows the not-available state when the playlist 404s', async () => {
+    mockedGet.mockRejectedValue(new ApiError(404, 'Playlist not found'));
+    const { findByText } = renderScreen();
+    expect(await findByText("This playlist isn't available")).toBeTruthy();
   });
 });

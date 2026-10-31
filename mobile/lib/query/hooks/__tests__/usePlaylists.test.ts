@@ -98,7 +98,7 @@ describe('useCreatePlaylist', () => {
     });
 
     expect(mockedPost).toHaveBeenCalledWith('/playlists', {
-      body: { name: 'Morning Dew', description: null, is_public: true },
+      body: { name: 'Morning Dew', description: null, is_public: false },
     });
     expect(client.getQueryData(queryKeys.playlists.list())).toEqual([playlist]);
   });

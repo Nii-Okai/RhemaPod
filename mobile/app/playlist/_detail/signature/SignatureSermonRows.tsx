@@ -34,7 +34,8 @@ export interface SignaturePlaylistItemRowProps {
   /** 1-based position in the playlist. */
   position: number;
   onPress: () => void;
-  onRemove: () => void;
+  /** Omitted for a read-only (non-owner) viewer: no swipe-to-remove. */
+  onRemove?: () => void;
   isPreviewPlaying: boolean;
   isPreviewLoading: boolean;
   onTogglePreview: () => void;
@@ -60,59 +61,65 @@ export function SignaturePlaylistItemRow({
   // Category or series/episode only — no speaker or duration (Isaac's ask, 2026-10-10).
   const meta = metaLineFor(sermon);
 
+  const content = (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${sermon.title}`}
+      style={({ pressed }) => [styles.row, styles.itemRow, pressed && styles.pressed]}
+    >
+      <AppText variant="mono.meta" tone="tertiary" style={styles.position}>
+        {String(position).padStart(2, '0')}
+      </AppText>
+      <View>
+        <Art uri={sermon.thumbnail_url} width={ART_WIDTH} />
+        <Pressable
+          onPress={onTogglePreview}
+          accessibilityRole="button"
+          accessibilityLabel={isPreviewPlaying ? `Pause preview of ${sermon.title}` : `Preview ${sermon.title}`}
+          style={styles.overlay}
+        >
+          {/* On the art, so pinned to the dark palette like the classic row's chip. */}
+          <View style={[styles.chip, isPreviewPlaying && styles.chipPlaying]}>
+            {isPreviewLoading ? (
+              <ActivityIndicator size="small" color={onArt.text.primary} />
+            ) : (
+              <PlatformIcon
+                name={isPreviewPlaying ? 'pause' : 'play'}
+                size={14}
+                color={isPreviewPlaying ? onArt.primaryButton.text : onArt.text.primary}
+              />
+            )}
+          </View>
+        </Pressable>
+      </View>
+      <View style={styles.text}>
+        <AppText variant="ui.bodyLarge" numberOfLines={2} tone={isPreviewPlaying ? 'gold' : 'primary'} style={styles.title}>
+          {sermon.title}
+        </AppText>
+        {isPreviewPlaying || meta ? (
+          <View style={styles.metaRow}>
+            {isPreviewPlaying ? <EqualizerBars active color={colors.accent.goldText} size={11} testID="preview-visualiser" /> : null}
+            {meta ? (
+              <AppText variant="mono.meta" tone="tertiary" numberOfLines={1} style={styles.metaText}>
+                {meta.toUpperCase()}
+              </AppText>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+
+  if (!onRemove) return <View testID={`playlist-item-row-${item.id}`}>{content}</View>;
+
   return (
     <SwipeToDelete
       onDelete={onRemove}
       deleteAccessibilityLabel={`Remove ${sermon.title} from this playlist`}
       testID={`playlist-item-row-${item.id}`}
     >
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Play ${sermon.title}`}
-        style={({ pressed }) => [styles.row, styles.itemRow, pressed && styles.pressed]}
-      >
-        <AppText variant="mono.meta" tone="tertiary" style={styles.position}>
-          {String(position).padStart(2, '0')}
-        </AppText>
-        <View>
-          <Art uri={sermon.thumbnail_url} width={ART_WIDTH} />
-          <Pressable
-            onPress={onTogglePreview}
-            accessibilityRole="button"
-            accessibilityLabel={isPreviewPlaying ? `Pause preview of ${sermon.title}` : `Preview ${sermon.title}`}
-            style={styles.overlay}
-          >
-            {/* On the art, so pinned to the dark palette like the classic row's chip. */}
-            <View style={[styles.chip, isPreviewPlaying && styles.chipPlaying]}>
-              {isPreviewLoading ? (
-                <ActivityIndicator size="small" color={onArt.text.primary} />
-              ) : (
-                <PlatformIcon
-                  name={isPreviewPlaying ? 'pause' : 'play'}
-                  size={14}
-                  color={isPreviewPlaying ? onArt.primaryButton.text : onArt.text.primary}
-                />
-              )}
-            </View>
-          </Pressable>
-        </View>
-        <View style={styles.text}>
-          <AppText variant="ui.bodyLarge" numberOfLines={2} tone={isPreviewPlaying ? 'gold' : 'primary'} style={styles.title}>
-            {sermon.title}
-          </AppText>
-          {isPreviewPlaying || meta ? (
-            <View style={styles.metaRow}>
-              {isPreviewPlaying ? <EqualizerBars active color={colors.accent.goldText} size={11} testID="preview-visualiser" /> : null}
-              {meta ? (
-                <AppText variant="mono.meta" tone="tertiary" numberOfLines={1} style={styles.metaText}>
-                  {meta.toUpperCase()}
-                </AppText>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
+      {content}
     </SwipeToDelete>
   );
 }

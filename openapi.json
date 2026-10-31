@@ -3184,7 +3184,7 @@
             "title": "Description"
           },
           "is_public": {
-            "default": true,
+            "default": false,
             "title": "Is Public",
             "type": "boolean"
           },
@@ -3235,6 +3235,10 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
           },
           "is_public": {
             "title": "Is Public",
@@ -3294,6 +3298,7 @@
           "total_duration_seconds",
           "created_at",
           "updated_at",
+          "is_owner",
           "items"
         ],
         "title": "PlaylistDetail",

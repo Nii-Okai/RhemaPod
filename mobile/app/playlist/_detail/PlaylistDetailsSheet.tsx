@@ -5,7 +5,9 @@ import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
+import { ApiError, userMessageFor } from '../../../lib/api/errors';
 import { useDeletePlaylist, useUpdatePlaylist, type PlaylistDetail } from '../../../lib/query/hooks/usePlaylists';
+import { useMakePlaylistPublic } from './useMakePlaylistPublic';
 
 export interface PlaylistDetailsSheetProps {
   visible: boolean;
@@ -34,6 +36,7 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
   const [error, setError] = useState<string | null>(null);
   const update = useUpdatePlaylist(playlist.id);
   const remove = useDeletePlaylist();
+  const makePublic = useMakePlaylistPublic(playlist.id);
 
   useEffect(() => {
     if (visible) {
@@ -52,13 +55,32 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
     setError(null);
     update.mutate(
       { name: trimmed, description },
-      { onSuccess: onClose, onError: () => setError("Couldn't save. Try again.") },
+      {
+        onSuccess: onClose,
+        onError: (e) => setError(e instanceof ApiError && e.status === 422 ? userMessageFor(e) : "Couldn't save. Try again."),
+      },
     );
   };
 
+  // Public -> private needs no prompt; private -> public goes through the same confirmation
+  // as Share (the toggle just updates, it doesn't open the share sheet).
   const togglePrivacy = () => {
-    update.mutate({ isPublic: !playlist.is_public });
+    setError(null);
+    if (playlist.is_public) {
+      update.mutate(
+        { isPublic: false },
+        {
+          onError: (e) =>
+            setError(
+              e instanceof ApiError && e.status === 422 ? userMessageFor(e) : "Couldn't make this playlist private. Try again.",
+            ),
+        },
+      );
+      return;
+    }
+    makePublic.confirmAndMakePublic({ onFailure: setError });
   };
+  const privacyBusy = update.isPending || makePublic.busy || (!playlist.is_public && !makePublic.ready);
 
   const confirmDelete = () => {
     setConfirmingDelete(false);
@@ -102,7 +124,9 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
           accessibilityRole="button"
           accessibilityLabel={playlist.is_public ? 'Make private' : 'Make public'}
           onPress={togglePrivacy}
-          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          disabled={privacyBusy}
+          accessibilityState={{ disabled: privacyBusy }}
+          style={({ pressed }) => [styles.row, (pressed || privacyBusy) && styles.rowPressed]}
         >
           <PlatformIcon
             name={playlist.is_public ? 'lock-closed-outline' : 'globe-outline'}

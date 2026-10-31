@@ -125,7 +125,7 @@ describe('HeroCard', () => {
     fireEvent.press(await findByLabelText('Add to My List'));
 
     await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith('/playlists', { body: { name: 'My List', description: null, is_public: true } }),
+      expect(mockedPost).toHaveBeenCalledWith('/playlists', { body: { name: 'My List', description: null, is_public: false } }),
     );
     expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
       params: { path: { playlist_id: 'p1' } },

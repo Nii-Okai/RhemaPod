@@ -1,8 +1,11 @@
 """Playlist service (Isaac's ask, session 2026-10-10): CRUD for viewer-owned
 playlists, the backend behind the Library tab's "create playlists" half.
-Private to the owner throughout — every read/write here is scoped to the
-caller's own `user_id`; a missing or not-owned playlist is always a 404, same
-privacy-by-silence rule every other owner-scoped resource in this app follows.
+Every write is owner-only (`_get_owned_playlist`); a missing or not-owned
+playlist is always a 404, same privacy-by-silence rule every other
+owner-scoped resource in this app follows. The one cross-user path is the
+read-only `get_playlist_detail`: a signed-in non-owner may read a PUBLIC
+playlist (share links, ADR 0021 Phase 2) unless a block exists in either
+direction; private, missing and blocked are one identical 404.
 
 A playlist item always points at a `Sermon` row — series episodes ARE sermons
 (`Sermon.series_id`), so "sermons and episodes" needs no second content type
@@ -10,7 +13,7 @@ or polymorphic column, unlike the Like tables' sermon/series split.
 """
 import uuid
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -21,12 +24,20 @@ from app.models.content_schemas import (
     PlaylistItemPublic,
     PlaylistPublic,
 )
+from app.core.text_safety import (
+    contains_blocked_term,
+    contains_contact,
+    contains_url,
+    has_visible_text,
+    normalise_text,
+)
 from app.models.models import (
     VIEWER_VISIBLE_STATUSES,
     Playlist,
     PlaylistItem,
     Sermon,
     User,
+    UserBlock,
     UserRole,
 )
 from app.services import content_service
@@ -35,6 +46,7 @@ from app.services.content_service import (
     display_name,
     effective_tier,
     load_ref_names,
+    public_display_name,
     sermon_publish_time_passed,
     sermon_visibility_clause,
     to_list_item,
@@ -42,6 +54,9 @@ from app.services.content_service import (
 
 settings = get_settings()
 log = get_logger("playlists")
+
+# Bounds the per-request work of `get_playlist_detail`, which loads every item.
+MAX_ITEMS_PER_PLAYLIST = 500
 
 
 def _cover_url(key: str | None) -> str | None:
@@ -100,6 +115,68 @@ async def _get_owned_playlist(db: AsyncSession, user: User, playlist_id: uuid.UU
     return playlist
 
 
+def _not_found() -> ContentError:
+    # One constructor for every non-readable case, so the body can never differ.
+    return ContentError("Playlist not found", status_code=404)
+
+
+async def _get_readable_playlist(
+    db: AsyncSession, viewer: User, playlist_id: uuid.UUID
+) -> tuple[Playlist, User]:
+    """`(playlist, owner)` if `viewer` may read it, else the uniform 404.
+
+    The owner always may. A non-owner needs `is_public` and no `UserBlock` in
+    either direction between viewer and owner. Missing, private and blocked are
+    indistinguishable (no existence oracle)."""
+    playlist = await db.get(Playlist, playlist_id)
+    if playlist is None:
+        raise _not_found()
+    if playlist.user_id == viewer.id:
+        return playlist, viewer
+    if not playlist.is_public:
+        raise _not_found()
+    blocked = (await db.execute(
+        select(UserBlock.id).where(or_(
+            and_(UserBlock.blocker_id == viewer.id, UserBlock.blocked_id == playlist.user_id),
+            and_(UserBlock.blocker_id == playlist.user_id, UserBlock.blocked_id == viewer.id),
+        )).limit(1)
+    )).first()
+    owner = await db.get(User, playlist.user_id)
+    # A deactivated owner's public playlist is no longer shared content.
+    if blocked is not None or owner is None or not owner.is_active:
+        raise _not_found()
+    return playlist, owner
+
+
+def _validate_public_text(name: str, description: str | None) -> None:
+    """Make-public content rule (SL0 decision 6): user-written text visible to
+    link recipients passes the same URL / contact / blocklist rules as comments.
+    Messages don't say which field or term matched."""
+    for raw in (name, description):
+        if not raw:
+            continue
+        text = normalise_text(raw)
+        if contains_url(text):
+            raise ContentError("Links are not allowed in public playlists", status_code=422)
+        if contains_contact(text):
+            raise ContentError("Contact details are not allowed in public playlists", status_code=422)
+        if contains_blocked_term(text):
+            raise ContentError("This playlist can't be made public", status_code=422)
+
+
+def _clean_name(raw: str) -> str:
+    """Store what we validate: the normalised name, never raw bidi / zero-width /
+    control characters, and never a name with nothing visible in it."""
+    name = normalise_text(raw, multiline=False)
+    if not name or not has_visible_text(name):
+        raise ContentError("Playlist name must contain visible text", status_code=422)
+    return name
+
+
+def _clean_description(raw: str | None) -> str | None:
+    return (normalise_text(raw) or None) if raw else None
+
+
 async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
     playlists = (await db.execute(
         select(Playlist).where(Playlist.user_id == user.id).order_by(Playlist.created_at.desc())
@@ -112,10 +189,14 @@ async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
 async def create_playlist(
     db: AsyncSession, user: User, name: str, description: str | None, is_public: bool
 ) -> PlaylistPublic:
+    name = _clean_name(name)
+    description = _clean_description(description)
+    if is_public:
+        _validate_public_text(name, description)
     playlist = Playlist(
         user_id=user.id,
-        name=name.strip(),
-        description=(description.strip() or None) if description else None,
+        name=name,
+        description=description,
         is_public=is_public,
     )
     db.add(playlist)
@@ -133,9 +214,14 @@ async def update_playlist(
     uses, so an omitted field is left untouched rather than nulled)."""
     playlist = await _get_owned_playlist(db, user, playlist_id)
     if "name" in fields and fields["name"] is not None:
-        fields["name"] = fields["name"].strip()
+        fields["name"] = _clean_name(fields["name"])
     if "description" in fields:
-        fields["description"] = fields["description"].strip() or None if fields["description"] else None
+        fields["description"] = _clean_description(fields["description"])
+    final_public = fields.get("is_public", playlist.is_public)
+    if final_public:
+        _validate_public_text(
+            fields.get("name", playlist.name), fields.get("description", playlist.description)
+        )
     for key, value in fields.items():
         setattr(playlist, key, value)
     await db.commit()
@@ -152,7 +238,8 @@ async def delete_playlist(db: AsyncSession, user: User, playlist_id: uuid.UUID) 
 
 
 async def get_playlist_detail(db: AsyncSession, user: User, playlist_id: uuid.UUID) -> PlaylistDetail:
-    playlist = await _get_owned_playlist(db, user, playlist_id)
+    playlist, owner = await _get_readable_playlist(db, user, playlist_id)
+    is_owner = owner.id == user.id
     item_rows = (await db.execute(
         select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.position)
     )).scalars().all()
@@ -166,7 +253,8 @@ async def get_playlist_detail(db: AsyncSession, user: User, playlist_id: uuid.UU
     has_sub = await content_service._has_subscription(db, user)
     names = await load_ref_names(
         db, list(sermons.values()),
-        include_draft_series=content_service.staff_sees_full_counts(user),
+        # A non-owner never gets staff's draft-series titles, even if staff.
+        include_draft_series=is_owner and content_service.staff_sees_full_counts(user),
     )
     series_map = await content_service._series_map(db, list(sermons.values()))
 
@@ -187,8 +275,9 @@ async def get_playlist_detail(db: AsyncSession, user: User, playlist_id: uuid.UU
         ))
 
     total_duration = sum((i.sermon.duration_seconds or 0) for i in items)
-    public = _to_public(playlist, display_name(user.full_name), len(items), total_duration)
-    return PlaylistDetail(**public.model_dump(), items=items)
+    owner_name = display_name(owner.full_name) if is_owner else public_display_name(owner.full_name)
+    public = _to_public(playlist, owner_name, len(items), total_duration)
+    return PlaylistDetail(**public.model_dump(), is_owner=is_owner, items=items)
 
 
 async def add_item(
@@ -204,6 +293,14 @@ async def add_item(
     visible = sermon.status in VIEWER_VISIBLE_STATUSES and sermon_publish_time_passed(sermon)
     if not visible and not is_staff:
         raise ContentError("Sermon not found", status_code=404)
+
+    item_count = (await db.execute(
+        select(func.count(PlaylistItem.id)).where(PlaylistItem.playlist_id == playlist.id)
+    )).scalar_one()
+    if item_count >= MAX_ITEMS_PER_PLAYLIST:
+        raise ContentError(
+            f"A playlist can hold at most {MAX_ITEMS_PER_PLAYLIST} items", status_code=422
+        )
 
     next_position = (await db.execute(
         select(func.max(PlaylistItem.position)).where(PlaylistItem.playlist_id == playlist.id)
