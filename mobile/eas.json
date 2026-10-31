@@ -23,7 +23,7 @@
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com"
       },
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.5-xcode-26.6"
       }
     },
     "android-internal": {
