@@ -28,13 +28,16 @@ describe('OnboardingScreen', () => {
     const { getByText, getAllByTestId, getAllByText } = render(<OnboardingScreen />);
 
     expect(getByText('Grow Spiritually,\nLive Fully')).toBeTruthy();
-    // Slide 3's body is verbatim-identical to slide 1's per Isaac's mockup — two matches,
-    // not a bug.
     expect(
-      getAllByText(
+      getByText(
         "Unlock messages that provide answers to life's challenges, strengthen your faith, and help you thrive. Experience true growth every single day.",
       ),
-    ).toHaveLength(2);
+    ).toBeTruthy();
+    expect(
+      getByText(
+        'Renew your mindset and find inspiration tailored exactly to your walk and destiny in God. Step into your purpose and live with confidence.',
+      ),
+    ).toBeTruthy();
     expect(getByText('Solutions at Your\nFingertips')).toBeTruthy();
     expect(getByText('Empower Your\nEveryday Life')).toBeTruthy();
 
