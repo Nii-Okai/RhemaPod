@@ -347,3 +347,15 @@ async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(c
     episodes = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
     by_title = {e["title"]: e["media_type"] for e in episodes}
     assert by_title == {"Video Ep": "video", "Audio Ep": "audio"}
+
+
+# Share-links "not available" contract: GET /series/{id} (the call the mobile
+# series screen makes) must 404 for a signed-in viewer on an id that does not exist.
+# (A draft series currently returns 200 — see status.md; deliberately not pinned.)
+async def test_nonexistent_series_detail_404s_for_signed_in_viewer(client, engine):
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
+    r = await client.get(
+        "/api/v1/series/00000000-0000-4000-8000-000000000000", headers=viewer
+    )
+    assert r.status_code == 404, r.text
+
