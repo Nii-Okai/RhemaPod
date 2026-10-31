@@ -256,7 +256,7 @@ async def test_make_public_rejects_unsafe_text(pg_client, pg_engine, field, bad)
     bad = _blocked_word() if bad == "BLOCKED" else bad
     patch = {"is_public": True, field: bad}
     r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json=patch, headers=owner.headers)
-    assert r.status_code == 400, r.text
+    assert r.status_code == 422, r.text
     assert set(err(r)) == {"detail"} and isinstance(r.json()["detail"], str)
     after = await get(pg_client, owner, pl["id"])
     assert after.json()["is_public"] is False and after.json()["name"] == "Morning Dew"
@@ -266,15 +266,15 @@ async def test_make_public_checks_stored_text_when_only_flag_changes(pg_client, 
     owner = await make_user(pg_client, pg_engine)
     pl = await make_playlist(pg_client, owner, description="visit www.example.com")
     r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json={"is_public": True}, headers=owner.headers)
-    assert r.status_code == 400
+    assert r.status_code == 422
 
 
-async def test_create_public_with_unsafe_text_is_400(pg_client, pg_engine):
+async def test_create_public_with_unsafe_text_is_422(pg_client, pg_engine):
     owner = await make_user(pg_client, pg_engine)
     r = await pg_client.post(
         f"{API}/playlists", json={"name": "https://spam.example", "is_public": True}, headers=owner.headers
     )
-    assert r.status_code == 400
+    assert r.status_code == 422
 
 
 async def test_private_playlist_may_hold_any_text(pg_client, pg_engine):

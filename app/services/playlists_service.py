@@ -152,11 +152,11 @@ def _validate_public_text(name: str, description: str | None) -> None:
             continue
         text = normalise_text(raw)
         if contains_url(text):
-            raise ContentError("Links are not allowed in public playlists", status_code=400)
+            raise ContentError("Links are not allowed in public playlists", status_code=422)
         if contains_contact(text):
-            raise ContentError("Contact details are not allowed in public playlists", status_code=400)
+            raise ContentError("Contact details are not allowed in public playlists", status_code=422)
         if contains_blocked_term(text):
-            raise ContentError("This playlist can't be made public", status_code=400)
+            raise ContentError("This playlist can't be made public", status_code=422)
 
 
 async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
