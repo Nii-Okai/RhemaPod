@@ -48,6 +48,8 @@
 
 The generic 403 is deliberate: it does not reveal which providers an account has or why a proof failed.
 
+**Note 2026-11 (Proposed, see ADR 0015 addendum "Android server auth code"):** the `method: "google"` proof may carry `server_auth_code` instead of `id_token` (exactly one, else 422). The backend exchanges the code for a fresh ID token, then applies the rules above unchanged: `iat` freshness (<= 300 s, measured on the exchanged token), `sub` match, claim-once. `invalid_grant` maps to the same generic 403; Google/network unavailability or a disabled code path maps to 503.
+
 ### 2. Behaviour
 
 **Re-auth**

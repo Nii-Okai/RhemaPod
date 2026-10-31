@@ -290,3 +290,22 @@ DAL API above (both fingerprints listed) and `pm get-app-links` on a Play-instal
 Delete `rhemapod-open` and remove the `open` CNAME, or just empty the path components in AASA and the
 assetlinks statements and redeploy to stop app interception without removing the site (iOS honours it
 after Apple's CDN refreshes). See the plan's Rollback section.
+
+## 11. Google server auth code (Android sign-in)
+
+Background: ADR 0015 addendum "Android server auth code",
+[`plans/plan-android-google-auth-code.md`](plans/plan-android-google-auth-code.md).
+
+| Variable | Where | Notes |
+|---|---|---|
+| `OAUTH_GOOGLE_AUTH_CODE_ENABLED` | `render.yaml` (`"true"`) | Default false elsewhere. `false` makes code requests return 503; the `id_token` path is untouched. |
+| `GOOGLE_OAUTH_WEB_CLIENT_ID` | `render.yaml` | Identifier, not a secret. Must be in `GOOGLE_OAUTH_CLIENT_IDS`. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Render dashboard (`sync: false`) | Dedicated client secret on the web client, so it can rotate independently. Never committed. |
+
+**Set the secret on the API service before merging to `dev`.** `scripts/render-start.sh` runs
+`python -m app.scripts.preflight` on every start, and preflight refuses to boot when the flag is
+true and the secret or web client id is missing. Merging first takes the API down until the secret
+is set.
+
+Rollback: set `OAUTH_GOOGLE_AUTH_CODE_ENABLED=false`. If you also delete the secret, the flag must
+be false or boot is blocked.

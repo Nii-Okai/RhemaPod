@@ -280,3 +280,116 @@ Staff always sign in via `/auth/login`.
 - **Still deferred (§6):** in-app account deletion and Apple server-side
   token revocation (guideline 5.1.1(v)). This blocks App Store submission,
   not dev use, and gets its own ADR and plan.
+
+## Addendum 2026-11 — Android server auth code
+
+- **Status of this addendum:** Proposed (accepted at `[HUMAN_GATE GC3]` of
+  [`plans/plan-android-google-auth-code.md`](../../plans/plan-android-google-auth-code.md)).
+- **Date:** 2026-11-01. **Deciders:** Isaac (GC0 passed 2026-11-01).
+- Android sign-in accepts a one-time Google server auth code as an alternative to the
+  ID token. iOS and the ID-token contract are unchanged.
+
+### Problem
+
+On Android, `@react-native-google-signin/google-signin` 16.1.5 returns Play Services' *cached*
+Google ID token for its ~1h lifetime, even after `revokeAccess()`. The single-use replay guard
+(`_claim_oauth_token_once`, §3) then rejects it as `replayed`. Effects: Android Google sign-in
+fails on any re-sign-in within the hour, and Google re-auth for account deletion on Android
+breaks too (`iat` <= 300 s plus claim-once, ADR 0020). iOS is unaffected. Two client-side
+workarounds failed: `6b8ee1e` (pre-sign-in revoke) and `0b0421a` (revoke after use).
+
+### Decision
+
+Android sends a `server_auth_code`. The backend exchanges it at Google's token endpoint for a
+freshly minted ID token, then runs that token through the **unchanged** path:
+`verify_google_id_token` (JWKS, aud, iss, exp), then (deletion only) `iat` freshness, then
+`_claim_oauth_token_once`. The replay guard and the 300 s window keep their meaning because the
+exchanged token's `iat` is the exchange time.
+
+### Contract (public API)
+
+- `POST /auth/oauth/google` and the `method: "google"` proof on `POST /auth/me/delete` each accept
+  **exactly one** of `id_token` (1-4096 chars) | `server_auth_code` (1-2048 chars). Both or
+  neither returns 422 naming both fields.
+- The `id_token`-only request is byte-for-byte backward compatible. Response shapes and error
+  details are unchanged.
+- One route, one rate-limit key (`oauth:google:{client}`), one error table. No separate
+  `/auth/oauth/google/code` endpoint.
+
+### Exchange
+
+- `exchange_google_server_auth_code(code) -> str` in `app/core/oauth.py` returns the raw
+  `id_token`.
+- Form POST to the module-constant `https://oauth2.googleapis.com/token` (host pinned, never
+  config-driven) via `httpx.AsyncClient(timeout=10, follow_redirects=False)`. Params: `code`,
+  `client_id` (the web client), `client_secret`, `grant_type=authorization_code`,
+  `redirect_uri=""` (the Android offline-access convention).
+- Only `id_token` is read from the response. Google access and refresh tokens are never
+  persisted, logged or returned.
+
+### Error mapping
+
+| Google outcome | Reason | Sign-in | Deletion |
+|---|---|---|---|
+| 400 `invalid_grant` (bad, expired or reused code) | `invalid` | 401 "Invalid or expired sign-in token" | 403 generic re-auth message |
+| 400 `invalid_client` / `unauthorized_client` / `redirect_uri_mismatch` / other 4xx | `unavailable` + `log.error` (our misconfig) | 503 | 503 |
+| 5xx, timeout, connect error, redirect, non-JSON, 200 without `id_token` | `unavailable` | 503 | 503 |
+| `id_token` fails verification | as §3 (`invalid` / `audience_mismatch`) | as today | 403 |
+| Code path disabled | `unavailable` | 503 | 503 |
+
+503 carries "Sign-in temporarily unavailable". Exchange logs carry only Google's `error` code and
+the HTTP status, never the body.
+
+### Config
+
+- `OAUTH_GOOGLE_AUTH_CODE_ENABLED` (bool, default false), `GOOGLE_OAUTH_WEB_CLIENT_ID`,
+  `GOOGLE_OAUTH_CLIENT_SECRET` (`SecretStr`, redacted in logs).
+- The web client id must be a member of `GOOGLE_OAUTH_CLIENT_IDS`, so the exchanged token's
+  `aud` passes the existing check.
+- Preflight refuses to boot when the flag is true and the secret or web id is missing, or the web
+  id is not in the list. It runs in **every** environment, Render dev included (mirrors
+  `_check_apple_revocation`), plus in `production_preflight`.
+- `server_auth_code`, `google_oauth_client_secret` and `client_secret` are added to the log
+  redaction key set.
+
+### Why no server-side revoke
+
+The grant covers only `openid email profile` and the refresh token lives in one request's memory.
+Revoking would bring back the consent and account picker on every sign-in, the UX this removes.
+Account deletion already revokes client-side (`finishAccountDeletion`), and users can revoke at
+myaccount.google.com.
+
+### Why no stub backend
+
+A stub that mints identities is an auth bypass. Dev and test without the secret have the code
+path off (503); tests inject `httpx.MockTransport`.
+
+### Consequences
+
+- Positive: Android re-sign-in and deletion re-auth work at any interval. No schema change, no new
+  dependency. Rollback is a flag flip (`OAUTH_GOOGLE_AUTH_CODE_ENABLED=false`).
+- Negative: one extra Google round trip (10 s timeout) on Android sign-in and deletion. A new
+  secret to hold and rotate. A one-time "offline access" consent screen on Android. Merging
+  before the secret is on Render takes Render dev's API down (preflight).
+- Mobile: Android configures `offlineAccess: true`; both revoke workarounds are removed from the
+  sign-in path on both platforms. Sign-out calls `signOut()` only.
+
+### Risks
+
+- **Legacy GSI.** The library's Android API is Google Sign-In for Android, which Google marks "no
+  longer supported". Moving to Credential Manager is a separate follow-up.
+- **Fresh code per sign-in is assumed, not documented.** A reused code yields `invalid_grant`
+  (401), which fails safe; device checklist steps 2-3 detect it.
+- **`redirect_uri=""` is from Google's legacy doc.** If Google rejects it, it shows as a 503 with
+  `redirect_uri_mismatch` in logs and the exchange is amended.
+
+### Alternatives considered
+
+- **Keep sending the ID token, add more client-side revokes:** rejected. Two attempts failed; Play
+  Services serves the cached token regardless.
+- **Separate `/auth/oauth/google/code` route:** rejected. Duplicates rate limiting, audit wiring
+  and the deletion union for no gain.
+- **Server-side revoke after exchange:** rejected, see above.
+- **Stub exchange backend for dev:** rejected, auth bypass.
+- **Drop claim-once for exchanged tokens:** rejected. The guard stays identical across both paths.
+- **Move Android to Credential Manager now:** deferred. Larger change, separate decision.
