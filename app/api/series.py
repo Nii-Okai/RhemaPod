@@ -19,7 +19,7 @@ from app.models.content_schemas import (
     ThumbnailUploadRequest,
 )
 
-from app.models.models import Series, User, UserRole
+from app.models.models import Series, SermonStatus, User, UserRole
 from app.services import auth_service, content_service, likes_service
 from app.services.content_service import (
     ContentError,
@@ -235,6 +235,10 @@ async def series_episodes(
     series = await db.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="Series not found")
+    is_staff = content_service.staff_sees_full_counts(user)
+    if series.status != SermonStatus.PUBLISHED and not is_staff:
+        # Draft series are invisible to viewers/anon — same body as nonexistent.
+        raise HTTPException(status_code=404, detail="Series not found")
 
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
@@ -262,7 +266,7 @@ async def series_episodes(
     # episode actually had a speaker assigned. `series_title` was affected too (every
     # episode's own `series_title` came back `None`, even though it's obviously this
     # series).
-    names = await load_ref_names(db, rows)
+    names = await load_ref_names(db, rows, include_draft_series=is_staff)
     items = [
         to_list_item(
             s,

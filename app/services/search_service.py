@@ -21,6 +21,7 @@ from app.models.content_schemas import SeriesPublic, SpeakerPublic
 from app.models.models import (
     ContentTier,
     Sermon,
+    SermonStatus,
     SermonTag,
     Series,
     Speaker,
@@ -188,7 +189,9 @@ async def search_sermons(
         series_map = {s.id: s for s in series_rows}
 
     has_sub = await _has_subscription(db, user)
-    names = await load_ref_names(db, rows)
+    names = await load_ref_names(
+        db, rows, include_draft_series=staff_sees_full_counts(user)
+    )
     items = []
     for sermon in rows:
         resolved = effective_tier(sermon, series_map.get(sermon.series_id))
@@ -213,9 +216,10 @@ async def search_series(
     condition = _text_search_filter(db, columns, query)
     include_unpublished = staff_sees_full_counts(user)
 
-    total = (await db.execute(
-        select(func.count()).select_from(Series).where(condition)
-    )).scalar_one()
+    count_stmt = select(func.count()).select_from(Series).where(condition)
+    if not include_unpublished:
+        count_stmt = count_stmt.where(Series.status == SermonStatus.PUBLISHED)
+    total = (await db.execute(count_stmt)).scalar_one()
 
     rank = _text_rank(db, columns, query)
     order = rank if rank is not None else Series.title.asc()
