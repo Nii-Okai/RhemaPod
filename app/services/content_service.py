@@ -1782,8 +1782,8 @@ def _series_public_stmt(include_unpublished: bool, viewer_id: uuid.UUID | None =
     and (Isaac's ask, session 2026-10-09) a correlated like count + whether
     `viewer_id` has liked each row.
 
-    `include_unpublished=False` scopes the episode count to published sermons —
-    see `staff_sees_full_counts`. `viewer_id=None` (anonymous) still runs the
+    `include_unpublished=False` restricts rows to published series and scopes
+    the episode count to published sermons — see `staff_sees_full_counts`. `viewer_id=None` (anonymous) still runs the
     `liked_by_me` subquery rather than branching it away — `SeriesLike.user_id
     == None` renders as `IS NULL`, which a NOT NULL column can never match, so
     it already always resolves to `false` without a second code path.
@@ -1812,9 +1812,14 @@ def _series_public_stmt(include_unpublished: bool, viewer_id: uuid.UUID | None =
         .scalar_subquery()
         .label("liked_by_me")
     )
-    return select(
+    stmt = select(
         Series, episode_count, Category.name.label("category_name"), like_count, liked_by_me
     ).outerjoin(Category, Category.id == Series.category_id)
+    if not include_unpublished:
+        # Viewers/anon see published series only (same rule as sermon detail);
+        # a draft is indistinguishable from a nonexistent id.
+        stmt = stmt.where(Series.status == SermonStatus.PUBLISHED)
+    return stmt
 
 
 async def list_series(

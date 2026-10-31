@@ -347,3 +347,62 @@ async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(c
     episodes = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
     by_title = {e["title"]: e["media_type"] for e in episodes}
     assert by_title == {"Video Ep": "video", "Audio Ep": "audio"}
+
+
+# Draft-series visibility: viewers/anon see published series only; a draft is
+# indistinguishable from a nonexistent id (no existence oracle). Staff still see it.
+async def _draft_and_published_series(client, engine):
+    ed = await make_user(client, engine, "dsed@example.com", "editor")
+    mgr = await make_user(client, engine, "dsmgr@example.com", "manager")
+    viewer = await make_user(client, engine, "dsviewer@example.com", "viewer")
+    draft = (await client.post("/api/v1/series", json={"title": "Draft S"}, headers=ed)).json()
+    pub = (await client.post("/api/v1/series", json={"title": "Pub S"}, headers=ed)).json()
+    r = await client.patch(
+        f"/api/v1/series/{pub['id']}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+    return ed, mgr, viewer, draft, pub
+
+
+async def test_draft_series_detail_404s_for_signed_in_viewer(client, engine):
+    _, _, viewer, draft, _ = await _draft_and_published_series(client, engine)
+    missing = await client.get(
+        "/api/v1/series/00000000-0000-0000-0000-000000000000", headers=viewer
+    )
+    for headers in (viewer, {}):
+        r = await client.get(f"/api/v1/series/{draft['id']}", headers=headers)
+        assert r.status_code == 404
+        assert r.json()["detail"] == missing.json()["detail"]
+    liked = await client.put(f"/api/v1/series/{draft['id']}/like", headers=viewer)
+    assert liked.status_code == 404
+
+
+async def test_series_list_and_search_exclude_drafts_for_viewer(client, engine):
+    _, _, viewer, draft, pub = await _draft_and_published_series(client, engine)
+    ids = {s["id"] for s in (await client.get("/api/v1/series", headers=viewer)).json()}
+    assert ids == {pub["id"]}
+    anon_ids = {s["id"] for s in (await client.get("/api/v1/series")).json()}
+    assert anon_ids == {pub["id"]}
+    r = await client.get("/api/v1/search", params={"q": "S"}, headers=viewer)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    group = body.get("series")
+    if isinstance(group, dict):
+        group = group.get("items", [])
+    assert draft["id"] not in {s["id"] for s in (group or [])}
+
+
+async def test_staff_still_see_draft_series(client, engine):
+    ed, mgr, _, draft, pub = await _draft_and_published_series(client, engine)
+    for headers in (ed, mgr):
+        assert (await client.get(
+            f"/api/v1/series/{draft['id']}", headers=headers
+        )).status_code == 200
+        ids = {s["id"] for s in (await client.get("/api/v1/series", headers=headers)).json()}
+        assert ids == {draft["id"], pub["id"]}
+
+
+async def test_published_series_detail_200_for_viewer(client, engine):
+    _, _, viewer, _, pub = await _draft_and_published_series(client, engine)
+    assert (await client.get(f"/api/v1/series/{pub['id']}", headers=viewer)).status_code == 200
+    assert (await client.get(f"/api/v1/series/{pub['id']}/episodes")).status_code == 200

@@ -98,7 +98,14 @@ async def test_series_speakers_groups_also_work_against_real_postgres(pg_client,
     sermon path, but this closes the same real-Postgres coverage gap for it
     rather than assuming "it uses simpler SQL so it's probably fine"."""
     ed = await make_user(pg_client, pg_engine, "e@example.com", "editor")
-    await pg_client.post("/api/v1/series", json={"title": "Grace Series"}, headers=ed)
+    mgr = await make_user(pg_client, pg_engine, "m@example.com", "manager")
+    sid = (await pg_client.post(
+        "/api/v1/series", json={"title": "Grace Series"}, headers=ed
+    )).json()["id"]
+    r = await pg_client.patch(
+        f"/api/v1/series/{sid}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
     await pg_client.post("/api/v1/speakers", json={"name": "Grace Adeyemi"}, headers=ed)
 
     body = (await pg_client.get("/api/v1/search?q=grace")).json()
