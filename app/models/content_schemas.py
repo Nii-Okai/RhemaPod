@@ -946,6 +946,14 @@ class PlaylistUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=300)
     is_public: bool | None = None
 
+    @model_validator(mode="after")
+    def _no_explicit_null_for_required_columns(self) -> "PlaylistUpdate":
+        # Omit a field to leave it alone; an explicit null would hit a NOT NULL column.
+        for field in ("name", "is_public"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
 
 class PlaylistItemPublic(BaseModel):
     id: uuid.UUID

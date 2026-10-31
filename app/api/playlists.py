@@ -7,7 +7,7 @@ playlist (no block either way) — every other non-owner case is that same 404.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUserDep
@@ -62,7 +62,11 @@ async def create_playlist(data: PlaylistCreate, user: CurrentUserDep, db: DbDep)
 
 
 @router.get("/{playlist_id}", response_model=PlaylistDetail)
-async def get_playlist(playlist_id: uuid.UUID, user: CurrentUserDep, db: DbDep) -> PlaylistDetail:
+async def get_playlist(
+    playlist_id: uuid.UUID, user: CurrentUserDep, db: DbDep, response: Response
+) -> PlaylistDetail:
+    # Per-viewer content (owner vs recipient); never let a shared cache keep it.
+    response.headers["Cache-Control"] = "private, no-store"
     try:
         return await playlists_service.get_playlist_detail(db, await _record(db, user), playlist_id)
     except ContentError as exc:

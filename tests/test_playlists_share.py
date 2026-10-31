@@ -289,3 +289,125 @@ async def test_make_public_with_clean_text_is_200(pg_client, pg_engine):
     pl = await make_playlist(pg_client, owner, description="Songs for quiet mornings")
     r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json={"is_public": True}, headers=owner.headers)
     assert r.status_code == 200 and r.json()["is_public"] is True
+
+
+# ── S14 review fixes ─────────────────────────────────────────────────────────
+async def test_text_is_stored_normalised_even_for_private_playlists(pg_client, pg_engine):
+    owner = await make_user(pg_client, pg_engine)
+    dirty = "‮Evil​ Name﻿"
+    pl = await make_playlist(pg_client, owner, name=dirty, description="a‮​b﻿c")
+    assert pl["name"] == "Evil Name"
+    assert pl["description"] == "abc"
+    r = await pg_client.patch(
+        f"{API}/playlists/{pl['id']}",
+        json={"name": "‮New​", "description": "​﻿"},
+        headers=owner.headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "New" and r.json()["description"] is None
+    async with _sessions(pg_engine)() as s:
+        from app.models.models import Playlist
+
+        row = await s.get(Playlist, uuid.UUID(pl["id"]))
+        assert row.name == "New" and row.description is None
+
+
+async def test_zero_width_only_name_is_422_on_create_and_patch(pg_client, pg_engine):
+    owner = await make_user(pg_client, pg_engine)
+    r = await pg_client.post(f"{API}/playlists", json={"name": "​​﻿"}, headers=owner.headers)
+    assert r.status_code == 422
+    assert "visible text" in r.json()["detail"]
+    pl = await make_playlist(pg_client, owner)
+    r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json={"name": "‮​"}, headers=owner.headers)
+    assert r.status_code == 422
+    assert (await get(pg_client, owner, pl["id"])).json()["name"] == "Morning Dew"
+
+
+async def test_deactivated_owner_public_playlist_is_uniform_404_for_non_owner(pg_client, pg_engine):
+    owner = await make_user(pg_client, pg_engine)
+    viewer = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner, is_public=True)
+    assert (await get(pg_client, viewer, pl["id"])).status_code == 200
+    async with _sessions(pg_engine)() as s:
+        await s.execute(update(User).where(User.id == owner.id).values(is_active=False))
+        await s.commit()
+    r = await get(pg_client, viewer, pl["id"])
+    assert r.status_code == 404 and err(r) == NOT_FOUND
+
+
+@pytest.mark.parametrize("body", [{"name": None}, {"is_public": None}])
+async def test_patch_explicit_null_for_required_field_is_422(pg_client, pg_engine, body):
+    owner = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner)
+    r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json=body, headers=owner.headers)
+    assert r.status_code == 422
+
+
+async def test_add_item_beyond_cap_is_422_at_the_boundary(pg_client, pg_engine, monkeypatch):
+    from app.services import playlists_service
+
+    monkeypatch.setattr(playlists_service, "MAX_ITEMS_PER_PLAYLIST", 2)
+    owner = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner)
+    sids = [await publish_sermon(pg_client, pg_engine, f"S{i}") for i in range(3)]
+    await add(pg_client, owner, pl["id"], sids[0])
+    await add(pg_client, owner, pl["id"], sids[1])  # exactly at the cap: allowed
+    r = await pg_client.post(f"{API}/playlists/{pl['id']}/items", json={"sermon_id": sids[2]}, headers=owner.headers)
+    assert r.status_code == 422
+    assert "at most 2 items" in r.json()["detail"]
+    assert len((await get(pg_client, owner, pl["id"])).json()["items"]) == 2
+
+
+async def test_get_playlist_is_private_no_store(pg_client, pg_engine):
+    owner = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner)
+    r = await get(pg_client, owner, pl["id"])
+    assert r.headers["cache-control"] == "private, no-store"
+
+
+async def test_non_owner_items_exclude_future_dated_sermon(pg_client, pg_engine):
+    from datetime import datetime, timedelta, timezone
+
+    owner = await make_user(pg_client, pg_engine)
+    viewer = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner, is_public=True)
+    live = await publish_sermon(pg_client, pg_engine, "Live")
+    later = await publish_sermon(pg_client, pg_engine, "Later")
+    await add(pg_client, owner, pl["id"], live)
+    await add(pg_client, owner, pl["id"], later)
+    async with _sessions(pg_engine)() as s:
+        await s.execute(update(Sermon).where(Sermon.id == uuid.UUID(later)).values(
+            publish_at=datetime.now(timezone.utc) + timedelta(days=2)))
+        await s.commit()
+    body = (await get(pg_client, viewer, pl["id"])).json()
+    assert [i["sermon"]["title"] for i in body["items"]] == ["Live"]
+    assert body["item_count"] == 1
+
+
+@pytest.mark.parametrize("hidden", [s for s in SermonStatus if s != SermonStatus.PUBLISHED])
+async def test_non_owner_items_exclude_every_non_published_status(pg_client, pg_engine, hidden):
+    owner = await make_user(pg_client, pg_engine)
+    viewer = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner, is_public=True)
+    live = await publish_sermon(pg_client, pg_engine, "Live")
+    gone = await publish_sermon(pg_client, pg_engine, "Gone")
+    await add(pg_client, owner, pl["id"], live)
+    await add(pg_client, owner, pl["id"], gone)
+    async with _sessions(pg_engine)() as s:
+        await s.execute(update(Sermon).where(Sermon.id == uuid.UUID(gone)).values(status=hidden))
+        await s.commit()
+    body = (await get(pg_client, viewer, pl["id"])).json()
+    assert [i["sermon"]["title"] for i in body["items"]] == ["Live"]
+    assert body["item_count"] == 1
+
+
+async def test_public_to_private_flip_gives_non_owner_the_identical_404(pg_client, pg_engine):
+    owner = await make_user(pg_client, pg_engine)
+    viewer = await make_user(pg_client, pg_engine)
+    pl = await make_playlist(pg_client, owner, is_public=True)
+    assert (await get(pg_client, viewer, pl["id"])).status_code == 200
+    r = await pg_client.patch(f"{API}/playlists/{pl['id']}", json={"is_public": False}, headers=owner.headers)
+    assert r.status_code == 200
+    after = await get(pg_client, viewer, pl["id"])
+    missing = await get(pg_client, viewer, str(uuid.uuid4()))
+    assert after.status_code == 404 and err(after) == NOT_FOUND == err(missing)

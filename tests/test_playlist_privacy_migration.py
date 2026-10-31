@@ -86,7 +86,10 @@ def test_downgrade_restores_default_true_but_not_rows_then_upgrade_is_clean(thro
     assert _flags(throwaway_db.dsn) == before  # rows unchanged (all false); not restored
     assert _insert_default(throwaway_db.dsn, ids["user"], "after-down") is True
 
-    # make one row public again, then re-upgrade: backfill runs again, cleanly
+    # make every row public again, then re-upgrade: backfill runs again, cleanly
+    with psycopg.connect(throwaway_db.dsn, autocommit=True) as c:
+        c.execute("UPDATE playlists SET is_public = true")
+    assert set(_flags(throwaway_db.dsn).values()) == {True}
     _ok(alembic_runner(url, "upgrade", REV))
     assert set(_flags(throwaway_db.dsn).values()) == {False}
     assert _default(throwaway_db.dsn) == "false"

@@ -28,6 +28,7 @@ from app.core.text_safety import (
     contains_blocked_term,
     contains_contact,
     contains_url,
+    has_visible_text,
     normalise_text,
 )
 from app.models.models import (
@@ -53,6 +54,9 @@ from app.services.content_service import (
 
 settings = get_settings()
 log = get_logger("playlists")
+
+# Bounds the per-request work of `get_playlist_detail`, which loads every item.
+MAX_ITEMS_PER_PLAYLIST = 500
 
 
 def _cover_url(key: str | None) -> str | None:
@@ -138,7 +142,8 @@ async def _get_readable_playlist(
         )).limit(1)
     )).first()
     owner = await db.get(User, playlist.user_id)
-    if blocked is not None or owner is None:
+    # A deactivated owner's public playlist is no longer shared content.
+    if blocked is not None or owner is None or not owner.is_active:
         raise _not_found()
     return playlist, owner
 
@@ -159,6 +164,19 @@ def _validate_public_text(name: str, description: str | None) -> None:
             raise ContentError("This playlist can't be made public", status_code=422)
 
 
+def _clean_name(raw: str) -> str:
+    """Store what we validate: the normalised name, never raw bidi / zero-width /
+    control characters, and never a name with nothing visible in it."""
+    name = normalise_text(raw, multiline=False)
+    if not name or not has_visible_text(name):
+        raise ContentError("Playlist name must contain visible text", status_code=422)
+    return name
+
+
+def _clean_description(raw: str | None) -> str | None:
+    return (normalise_text(raw) or None) if raw else None
+
+
 async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
     playlists = (await db.execute(
         select(Playlist).where(Playlist.user_id == user.id).order_by(Playlist.created_at.desc())
@@ -171,8 +189,8 @@ async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
 async def create_playlist(
     db: AsyncSession, user: User, name: str, description: str | None, is_public: bool
 ) -> PlaylistPublic:
-    name = name.strip()
-    description = (description.strip() or None) if description else None
+    name = _clean_name(name)
+    description = _clean_description(description)
     if is_public:
         _validate_public_text(name, description)
     playlist = Playlist(
@@ -196,9 +214,9 @@ async def update_playlist(
     uses, so an omitted field is left untouched rather than nulled)."""
     playlist = await _get_owned_playlist(db, user, playlist_id)
     if "name" in fields and fields["name"] is not None:
-        fields["name"] = fields["name"].strip()
+        fields["name"] = _clean_name(fields["name"])
     if "description" in fields:
-        fields["description"] = fields["description"].strip() or None if fields["description"] else None
+        fields["description"] = _clean_description(fields["description"])
     final_public = fields.get("is_public", playlist.is_public)
     if final_public:
         _validate_public_text(
@@ -275,6 +293,14 @@ async def add_item(
     visible = sermon.status in VIEWER_VISIBLE_STATUSES and sermon_publish_time_passed(sermon)
     if not visible and not is_staff:
         raise ContentError("Sermon not found", status_code=404)
+
+    item_count = (await db.execute(
+        select(func.count(PlaylistItem.id)).where(PlaylistItem.playlist_id == playlist.id)
+    )).scalar_one()
+    if item_count >= MAX_ITEMS_PER_PLAYLIST:
+        raise ContentError(
+            f"A playlist can hold at most {MAX_ITEMS_PER_PLAYLIST} items", status_code=422
+        )
 
     next_position = (await db.execute(
         select(func.max(PlaylistItem.position)).where(PlaylistItem.playlist_id == playlist.id)
