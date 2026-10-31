@@ -1,4 +1,3 @@
-/* global __DEV__ */
 import React, { useRef, useState } from 'react';
 import { View, type TextInput } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';

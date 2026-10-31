@@ -81,6 +81,24 @@ describe('shared-link replay', () => {
     expect(mockPush).toHaveBeenCalledWith('/series/b');
   });
 
+  it('cold start while bootstrapping: stash, loading, then signedIn and home -> exactly one push', () => {
+    mockedStatus.mockReturnValue('loading');
+    mockSegments = ['index'];
+    stashPendingLink('/sermon/a');
+    const view = render(tree());
+    expect(mockPush).not.toHaveBeenCalled();
+
+    mockedStatus.mockReturnValue('signedIn');
+    act(() => listener?.('signedIn'));
+    mockSegments = ['(tabs)', 'home'];
+    view.rerender(tree());
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith('/sermon/a');
+
+    view.rerender(tree());
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
   it('nothing stashed: signed in on home pushes nothing', () => {
     mockedStatus.mockReturnValue('signedIn');
     mockSegments = ['(tabs)', 'home'];

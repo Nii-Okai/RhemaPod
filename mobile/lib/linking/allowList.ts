@@ -1,3 +1,4 @@
+/* global __DEV__ */
 /**
  * Inbound-URL allow-list (ADR 0021, plan-share-links S5), applied by
  * `app/+native-intent.tsx` to every URL the OS hands the app.
@@ -8,11 +9,12 @@
  * Everything else lands on home, except the two inbound uses that exist for non-content
  * reasons, which are passed through untouched:
  *
- * - Google Sign-In's iOS callback (`com.googleusercontent.apps.<id>:/oauthredirect`), which
- *   the native SDK consumes itself — rewriting it to `/` would reset the sign-in screen
- *   mid-flow.
+ * - Google Sign-In's iOS callback, only for this app's own client-id scheme and only the
+ *   `/oauthredirect` path. The native SDK consumes the URL itself (app-delegate
+ *   subscriber), but React Native's Linking also delivers it to the router; rewriting it to
+ *   `/` would reset the sign-in screen mid-flow.
  * - expo-dev-client's launcher links (`rhemapod://expo-development-client/...`,
- *   `exp+rhemapod-mobile://...`), which only exist in development builds.
+ *   `exp+rhemapod-mobile://...`), only when `__DEV__`; in release they go home.
  *
  * Pure: no router, no session. Stash/replay lives in `pendingLink.ts`.
  */
@@ -31,7 +33,13 @@ const HOME: LinkResolution = { kind: 'home' };
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const CONTENT_PATH = new RegExp(`^/(sermon|series|playlist)/(${UUID})$`, 'i');
 const SCHEME_PREFIX = /^([a-z][a-z0-9+.-]*):/i;
-const GOOGLE_CALLBACK_SCHEME = /^com\.googleusercontent\.apps\./i;
+// The iOS client's reversed-client-id scheme: the same value `app.json` registers as
+// `iosUrlScheme` for the Google Sign-In plugin (so it is the only scheme iOS delivers
+// to us for Google). Pinned, not pattern-matched: any other `com.googleusercontent.apps.*`
+// scheme is an attacker-registered or foreign link.
+export const GOOGLE_CALLBACK_SCHEME =
+  'com.googleusercontent.apps.827558560538-ujevidt1217i6a2gu8fm9sn8je755kta';
+const GOOGLE_CALLBACK_PATH = /^\/oauthredirect\/?$/i;
 const DEV_CLIENT_SCHEME = 'exp+rhemapod-mobile';
 
 function contentRoute(path: string): LinkResolution {
@@ -64,12 +72,18 @@ export function resolveIncomingLink(raw: string): LinkResolution {
     // `rhemapod://sermon/<uuid>` has "sermon" in the authority slot; strip the slashes
     // and read the whole remainder as the path.
     const path = `/${rest.replace(/^\/+/, '')}`;
-    if (/^\/expo-development-client(\/|\?|$)/.test(path)) return { kind: 'passthrough', path: input };
+    if (__DEV__ && /^\/expo-development-client(\/|\?|$)/.test(path)) {
+      return { kind: 'passthrough', path: input };
+    }
     return contentRoute(path);
   }
 
-  if (scheme === DEV_CLIENT_SCHEME || GOOGLE_CALLBACK_SCHEME.test(scheme)) {
-    return { kind: 'passthrough', path: input };
+  // Dev-client launcher links exist only in development builds; in release they are home.
+  if (scheme === DEV_CLIENT_SCHEME) return __DEV__ ? { kind: 'passthrough', path: input } : HOME;
+
+  if (scheme === GOOGLE_CALLBACK_SCHEME) {
+    const pathOnly = rest.replace(/^\/+/, '/').split(/[?#]/, 1)[0] ?? '';
+    return GOOGLE_CALLBACK_PATH.test(pathOnly) ? { kind: 'passthrough', path: input } : HOME;
   }
 
   return HOME;

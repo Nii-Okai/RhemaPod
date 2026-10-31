@@ -1,4 +1,4 @@
-import { resolveIncomingLink } from '../allowList';
+import { GOOGLE_CALLBACK_SCHEME, resolveIncomingLink } from '../allowList';
 
 const ID = '3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b';
 
@@ -43,13 +43,45 @@ describe('resolveIncomingLink', () => {
 
   // Inbound uses that exist for non-content reasons (inventory in status.md, S5).
   describe('preserved non-content inbound uses', () => {
-    it.each([
-      ['Google iOS sign-in callback', 'com.googleusercontent.apps.827558560538-ujevidt1217i6a2gu8fm9sn8je755kta:/oauthredirect'],
-      ['dev-client launcher', 'rhemapod://expo-development-client/?url=http%3A%2F%2F192.168.1.2%3A8081'],
-      ['dev-client launcher (bare)', 'rhemapod://expo-development-client'],
-      ['dev-client exp+ scheme', 'exp+rhemapod-mobile://expo-development-client/?url=http%3A%2F%2Fx'],
-    ])('%s passes through untouched', (_label, url) => {
+    it('passes the app\'s own Google callback (scheme + /oauthredirect) through untouched', () => {
+      const url = `${GOOGLE_CALLBACK_SCHEME}:/oauthredirect`;
       expect(resolveIncomingLink(url)).toEqual({ kind: 'passthrough', path: url });
+      const withQuery = `${url}?code=abc&state=xyz`;
+      expect(resolveIncomingLink(withQuery)).toEqual({ kind: 'passthrough', path: withQuery });
+    });
+
+    it.each([
+      ['real scheme, other path', `${GOOGLE_CALLBACK_SCHEME}:/settings`],
+      ['real scheme, no path', `${GOOGLE_CALLBACK_SCHEME}:`],
+      ['real scheme, path prefix trick', `${GOOGLE_CALLBACK_SCHEME}:/oauthredirect/../settings`],
+      ['foreign client id', 'com.googleusercontent.apps.attacker:/oauthredirect'],
+      ['foreign client id, other path', 'com.googleusercontent.apps.827558560538-abc:/oauthredirect'],
+      ['real scheme as prefix of a longer scheme', `${GOOGLE_CALLBACK_SCHEME}x:/oauthredirect`],
+    ])('%s -> home', (_label, url) => {
+      expect(resolveIncomingLink(url)).toEqual({ kind: 'home' });
+    });
+
+    describe('dev-client launcher links', () => {
+      const links = [
+        'rhemapod://expo-development-client/?url=http%3A%2F%2F192.168.1.2%3A8081',
+        'rhemapod://expo-development-client',
+        'exp+rhemapod-mobile://expo-development-client/?url=http%3A%2F%2Fx',
+      ];
+      const g = globalThis as { __DEV__?: boolean };
+      const original = g.__DEV__;
+      afterEach(() => {
+        g.__DEV__ = original;
+      });
+
+      it.each(links)('in __DEV__, %s passes through untouched', (url) => {
+        g.__DEV__ = true;
+        expect(resolveIncomingLink(url)).toEqual({ kind: 'passthrough', path: url });
+      });
+
+      it.each(links)('in release, %s -> home', (url) => {
+        g.__DEV__ = false;
+        expect(resolveIncomingLink(url)).toEqual({ kind: 'home' });
+      });
     });
   });
 });
