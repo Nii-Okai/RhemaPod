@@ -73,11 +73,11 @@ async def make_playlist(client, headers, name="Morning Dew", **extra):
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
-async def test_create_playlist_defaults_to_public_and_empty(client, engine):
+async def test_create_playlist_defaults_to_private_and_empty(client, engine):
     viewer = await make_viewer(client)
     body = await make_playlist(client, viewer)
     assert body["name"] == "Morning Dew"
-    assert body["is_public"] is True
+    assert body["is_public"] is False
     assert body["item_count"] == 0
     assert body["total_duration_seconds"] == 0
     assert body["cover_url"] is None

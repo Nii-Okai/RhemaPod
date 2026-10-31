@@ -3184,7 +3184,7 @@
             "title": "Description"
           },
           "is_public": {
-            "default": true,
+            "default": false,
             "title": "Is Public",
             "type": "boolean"
           },
