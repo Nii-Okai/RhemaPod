@@ -233,4 +233,8 @@ services:
         value: no-referrer
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'"
+        value: "default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'"
+      # No includeSubDomains: other rhemapod.com hosts are outside this service.
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000

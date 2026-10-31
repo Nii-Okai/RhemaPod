@@ -15,10 +15,6 @@ export interface OnboardingSlide {
  * Images are `assets/onboarding-{1,2,3}.jpg` — Isaac's real event photography. Swapping
  * one for another photo later is a one-line `require()` path change per slide, nothing
  * else.
- *
- * Slide 3's body is still the placeholder text (verbatim-identical to slide 1's, per the
- * original mockup) — Isaac's note, 2026-10-16: "it will be different" eventually, keep as
- * given for now, don't invent new copy.
  */
 export const onboardingSlides: OnboardingSlide[] = [
   {
@@ -34,6 +30,6 @@ export const onboardingSlides: OnboardingSlide[] = [
   {
     image: require('../../assets/onboarding-3.jpg'),
     headline: 'Empower Your\nEveryday Life',
-    body: "Unlock messages that provide answers to life's challenges, strengthen your faith, and help you thrive. Experience true growth every single day.",
+    body: "Renew your mindset and find inspiration tailored exactly to your walk and destiny in God. Step into your purpose and live with confidence.",
   },
 ];

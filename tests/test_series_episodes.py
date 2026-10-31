@@ -363,6 +363,16 @@ async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(c
     assert by_title == {"Video Ep": "video", "Audio Ep": "audio"}
 
 
+# Share-links "not available" contract: GET /series/{id} (the call the mobile
+# series screen makes) must 404 for a signed-in viewer on an id that does not exist.
+async def test_nonexistent_series_detail_404s_for_signed_in_viewer(client, engine):
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
+    r = await client.get(
+        "/api/v1/series/00000000-0000-4000-8000-000000000000", headers=viewer
+    )
+    assert r.status_code == 404, r.text
+
+
 # Draft-series visibility: viewers/anon see published series only; a draft is
 # indistinguishable from a nonexistent id (no existence oracle). Staff still see it.
 async def _draft_and_published_series(client, engine):

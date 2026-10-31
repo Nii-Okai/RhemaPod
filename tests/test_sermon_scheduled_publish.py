@@ -16,6 +16,8 @@ Covers:
 """
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -412,3 +414,56 @@ async def test_publish_action_bodyless_leaves_existing_publish_at_untouched(
     if got.tzinfo is None:
         got = got.replace(tzinfo=timezone.utc)
     assert got == want
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Share-links "not available" contract: GET /catalog/sermons/{id} (the call the
+# mobile detail screen makes) is a plain 404 — not 200, not 403 — for a signed-in
+# viewer on any non-published sermon, and for an id that does not exist.
+# ═══════════════════════════════════════════════════════════════════════════════
+async def _set_status(engine, sid, status):
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        await s.execute(
+            text("UPDATE sermons SET status = :st WHERE id = :i"),
+            {"st": status, "i": sid},
+        )
+        await s.commit()
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["DRAFT", "PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "REJECTED", "UNPUBLISHED"],
+)
+async def test_non_published_sermon_detail_404s_for_signed_in_viewer(client, engine, status):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
+    sid = (await client.post("/api/v1/sermons", json={"title": "Hidden"}, headers=ed)).json()["id"]
+    await _set_status(engine, sid, status)
+
+    r = await client.get(f"/api/v1/catalog/sermons/{sid}", headers=viewer)
+    assert r.status_code == 404, r.text
+
+
+async def test_unpublished_after_publish_sermon_detail_404s_for_viewer(client, engine):
+    ed = await make_user(client, engine, "ed@example.com", "editor")
+    mgr = await make_user(client, engine, "mgr@example.com", "manager")
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
+    sid = (await client.post("/api/v1/sermons", json={"title": "Pulled"}, headers=ed)).json()["id"]
+    await _publish(client, ed, mgr, sid)
+    assert (await client.get(f"/api/v1/catalog/sermons/{sid}", headers=viewer)).status_code == 200
+
+    # Real unpublish action (a raw UPDATE would be masked by the test session's
+    # identity map, which already holds the published row).
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=mgr)
+    assert r.status_code == 200, r.text
+    r = await client.get(f"/api/v1/catalog/sermons/{sid}", headers=viewer)
+    assert r.status_code == 404, r.text
+
+
+async def test_nonexistent_sermon_detail_404s_for_signed_in_viewer(client, engine):
+    viewer = await make_user(client, engine, "viewer@example.com", "viewer")
+    r = await client.get(
+        "/api/v1/catalog/sermons/00000000-0000-4000-8000-000000000000", headers=viewer
+    )
+    assert r.status_code == 404, r.text

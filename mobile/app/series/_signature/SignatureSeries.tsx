@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, FittedArt, PlatformIcon, Tag } from '../../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, FittedArt, PlatformIcon, Tag } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -10,6 +10,7 @@ import { Flame, GlowingFlame } from '../../(tabs)/_home/signature/Flame';
 import type { DetailTab } from '../_detail/DetailTabs';
 import { seriesMetaLine } from '../_detail/meta';
 import { SeriesDetailSkeleton } from '../_detail/Skeleton';
+import { isNotFoundError } from '../../../lib/api/errors';
 import { useSeriesScreen } from '../_detail/useSeriesScreen';
 import { ctaWording, episodeProgress, sharedSpeaker, type EpisodeProgress } from './episodeProgress';
 import { SignatureEpisodeRow } from './SignatureEpisodeRow';
@@ -55,6 +56,15 @@ export function SignatureSeriesScreen() {
       <View style={styles.screen}>
         {header}
         <SeriesDetailSkeleton />
+      </View>
+    );
+  }
+
+  if (isNotFoundError(series.error)) {
+    return (
+      <View style={styles.screen}>
+        {header}
+        <DetailNotAvailable subject="series" onGoHome={screen.goHome} />
       </View>
     );
   }

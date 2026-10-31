@@ -49,12 +49,14 @@ test("UA to platform", () => {
 });
 
 function fakeDoc() {
-  const mk = (hidden) => ({ hidden, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } });
+  const mk = (hidden) => ({ hidden, attrs: {}, textContent: "", setAttribute(k, v) { this.attrs[k] = v; } });
   const els = {
     "open-app": mk(true),
     "badge-ios": mk(false),
     "badge-android": mk(false),
     "phone-hint": mk(true),
+    "get-lead": Object.assign(mk(false), { textContent: "Get RhemaPod" }),
+    "share-context": mk(true),
   };
   return { els, getElementById: (id) => els[id] ?? null };
 }
@@ -87,6 +89,40 @@ test("init: desktop shows both badges and the phone hint; invalid path hides the
   assert.equal(d.els["phone-hint"].hidden, false);
 });
 
+test("init: desktop with a valid path keeps the button hidden and shows the hint", () => {
+  const d = fakeDoc();
+  init(d, { pathname: `/sermon/${ID}` }, { userAgent: "Windows", maxTouchPoints: 0 });
+  assert.equal(d.els["open-app"].hidden, true);
+  assert.equal("href" in d.els["open-app"].attrs, false);
+  assert.equal(d.els["phone-hint"].hidden, false);
+  assert.equal(d.els["share-context"].hidden, true);
+  assert.equal(d.els["get-lead"].textContent, "Get RhemaPod");
+});
+
+test("init: lead text swaps only when the button is shown", () => {
+  const shown = fakeDoc();
+  init(shown, { pathname: `/sermon/${ID}` }, { userAgent: "iPhone", maxTouchPoints: 5 });
+  assert.equal(shown.els["get-lead"].textContent, "Don't have the app yet? Get RhemaPod:");
+  const bad = fakeDoc();
+  init(bad, { pathname: "/sermon/nope" }, { userAgent: "iPhone", maxTouchPoints: 5 });
+  assert.equal(bad.els["open-app"].hidden, true);
+  assert.equal(bad.els["get-lead"].textContent, "Get RhemaPod");
+  assert.equal(bad.els["share-context"].hidden, true);
+});
+
+for (const [type, noun] of [["sermon", "a sermon"], ["series", "a series"], ["playlist", "a playlist"]]) {
+  test(`init: context line names ${type}`, () => {
+    const d = fakeDoc();
+    init(d, { pathname: `/${type}/${ID}` }, { userAgent: "Android", maxTouchPoints: 5 });
+    assert.equal(d.els["share-context"].textContent, `Someone shared ${noun} with you.`);
+    assert.equal(d.els["share-context"].hidden, false);
+  });
+}
+
+test("open.js never uses innerHTML", () => {
+  assert.doesNotMatch(readFileSync(new URL("../open.js", import.meta.url), "utf8"), /innerHTML|outerHTML|insertAdjacentHTML/);
+});
+
 test("static pages carry no inline script/style, no content id, no auto-redirect", () => {
   for (const f of ["open.html", "index.html"]) {
     const html = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
@@ -97,6 +133,12 @@ test("static pages carry no inline script/style, no content id, no auto-redirect
   }
   const open = readFileSync(new URL("../open.html", import.meta.url), "utf8");
   assert.match(open, /noindex,nofollow/);
+  assert.match(open, /id="get-lead">Get RhemaPod</);
+  for (const f of ["open.html", "index.html"]) {
+    const html = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    assert.match(html, /<meta name="color-scheme" content="light">/);
+    assert.match(html, /Sermons, series and playlists, in your pocket\./);
+  }
   assert.match(open, /app-id=6828878983/);
   assert.doesNotMatch(open, /app-argument/);
 });
@@ -110,4 +152,41 @@ test("association files have the contracted shape", () => {
   const al = JSON.parse(readFileSync(new URL("../.well-known/assetlinks.json", import.meta.url), "utf8"));
   assert.equal(al[0].target.package_name, "com.niitech.rhemapod");
   assert.match(al[0].target.sha256_cert_fingerprints[0], /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+});
+
+test("open.html link-preview tags and og-image meet crawler limits", () => {
+  const html = readFileSync(new URL("../open.html", import.meta.url), "utf8");
+  for (const re of [/property="og:title"/, /property="og:description"/, /property="og:image"/, /name="twitter:card"/]) {
+    assert.match(html, re);
+  }
+  const imgs = [...html.matchAll(/(?:og|twitter):image" content="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(imgs.length >= 1);
+  for (const u of imgs) {
+    assert.match(u, /^https:\/\/open\.rhemapod\.com\/assets\/[\w.-]+$/);
+  }
+  const buf = readFileSync(new URL("../assets/og-image.png", import.meta.url));
+  assert.equal(buf.subarray(1, 4).toString(), "PNG");
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  assert.ok(w >= 600 && h >= 315, `og-image ${w}x${h}`);
+  assert.ok(buf.length < 300 * 1024, `og-image ${buf.length} bytes`);
+});
+
+test("open.js has no network, navigation or storage APIs", () => {
+  const js = readFileSync(new URL("../open.js", import.meta.url), "utf8");
+  assert.doesNotMatch(js, /fetch|XMLHttpRequest|sendBeacon|WebSocket|location\.(href|replace|assign)\s*=|window\.open|document\.cookie|localStorage/);
+});
+
+test("HTML and CSS reference only the store and RhemaPod origins", () => {
+  const allowed = [
+    /^https:\/\/apps\.apple\.com\/app\/id6828878983$/,
+    /^https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.niitech\.rhemapod$/,
+    /^https:\/\/(open|admin)\.rhemapod\.com\//,
+  ];
+  for (const f of ["open.html", "index.html", "style.css"]) {
+    const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    for (const [u] of src.matchAll(/(?:https?:)?\/\/[^\s"'<>)]+/g)) {
+      assert.ok(allowed.some((re) => re.test(u)), `${f}: unexpected origin ${u}`);
+    }
+  }
 });

@@ -176,7 +176,6 @@ export default function PlayerScreen() {
     void shareContent({
       title: item.sermon.title,
       description: item.sermon.description,
-      thumbnailUrl: item.sermon.thumbnail_url,
       deepLinkPath: `sermon/${item.sermon.id}`,
     });
   };

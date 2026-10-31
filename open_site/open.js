@@ -3,6 +3,8 @@
 
   var PATH_RE = /^\/(sermon|series|playlist)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
+  var CONTEXT_NOUN = { sermon: "a sermon", series: "a series", playlist: "a playlist" };
+
   /** rhemapod://<type>/<uuid> for a valid share path, otherwise null. Pure; never touches the DOM. */
   function appUrlForPath(pathname) {
     var m = PATH_RE.exec(pathname);
@@ -23,18 +25,28 @@
     var ios = doc.getElementById("badge-ios");
     var android = doc.getElementById("badge-android");
     var hint = doc.getElementById("phone-hint");
+    var lead = doc.getElementById("get-lead");
+    var context = doc.getElementById("share-context");
 
     var url = appUrlForPath(loc.pathname);
-    if (button) {
-      if (url) {
+    var platform = detectPlatform(nav.userAgent, nav.maxTouchPoints);
+    var mobile = platform === "ios" || platform === "android";
+
+    if (url && mobile) {
+      var noun = CONTEXT_NOUN[/^rhemapod:\/\/([a-z]+)\//.exec(url)[1]];
+      if (context) {
+        context.textContent = "Someone shared " + noun + " with you.";
+        context.hidden = false;
+      }
+      if (button) {
         button.setAttribute("href", url);
         button.hidden = false;
-      } else {
-        button.hidden = true;
       }
+      if (lead) lead.textContent = "Don't have the app yet? Get RhemaPod:";
+    } else if (button) {
+      button.hidden = true;
     }
 
-    var platform = detectPlatform(nav.userAgent, nav.maxTouchPoints);
     if (platform === "ios") {
       if (android) android.hidden = true;
     } else if (platform === "android") {

@@ -4,6 +4,7 @@ import { PixelRatio } from 'react-native';
 import RNShare from 'react-native-share';
 import { QueryClientProvider } from '@tanstack/react-query';
 import SermonDetailScreen from '../[id]';
+import { ApiError } from '../../../lib/api/errors';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
@@ -25,12 +26,13 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockDismissAll = jest.fn();
 let mockParams: Record<string, string | undefined> = { id: 'sermon-1' };
 let mockPathname = '/sermon/sermon-1';
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
-  useRouter: () => ({ back: mockBack, push: mockPush, dismissAll: mockDismissAll }),
+  useRouter: () => ({ back: mockBack, push: mockPush, replace: mockReplace, dismissAll: mockDismissAll }),
   usePathname: () => mockPathname,
 }));
 
@@ -127,6 +129,26 @@ describe('SermonDetailScreen — loading', () => {
   });
 });
 
+describe('SermonDetailScreen — not available', () => {
+  it('shows the calm not-available state on a 404, and Go home navigates to /', async () => {
+    mockedGet.mockRejectedValue(new ApiError(404, 'Sermon not found'));
+    const { findByText, queryByText } = renderDetail();
+
+    expect(await findByText("This sermon isn't available")).toBeTruthy();
+    expect(queryByText('Try again')).toBeNull();
+    expect(queryByText('Something went wrong loading this sermon.')).toBeNull();
+    fireEvent.press(await findByText('Go to Home'));
+    expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the retryable error state for a non-404 failure', async () => {
+    mockedGet.mockRejectedValue(new ApiError(500, 'boom'));
+    const { findByText, queryByText } = renderDetail();
+    expect(await findByText('Something went wrong loading this sermon.')).toBeTruthy();
+    expect(queryByText("This sermon isn't available")).toBeNull();
+  });
+});
+
 describe('SermonDetailScreen — error', () => {
   it('shows an error state with a working retry', async () => {
     mockedGet.mockRejectedValue(new Error('network down'));
@@ -170,7 +192,8 @@ describe('SermonDetailScreen — Share', () => {
     );
     const call = openSpy.mock.calls[0][0];
     expect(call.message).toContain('A word for the weary.');
-    expect(call.message).toContain('rhemapod://sermon/sermon-1');
+    expect(call.message.endsWith('https://open.rhemapod.com/sermon/sermon-1')).toBe(true);
+    expect(call.url).toBeUndefined();
   });
 });
 

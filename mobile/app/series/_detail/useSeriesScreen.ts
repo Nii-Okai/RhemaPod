@@ -37,6 +37,8 @@ export function useSeriesScreen(id: string) {
   // 2026-10-01), however many Related/episode drill-down levels deep the user is —
   // rather than going back just one level.
   const onCloseAll = () => router.dismissAll();
+  // "No longer available" -> Go home: `/` re-resolves to home (or sign-in), same as a cold start.
+  const goHome = () => router.replace('/');
   // Episodes open the player directly — one transition from the tap to playback (Nii's
   // ask, 2026-10-23). A locked or not-yet-ready episode is handed on to its detail page
   // by the player itself.
@@ -71,7 +73,6 @@ export function useSeriesScreen(id: string) {
     void shareContent({
       title: series.data.title,
       description: series.data.description,
-      thumbnailUrl: series.data.thumbnail_url,
       deepLinkPath: `series/${series.data.id}`,
     });
   };
@@ -128,6 +129,7 @@ export function useSeriesScreen(id: string) {
     inMyList,
     toggleAllInMyList,
     onCloseAll,
+    goHome,
     goToEpisode,
     playEpisode,
     onShare,

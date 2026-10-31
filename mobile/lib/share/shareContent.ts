@@ -1,76 +1,51 @@
-import * as FileSystem from 'expo-file-system';
 import Share from 'react-native-share';
+import { SHARE_BASE_URL } from '../api/config';
 
 /**
- * Rich share (Isaac's ask, session 2026-10-09: "include image thumbnail, title,
- * description and link") for sermon/series detail's own Share action. Core React
- * Native's `Share` API can't do this: it has no image-attachment support on Android at
- * all, and even on iOS a remote `https://` URL in its `url` field is shared as a plain
- * link, not fetched and attached as an image. `react-native-share` (a new native
- * dependency, flagged per Isaac's own ask when confirming this approach) is the
- * standard fix — its `url` field DOES attach a local `file://`/base64 image on both
- * platforms, alongside `message`'s text, in one native share sheet.
+ * Share for sermon/series/playlist detail's own Share action: the title, a truncated
+ * description and an `https://open.rhemapod.com/<type>/<id>` link, as text through the
+ * native share sheet (`react-native-share`; core React Native's `Share` can't be used on
+ * Android with a `title`, and the app already depends on this one).
  *
- * The link shared is the app's own `rhemapod://` deep link (Isaac's call, same
- * session) — it opens the right screen for someone who already has the app installed,
- * and currently does nothing for someone who doesn't, since there is no web page for a
- * sermon/series to fall back to yet.
+ * The link is the https share link (ADR 0021): messengers make it tappable, it opens the
+ * app when installed (Universal/App Links) and a static store page when not. No image is
+ * attached — with a bare link, messengers render their own link card (Isaac's call at
+ * plan-share-links SL0, reversing the 2026-10-09 "include image thumbnail" ask). The base
+ * is `EXPO_PUBLIC_SHARE_BASE_URL`, read by `SHARE_BASE_URL` in `lib/api/config.ts`.
  */
 export interface ShareableContent {
   title: string;
   description?: string | null;
-  thumbnailUrl?: string | null;
-  /** e.g. `sermon/<id>` or `series/<id>` — joined onto the app's own `rhemapod://` scheme. */
+  /** e.g. `sermon/<id>`, `series/<id>` or `playlist/<id>` — joined onto the share base. */
   deepLinkPath: string;
 }
 
 const DESCRIPTION_MAX_LENGTH = 200;
-const SCHEME = 'rhemapod://';
 
 function truncate(text: string, maxLength: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
-  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
+  const head = trimmed.slice(0, maxLength);
+  const lastSpace = head.lastIndexOf(' ');
+  // Cut at the last space so a word isn't split; a single unbroken run is hard-cut.
+  return `${(lastSpace > 0 ? head.slice(0, lastSpace) : head).trimEnd()}…`;
 }
 
 function composeMessage({ title, description, deepLinkPath }: ShareableContent): string {
   const parts = [title];
   if (description) parts.push(truncate(description, DESCRIPTION_MAX_LENGTH));
-  parts.push(`${SCHEME}${deepLinkPath}`);
+  // Label, newline, then the bare URL alone on its line so messengers linkify it cleanly.
+  parts.push(`Listen on RhemaPod:\n${SHARE_BASE_URL}/${deepLinkPath.replace(/^\/+/, '')}`);
   return parts.join('\n\n');
 }
 
-/** Best-effort: a thumbnail that fails to download just means the share goes out as
- * text-only (title/description/link), never blocks or fails the whole share over an
- * image fetch hiccup. */
-async function downloadThumbnail(url: string): Promise<string | null> {
-  try {
-    const extension = (url.split('?')[0]?.split('.').pop() || 'jpg').toLowerCase().slice(0, 4);
-    const dest = `${FileSystem.cacheDirectory}share-${Date.now()}.${extension}`;
-    const result = await FileSystem.downloadAsync(url, dest);
-    return result.status === 200 ? result.uri : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function shareContent(content: ShareableContent): Promise<void> {
-  const message = composeMessage(content);
-  const localImageUri = content.thumbnailUrl ? await downloadThumbnail(content.thumbnailUrl) : null;
-
-  try {
-    await Share.open({
-      title: content.title,
-      message,
-      url: localImageUri ?? undefined,
-      // The library rejects on a plain user-cancelled dismissal by default — that's
-      // not a failure this app needs to surface (no caller here treats share
-      // rejection as an error to show).
-      failOnCancel: false,
-    });
-  } finally {
-    if (localImageUri) {
-      await FileSystem.deleteAsync(localImageUri, { idempotent: true }).catch(() => undefined);
-    }
-  }
+  await Share.open({
+    title: content.title,
+    message: composeMessage(content),
+    // The library rejects on a plain user-cancelled dismissal by default — that's
+    // not a failure this app needs to surface (no caller here treats share
+    // rejection as an error to show).
+    failOnCancel: false,
+  });
 }
