@@ -1,6 +1,7 @@
 import hashlib
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Annotated
 
@@ -22,6 +23,7 @@ from app.core.oauth import (
     VerifiedIdentity,
     unverified_exp,
     verify_apple_identity_token,
+    exchange_google_server_auth_code,
     verify_google_id_token,
 )
 from app.core.rate_limit import (
@@ -475,6 +477,16 @@ async def _check_oauth_rate_limit(provider: str, request: Request) -> None:
         )
 
 
+async def _google_id_token_from(data: GoogleSignInRequest | GoogleDeletionRequest) -> str:
+    """The raw Google ID token for a request: as sent (iOS), or exchanged from
+    the one-time server auth code (Android). The result is verified and
+    claimed single-use by the caller either way."""
+    if data.server_auth_code is not None:
+        return await exchange_google_server_auth_code(data.server_auth_code)
+    assert data.id_token is not None  # the request validator guarantees exactly one
+    return data.id_token
+
+
 @router.post("/oauth/google", response_model=TokenPair)
 async def oauth_google(
     data: GoogleSignInRequest, request: Request, db: DbDep, ctx: AuditCtx
@@ -487,8 +499,9 @@ async def oauth_google(
     await _check_oauth_rate_limit("google", request)
 
     try:
-        identity = await verify_google_id_token(data.id_token)
-        await _claim_oauth_token_once(data.id_token)
+        id_token = await _google_id_token_from(data)
+        identity = await verify_google_id_token(id_token)
+        await _claim_oauth_token_once(id_token)
     except OAuthTokenError as exc:
         raise _oauth_token_error_response(exc)
 
@@ -626,12 +639,13 @@ def _reauth_failed() -> ContentError:
 
 async def _verify_oauth_deletion_proof(
     provider: AuthProvider,
-    verify,
-    raw_token: str,
+    get_token: Callable[[], Awaitable[str]],
+    verify: Callable[[str], Awaitable[VerifiedIdentity]],
     target: account_deletion_service.DeletionTarget,
 ) -> None:
     try:
-        identity = await verify()
+        raw_token = await get_token()
+        identity = await verify(raw_token)
         subject = target.subjects.get(provider)
         if subject is None or identity.subject != subject:
             log.info("account_delete_reauth_rejected", reason="subject_mismatch")
@@ -657,6 +671,13 @@ async def _verify_oauth_deletion_proof(
         raise _reauth_failed() from None
 
 
+def _apple_token_of(data: AppleDeletionRequest) -> Callable[[], Awaitable[str]]:
+    async def get() -> str:
+        return data.identity_token
+
+    return get
+
+
 async def _verify_deletion_proof(
     data: AccountDeletionRequest, target: account_deletion_service.DeletionTarget
 ) -> None:
@@ -667,15 +688,15 @@ async def _verify_deletion_proof(
     elif isinstance(data, GoogleDeletionRequest):
         await _verify_oauth_deletion_proof(
             AuthProvider.GOOGLE,
-            lambda: verify_google_id_token(data.id_token),
-            data.id_token,
+            lambda: _google_id_token_from(data),
+            verify_google_id_token,
             target,
         )
     else:
         await _verify_oauth_deletion_proof(
             AuthProvider.APPLE,
-            lambda: verify_apple_identity_token(data.identity_token, data.raw_nonce),
-            data.identity_token,
+            _apple_token_of(data),
+            lambda token: verify_apple_identity_token(token, data.raw_nonce),
             target,
         )
 

@@ -77,12 +77,24 @@ class ResetPasswordRequest(BaseModel):
         return _validate_password_strength(v)
 
 
-class GoogleSignInRequest(BaseModel):
-    """Google's signed ID token from the mobile app's native Google Sign-In
-    flow (ADR 0015). Verified server-side in `app/core/oauth.py` — nothing
-    here is trusted until the signature, issuer, and audience all check out."""
+class _GoogleProofMixin(BaseModel):
+    """Exactly one of Google's signed ID token (iOS) or a one-time server auth
+    code (Android) that the API exchanges for an ID token. Either way the ID
+    token is verified in `app/core/oauth.py` — nothing here is trusted until
+    the signature, issuer, and audience all check out."""
 
-    id_token: str = Field(min_length=1, max_length=4096)
+    id_token: str | None = Field(default=None, min_length=1, max_length=4096)
+    server_auth_code: str | None = Field(default=None, min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def _exactly_one_google_proof(self):
+        if (self.id_token is None) == (self.server_auth_code is None):
+            raise ValueError("provide exactly one of id_token or server_auth_code")
+        return self
+
+
+class GoogleSignInRequest(_GoogleProofMixin):
+    """Google sign-in proof from the mobile app's native flow (ADR 0015)."""
 
 
 class AppleSignInRequest(BaseModel):
@@ -116,9 +128,8 @@ class PasswordDeletionRequest(_AccountDeletionBase):
     password: str = Field(min_length=1, max_length=256)
 
 
-class GoogleDeletionRequest(_AccountDeletionBase):
+class GoogleDeletionRequest(_AccountDeletionBase, _GoogleProofMixin):
     method: Literal["google"]
-    id_token: str = Field(min_length=1, max_length=4096)
 
 
 class AppleDeletionRequest(_AccountDeletionBase):

@@ -342,6 +342,13 @@ class Settings(BaseSettings):
     # com.niitech.rhemapod is the mobile app's bundle id / Android package.
     apple_oauth_audiences: Annotated[list[str], NoDecode] = ["com.niitech.rhemapod"]
     oauth_google_enabled: bool = True
+    # Android signs in with a one-time server auth code that the API exchanges
+    # for an ID token at Google's token endpoint (ADR 0015 addendum). Off by
+    # default: with no client secret there is nothing to exchange with, and a
+    # stub exchange would mint identities (an auth bypass), so there is none.
+    oauth_google_auth_code_enabled: bool = False
+    google_oauth_web_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
     # Apple ships second — Isaac is enrolling in the Apple Developer Program
     # on his own timeline. Flip this once that's done; not flipped here.
     oauth_apple_enabled: bool = False
@@ -573,6 +580,31 @@ class Settings(BaseSettings):
                 )
         return v
 
+    def _google_auth_code_problems(self) -> list[str]:
+        """Config-only checks (no network) for the Google server-auth-code
+        exchange. Shared with app/scripts/preflight.py, which runs it in every
+        environment."""
+        problems: list[str] = []
+        if not self.google_oauth_web_client_id:
+            problems.append(
+                "GOOGLE_OAUTH_WEB_CLIENT_ID is required while "
+                "OAUTH_GOOGLE_AUTH_CODE_ENABLED is true"
+            )
+        elif self.google_oauth_web_client_id not in self.google_oauth_client_ids:
+            problems.append(
+                "GOOGLE_OAUTH_WEB_CLIENT_ID must be listed in GOOGLE_OAUTH_CLIENT_IDS "
+                "(the exchanged ID token's audience is the web client)"
+            )
+        if (
+            self.google_oauth_client_secret is None
+            or not self.google_oauth_client_secret.get_secret_value()
+        ):
+            problems.append(
+                "GOOGLE_OAUTH_CLIENT_SECRET is required while "
+                "OAUTH_GOOGLE_AUTH_CODE_ENABLED is true"
+            )
+        return problems
+
     def _apple_revocation_problems(self) -> list[str]:
         """Config-only checks (no network) for the Apple revocation seam.
         Shared with app/scripts/preflight.py, which also covers staging."""
@@ -714,6 +746,8 @@ class Settings(BaseSettings):
                 "is true (without it every Google ID token fails audience "
                 "verification, and /auth/oauth/google is unusable)"
             )
+        if self.oauth_google_auth_code_enabled:
+            problems.extend(self._google_auth_code_problems())
         if self.oauth_apple_enabled and not self.apple_oauth_audiences:
             problems.append(
                 "APPLE_OAUTH_AUDIENCES is required while OAUTH_APPLE_ENABLED "

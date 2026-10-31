@@ -22,6 +22,8 @@ def _add_correlation_id(
 SENSITIVE_LOG_KEYS: frozenset[str] = frozenset(
     {
         "client_secret",
+        "google_oauth_client_secret",
+        "server_auth_code",
         "authorization_code",
         "identity_token",
         "id_token",

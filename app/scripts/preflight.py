@@ -208,6 +208,21 @@ async def _check_apple_revocation() -> str:
     return "http"
 
 
+async def _check_google_auth_code() -> str:
+    """Google server-auth-code exchange config, no network call. Runs in every
+    environment (production is also covered at Settings construction), so a
+    Render dev boot with the flag on and no secret is refused."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    if not s.oauth_google_auth_code_enabled:
+        return "not required (OAUTH_GOOGLE_AUTH_CODE_ENABLED is false)"
+    problems = s._google_auth_code_problems()
+    if problems:
+        raise RuntimeError("; ".join(problems))
+    return "configured"
+
+
 async def _check_migrations() -> str:
     from sqlalchemy import text
     from app.db.database import primary_engine
@@ -243,6 +258,7 @@ async def _run() -> int:
         _check("cdn", _check_cdn()),
         _check("stream", _check_stream()),
         _check("apple", _check_apple_revocation()),
+        _check("google", _check_google_auth_code()),
         _check("email", _check_email()),
     )
 
