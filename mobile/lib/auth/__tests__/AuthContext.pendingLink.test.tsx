@@ -70,6 +70,20 @@ describe('shared-link replay', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
+  it('signed out: a stashed /playlist/<uuid> link replays after sign-in lands on home', () => {
+    const target = '/playlist/3f1c2b7e-9a41-4d6e-8c55-0b1e7a2d9f10';
+    mockedStatus.mockReturnValue('signedOut');
+    mockSegments = ['(auth)', 'sign-in'];
+    stashPendingLink(target);
+    const view = render(tree());
+    act(() => listener?.('signedIn'));
+    expect(mockPush).not.toHaveBeenCalled();
+    mockSegments = ['(tabs)', 'home'];
+    view.rerender(tree());
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(target);
+  });
+
   it('cold start, already signed in: home first, then the target', () => {
     mockedStatus.mockReturnValue('signedIn');
     mockSegments = ['index'];

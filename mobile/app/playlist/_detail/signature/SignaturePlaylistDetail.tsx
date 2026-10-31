@@ -7,13 +7,11 @@ import type { AppIconName } from '../../../../components/PlatformIcon';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
-import { ApiError, isNotFoundError, userMessageFor } from '../../../../lib/api/errors';
-import { previewDisplayName } from '../../../../lib/format/displayName';
+import { isNotFoundError } from '../../../../lib/api/errors';
 import { formatPlaylistMinutes } from '../../../../lib/format/playlistDuration';
 import { shareContent } from '../../../../lib/share/shareContent';
 import { useRecommended } from '../../../../lib/query/hooks/useRecommended';
-import { useAddPlaylistItem, usePlaylist, useRemovePlaylistItem, useUpdatePlaylist } from '../../../../lib/query/hooks/usePlaylists';
-import { useCurrentUser } from '../../../../lib/query/hooks/useProfile';
+import { useAddPlaylistItem, usePlaylist, useRemovePlaylistItem } from '../../../../lib/query/hooks/usePlaylists';
 import { Flame } from '../../../(tabs)/_home/signature/Flame';
 import { LEAF } from '../../../(tabs)/_home/signature/leaf';
 import { PlaylistCover } from '../../../(tabs)/_library/signature/PlaylistCover';
@@ -21,6 +19,7 @@ import { PlaylistCoverPicker } from '../PlaylistCoverPicker';
 import { PlaylistDetailsSheet } from '../PlaylistDetailsSheet';
 import { PlaylistOptionsSheet } from '../PlaylistOptionsSheet';
 import { playlistQueueParams, shuffled } from '../playlistQueue';
+import { useMakePlaylistPublic } from '../useMakePlaylistPublic';
 import { usePlaylistPreview } from '../usePlaylistPreview';
 import { SignatureAddToPlaylistSheet } from './SignatureAddToPlaylistSheet';
 import { SignaturePlaylistItemRow, SignatureSermonAddRow } from './SignatureSermonRows';
@@ -65,8 +64,7 @@ export function SignaturePlaylistDetailScreen() {
   const { data: playlist, isLoading, isError, error, refetch } = usePlaylist(id);
   const removeItem = useRemovePlaylistItem(id ?? '');
   const addItem = useAddPlaylistItem(id ?? '');
-  const updatePlaylist = useUpdatePlaylist(id ?? '');
-  const profile = useCurrentUser();
+  const makePublic = useMakePlaylistPublic(id ?? '');
   const recommended = useRecommended();
   const pullToRefresh = usePullToRefresh([refetch]);
   const preview = usePlaylistPreview();
@@ -132,33 +130,18 @@ export function SignaturePlaylistDetailScreen() {
     });
   // Sharing a private playlist first asks to make it public (the link is useless to a
   // recipient otherwise): No does nothing, Yes PATCHes and opens the share sheet only once
-  // that succeeded. A 422 carries the server's content-rule message; anything else is generic.
-  const makePublicThenShare = async () => {
-    try {
-      await updatePlaylist.mutateAsync({ isPublic: true });
-    } catch (e) {
-      const message =
-        e instanceof ApiError && e.status === 422 ? userMessageFor(e) : "Couldn't make this playlist public. Try again.";
-      Alert.alert("Couldn't share this playlist", message);
-      return;
-    }
-    openShareSheet();
-  };
+  // that succeeded. The flow itself is shared with the Name & details toggle.
   const share = () => {
     if (!isOwner || playlist.is_public) {
       openShareSheet();
       return;
     }
-    const ownerName = previewDisplayName(profile.data?.full_name) ?? 'your name';
-    Alert.alert(
-      'Make this playlist public?',
-      `Anyone with the link can see it and its sermons. Your name shows as '${ownerName}'.`,
-      [
-        { text: 'No', style: 'cancel' },
-        { text: 'Yes', onPress: () => void makePublicThenShare() },
-      ],
-    );
+    makePublic.confirmAndMakePublic({
+      onSuccess: openShareSheet,
+      onFailure: (message) => Alert.alert("Couldn't share this playlist", message),
+    });
   };
+  const shareDisabled = isOwner && !playlist.is_public && (!makePublic.ready || makePublic.busy);
   const addRecommended = (sermonId: string) => {
     setAddingRecommendedId(sermonId);
     addItem.mutate(sermonId, { onSettled: () => setAddingRecommendedId(null) });
@@ -258,7 +241,7 @@ export function SignaturePlaylistDetailScreen() {
         <View style={styles.actions}>
           {isOwner ? <Action icon="add" label="Add" onPress={() => setAddOpen(true)} /> : null}
           <Action icon="shuffle" label="Shuffle" onPress={() => startQueue(shuffled(ids()))} disabled={!hasItems} />
-          <Action icon="share-outline" label="Share" onPress={share} />
+          <Action icon="share-outline" label="Share" onPress={share} disabled={shareDisabled} />
           {isOwner ? <Action icon="pencil" label="Edit" onPress={() => setDetailsOpen(true)} /> : null}
         </View>
 
