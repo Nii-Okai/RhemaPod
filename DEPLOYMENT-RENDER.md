@@ -265,17 +265,17 @@ Do this before any native build: a wrong AASA at build time can leave links dead
 
 ### Learned during Phase 1 (2026-10-31)
 
-- **Custom domain must be attached before anything works.** Until  showed *Verified*
+- **Custom domain must be attached before anything works.** Until `open.rhemapod.com` showed *Verified*
   under the service's Custom Domains, every path returned Cloudflare *Error 1000 "DNS points to prohibited
   IP"* (403), even with a correct DNS-only CNAME. A Blueprint sync doesn't always attach declared
-  ; add it by hand if it isn't listed.
-- **Blueprint / syntax worked as written** (, ):
-  rewrites, 301s, the AASA  header,  and the CSP all applied on first deploy.
+  `domains:`; add it by hand if it isn't listed.
+- **Blueprint `routes`/`headers` syntax worked as written** (`type/source/destination`, `path/name/value`):
+  rewrites, 301s, the AASA `application/json` header, `X-Robots-Tag` and the CSP all applied on first deploy.
 - **Apple's CDN picked up the AASA within minutes** of the domain verifying (no multi-hour lag this time).
-  Google's  returned  immediately.
-- **Link-preview image:** WhatsApp needs  ≥ 600×315 and small; the first 512×512 logo was too
-  small. The shipped image is 1200×630, ~130 KB ().
-- **CSP is strict** (, no inline): any page change must keep JS/CSS
+  Google's `assetlinks:check` returned `linked: true` immediately.
+- **Link-preview image:** WhatsApp needs `og:image` ≥ 600×315 and small; the first 512×512 logo was too
+  small. The shipped image is 1200×630, ~130 KB (`open_site/assets/og-image.png`).
+- **CSP is strict** (`script-src`/`style-src`/`img-src 'self'`, no inline): any page change must keep JS/CSS
   in separate files and images local, or it silently breaks.
 
 ### Before the first Play release (L1)
