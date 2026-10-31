@@ -55,6 +55,15 @@ export async function performGoogleSignIn(): Promise<string | null> {
   if (!idToken) {
     throw new Error("Google sign-in did not return an ID token. Check GoogleSignin.configure's client IDs.");
   }
+  // Revoke now, while the SDK definitely knows the account: the dropGoogleGrant() above
+  // can't when the SDK has forgotten it (confirmed on-device 2026-11-01 — the same token
+  // came back again). Our backend verifies the ID token offline against Google's keys,
+  // so revoking the grant doesn't invalidate the token we're about to send.
+  try {
+    await GoogleSignin.revokeAccess();
+  } catch {
+    // Best-effort; the dropGoogleGrant() on the next attempt is the fallback.
+  }
   return idToken;
 }
 

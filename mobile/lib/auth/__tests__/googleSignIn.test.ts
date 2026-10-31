@@ -34,6 +34,20 @@ describe('performGoogleSignIn', () => {
     expect(order(g.revokeAccess)).toBeLessThan(order(g.signIn));
   });
 
+  it('revokes again right after obtaining the token, so the cache never holds a used token', async () => {
+    g.hasPreviousSignIn.mockReturnValue(false);
+    await performGoogleSignIn();
+    const revokes = g.revokeAccess.mock.invocationCallOrder;
+    expect(revokes.length).toBe(2);
+    expect(revokes[1]).toBeGreaterThan(order(g.signIn));
+  });
+
+  it('still returns the token if the post-sign-in revoke fails', async () => {
+    g.hasPreviousSignIn.mockReturnValue(false);
+    g.revokeAccess.mockRejectedValue(new Error('network'));
+    await expect(performGoogleSignIn()).resolves.toBe('fresh-token');
+  });
+
   it('skips the silent restore when there was no previous sign-in', async () => {
     g.hasPreviousSignIn.mockReturnValue(false);
     await performGoogleSignIn();
