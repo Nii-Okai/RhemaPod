@@ -17,7 +17,10 @@
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": [
+        "applinks:open.rhemapod.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -28,6 +31,33 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/sermon/"
+            },
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/series/"
+            },
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/playlist/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
