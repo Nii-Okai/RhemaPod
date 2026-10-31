@@ -164,7 +164,10 @@ async def get_playlist_detail(db: AsyncSession, user: User, playlist_id: uuid.UU
         sermons = {s.id: s for s in rows}
 
     has_sub = await content_service._has_subscription(db, user)
-    names = await load_ref_names(db, list(sermons.values()))
+    names = await load_ref_names(
+        db, list(sermons.values()),
+        include_draft_series=content_service.staff_sees_full_counts(user),
+    )
     series_map = await content_service._series_map(db, list(sermons.values()))
 
     items: list[PlaylistItemPublic] = []

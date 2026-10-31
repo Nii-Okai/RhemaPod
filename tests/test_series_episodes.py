@@ -42,6 +42,13 @@ async def user_id_for(engine, email):
         return str(row.id)
 
 
+async def publish_series(client, mgr, series_id):
+    r = await client.patch(
+        f"/api/v1/series/{series_id}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+
+
 async def publish_episode(client, ed, mgr, series_id, episode_number=1, title="Ep1"):
     sid = (await client.post(
         "/api/v1/sermons",
@@ -132,6 +139,7 @@ async def test_series_episodes_locked_for_anonymous(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Paid Series", "tier": "paid"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     await publish_episode(client, ed, mgr, series["id"])
 
     episodes = (await client.get(
@@ -151,6 +159,7 @@ async def test_series_episodes_unlocked_for_entitled_subscriber(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Paid Series", "tier": "paid"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     await publish_episode(client, ed, mgr, series["id"])
 
     sub = await activate_subscription(client, engine, "sub@example.com")
@@ -172,6 +181,7 @@ async def test_series_episodes_renumbered_contiguous_on_public_read(client, engi
     series = (await client.post(
         "/api/v1/series", json={"title": "Gappy Series"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     await publish_episode(client, ed, mgr, series["id"], episode_number=1, title="One")
     await publish_episode(client, ed, mgr, series["id"], episode_number=2, title="Two")
     await publish_episode(client, ed, mgr, series["id"], episode_number=5, title="Five")
@@ -217,6 +227,7 @@ async def test_series_episodes_hides_gap_from_invisible_episode(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Draft Gap Series"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     await publish_episode(client, ed, mgr, series["id"], episode_number=1, title="One")
     # episode_number=2 stays a draft — never submitted/approved/published.
     await client.post(
@@ -250,6 +261,7 @@ async def test_series_episodes_leaves_unnumbered_episode_null(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Unnumbered Series"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     await publish_episode(client, ed, mgr, series["id"], episode_number=1, title="One")
     await publish_episode_with_null_number(client, ed, mgr, series["id"], title="Bonus")
     await publish_episode(client, ed, mgr, series["id"], episode_number=4, title="Four")
@@ -283,6 +295,7 @@ async def test_series_episodes_resolves_speaker_category_and_series_names(client
     series = (await client.post(
         "/api/v1/series", json={"title": "Anchored", "category_id": category["id"]}, headers=ed,
     )).json()
+    await publish_series(client, mgr, series["id"])
     sid = (await client.post(
         "/api/v1/sermons",
         json={
@@ -313,6 +326,7 @@ async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(c
     ed = await make_user(client, engine, "e@example.com", "editor")
     mgr = await make_user(client, engine, "m@example.com", "manager")
     series = (await client.post("/api/v1/series", json={"title": "Mixed"}, headers=ed)).json()
+    await publish_series(client, mgr, series["id"])
 
     video_sid = (await client.post(
         "/api/v1/sermons",
@@ -347,3 +361,133 @@ async def test_series_episodes_media_type_reflects_each_episodes_own_rendition(c
     episodes = (await client.get(f"/api/v1/series/{series['id']}/episodes")).json()
     by_title = {e["title"]: e["media_type"] for e in episodes}
     assert by_title == {"Video Ep": "video", "Audio Ep": "audio"}
+
+
+# Draft-series visibility: viewers/anon see published series only; a draft is
+# indistinguishable from a nonexistent id (no existence oracle). Staff still see it.
+async def _draft_and_published_series(client, engine):
+    ed = await make_user(client, engine, "dsed@example.com", "editor")
+    mgr = await make_user(client, engine, "dsmgr@example.com", "manager")
+    viewer = await make_user(client, engine, "dsviewer@example.com", "viewer")
+    draft = (await client.post("/api/v1/series", json={"title": "Draft S"}, headers=ed)).json()
+    pub = (await client.post("/api/v1/series", json={"title": "Pub S"}, headers=ed)).json()
+    r = await client.patch(
+        f"/api/v1/series/{pub['id']}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+    return ed, mgr, viewer, draft, pub
+
+
+async def test_draft_series_detail_404s_for_signed_in_viewer(client, engine):
+    _, _, viewer, draft, _ = await _draft_and_published_series(client, engine)
+    missing = await client.get(
+        "/api/v1/series/00000000-0000-0000-0000-000000000000", headers=viewer
+    )
+    for headers in (viewer, {}):
+        r = await client.get(f"/api/v1/series/{draft['id']}", headers=headers)
+        assert r.status_code == 404
+        assert r.json()["detail"] == missing.json()["detail"]
+    liked = await client.put(f"/api/v1/series/{draft['id']}/like", headers=viewer)
+    assert liked.status_code == 404
+
+
+async def test_series_list_and_search_exclude_drafts_for_viewer(client, engine):
+    _, _, viewer, draft, pub = await _draft_and_published_series(client, engine)
+    ids = {s["id"] for s in (await client.get("/api/v1/series", headers=viewer)).json()}
+    assert ids == {pub["id"]}
+    anon_ids = {s["id"] for s in (await client.get("/api/v1/series")).json()}
+    assert anon_ids == {pub["id"]}
+    r = await client.get("/api/v1/search", params={"q": "S"}, headers=viewer)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    group = body.get("series")
+    if isinstance(group, dict):
+        group = group.get("items", [])
+    assert draft["id"] not in {s["id"] for s in (group or [])}
+
+
+async def test_staff_still_see_draft_series(client, engine):
+    ed, mgr, _, draft, pub = await _draft_and_published_series(client, engine)
+    for headers in (ed, mgr):
+        assert (await client.get(
+            f"/api/v1/series/{draft['id']}", headers=headers
+        )).status_code == 200
+        ids = {s["id"] for s in (await client.get("/api/v1/series", headers=headers)).json()}
+        assert ids == {draft["id"], pub["id"]}
+
+
+async def test_published_series_detail_200_for_viewer(client, engine):
+    _, _, viewer, _, pub = await _draft_and_published_series(client, engine)
+    assert (await client.get(f"/api/v1/series/{pub['id']}", headers=viewer)).status_code == 200
+    assert (await client.get(f"/api/v1/series/{pub['id']}/episodes")).status_code == 200
+
+
+async def test_draft_series_episodes_404_for_viewer_and_anon(client, engine):
+    ed, mgr, viewer, draft, _ = await _draft_and_published_series(client, engine)
+    await publish_episode(client, ed, mgr, draft["id"])
+    missing = await client.get(
+        "/api/v1/series/00000000-0000-0000-0000-000000000000/episodes", headers=viewer
+    )
+    assert missing.status_code == 404
+    for headers in (viewer, {}):
+        r = await client.get(f"/api/v1/series/{draft['id']}/episodes", headers=headers)
+        assert r.status_code == 404
+        assert r.json()["detail"] == missing.json()["detail"]
+
+
+async def test_draft_series_episodes_200_for_staff(client, engine):
+    ed, mgr, _, draft, _ = await _draft_and_published_series(client, engine)
+    sid = await publish_episode(client, ed, mgr, draft["id"])
+    for headers in (ed, mgr):
+        r = await client.get(f"/api/v1/series/{draft['id']}/episodes", headers=headers)
+        assert r.status_code == 200, r.text
+        item = r.json()[0]
+        assert item["id"] == sid
+        assert item["series_title"] == "Draft S"
+        assert item["series_id"] == draft["id"]
+
+
+async def test_published_series_episodes_200_for_viewer(client, engine):
+    ed, mgr, viewer, _, pub = await _draft_and_published_series(client, engine)
+    await publish_episode(client, ed, mgr, pub["id"])
+    r = await client.get(f"/api/v1/series/{pub['id']}/episodes", headers=viewer)
+    assert r.status_code == 200, r.text
+    assert r.json()[0]["series_title"] == "Pub S"
+
+
+async def test_sermon_series_reference_hidden_for_viewer_when_series_draft(client, engine):
+    ed, mgr, viewer, draft, pub = await _draft_and_published_series(client, engine)
+    in_draft = await publish_episode(client, ed, mgr, draft["id"], title="InDraft")
+    in_pub = await publish_episode(client, ed, mgr, pub["id"], title="InPub")
+
+    def by_id(rows):
+        return {r["id"]: r for r in rows}
+
+    for headers in (viewer, {}):
+        cat = by_id((await client.get("/api/v1/catalog/sermons", headers=headers)).json())
+        assert cat[in_draft]["series_title"] is None
+        assert cat[in_draft]["series_id"] is None
+        assert cat[in_pub]["series_title"] == "Pub S"
+        assert cat[in_pub]["series_id"] == pub["id"]
+
+        d = (await client.get(f"/api/v1/catalog/sermons/{in_draft}", headers=headers)).json()
+        assert d["series_title"] is None and d["series_id"] is None
+        d = (await client.get(f"/api/v1/catalog/sermons/{in_pub}", headers=headers)).json()
+        assert d["series_title"] == "Pub S"
+
+    s = await client.get("/api/v1/search", params={"q": "InDraft"}, headers=viewer)
+    assert s.status_code == 200, s.text
+    assert "Draft S" not in s.text and draft["id"] not in s.text
+
+
+async def test_sermon_series_reference_visible_to_staff_when_series_draft(client, engine):
+    ed, mgr, _, draft, _ = await _draft_and_published_series(client, engine)
+    sid = await publish_episode(client, ed, mgr, draft["id"], title="InDraft")
+    for headers in (ed, mgr):
+        d = (await client.get(f"/api/v1/catalog/sermons/{sid}", headers=headers)).json()
+        assert d["series_title"] == "Draft S"
+        assert d["series_id"] == draft["id"]
+        lst = (await client.get("/api/v1/sermons", headers=headers)).json()
+        rows = lst["items"] if isinstance(lst, dict) else lst
+        row = next(r for r in rows if r["id"] == sid)
+        assert row["series_title"] == "Draft S"

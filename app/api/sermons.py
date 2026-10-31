@@ -99,7 +99,7 @@ async def list_my_sermons(
         author_id=author_id,
     )
     series_map = await content_service.series_for(db, rows)
-    names = await content_service.load_ref_names(db, rows)
+    names = await content_service.load_ref_names(db, rows, include_draft_series=True)
 
     items = []
     for s in rows:

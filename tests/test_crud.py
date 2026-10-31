@@ -111,6 +111,10 @@ async def test_series_crud_roundtrip(client, engine):
     sid = (await client.post(
         "/api/v1/series", json={"title": "Faith", "tier": "free"}, headers=ed
     )).json()["id"]
+    r = await client.patch(
+        f"/api/v1/series/{sid}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
 
     assert (await client.get(f"/api/v1/series/{sid}")).json()["title"] == "Faith"
     assert any(s["id"] == sid for s in (await client.get("/api/v1/series")).json())

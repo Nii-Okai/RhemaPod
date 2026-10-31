@@ -173,12 +173,20 @@ async def test_future_publish_at_hidden_from_search(client, engine):
     assert r.json()["results"] == []
 
 
+async def publish_series(client, mgr, series_id):
+    r = await client.patch(
+        f"/api/v1/series/{series_id}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+
+
 async def test_future_publish_at_hidden_from_series_episodes(client, engine):
     ed = await make_user(client, engine, "ed@example.com", "editor")
     mgr = await make_user(client, engine, "mgr@example.com", "manager")
     series = (await client.post(
         "/api/v1/series", json={"title": "A Series"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     sid = (await client.post(
         "/api/v1/sermons",
         json={"title": "Ep1", "series_id": series["id"]},
