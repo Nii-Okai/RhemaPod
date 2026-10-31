@@ -132,6 +132,18 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('SignatureYouScreen', () => {
+  it('shows a label instead of an Apple private relay email', async () => {
+    const original = { ...profile };
+    Object.assign(profile, { email: 'n7nw7759jd@privaterelay.appleid.com' });
+    try {
+      const screen = renderYou();
+      await screen.findByText('Private email (via Apple)');
+      expect(screen.queryByText('n7nw7759jd@privaterelay.appleid.com')).toBeNull();
+    } finally {
+      Object.assign(profile, original);
+    }
+  });
+
   it('keeps every existing setting, grouped as the mockup draws it', async () => {
     const screen = renderYou();
     await screen.findByText('ada@example.com');

@@ -7,6 +7,7 @@ import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { useAuth } from '../../../../lib/auth/AuthContext';
+import { displayEmail } from '../../../../lib/auth/displayEmail';
 import { useCurrentUser } from '../../../../lib/query/hooks/useProfile';
 import { previewDisplayName } from '../../../../lib/format/displayName';
 import { isComplianceContentPending } from '../../../../lib/content/commentsCompliance';
@@ -194,10 +195,10 @@ export function SignatureYouScreen() {
               />
               <View style={styles.profileText}>
                 <AppText variant="display.title" numberOfLines={2}>
-                  {profile.full_name || profile.email}
+                  {profile.full_name || displayEmail(profile.email)}
                 </AppText>
                 <AppText variant="ui.body" tone="secondary" numberOfLines={1}>
-                  {profile.email}
+                  {displayEmail(profile.email)}
                 </AppText>
               </View>
             </View>
