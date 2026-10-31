@@ -43,6 +43,12 @@ export function userMessageFor(error: unknown): string {
   return 'Something went wrong. Try again.';
 }
 
+/** A 404 from the API — a deleted, unpublished or (for playlists) not-visible item all
+ * look the same to the client, by design. Drives the "no longer available" screens. */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
 export async function apiErrorFromResponse(res: Response): Promise<ApiError> {
   let body: ApiErrorBody | null = null;
   try {

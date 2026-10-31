@@ -18,6 +18,7 @@ export * from './PlatformIcon';
 export * from './ConfirmDialog';
 export * from './StaggerItem';
 export * from './DetailError';
+export * from './DetailNotAvailable';
 export * from './CastCloseHeader';
 export * from './ActionButton';
 export * from './SpeakerListRow';

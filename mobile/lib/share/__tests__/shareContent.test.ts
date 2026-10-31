@@ -1,18 +1,11 @@
-import * as FileSystem from 'expo-file-system';
 import RNShare from 'react-native-share';
+import { resolveShareBaseUrl } from '../../api/config';
 import { shareContent } from '../shareContent';
 
 jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
 
-jest.mock('expo-file-system', () => ({
-  cacheDirectory: 'file:///cache/',
-  downloadAsync: jest.fn(),
-  deleteAsync: jest.fn(async () => undefined),
-}));
-
 const mockedOpen = RNShare.open as jest.Mock;
-const mockedDownload = FileSystem.downloadAsync as jest.Mock;
-const mockedDelete = FileSystem.deleteAsync as jest.Mock;
+const ID = '3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -20,72 +13,63 @@ beforeEach(() => {
 });
 
 describe('shareContent', () => {
-  it('composes title, description, and the rhemapod:// deep link, and downloads the thumbnail for attachment', async () => {
-    mockedDownload.mockResolvedValue({ status: 200, uri: 'file:///cache/share-123.jpg' });
-
+  it('composes title, description and the https share link, with no image attachment', async () => {
     await shareContent({
       title: 'Anchored in the Storm',
       description: 'A word for the weary.',
-      thumbnailUrl: 'https://cdn.example.com/art.jpg',
-      deepLinkPath: 'sermon/sermon-1',
+      deepLinkPath: `sermon/${ID}`,
     });
 
-    expect(mockedDownload).toHaveBeenCalledWith('https://cdn.example.com/art.jpg', expect.stringContaining('file:///cache/share-'));
-    expect(mockedOpen).toHaveBeenCalledWith({
+    expect(mockedOpen).toHaveBeenCalledTimes(1);
+    const arg = mockedOpen.mock.calls[0][0];
+    expect(arg).toEqual({
       title: 'Anchored in the Storm',
-      message: 'Anchored in the Storm\n\nA word for the weary.\n\nrhemapod://sermon/sermon-1',
-      url: 'file:///cache/share-123.jpg',
+      message: `Anchored in the Storm\n\nA word for the weary.\n\nhttps://open.rhemapod.com/sermon/${ID}`,
       failOnCancel: false,
     });
-    // Best-effort cleanup of the temp download after the share sheet closes.
-    expect(mockedDelete).toHaveBeenCalledWith('file:///cache/share-123.jpg', { idempotent: true });
+    expect(arg).not.toHaveProperty('url');
+    expect(arg.message.endsWith(`https://open.rhemapod.com/sermon/${ID}`)).toBe(true);
+    expect(arg.message).not.toContain('rhemapod://');
   });
 
-  it('shares text-only (no url) when there is no thumbnail at all', async () => {
-    await shareContent({
-      title: 'A Sermon',
-      description: null,
-      thumbnailUrl: null,
-      deepLinkPath: 'sermon/sermon-2',
+  it.each(['series', 'playlist'])('links %s shares to the https path', async (type) => {
+    await shareContent({ title: 'T', description: null, deepLinkPath: `${type}/${ID}` });
+    expect(mockedOpen.mock.calls[0][0].message).toBe(`T\n\nhttps://open.rhemapod.com/${type}/${ID}`);
+  });
+
+  it('truncates a long description before the link', async () => {
+    await shareContent({ title: 'T', description: 'x'.repeat(300), deepLinkPath: `sermon/${ID}` });
+    const [, description, link] = mockedOpen.mock.calls[0][0].message.split('\n\n');
+    expect(description).toBe(`${'x'.repeat(200)}…`);
+    expect(link).toBe(`https://open.rhemapod.com/sermon/${ID}`);
+  });
+
+  it('builds the link from the configured share base', async () => {
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock('../../api/config', () => ({ SHARE_BASE_URL: 'https://staging.example.com' }));
+      // A fresh module graph, with its own `react-native-share` mock.
+      const isolatedShare = (require('react-native-share') as { default: { open: jest.Mock } }).default;
+      isolatedShare.open.mockResolvedValue(undefined);
+      const { shareContent: isolated } = require('../shareContent') as typeof import('../shareContent');
+      await isolated({ title: 'T', deepLinkPath: `sermon/${ID}` });
+      expect(isolatedShare.open.mock.calls[0][0].message).toBe(`T\n\nhttps://staging.example.com/sermon/${ID}`);
     });
-
-    expect(mockedDownload).not.toHaveBeenCalled();
-    expect(mockedOpen).toHaveBeenCalledWith({
-      title: 'A Sermon',
-      message: 'A Sermon\n\nrhemapod://sermon/sermon-2',
-      url: undefined,
-      failOnCancel: false,
-    });
+    jest.dontMock('../../api/config');
   });
 
-  it('falls back to text-only when the thumbnail fails to download, rather than failing the whole share', async () => {
-    mockedDownload.mockRejectedValue(new Error('network error'));
+  it('propagates a share-sheet failure to the caller', async () => {
+    mockedOpen.mockRejectedValue(new Error('share unavailable'));
+    await expect(shareContent({ title: 'T', deepLinkPath: `sermon/${ID}` })).rejects.toThrow('share unavailable');
+  });
+});
 
-    await shareContent({
-      title: 'A Sermon',
-      thumbnailUrl: 'https://cdn.example.com/missing.jpg',
-      deepLinkPath: 'sermon/sermon-3',
-    });
-
-    expect(mockedOpen).toHaveBeenCalledWith(expect.objectContaining({ url: undefined }));
+describe('resolveShareBaseUrl (EXPO_PUBLIC_SHARE_BASE_URL)', () => {
+  it('defaults to the production share host', () => {
+    expect(resolveShareBaseUrl(undefined)).toBe('https://open.rhemapod.com');
+    expect(resolveShareBaseUrl('')).toBe('https://open.rhemapod.com');
   });
 
-  it('falls back to text-only when the download does not return a 200', async () => {
-    mockedDownload.mockResolvedValue({ status: 404, uri: 'file:///cache/share-404.jpg' });
-
-    await shareContent({ title: 'A Sermon', thumbnailUrl: 'https://cdn.example.com/x.jpg', deepLinkPath: 'sermon/sermon-4' });
-
-    expect(mockedOpen).toHaveBeenCalledWith(expect.objectContaining({ url: undefined }));
-    expect(mockedDelete).not.toHaveBeenCalled();
-  });
-
-  it('truncates a long description rather than shoving the whole thing into the share text', async () => {
-    const longDescription = 'x'.repeat(400);
-    await shareContent({ title: 'A Sermon', description: longDescription, deepLinkPath: 'sermon/sermon-5' });
-
-    const message = mockedOpen.mock.calls[0][0].message as string;
-    const descriptionLine = message.split('\n\n')[1]!;
-    expect(descriptionLine.length).toBeLessThan(longDescription.length);
-    expect(descriptionLine.endsWith('…')).toBe(true);
+  it('honours the override and strips trailing slashes', () => {
+    expect(resolveShareBaseUrl('https://staging.example.com/')).toBe('https://staging.example.com');
   });
 });

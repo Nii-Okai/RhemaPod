@@ -31,7 +31,6 @@ export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
     void shareContent({
       title: detail.title,
       description: detail.description,
-      thumbnailUrl: detail.thumbnail_url,
       deepLinkPath: `sermon/${detail.id}`,
     });
 

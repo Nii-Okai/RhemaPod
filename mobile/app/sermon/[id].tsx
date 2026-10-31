@@ -2,11 +2,12 @@ import React, { useEffect } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, PrimaryButton, Tag } from '../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, PrimaryButton, Tag } from '../../components';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
+import { isNotFoundError } from '../../lib/api/errors';
 import { nextRelatedSermonRoute, RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
 import { useAddToDefaultLibrary } from '../../lib/query/hooks/usePlaylists';
 import { useSermonDetail, useToggleSermonLike } from '../../lib/query/hooks/useSermons';
@@ -81,6 +82,15 @@ export default function SermonDetailScreen() {
     );
   }
 
+  if (isNotFoundError(detailQuery.error)) {
+    return (
+      <View style={styles.screen}>
+        <CastCloseHeader onClose={onCloseAll} onBack={onBack} />
+        <DetailNotAvailable subject="sermon" onGoHome={() => router.replace('/')} />
+      </View>
+    );
+  }
+
   if (detailQuery.isError || !detail) {
     return (
       <View style={styles.screen}>
@@ -113,7 +123,6 @@ export default function SermonDetailScreen() {
     void shareContent({
       title: detail.title,
       description: detail.description,
-      thumbnailUrl: detail.thumbnail_url,
       deepLinkPath: `sermon/${detail.id}`,
     });
 

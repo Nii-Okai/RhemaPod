@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SignatureSeriesScreen } from '../SignatureSeries';
+import { ApiError } from '../../../../lib/api/errors';
 import { api } from '../../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../../lib/query/testUtils';
 import { useDownloads } from '../../../../lib/downloads/useDownloads';
@@ -37,8 +38,9 @@ jest.mock('../../../../lib/cast/useCastPlayback', () => ({
 
 const mockPush = jest.fn();
 const mockDismissAll = jest.fn();
+const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: jest.fn(), dismissAll: mockDismissAll }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace, back: jest.fn(), dismissAll: mockDismissAll }),
   useLocalSearchParams: () => ({ id: 's1' }),
 }));
 
@@ -150,6 +152,32 @@ beforeEach(() => {
     retry: jest.fn(),
     remove: jest.fn(),
     find: jest.fn((id: string) => records[id]),
+  });
+});
+
+describe('SignatureSeriesScreen — not available', () => {
+  it('shows the not-available state on a 404, and Go home navigates to /', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/series/{series_id}' || path === '/series/{series_id}/episodes'
+        ? Promise.reject(new ApiError(404, 'Series not found'))
+        : Promise.resolve([]),
+    );
+    const { findByText, queryByText } = renderScreen();
+
+    expect(await findByText('This series is no longer available')).toBeTruthy();
+    expect(queryByText('Try again')).toBeNull();
+    fireEvent.press(await findByText('Go home'));
+    expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the retryable error state for a non-404 failure', async () => {
+    mockApi({ '/series/{series_id}': undefined });
+    mockedGet.mockImplementation((path: string) =>
+      path === '/series/{series_id}' ? Promise.reject(new ApiError(500, 'boom')) : Promise.resolve([]),
+    );
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText('Something went wrong loading this series.')).toBeTruthy();
+    expect(queryByText('This series is no longer available')).toBeNull();
   });
 });
 

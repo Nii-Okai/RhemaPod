@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Avatar, DetailError, IconButton, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
+import { AppText, Avatar, DetailError, DetailNotAvailable, IconButton, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
 import type { AppIconName } from '../../../../components/PlatformIcon';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
+import { isNotFoundError } from '../../../../lib/api/errors';
 import { formatPlaylistMinutes } from '../../../../lib/format/playlistDuration';
 import { shareContent } from '../../../../lib/share/shareContent';
 import { useRecommended } from '../../../../lib/query/hooks/useRecommended';
@@ -59,7 +60,7 @@ export function SignaturePlaylistDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const { data: playlist, isLoading, isError, refetch } = usePlaylist(id);
+  const { data: playlist, isLoading, isError, error, refetch } = usePlaylist(id);
   const removeItem = useRemovePlaylistItem(id ?? '');
   const addItem = useAddPlaylistItem(id ?? '');
   const recommended = useRecommended();
@@ -76,6 +77,16 @@ export function SignaturePlaylistDetailScreen() {
       {trailing}
     </View>
   );
+
+  if (isNotFoundError(error)) {
+    return (
+      <View style={styles.screen}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {topBar()}
+        <DetailNotAvailable subject="playlist" onGoHome={() => router.replace('/')} />
+      </View>
+    );
+  }
 
   if (isError) {
     return (
@@ -112,7 +123,6 @@ export function SignaturePlaylistDetailScreen() {
     void shareContent({
       title: playlist.name,
       description: playlist.description,
-      thumbnailUrl: playlist.cover_url,
       deepLinkPath: `playlist/${playlist.id}`,
     });
   const addRecommended = (sermonId: string) => {
