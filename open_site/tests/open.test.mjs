@@ -153,3 +153,40 @@ test("association files have the contracted shape", () => {
   assert.equal(al[0].target.package_name, "com.niitech.rhemapod");
   assert.match(al[0].target.sha256_cert_fingerprints[0], /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 });
+
+test("open.html link-preview tags and og-image meet crawler limits", () => {
+  const html = readFileSync(new URL("../open.html", import.meta.url), "utf8");
+  for (const re of [/property="og:title"/, /property="og:description"/, /property="og:image"/, /name="twitter:card"/]) {
+    assert.match(html, re);
+  }
+  const imgs = [...html.matchAll(/(?:og|twitter):image" content="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(imgs.length >= 1);
+  for (const u of imgs) {
+    assert.match(u, /^https:\/\/open\.rhemapod\.com\/assets\/[\w.-]+$/);
+  }
+  const buf = readFileSync(new URL("../assets/og-image.png", import.meta.url));
+  assert.equal(buf.subarray(1, 4).toString(), "PNG");
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  assert.ok(w >= 600 && h >= 315, `og-image ${w}x${h}`);
+  assert.ok(buf.length < 300 * 1024, `og-image ${buf.length} bytes`);
+});
+
+test("open.js has no network, navigation or storage APIs", () => {
+  const js = readFileSync(new URL("../open.js", import.meta.url), "utf8");
+  assert.doesNotMatch(js, /fetch|XMLHttpRequest|sendBeacon|WebSocket|location\.(href|replace|assign)\s*=|window\.open|document\.cookie|localStorage/);
+});
+
+test("HTML and CSS reference only the store and RhemaPod origins", () => {
+  const allowed = [
+    /^https:\/\/apps\.apple\.com\/app\/id6828878983$/,
+    /^https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.niitech\.rhemapod$/,
+    /^https:\/\/(open|admin)\.rhemapod\.com\//,
+  ];
+  for (const f of ["open.html", "index.html", "style.css"]) {
+    const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    for (const [u] of src.matchAll(/(?:https?:)?\/\/[^\s"'<>)]+/g)) {
+      assert.ok(allowed.some((re) => re.test(u)), `${f}: unexpected origin ${u}`);
+    }
+  }
+});
