@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["FAND2W5VMM.com.niitech.rhemapod"],
+        "components": [
+          { "/": "/playlist/create", "exclude": true },
+          { "/": "/sermon/*" },
+          { "/": "/series/*" },
+          { "/": "/playlist/*" }
+        ]
+      }
+    ]
+  }
+}

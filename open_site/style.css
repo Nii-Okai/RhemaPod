@@ -1,0 +1,77 @@
+/* RhemaPod share site. Palette mirrors admin_portal/app/globals.css (warm neutrals + clay accent).
+   System font stacks only: the CSP allows no third-party origins. */
+:root {
+  --canvas: #f7f4ee;
+  --surface: #ffffff;
+  --border: #e4ddd1;
+  --ink: #2e2723;
+  --ink-muted: #6b6055;
+  --clay-600: #a65b3a;
+  --clay-700: #7e4128;
+  --on-clay: #fff8f3;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+main {
+  width: 100%;
+  max-width: 440px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 24px;
+}
+.logo { width: 72px; height: 72px; border-radius: 16px; }
+.wordmark {
+  margin: 12px 0 4px;
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-size: 32px;
+  letter-spacing: -0.01em;
+}
+.tagline { margin: 0 0 24px; color: var(--ink-muted); font-size: 16px; }
+.btn {
+  display: inline-block;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: var(--clay-600);
+  color: var(--on-clay);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn:hover, .btn:active { background: var(--clay-700); }
+a:focus-visible { outline: 3px solid var(--clay-600); outline-offset: 3px; }
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  margin: 24px 0 0;
+}
+.badges a { display: inline-flex; }
+.badge-apple { height: 48px; width: auto; }
+/* Google's generic PNG carries built-in transparent padding; 64px renders it level with the 48px Apple badge. */
+.badge-google { height: 64px; width: auto; margin: -8px 0; }
+.hint { margin: 16px 0 0; color: var(--ink-muted); font-size: 14px; }
+.lead { margin: 0 0 16px; color: var(--ink-muted); font-size: 15px; }
+footer { margin-top: 24px; font-size: 14px; }
+footer ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px 20px; justify-content: center; flex-wrap: wrap; }
+footer a { color: var(--clay-600); font-weight: 500; }

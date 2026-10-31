@@ -166,3 +166,71 @@ services:
         value: https://api.rhemapod.com
       - key: PORTAL_ORIGIN
         value: https://admin.rhemapod.com
+
+  # Public share host for the fallback page, apple-app-site-association and
+  # assetlinks.json (plans/plan-share-links.md §D). Static, no compute.
+  - type: web
+    name: rhemapod-open
+    runtime: static
+    branch: dev
+    autoDeployTrigger: commit
+    rootDir: open_site
+    buildCommand: "true"     # no build step: files are served as-is
+    staticPublishPath: .
+    domains:
+      - open.rhemapod.com
+    routes:
+      # Content deep links all serve the same fallback page.
+      - type: rewrite
+        source: /sermon/*
+        destination: /open.html
+      - type: rewrite
+        source: /series/*
+        destination: /open.html
+      - type: rewrite
+        source: /playlist/*
+        destination: /open.html
+      # Legal pages live on the admin portal (301).
+      - type: redirect
+        source: /privacy
+        destination: https://admin.rhemapod.com/privacy
+      - type: redirect
+        source: /terms
+        destination: https://admin.rhemapod.com/terms
+      - type: redirect
+        source: /support
+        destination: https://admin.rhemapod.com/support
+      - type: redirect
+        source: /delete-account
+        destination: https://admin.rhemapod.com/delete-account
+      - type: redirect
+        source: /guidelines
+        destination: https://admin.rhemapod.com/guidelines
+    headers:
+      # Apple and Google verification files must be served as JSON.
+      - path: /.well-known/apple-app-site-association
+        name: Content-Type
+        value: application/json
+      - path: /.well-known/assetlinks.json
+        name: Content-Type
+        value: application/json
+      # Deep-link pages stay out of search indexes.
+      - path: /sermon/*
+        name: X-Robots-Tag
+        value: noindex
+      - path: /series/*
+        name: X-Robots-Tag
+        value: noindex
+      - path: /playlist/*
+        name: X-Robots-Tag
+        value: noindex
+      # Site-wide hardening.
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'"
