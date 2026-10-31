@@ -284,10 +284,19 @@ describe('Signature playlist detail', () => {
       path === '/me/recommended' ? Promise.resolve([]) : Promise.reject(new ApiError(404, 'Playlist not found')),
     );
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText('This playlist is no longer available')).toBeTruthy();
+    expect(await findByText("This playlist isn't available")).toBeTruthy();
     expect(queryByText('Try again')).toBeNull();
-    fireEvent.press(await findByText('Go home'));
+    fireEvent.press(await findByText('Go to Home'));
     expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the retryable error state for a non-404 failure (500)', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/me/recommended' ? Promise.resolve([]) : Promise.reject(new ApiError(500, 'boom')),
+    );
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText('Something went wrong loading this playlist.')).toBeTruthy();
+    expect(queryByText("This playlist isn't available")).toBeNull();
   });
 
   it('shows the error state with a working back button', async () => {

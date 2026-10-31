@@ -164,9 +164,9 @@ describe('SignatureSeriesScreen — not available', () => {
     );
     const { findByText, queryByText } = renderScreen();
 
-    expect(await findByText('This series is no longer available')).toBeTruthy();
+    expect(await findByText("This series isn't available")).toBeTruthy();
     expect(queryByText('Try again')).toBeNull();
-    fireEvent.press(await findByText('Go home'));
+    fireEvent.press(await findByText('Go to Home'));
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
@@ -177,7 +177,7 @@ describe('SignatureSeriesScreen — not available', () => {
     );
     const { findByText, queryByText } = renderScreen();
     expect(await findByText('Something went wrong loading this series.')).toBeTruthy();
-    expect(queryByText('This series is no longer available')).toBeNull();
+    expect(queryByText("This series isn't available")).toBeNull();
   });
 });
 

@@ -24,24 +24,35 @@ describe('shareContent', () => {
     const arg = mockedOpen.mock.calls[0][0];
     expect(arg).toEqual({
       title: 'Anchored in the Storm',
-      message: `Anchored in the Storm\n\nA word for the weary.\n\nhttps://open.rhemapod.com/sermon/${ID}`,
+      message: `Anchored in the Storm\n\nA word for the weary.\n\nListen on RhemaPod:\nhttps://open.rhemapod.com/sermon/${ID}`,
       failOnCancel: false,
     });
     expect(arg).not.toHaveProperty('url');
-    expect(arg.message.endsWith(`https://open.rhemapod.com/sermon/${ID}`)).toBe(true);
+    expect(arg.message.endsWith(`\nhttps://open.rhemapod.com/sermon/${ID}`)).toBe(true);
     expect(arg.message).not.toContain('rhemapod://');
   });
 
   it.each(['series', 'playlist'])('links %s shares to the https path', async (type) => {
     await shareContent({ title: 'T', description: null, deepLinkPath: `${type}/${ID}` });
-    expect(mockedOpen.mock.calls[0][0].message).toBe(`T\n\nhttps://open.rhemapod.com/${type}/${ID}`);
+    expect(mockedOpen.mock.calls[0][0].message).toBe(`T\n\nListen on RhemaPod:\nhttps://open.rhemapod.com/${type}/${ID}`);
   });
 
-  it('truncates a long description before the link', async () => {
-    await shareContent({ title: 'T', description: 'x'.repeat(300), deepLinkPath: `sermon/${ID}` });
+  it('truncates a long description at the last space before 200 chars, before the link', async () => {
+    const words = Array.from({ length: 60 }, (_, n) => `word${n}`).join(' ');
+    await shareContent({ title: 'T', description: words, deepLinkPath: `sermon/${ID}` });
     const [, description, link] = mockedOpen.mock.calls[0][0].message.split('\n\n');
+    expect(description.endsWith('…')).toBe(true);
+    const body = description.slice(0, -1);
+    expect(body.length).toBeLessThanOrEqual(200);
+    expect(words.startsWith(body)).toBe(true);
+    expect(words[body.length]).toBe(' ');
+    expect(link).toBe(`Listen on RhemaPod:\nhttps://open.rhemapod.com/sermon/${ID}`);
+  });
+
+  it('hard-cuts a description with no space to break on', async () => {
+    await shareContent({ title: 'T', description: 'x'.repeat(300), deepLinkPath: `sermon/${ID}` });
+    const [, description] = mockedOpen.mock.calls[0][0].message.split('\n\n');
     expect(description).toBe(`${'x'.repeat(200)}…`);
-    expect(link).toBe(`https://open.rhemapod.com/sermon/${ID}`);
   });
 
   it('builds the link from the configured share base', async () => {
@@ -52,7 +63,7 @@ describe('shareContent', () => {
       isolatedShare.open.mockResolvedValue(undefined);
       const { shareContent: isolated } = require('../shareContent') as typeof import('../shareContent');
       await isolated({ title: 'T', deepLinkPath: `sermon/${ID}` });
-      expect(isolatedShare.open.mock.calls[0][0].message).toBe(`T\n\nhttps://staging.example.com/sermon/${ID}`);
+      expect(isolatedShare.open.mock.calls[0][0].message).toBe(`T\n\nListen on RhemaPod:\nhttps://staging.example.com/sermon/${ID}`);
     });
     jest.dontMock('../../api/config');
   });

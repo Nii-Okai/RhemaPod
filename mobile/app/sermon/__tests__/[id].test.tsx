@@ -134,10 +134,10 @@ describe('SermonDetailScreen — not available', () => {
     mockedGet.mockRejectedValue(new ApiError(404, 'Sermon not found'));
     const { findByText, queryByText } = renderDetail();
 
-    expect(await findByText('This sermon is no longer available')).toBeTruthy();
+    expect(await findByText("This sermon isn't available")).toBeTruthy();
     expect(queryByText('Try again')).toBeNull();
     expect(queryByText('Something went wrong loading this sermon.')).toBeNull();
-    fireEvent.press(await findByText('Go home'));
+    fireEvent.press(await findByText('Go to Home'));
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
@@ -145,7 +145,7 @@ describe('SermonDetailScreen — not available', () => {
     mockedGet.mockRejectedValue(new ApiError(500, 'boom'));
     const { findByText, queryByText } = renderDetail();
     expect(await findByText('Something went wrong loading this sermon.')).toBeTruthy();
-    expect(queryByText('This sermon is no longer available')).toBeNull();
+    expect(queryByText("This sermon isn't available")).toBeNull();
   });
 });
 

@@ -92,6 +92,8 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xxl,
+    // 12*2 padding + 14*1.2 label is ~41pt; 44 is the iOS HIG / Material touch-target floor.
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

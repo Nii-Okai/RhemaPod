@@ -25,13 +25,17 @@ const DESCRIPTION_MAX_LENGTH = 200;
 function truncate(text: string, maxLength: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
-  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
+  const head = trimmed.slice(0, maxLength);
+  const lastSpace = head.lastIndexOf(' ');
+  // Cut at the last space so a word isn't split; a single unbroken run is hard-cut.
+  return `${(lastSpace > 0 ? head.slice(0, lastSpace) : head).trimEnd()}…`;
 }
 
 function composeMessage({ title, description, deepLinkPath }: ShareableContent): string {
   const parts = [title];
   if (description) parts.push(truncate(description, DESCRIPTION_MAX_LENGTH));
-  parts.push(`${SHARE_BASE_URL}/${deepLinkPath.replace(/^\/+/, '')}`);
+  // Label, newline, then the bare URL alone on its line so messengers linkify it cleanly.
+  parts.push(`Listen on RhemaPod:\n${SHARE_BASE_URL}/${deepLinkPath.replace(/^\/+/, '')}`);
   return parts.join('\n\n');
 }
 
