@@ -263,6 +263,21 @@ returns the fallback page with `X-Robots-Tag: noindex`.
 
 Do this before any native build: a wrong AASA at build time can leave links dead until the next app update.
 
+### Learned during Phase 1 (2026-10-31)
+
+- **Custom domain must be attached before anything works.** Until  showed *Verified*
+  under the service's Custom Domains, every path returned Cloudflare *Error 1000 "DNS points to prohibited
+  IP"* (403), even with a correct DNS-only CNAME. A Blueprint sync doesn't always attach declared
+  ; add it by hand if it isn't listed.
+- **Blueprint / syntax worked as written** (, ):
+  rewrites, 301s, the AASA  header,  and the CSP all applied on first deploy.
+- **Apple's CDN picked up the AASA within minutes** of the domain verifying (no multi-hour lag this time).
+  Google's  returned  immediately.
+- **Link-preview image:** WhatsApp needs  ≥ 600×315 and small; the first 512×512 logo was too
+  small. The shipped image is 1200×630, ~130 KB ().
+- **CSP is strict** (, no inline): any page change must keep JS/CSS
+  in separate files and images local, or it silently breaks.
+
 ### Before the first Play release (L1)
 
 Append the Play app-signing SHA-256 (Play Console, App integrity) to
