@@ -917,13 +917,12 @@ class VerseAdminItem(VersePublic):
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Playlists (Isaac's ask, session 2026-10-10: a "Library" tab for user-created
-# playlists, Spotify's own playlist flow as the reference). Private to their
-# owner — `GET /playlists`/`GET /playlists/{id}` only ever return the signed-in
-# viewer's own rows; `is_public` is stored and toggleable (matching the
-# reference screenshots' "Public playlist" badge / "Make private" option) but
-# nothing reads it yet — no cross-user playlist browsing exists in this app,
-# so building one here would be the "button that does nothing" this codebase
-# deliberately avoids (see `ActionButton`'s own Set Reminders/Rate precedent).
+# playlists, Spotify's own playlist flow as the reference). Private by default;
+# every write is owner-only and `GET /playlists` lists only the viewer's own.
+# `GET /playlists/{id}` is also readable by a signed-in non-owner when
+# `is_public` is true and no block exists in either direction (share links,
+# ADR 0021 Phase 2); private, missing and blocked are one identical 404.
+# Making a playlist public runs the comment content rules on name/description.
 # A playlist item always points at a `Sermon` row — series episodes ARE
 # sermons (`Sermon.series_id`), so "sermons and episodes" needs no second
 # content type or polymorphic column, unlike the Like tables' sermon/series
@@ -975,6 +974,7 @@ class PlaylistDetail(PlaylistPublic):
     read follows), without deleting the underlying `PlaylistItem` row, so it
     reappears if the sermon is republished."""
 
+    is_owner: bool
     items: list[PlaylistItemPublic]
 
 

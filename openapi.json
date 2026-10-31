@@ -3236,6 +3236,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
           "is_public": {
             "title": "Is Public",
             "type": "boolean"
@@ -3294,6 +3298,7 @@
           "total_duration_seconds",
           "created_at",
           "updated_at",
+          "is_owner",
           "items"
         ],
         "title": "PlaylistDetail",
