@@ -3671,22 +3671,24 @@ export interface components {
              */
             apple_unavailable: boolean;
             /** Id Token */
-            id_token: string;
+            id_token?: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             method: "google";
+            /** Server Auth Code */
+            server_auth_code?: string | null;
         };
         /**
          * GoogleSignInRequest
-         * @description Google's signed ID token from the mobile app's native Google Sign-In
-         *     flow (ADR 0015). Verified server-side in `app/core/oauth.py` — nothing
-         *     here is trusted until the signature, issuer, and audience all check out.
+         * @description Google sign-in proof from the mobile app's native flow (ADR 0015).
          */
         GoogleSignInRequest: {
             /** Id Token */
-            id_token: string;
+            id_token?: string | null;
+            /** Server Auth Code */
+            server_auth_code?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
