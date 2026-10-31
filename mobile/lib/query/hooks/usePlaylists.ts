@@ -48,7 +48,7 @@ export function useCreatePlaylist() {
   return useMutation({
     mutationFn: (input: CreatePlaylistInput) =>
       api.post('/playlists', {
-        body: { name: input.name, description: input.description ?? null, is_public: input.isPublic ?? true },
+        body: { name: input.name, description: input.description ?? null, is_public: input.isPublic ?? false },
       }),
     onSuccess: (playlist) => {
       queryClient.setQueryData<PlaylistPublic[]>(queryKeys.playlists.list(), (current) =>
