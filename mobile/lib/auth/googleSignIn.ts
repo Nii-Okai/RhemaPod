@@ -44,18 +44,9 @@ export async function performGoogleSignIn(): Promise<string | null> {
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
   // Our backend treats every Google ID token as single-use (replay protection, by
-  // design — see ADR 0015). `signOut()` alone was not enough on Android — confirmed
-  // on-device (2026-10-16) that Play Services still silently handed back the exact
-  // same cached ID token across repeated `signIn()` calls even after `signOut()`.
-  // `revokeAccess()` actually drops the app's grant for the account, which forces a
-  // genuinely fresh token on the next `signIn()`. Best-effort: throws when there's
-  // nothing to revoke (first-ever sign-in on this device), which must never block
-  // the real attempt that follows.
-  try {
-    await GoogleSignin.revokeAccess();
-  } catch {
-    // No prior grant to revoke — fine, signIn() below proceeds either way.
-  }
+  // design — see ADR 0015). On Android, Play Services hands back the same cached ID
+  // token until the app's grant is revoked, so drop it first. See dropGoogleGrant.
+  await dropGoogleGrant();
 
   const response = await GoogleSignin.signIn();
   if (response.type === 'cancelled') return null;
@@ -68,11 +59,19 @@ export async function performGoogleSignIn(): Promise<string | null> {
 }
 
 /**
- * Drops the app's Google grant and the cached Google session on this device, after the
- * account it signed in to was deleted. Best-effort, like the `revokeAccess()` above: there
- * may be no Google session at all.
+ * Drops the app's Google grant and cached Google session on this device so the next
+ * `signIn()` returns a genuinely fresh ID token. On Android, `revokeAccess()` only works
+ * while the SDK knows the current account, which it forgets across app restarts and our
+ * own sign-out — so restore it silently first (confirmed on-device 2026-10-31: without
+ * this, `revokeAccess()` threw, was swallowed, and the backend rejected the reused token
+ * as replayed). Every step is best-effort: there may be no Google session at all.
  */
-export async function forgetGoogleAccount(): Promise<void> {
+async function dropGoogleGrant(): Promise<void> {
+  try {
+    if (GoogleSignin.hasPreviousSignIn()) await GoogleSignin.signInSilently();
+  } catch {
+    // No restorable session.
+  }
   try {
     await GoogleSignin.revokeAccess();
   } catch {
@@ -83,4 +82,9 @@ export async function forgetGoogleAccount(): Promise<void> {
   } catch {
     // Already signed out.
   }
+}
+
+/** After sign-out or account deletion: forget the Google account on this device. */
+export async function forgetGoogleAccount(): Promise<void> {
+  await dropGoogleGrant();
 }

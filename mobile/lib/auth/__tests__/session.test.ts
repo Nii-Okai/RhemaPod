@@ -241,6 +241,8 @@ describe('session access-token storage', () => {
     expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
     expect(session.getAccessToken()).toBeNull();
     expect(session.getStatus()).toBe('signedOut');
+    // Revoke the Google grant on sign-out so Android's next Google sign-in is fresh.
+    expect(forgetGoogleAccount).toHaveBeenCalled();
     // Plan S7, HUMAN_GATE G2: every clearSession() path wipes the media cache too.
     expect(mockedClearMediaCache).toHaveBeenCalled();
     // ...and the query cache, so the next account never sees this one's `me.*` reads.
