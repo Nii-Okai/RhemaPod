@@ -1,6 +1,6 @@
 # ADR 0021: https share links on open.rhemapod.com
 
-- Status: Proposed (acceptance at `[HUMAN_GATE SL2]`)
+- Status: Accepted (2026-10-31, at `[HUMAN_GATE SL2]`)
 - Date: 2026-10-31
 - Deciders: Isaac (+ planner, architect, skeptic, scribe)
 - Plans: `plans/plan-share-links.md` (§D.1-D.5, §P.1-P.3, §L1)
