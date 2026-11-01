@@ -44,11 +44,26 @@ export type GoogleCredential =
  * Throws if the native call succeeds but the platform's credential is missing; the
  * caller surfaces it through the generic sign-in error path. On Android that means
  * `offlineAccess`/`webClientId` are misconfigured. There is no fallback to the ID token.
+ *
+ * `freshPicker` (account deletion re-auth): on Android, clear the cached account first
+ * (`signOut`, never revoke) so `signIn()` shows the account picker, i.e. a fresh user
+ * gesture rather than a silent reuse of the cached account. The server's `iat` freshness
+ * check then rests on that exchange happening now (ADR 0015/0020).
  */
-export async function performGoogleSignIn(): Promise<GoogleCredential | null> {
+export async function performGoogleSignIn(
+  options: { freshPicker?: boolean } = {},
+): Promise<GoogleCredential | null> {
   // `showPlayServicesUpdateDialog` must be passed explicitly; the library throws in
   // non-production builds if it's omitted. No-ops to `true` on iOS.
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+  if (options.freshPicker && Platform.OS === 'android') {
+    try {
+      await GoogleSignin.signOut();
+    } catch {
+      // No cached account to clear.
+    }
+  }
 
   const response = await GoogleSignin.signIn();
   if (response.type === 'cancelled') return null;
@@ -71,11 +86,11 @@ export async function performGoogleSignIn(): Promise<GoogleCredential | null> {
 }
 
 /**
- * Drops the app's Google grant and cached Google session on this device (account deletion
- * only). On Android, `revokeAccess()` only works while the SDK knows the current account,
+ * After account deletion: revoke the app's grant and forget the Google account on this
+ * device. On Android, `revokeAccess()` only works while the SDK knows the current account,
  * so restore it silently first. Every step is best-effort: there may be no Google session.
  */
-async function dropGoogleGrant(): Promise<void> {
+export async function forgetGoogleAccount(): Promise<void> {
   try {
     if (GoogleSignin.hasPreviousSignIn()) await GoogleSignin.signInSilently();
   } catch {
@@ -100,9 +115,4 @@ export async function signOutGoogle(): Promise<void> {
   } catch {
     // Already signed out.
   }
-}
-
-/** After account deletion: revoke the app's grant and forget the Google account on this device. */
-export async function forgetGoogleAccount(): Promise<void> {
-  await dropGoogleGrant();
 }

@@ -103,7 +103,7 @@ export default function DeleteAccountScreen() {
       return { method: 'password', password, apple_unavailable: skipApple };
     }
     if (m === 'google') {
-      const credential = await performGoogleSignIn();
+      const credential = await performGoogleSignIn({ freshPicker: true });
       if (credential === null) return null;
       return credential.kind === 'id_token'
         ? { method: 'google', id_token: credential.idToken, apple_unavailable: skipApple }

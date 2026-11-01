@@ -28,6 +28,7 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
   GoogleSignin: {
     hasPlayServices: jest.fn().mockResolvedValue(true),
     revokeAccess: jest.fn().mockResolvedValue(undefined),
+    signOut: jest.fn().mockResolvedValue(undefined),
     signIn: jest.fn(),
   },
 }));
@@ -353,6 +354,10 @@ describe('DeleteAccountScreen', () => {
       expect(mockedPost).toHaveBeenCalledWith('/auth/me/delete', {
         body: { method: 'google', server_auth_code: 'google-auth-code', apple_unavailable: false },
       });
+      // Forced account picker: the cached account is cleared before re-auth.
+      const signOut = GoogleSignin.signOut as jest.Mock;
+      expect(signOut).toHaveBeenCalled();
+      expect(signOut.mock.invocationCallOrder[0]).toBeLessThan(mockedGoogleSignIn.mock.invocationCallOrder[0]);
     } finally {
       Platform.OS = original;
     }

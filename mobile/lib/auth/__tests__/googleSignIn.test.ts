@@ -87,6 +87,32 @@ describe('performGoogleSignIn', () => {
     await expect(run()).rejects.toThrow(/ID token/);
   });
 
+  it('freshPicker on Android signs out (never revokes) before signIn', async () => {
+    const { performGoogleSignIn: run } = loadFresh('android');
+    await expect(run({ freshPicker: true })).resolves.toEqual({
+      kind: 'server_auth_code',
+      code: 'auth-code',
+    });
+    expect(g.signOut).toHaveBeenCalledTimes(1);
+    expect(g.revokeAccess).not.toHaveBeenCalled();
+    expect(g.signOut.mock.invocationCallOrder[0]).toBeLessThan(g.signIn.mock.invocationCallOrder[0]);
+  });
+
+  it('freshPicker still signs in when the pre-sign-out fails', async () => {
+    const { performGoogleSignIn: run } = loadFresh('android');
+    g.signOut.mockRejectedValue(new Error('none'));
+    await expect(run({ freshPicker: true })).resolves.toEqual({
+      kind: 'server_auth_code',
+      code: 'auth-code',
+    });
+  });
+
+  it('freshPicker is a no-op on iOS', async () => {
+    const { performGoogleSignIn: run } = loadFresh('ios');
+    await run({ freshPicker: true });
+    expect(g.signOut).not.toHaveBeenCalled();
+  });
+
   it.each(['android', 'ios'] as const)('returns null when the user cancels (%s)', async (os) => {
     const mod = loadFresh(os, { type: 'cancelled', data: null });
     await expect(mod.performGoogleSignIn()).resolves.toBeNull();
