@@ -389,7 +389,27 @@ path off (503); tests inject `httpx.MockTransport`.
   Services serves the cached token regardless.
 - **Separate `/auth/oauth/google/code` route:** rejected. Duplicates rate limiting, audit wiring
   and the deletion union for no gain.
-- **Server-side revoke after exchange:** rejected, see above.
+- **Server-side revoke after every exchange:** rejected, see above. Deletion-time revoke is adopted (review addendum).
 - **Stub exchange backend for dev:** rejected, auth bypass.
 - **Drop claim-once for exchanged tokens:** rejected. The guard stays identical across both paths.
 - **Move Android to Credential Manager now:** deferred. Larger change, separate decision.
+
+### Review addendum (S5): grant lifecycle and deletion freshness
+
+- **No stub exchanger, deliberately.** A stub would mint identities. Without the secret and flag
+  the code path answers 503; tests use `httpx.MockTransport` only.
+- **Android deletion revokes the grant server-side.** When the deletion proof is a
+  `server_auth_code`, the exchange's `access_token` is held in memory only (never logged or
+  persisted). After the account is erased, a background task POSTs it to
+  `https://oauth2.googleapis.com/revoke` (pinned host, 5s timeout, no redirects, `trust_env=False`);
+  revoking an access token also revokes the refresh token and grant. Failure logs
+  `google_grant_revoke_failed` (status or exception type only) and never changes the 204. iOS
+  deletion keeps the client-side `revokeAccess`.
+- **Sign-out does not revoke.** The grant persists until account deletion or manual removal at
+  myaccount.google.com. Scopes are `openid email profile` only and the client secret is rotatable,
+  so the residual exposure is small. Sign-in discards the exchange tokens as before, so consent
+  does not reappear.
+- **Android deletion re-auth freshness** rests on the client forcing the account picker (`signOut`,
+  not revoke, before `signIn()`), so the exchange and its `iat` happen at a fresh user gesture.
+  The server's `iat` age check measures exchange time, not the moment the user last chose an account.
+- Both Google HTTP calls use `trust_env=False` so proxy environment variables cannot redirect them.
