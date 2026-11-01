@@ -1,10 +1,9 @@
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { forgetGoogleAccount, performGoogleSignIn } from '../googleSignIn';
+import { Platform } from 'react-native';
 
 jest.mock('@react-native-google-signin/google-signin', () => ({
   GoogleSignin: {
     configure: jest.fn(),
-    hasPlayServices: jest.fn().mockResolvedValue(true),
+    hasPlayServices: jest.fn(),
     hasPreviousSignIn: jest.fn(),
     signInSilently: jest.fn(),
     revokeAccess: jest.fn(),
@@ -13,70 +12,107 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
   },
 }));
 
-const g = GoogleSignin as unknown as Record<string, jest.Mock>;
+type Mod = typeof import('../googleSignIn');
+let g: Record<string, jest.Mock>;
+const originalOS = Platform.OS;
 
-beforeEach(() => {
-  jest.clearAllMocks();
+/** Fresh module registry per platform: `Platform.OS` is read at call time and `configured` resets. */
+function loadFresh(os: 'android' | 'ios', signInResult?: unknown): Mod {
+  Platform.OS = os;
+  let mod!: Mod;
+  jest.isolateModules(() => {
+    g = require('@react-native-google-signin/google-signin').GoogleSignin;
+    mod = require('../googleSignIn');
+  });
   g.hasPlayServices.mockResolvedValue(true);
   g.signInSilently.mockResolvedValue({ type: 'success' });
   g.revokeAccess.mockResolvedValue(null);
   g.signOut.mockResolvedValue(null);
-  g.signIn.mockResolvedValue({ type: 'success', data: { idToken: 'fresh-token' } });
+  g.signIn.mockResolvedValue(
+    signInResult ?? { type: 'success', data: { idToken: 'id-tok', serverAuthCode: 'auth-code' } },
+  );
+  return mod;
+}
+
+afterEach(() => {
+  Platform.OS = originalOS;
 });
 
-const order = (fn: jest.Mock) => fn.mock.invocationCallOrder[0];
+describe('configureGoogleSignIn', () => {
+  it('asks for offline access without forcing re-consent on Android', () => {
+    const mod = loadFresh('android');
+    mod.configureGoogleSignIn();
+    expect(g.configure).toHaveBeenCalledWith(
+      expect.objectContaining({ offlineAccess: true, forceCodeForRefreshToken: false }),
+    );
+  });
+
+  it('leaves offline access off on iOS', () => {
+    loadFresh('ios').configureGoogleSignIn();
+    const cfg = g.configure.mock.calls[0][0];
+    expect(cfg).not.toHaveProperty('offlineAccess');
+    expect(cfg).not.toHaveProperty('forceCodeForRefreshToken');
+  });
+});
 
 describe('performGoogleSignIn', () => {
-  it('restores the previous account before revoking, so the next token is fresh (Android)', async () => {
-    g.hasPreviousSignIn.mockReturnValue(true);
-    await expect(performGoogleSignIn()).resolves.toBe('fresh-token');
-    expect(order(g.signInSilently)).toBeLessThan(order(g.revokeAccess));
-    expect(order(g.revokeAccess)).toBeLessThan(order(g.signIn));
-  });
-
-  it('revokes again right after obtaining the token, so the cache never holds a used token', async () => {
-    g.hasPreviousSignIn.mockReturnValue(false);
-    await performGoogleSignIn();
-    const revokes = g.revokeAccess.mock.invocationCallOrder;
-    expect(revokes.length).toBe(2);
-    expect(revokes[1]).toBeGreaterThan(order(g.signIn));
-  });
-
-  it('still returns the token if the post-sign-in revoke fails', async () => {
-    g.hasPreviousSignIn.mockReturnValue(false);
-    g.revokeAccess.mockRejectedValue(new Error('network'));
-    await expect(performGoogleSignIn()).resolves.toBe('fresh-token');
-  });
-
-  it('skips the silent restore when there was no previous sign-in', async () => {
-    g.hasPreviousSignIn.mockReturnValue(false);
-    await performGoogleSignIn();
+  it('returns the server auth code on Android, with no revoke or sign-out', async () => {
+    const { performGoogleSignIn: run } = loadFresh('android');
+    await expect(run()).resolves.toEqual({ kind: 'server_auth_code', code: 'auth-code' });
+    expect(g.revokeAccess).not.toHaveBeenCalled();
+    expect(g.signOut).not.toHaveBeenCalled();
     expect(g.signInSilently).not.toHaveBeenCalled();
-    expect(g.revokeAccess).toHaveBeenCalled();
-    expect(g.signIn).toHaveBeenCalled();
   });
 
-  it('never lets a failed restore, revoke or sign-out block the real sign-in', async () => {
-    g.hasPreviousSignIn.mockReturnValue(true);
-    g.signInSilently.mockRejectedValue(new Error('no saved credential'));
-    g.revokeAccess.mockRejectedValue(new Error('SIGN_IN_REQUIRED'));
-    g.signOut.mockRejectedValue(new Error('not signed in'));
-    await expect(performGoogleSignIn()).resolves.toBe('fresh-token');
+  it('throws on Android when no server auth code comes back, without falling back to the ID token', async () => {
+    const { performGoogleSignIn: run } = loadFresh('android', {
+      type: 'success',
+      data: { idToken: 'id-tok', serverAuthCode: null },
+    });
+    await expect(run()).rejects.toThrow(/server auth code/);
   });
 
-  it('returns null when the user cancels', async () => {
-    g.hasPreviousSignIn.mockReturnValue(false);
-    g.signIn.mockResolvedValue({ type: 'cancelled', data: null });
-    await expect(performGoogleSignIn()).resolves.toBeNull();
+  it('returns the ID token on iOS, with no revoke or sign-out', async () => {
+    const { performGoogleSignIn: run } = loadFresh('ios');
+    await expect(run()).resolves.toEqual({ kind: 'id_token', idToken: 'id-tok' });
+    expect(g.revokeAccess).not.toHaveBeenCalled();
+    expect(g.signOut).not.toHaveBeenCalled();
+  });
+
+  it('throws on iOS when no ID token comes back', async () => {
+    const { performGoogleSignIn: run } = loadFresh('ios', {
+      type: 'success',
+      data: { idToken: null, serverAuthCode: null },
+    });
+    await expect(run()).rejects.toThrow(/ID token/);
+  });
+
+  it.each(['android', 'ios'] as const)('returns null when the user cancels (%s)', async (os) => {
+    const mod = loadFresh(os, { type: 'cancelled', data: null });
+    await expect(mod.performGoogleSignIn()).resolves.toBeNull();
   });
 });
 
-describe('forgetGoogleAccount', () => {
-  it('restores, revokes and signs out, swallowing every failure', async () => {
+describe('signOutGoogle', () => {
+  it('only signs out, never revokes, and swallows a failure', async () => {
+    const { signOutGoogle } = loadFresh('ios');
+    g.signOut.mockRejectedValue(new Error('not signed in'));
+    await expect(signOutGoogle()).resolves.toBeUndefined();
+    expect(g.signOut).toHaveBeenCalled();
+    expect(g.revokeAccess).not.toHaveBeenCalled();
+    expect(g.signInSilently).not.toHaveBeenCalled();
+  });
+});
+
+describe('forgetGoogleAccount (account deletion)', () => {
+  it('restores, revokes then signs out, swallowing every failure', async () => {
+    const { forgetGoogleAccount } = loadFresh('android');
     g.hasPreviousSignIn.mockReturnValue(true);
     g.revokeAccess.mockRejectedValue(new Error('nothing to revoke'));
     await expect(forgetGoogleAccount()).resolves.toBeUndefined();
     expect(g.signInSilently).toHaveBeenCalled();
     expect(g.signOut).toHaveBeenCalled();
+    expect(g.signInSilently.mock.invocationCallOrder[0]).toBeLessThan(g.revokeAccess.mock.invocationCallOrder[0]);
+    expect(g.revokeAccess.mock.invocationCallOrder[0]).toBeLessThan(g.signOut.mock.invocationCallOrder[0]);
   });
 });

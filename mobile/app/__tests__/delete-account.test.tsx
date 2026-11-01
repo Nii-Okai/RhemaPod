@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -332,6 +333,29 @@ describe('DeleteAccountScreen', () => {
     expect(mockedPost).toHaveBeenCalledWith('/auth/me/delete', {
       body: { method: 'google', id_token: 'google-id-token', apple_unavailable: false },
     });
+  });
+
+  it('confirms with Google using the server auth code on Android', async () => {
+    const original = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      profile = { ...profile, has_password: false, linked_providers: ['google'] };
+      mockedGoogleSignIn.mockResolvedValueOnce({
+        type: 'success',
+        data: { idToken: 'unused-id-token', serverAuthCode: 'google-auth-code' },
+      });
+      mockedPost.mockResolvedValueOnce(undefined);
+      const screen = renderScreen();
+      await toConfirmStep(screen);
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Delete permanently, Confirm with Google'));
+      });
+      expect(mockedPost).toHaveBeenCalledWith('/auth/me/delete', {
+        body: { method: 'google', server_auth_code: 'google-auth-code', apple_unavailable: false },
+      });
+    } finally {
+      Platform.OS = original;
+    }
   });
 
   it('tells staff to ask an administrator and offers no delete button', async () => {

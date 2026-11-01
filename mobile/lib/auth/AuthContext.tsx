@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSegments } from 'expo-router';
 import { clearPendingLink, takePendingLink } from '../linking/pendingLink';
-import { configureGoogleSignIn } from './googleSignIn';
+import { configureGoogleSignIn, type GoogleCredential } from './googleSignIn';
 import * as session from './session';
 import type { AuthStatus } from './types';
 
@@ -15,7 +15,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Local teardown after the server deleted the account (`session.finishAccountDeletion`). */
   finishAccountDeletion: () => Promise<void>;
-  signInWithGoogle: (idToken: string) => Promise<void>;
+  signInWithGoogle: (credential: GoogleCredential) => Promise<void>;
   signInWithApple: (
     identityToken: string,
     rawNonce: string,

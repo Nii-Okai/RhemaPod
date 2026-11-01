@@ -1,5 +1,6 @@
 import { apiUrl } from './config';
 import { apiErrorFromResponse, networkError } from './errors';
+import type { GoogleCredential } from '../auth/googleSignIn';
 import type { TokenPair, UserPublic } from '../auth/types';
 
 /**
@@ -61,8 +62,11 @@ export function resendVerification(email: string): Promise<{ message: string }> 
  * server-side, so there is no separate "register with Google/Apple" call, same as the
  * screens' own single `SocialSignInButton` press for both sign-in.tsx and register.tsx.
  */
-export function oauthGoogle(idToken: string): Promise<TokenPair> {
-  return post<TokenPair>('/auth/oauth/google', { id_token: idToken });
+export function oauthGoogle(credential: GoogleCredential): Promise<TokenPair> {
+  return post<TokenPair>(
+    '/auth/oauth/google',
+    credential.kind === 'id_token' ? { id_token: credential.idToken } : { server_auth_code: credential.code },
+  );
 }
 
 export function oauthApple(

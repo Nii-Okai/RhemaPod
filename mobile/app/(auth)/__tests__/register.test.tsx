@@ -143,7 +143,7 @@ describe('RegisterScreen', () => {
       expect(queryByText('Continue with Apple')).toBeNull();
     });
 
-    it('a successful Google press calls through to signInWithGoogle with the ID token', async () => {
+    it('a successful Google press calls through to signInWithGoogle with the ID token on iOS', async () => {
       Platform.OS = 'ios';
       const { signInWithGoogle } = mockAuth();
       mockedGoogleSignIn.signIn.mockResolvedValueOnce({
@@ -155,7 +155,23 @@ describe('RegisterScreen', () => {
       fireEvent.press(await findByText('Continue with Google'));
 
       await waitFor(() => {
-        expect(signInWithGoogle).toHaveBeenCalledWith('google-id-token');
+        expect(signInWithGoogle).toHaveBeenCalledWith({ kind: 'id_token', idToken: 'google-id-token' });
+      });
+    });
+
+    it('a successful Google press calls through to signInWithGoogle with the server auth code on Android', async () => {
+      Platform.OS = 'android';
+      const { signInWithGoogle } = mockAuth();
+      mockedGoogleSignIn.signIn.mockResolvedValueOnce({
+        type: 'success',
+        data: { idToken: null, user: { id: '1', email: 'a@b.com', name: null, photo: null, familyName: null, givenName: null }, scopes: [], serverAuthCode: 'google-auth-code' },
+      });
+
+      const { findByText } = render(<RegisterScreen />);
+      fireEvent.press(await findByText('Continue with Google'));
+
+      await waitFor(() => {
+        expect(signInWithGoogle).toHaveBeenCalledWith({ kind: 'server_auth_code', code: 'google-auth-code' });
       });
     });
 
