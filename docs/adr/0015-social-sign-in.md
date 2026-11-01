@@ -283,7 +283,7 @@ Staff always sign in via `/auth/login`.
 
 ## Addendum 2026-11 — Android server auth code
 
-- **Status of this addendum:** Proposed (accepted at `[HUMAN_GATE GC3]` of
+- **Status of this addendum:** Accepted 2026-11-01 (at `[HUMAN_GATE GC3]` of
   [`plans/plan-android-google-auth-code.md`](../../plans/plan-android-google-auth-code.md)).
 - **Date:** 2026-11-01. **Deciders:** Isaac (GC0 passed 2026-11-01).
 - Android sign-in accepts a one-time Google server auth code as an alternative to the
