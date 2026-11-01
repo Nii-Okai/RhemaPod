@@ -339,6 +339,115 @@ async def verify_google_id_token(token: str) -> VerifiedIdentity:
     )
 
 
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # pinned; never config-driven
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"  # pinned; never config-driven
+_GOOGLE_EXCHANGE_TIMEOUT_SECONDS = 10
+_GOOGLE_REVOKE_TIMEOUT_SECONDS = 5
+# 400s that mean the code itself is bad/spent (the user's problem, not ours).
+_GOOGLE_EXCHANGE_INVALID_ERRORS = frozenset({"invalid_grant"})
+
+
+@dataclass(frozen=True)
+class GoogleCodeExchange:
+    """What a server auth code exchange yields. `access_token` is kept only so
+    account deletion can revoke the grant (revoking it also revokes the
+    refresh token); it is never logged or persisted, and `repr=False` keeps it
+    out of accidental dumps."""
+
+    id_token: str = field(repr=False)
+    access_token: str | None = field(default=None, repr=False)
+
+
+async def exchange_google_server_auth_code(code: str) -> GoogleCodeExchange:
+    """Exchange an Android one-time server auth code for Google's raw
+    `id_token` (ADR 0015 addendum). Callers then run `verify_google_id_token`
+    and the single-use claim on the returned token exactly as for a client-
+    supplied ID token. The refresh token is dropped; the access token is
+    returned in memory for deletion-time revocation only. No stub backend exists on purpose — a stub
+    that mints identities would be an auth bypass; with the flag off this
+    raises `unavailable`.
+
+    Never logs the code, the secret or the response body: only Google's
+    `error` code and the HTTP status."""
+    if not settings.oauth_google_auth_code_enabled:
+        raise OAuthTokenError("unavailable", "Server auth code sign-in is disabled")
+    secret = settings.google_oauth_client_secret
+    client_id = settings.google_oauth_web_client_id
+    if secret is None or not client_id:
+        log.error("google_code_exchange_misconfigured")
+        raise OAuthTokenError("unavailable", "Server auth code sign-in is misconfigured")
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=_GOOGLE_EXCHANGE_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": secret.get_secret_value(),
+                    "redirect_uri": "",
+                    "grant_type": "authorization_code",
+                },
+            )
+    except Exception as exc:  # timeout, connect error, TLS, protocol
+        log.error("google_code_exchange_failed", error_type=type(exc).__name__)
+        raise OAuthTokenError("unavailable", "Code exchange failed") from None
+
+    status_code = resp.status_code
+    if status_code == 200:
+        try:
+            body = resp.json()
+            id_token = body.get("id_token") if isinstance(body, dict) else None
+            access_token = body.get("access_token") if isinstance(body, dict) else None
+        except ValueError:
+            id_token = None
+            access_token = None
+        if not isinstance(id_token, str) or not id_token:
+            log.error("google_code_exchange_no_id_token", status=status_code)
+            raise OAuthTokenError("unavailable", "Code exchange returned no ID token")
+        return GoogleCodeExchange(
+            id_token=id_token,
+            access_token=access_token if isinstance(access_token, str) and access_token else None,
+        )
+
+    google_error: str | None = None
+    if 400 <= status_code < 500:
+        try:
+            body = resp.json()
+            raw = body.get("error") if isinstance(body, dict) else None
+            google_error = raw if isinstance(raw, str) and len(raw) <= 64 else None
+        except ValueError:
+            pass
+    if status_code == 400 and google_error in _GOOGLE_EXCHANGE_INVALID_ERRORS:
+        raise OAuthTokenError("invalid", "Invalid or expired server auth code")
+    # Our misconfiguration (invalid_client, redirect_uri_mismatch, ...), a
+    # redirect, or a Google-side failure: not the user's fault.
+    log.error("google_code_exchange_failed", status=status_code, google_error=google_error)
+    raise OAuthTokenError("unavailable", "Code exchange failed")
+
+
+async def revoke_google_grant(access_token: str) -> None:
+    """Best-effort: revoke the grant behind `access_token` at Google (revoking
+    an access token also revokes its refresh token). Never raises and never
+    logs the token: failures log the HTTP status or exception type only."""
+    try:
+        async with httpx.AsyncClient(
+            timeout=_GOOGLE_REVOKE_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.post(GOOGLE_REVOKE_URL, data={"token": access_token})
+    except Exception as exc:
+        log.warning("google_grant_revoke_failed", error_type=type(exc).__name__)
+        return
+    if resp.status_code != 200:
+        log.warning("google_grant_revoke_failed", status=resp.status_code)
+
+
 async def verify_apple_identity_token(token: str, raw_nonce: str) -> VerifiedIdentity:
     """Apple's identity token never carries the user's name — that arrives
     exactly once, out-of-band, in the authorization response, and the caller

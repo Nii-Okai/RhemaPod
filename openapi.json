@@ -2538,37 +2538,73 @@
             "type": "boolean"
           },
           "id_token": {
-            "maxLength": 4096,
-            "minLength": 1,
-            "title": "Id Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Token"
           },
           "method": {
             "const": "google",
             "title": "Method",
             "type": "string"
+          },
+          "server_auth_code": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Auth Code"
           }
         },
         "required": [
-          "method",
-          "id_token"
+          "method"
         ],
         "title": "GoogleDeletionRequest",
         "type": "object"
       },
       "GoogleSignInRequest": {
-        "description": "Google's signed ID token from the mobile app's native Google Sign-In\nflow (ADR 0015). Verified server-side in `app/core/oauth.py` \u2014 nothing\nhere is trusted until the signature, issuer, and audience all check out.",
+        "description": "Google sign-in proof from the mobile app's native flow (ADR 0015).",
         "properties": {
           "id_token": {
-            "maxLength": 4096,
-            "minLength": 1,
-            "title": "Id Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Token"
+          },
+          "server_auth_code": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Auth Code"
           }
         },
-        "required": [
-          "id_token"
-        ],
         "title": "GoogleSignInRequest",
         "type": "object"
       },

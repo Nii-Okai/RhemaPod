@@ -2,6 +2,7 @@
 import * as authClient from '../api/authClient';
 import { ApiError } from '../api/errors';
 import * as secureStore from './secureStore';
+import type { GoogleCredential } from './googleSignIn';
 import type { AuthStatus, TokenPair } from './types';
 
 /**
@@ -264,8 +265,8 @@ export function forgotPassword(email: string): Promise<{ message: string }> {
  * at the front. A brand-new Google/Apple identity auto-creates an account server-side,
  * so there is no separate `registerWithGoogle`/`registerWithApple`.
  */
-export async function signInWithGoogle(idToken: string): Promise<void> {
-  const pair = await authClient.oauthGoogle(idToken);
+export async function signInWithGoogle(credential: GoogleCredential): Promise<void> {
+  const pair = await authClient.oauthGoogle(credential);
   await applyTokenPair(pair);
   setStatus('signedIn');
 }
@@ -297,12 +298,11 @@ export async function signOut(): Promise<void> {
   }
   await clearSession();
   try {
-    // Revoke while the SDK can still find the account, so the next Google sign-in gets a
-    // fresh ID token instead of the cached one the backend rejects as a replay.
+    // Sign-out only (no revoke), so the account picker shows next time.
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see applyTokenPair's comment
-    await (require('./googleSignIn') as typeof import('./googleSignIn')).forgetGoogleAccount();
+    await (require('./googleSignIn') as typeof import('./googleSignIn')).signOutGoogle();
   } catch (err) {
-    if (__DEV__) console.warn('[session] forgetting the Google account failed', err);
+    if (__DEV__) console.warn('[session] signing out of Google failed', err);
   }
   setStatus('signedOut');
 }

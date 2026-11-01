@@ -75,9 +75,9 @@ export default function SignInScreen() {
     setSocialError(null);
     setSocialSubmitting('google');
     try {
-      const idToken = await performGoogleSignIn();
-      if (idToken === null) return; // user dismissed the native sheet — silent no-op
-      await signInWithGoogle(idToken);
+      const credential = await performGoogleSignIn();
+      if (credential === null) return; // user dismissed the native sheet — silent no-op
+      await signInWithGoogle(credential);
     } catch (err) {
       setSocialError(socialAuthErrorCopy(err, 'google'));
     } finally {

@@ -31,6 +31,14 @@ envVarGroups:
         value: '["10.0.0.0/8"]'
       - key: GOOGLE_OAUTH_CLIENT_IDS
         value: 827558560538-it16fls8iu36e9c3fcp13beaf9u54ooe.apps.googleusercontent.com,827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com,827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com
+      # Android signs in with a one-time server auth code the API exchanges at
+      # Google's token endpoint (ADR 0015 addendum). With the flag on, the
+      # start-time preflight refuses to boot without the web client id and the
+      # secret below. The web client id is an identifier, not a secret.
+      - key: OAUTH_GOOGLE_AUTH_CODE_ENABLED
+        value: "true"
+      - key: GOOGLE_OAUTH_WEB_CLIENT_ID
+        value: 827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com
       - key: OAUTH_APPLE_ENABLED
         value: "true"
       # Account deletion revokes the user's Sign in with Apple grant (ADR 0020,
@@ -142,6 +150,10 @@ services:
       # Full contents of AuthKey_<APPLE_KEY_ID>.p8 (the PEM text, not a path).
       # Real newlines or "\n" escapes both work.
       - key: APPLE_PRIVATE_KEY
+        sync: false
+      # Dedicated client secret on the Google web OAuth client, used only for
+      # the server-auth-code exchange (rotatable independently).
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
         sync: false
 
   - type: web

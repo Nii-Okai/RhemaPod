@@ -48,6 +48,8 @@
 
 The generic 403 is deliberate: it does not reveal which providers an account has or why a proof failed.
 
+**Note 2026-11 (Accepted 2026-11-01, see ADR 0015 addendum "Android server auth code"):** the `method: "google"` proof may carry `server_auth_code` instead of `id_token` (exactly one, else 422). The backend exchanges the code for a fresh ID token, then applies the rules above unchanged: `iat` freshness (<= 300 s, measured on the exchanged token), `sub` match, claim-once. `invalid_grant` maps to the same generic 403; Google/network unavailability or a disabled code path maps to 503.
+
 ### 2. Behaviour
 
 **Re-auth**
@@ -161,3 +163,11 @@ Hard delete through existing cascades. Comments are flat, so there is no anonymi
 - **Fail-open delete limiter (project default):** rejected, see §4.
 - **Staff self-deletion:** out of scope; staff are removed by an administrator.
 - **Per-account login key:** not changed. Re-keying `/auth/login` is out of scope; the per-user delete limiter covers the delete path.
+
+## Note 2026-11: Android Google re-auth freshness and grant revocation
+
+A Google proof sent as a `server_auth_code` (Android) is exchanged server-side, so the ID token's
+`iat` is the exchange time. That only means "fresh user gesture" because the client clears the
+cached account (`GoogleSignin.signOut()`, never revoke) before `signIn()` on the delete-account
+screen, forcing the account picker. After the erase commits, the exchange's access token is
+revoked at Google best-effort (ADR 0015 review addendum); a failure never changes the 204.

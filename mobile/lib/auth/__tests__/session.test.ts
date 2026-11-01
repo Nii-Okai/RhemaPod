@@ -12,7 +12,7 @@ import { clearQueryCache } from '../../query/clearQueryCache';
 import { downloadManager } from '../../downloads/downloadManager';
 import * as fill from '../../mediaCache/fill';
 import * as session from '../session';
-import { forgetGoogleAccount } from '../googleSignIn';
+import { forgetGoogleAccount, signOutGoogle } from '../googleSignIn';
 
 jest.mock('expo-secure-store', () => {
   let store: Record<string, string> = {};
@@ -55,7 +55,10 @@ jest.mock('../../downloads/downloadManager', () => ({
   downloadManager: { wipeAllDownloads: jest.fn().mockResolvedValue(undefined) },
 }));
 
-jest.mock('../googleSignIn', () => ({ forgetGoogleAccount: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../googleSignIn', () => ({
+  forgetGoogleAccount: jest.fn().mockResolvedValue(undefined),
+  signOutGoogle: jest.fn().mockResolvedValue(undefined),
+}));
 
 const mockedAuthClient = authClient as jest.Mocked<typeof authClient>;
 const mockedClearMediaCache = clearMediaCache as jest.Mock;
@@ -241,8 +244,9 @@ describe('session access-token storage', () => {
     expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalled();
     expect(session.getAccessToken()).toBeNull();
     expect(session.getStatus()).toBe('signedOut');
-    // Revoke the Google grant on sign-out so Android's next Google sign-in is fresh.
-    expect(forgetGoogleAccount).toHaveBeenCalled();
+    // Sign-out only clears the cached Google account; it never revokes the grant.
+    expect(signOutGoogle).toHaveBeenCalled();
+    expect(forgetGoogleAccount).not.toHaveBeenCalled();
     // Plan S7, HUMAN_GATE G2: every clearSession() path wipes the media cache too.
     expect(mockedClearMediaCache).toHaveBeenCalled();
     // ...and the query cache, so the next account never sees this one's `me.*` reads.
@@ -452,6 +456,7 @@ describe('finishAccountDeletion', () => {
     expect(mockedClearQueryCache).toHaveBeenCalled();
     expect(mockedWipeAllDownloads).toHaveBeenCalled();
     expect(forgetGoogleAccount).toHaveBeenCalled();
+    expect(signOutGoogle).not.toHaveBeenCalled();
   });
 
   it('still signs out when a wipe step throws', async () => {
