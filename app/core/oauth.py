@@ -340,17 +340,30 @@ async def verify_google_id_token(token: str) -> VerifiedIdentity:
 
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # pinned; never config-driven
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"  # pinned; never config-driven
 _GOOGLE_EXCHANGE_TIMEOUT_SECONDS = 10
+_GOOGLE_REVOKE_TIMEOUT_SECONDS = 5
 # 400s that mean the code itself is bad/spent (the user's problem, not ours).
 _GOOGLE_EXCHANGE_INVALID_ERRORS = frozenset({"invalid_grant"})
 
 
-async def exchange_google_server_auth_code(code: str) -> str:
+@dataclass(frozen=True)
+class GoogleCodeExchange:
+    """What a server auth code exchange yields. `access_token` is kept only so
+    account deletion can revoke the grant (revoking it also revokes the
+    refresh token); it is never logged or persisted, and `repr=False` keeps it
+    out of accidental dumps."""
+
+    id_token: str = field(repr=False)
+    access_token: str | None = field(default=None, repr=False)
+
+
+async def exchange_google_server_auth_code(code: str) -> GoogleCodeExchange:
     """Exchange an Android one-time server auth code for Google's raw
     `id_token` (ADR 0015 addendum). Callers then run `verify_google_id_token`
     and the single-use claim on the returned token exactly as for a client-
-    supplied ID token. Only `id_token` is read from the response: access and
-    refresh tokens are dropped. No stub backend exists on purpose — a stub
+    supplied ID token. The refresh token is dropped; the access token is
+    returned in memory for deletion-time revocation only. No stub backend exists on purpose — a stub
     that mints identities would be an auth bypass; with the flag off this
     raises `unavailable`.
 
@@ -366,7 +379,9 @@ async def exchange_google_server_auth_code(code: str) -> str:
 
     try:
         async with httpx.AsyncClient(
-            timeout=_GOOGLE_EXCHANGE_TIMEOUT_SECONDS, follow_redirects=False
+            timeout=_GOOGLE_EXCHANGE_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
         ) as client:
             resp = await client.post(
                 GOOGLE_TOKEN_URL,
@@ -387,12 +402,17 @@ async def exchange_google_server_auth_code(code: str) -> str:
         try:
             body = resp.json()
             id_token = body.get("id_token") if isinstance(body, dict) else None
+            access_token = body.get("access_token") if isinstance(body, dict) else None
         except ValueError:
             id_token = None
+            access_token = None
         if not isinstance(id_token, str) or not id_token:
             log.error("google_code_exchange_no_id_token", status=status_code)
             raise OAuthTokenError("unavailable", "Code exchange returned no ID token")
-        return id_token
+        return GoogleCodeExchange(
+            id_token=id_token,
+            access_token=access_token if isinstance(access_token, str) and access_token else None,
+        )
 
     google_error: str | None = None
     if 400 <= status_code < 500:
@@ -408,6 +428,24 @@ async def exchange_google_server_auth_code(code: str) -> str:
     # redirect, or a Google-side failure: not the user's fault.
     log.error("google_code_exchange_failed", status=status_code, google_error=google_error)
     raise OAuthTokenError("unavailable", "Code exchange failed")
+
+
+async def revoke_google_grant(access_token: str) -> None:
+    """Best-effort: revoke the grant behind `access_token` at Google (revoking
+    an access token also revokes its refresh token). Never raises and never
+    logs the token: failures log the HTTP status or exception type only."""
+    try:
+        async with httpx.AsyncClient(
+            timeout=_GOOGLE_REVOKE_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.post(GOOGLE_REVOKE_URL, data={"token": access_token})
+    except Exception as exc:
+        log.warning("google_grant_revoke_failed", error_type=type(exc).__name__)
+        return
+    if resp.status_code != 200:
+        log.warning("google_grant_revoke_failed", status=resp.status_code)
 
 
 async def verify_apple_identity_token(token: str, raw_nonce: str) -> VerifiedIdentity:

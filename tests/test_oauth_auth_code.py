@@ -116,6 +116,7 @@ async def test_exchange_request_shape(pg_client, exchange, _rsa_key):
     }
     (kwargs,) = exchange.client_kwargs
     assert kwargs["follow_redirects"] is False and kwargs["timeout"] == 10
+    assert kwargs["trust_env"] is False
 
 
 async def test_code_sign_in_creates_then_reuses_user(pg_client, exchange, _rsa_key, sessions):
@@ -242,6 +243,18 @@ async def test_secret_code_and_tokens_never_logged(pg_client, exchange, capture_
     text = capture_logs.text() + caplog.text
     for needle in (SECRET, CODE, REFRESH, ACCESS):
         assert needle not in text
+
+
+async def test_code_sign_in_respects_oauth_rate_limit(pg_client, exchange, _rsa_key, monkeypatch):
+    monkeypatch.setattr(settings, "login_rate_limit", 2)
+    monkeypatch.setattr(settings, "login_rate_window_seconds", 60)
+    for i in range(2):
+        exchange.respond_with_token(_id_token(_rsa_key, f"g-{uuid.uuid4().hex[:8]}"))
+        assert (await _sign_in_with_code(pg_client, f"code-{i}")).status_code == 200
+    calls_before = len(exchange.requests)
+    throttled = await _sign_in_with_code(pg_client, "code-over")
+    assert throttled.status_code == 429
+    assert len(exchange.requests) == calls_before  # no exchange past the limit
 
 
 def test_log_redaction_keys_cover_new_secrets():

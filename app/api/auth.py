@@ -18,12 +18,14 @@ from app.core.dependencies import AuditCtx, CurrentUserDep, require_role
 from app.core.logging import correlation_id, get_logger
 from app.core.net import client_ip
 from app.core.oauth import (
+    GoogleCodeExchange,
     OAuthTokenError,
     ProviderConfig,
     VerifiedIdentity,
     unverified_exp,
     verify_apple_identity_token,
     exchange_google_server_auth_code,
+    revoke_google_grant,
     verify_google_id_token,
 )
 from app.core.rate_limit import (
@@ -477,14 +479,20 @@ async def _check_oauth_rate_limit(provider: str, request: Request) -> None:
         )
 
 
-async def _google_id_token_from(data: GoogleSignInRequest | GoogleDeletionRequest) -> str:
+async def _google_exchange_from(
+    data: GoogleSignInRequest | GoogleDeletionRequest,
+) -> GoogleCodeExchange:
     """The raw Google ID token for a request: as sent (iOS), or exchanged from
     the one-time server auth code (Android). The result is verified and
-    claimed single-use by the caller either way."""
+    claimed single-use by the caller either way. `access_token` is set only
+    for an exchange (deletion revokes the grant with it)."""
     if data.server_auth_code is not None:
         return await exchange_google_server_auth_code(data.server_auth_code)
-    assert data.id_token is not None  # the request validator guarantees exactly one
-    return data.id_token
+    if data.id_token is None:
+        # Unreachable past the request validator (exactly one proof); fail
+        # closed rather than proceed without a token.
+        raise OAuthTokenError("invalid", "Missing Google proof")
+    return GoogleCodeExchange(id_token=data.id_token)
 
 
 @router.post("/oauth/google", response_model=TokenPair)
@@ -499,7 +507,7 @@ async def oauth_google(
     await _check_oauth_rate_limit("google", request)
 
     try:
-        id_token = await _google_id_token_from(data)
+        id_token = (await _google_exchange_from(data)).id_token
         identity = await verify_google_id_token(id_token)
         await _claim_oauth_token_once(id_token)
     except OAuthTokenError as exc:
@@ -680,17 +688,24 @@ def _apple_token_of(data: AppleDeletionRequest) -> Callable[[], Awaitable[str]]:
 
 async def _verify_deletion_proof(
     data: AccountDeletionRequest, target: account_deletion_service.DeletionTarget
-) -> None:
+) -> str | None:
+    """Raises on a bad proof. Returns the Google access token from a server
+    auth code exchange (to revoke the grant once the account is erased), else
+    None."""
+    grant: list[str] = []
     if isinstance(data, PasswordDeletionRequest):
         if not security.verify_password(data.password, target.user.password_hash):
             log.info("account_delete_reauth_rejected", reason="password")
             raise _reauth_failed()
     elif isinstance(data, GoogleDeletionRequest):
+        async def get_google_token() -> str:
+            exchange = await _google_exchange_from(data)
+            if exchange.access_token:
+                grant.append(exchange.access_token)
+            return exchange.id_token
+
         await _verify_oauth_deletion_proof(
-            AuthProvider.GOOGLE,
-            lambda: _google_id_token_from(data),
-            verify_google_id_token,
-            target,
+            AuthProvider.GOOGLE, get_google_token, verify_google_id_token, target
         )
     else:
         await _verify_oauth_deletion_proof(
@@ -699,6 +714,7 @@ async def _verify_deletion_proof(
             lambda token: verify_apple_identity_token(token, data.raw_nonce),
             target,
         )
+    return grant[0] if grant else None
 
 
 @router.post("/me/delete", status_code=status.HTTP_204_NO_CONTENT)
@@ -749,7 +765,7 @@ async def delete_me(
         target = await account_deletion_service.prepare_account_deletion(
             db, user.id, method=data.method, apple_unavailable=data.apple_unavailable
         )
-        await _verify_deletion_proof(data, target)
+        grant_token = await _verify_deletion_proof(data, target)
         email = await account_deletion_service.delete_own_account(
             db,
             target,
@@ -763,6 +779,9 @@ async def delete_me(
         raise HTTPException(
             status_code=exc.status_code, detail=exc.message, headers=exc.headers or None
         )
+    if grant_token is not None:
+        # Best-effort, only after the erase committed; never fails the 204.
+        background_tasks.add_task(revoke_google_grant, grant_token)
     # After the response, so an SMTP stall can't delay the 204.
     background_tasks.add_task(
         account_deletion_service.send_deleted_notice, email, user.id

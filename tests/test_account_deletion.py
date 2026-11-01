@@ -757,13 +757,22 @@ def g_exchange(monkeypatch):
     class Ex:
         calls = 0
         responder = staticmethod(lambda req: httpx.Response(500))
+        revoke_responder = staticmethod(lambda req: httpx.Response(200))
+
+        def __init__(self):
+            self.revokes: list[httpx.Request] = []
 
         def token(self, tok):
-            self.responder = lambda req: httpx.Response(200, json={"id_token": tok})
+            self.responder = lambda req: httpx.Response(
+                200, json={"id_token": tok, "access_token": G_ACCESS, "refresh_token": G_REFRESH}
+            )
 
     ex = Ex()
 
     def handler(req):
+        if req.url.path == "/revoke":
+            ex.revokes.append(req)
+            return ex.revoke_responder(req)
         ex.calls += 1
         return ex.responder(req)
 
@@ -781,6 +790,10 @@ def g_exchange(monkeypatch):
     monkeypatch.setattr(settings, "google_oauth_web_client_id", _GOOGLE_AUD)
     monkeypatch.setattr(settings, "google_oauth_client_secret", SecretStr("s3cret"))
     return ex
+
+
+G_ACCESS = "ya29.deletion-access-do-not-log"
+G_REFRESH = "1//deletion-refresh-do-not-log"
 
 
 def _google_code(code="code-1", **extra):
@@ -875,3 +888,81 @@ async def test_google_deletion_requires_exactly_one_proof(
     r = await _post(pg_client, tu, body)
     assert r.status_code == 422
     assert await _exists(sessions, tu.id)
+
+
+# ── Server-side grant revocation after a code-proof deletion ─────────────────
+from urllib.parse import parse_qs  # noqa: E402
+
+
+async def test_code_proof_deletion_revokes_grant_with_access_token(
+    pg_client, sessions, make_user, apple, notices, _rsa_key, g_exchange
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    g_exchange.token(_g_token(_rsa_key, tu.id))
+    r = await _post(pg_client, tu, _google_code())
+    assert r.status_code == 204, r.text
+    assert not await _exists(sessions, tu.id)
+    (req,) = g_exchange.revokes
+    assert req.method == "POST"
+    assert str(req.url) == "https://oauth2.googleapis.com/revoke"
+    assert parse_qs(req.content.decode()) == {"token": [G_ACCESS]}
+
+
+@pytest.mark.parametrize("responder", [
+    lambda req: httpx.Response(400, json={"error": "invalid_token"}),
+    lambda req: httpx.Response(302, headers={"location": "https://evil.example/"}),
+    lambda req: (_ for _ in ()).throw(httpx.ConnectError("down")),
+], ids=["400", "redirect", "network"])
+async def test_revoke_failure_still_204_and_logs_without_tokens(
+    pg_client, sessions, make_user, apple, notices, _rsa_key, g_exchange,
+    capture_logs, caplog, responder
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    g_exchange.token(_g_token(_rsa_key, tu.id))
+    g_exchange.revoke_responder = responder
+    r = await _post(pg_client, tu, _google_code())
+    assert r.status_code == 204, r.text
+    assert not await _exists(sessions, tu.id)
+    assert len(g_exchange.revokes) == 1  # redirect not followed
+    assert any(e["event"] == "google_grant_revoke_failed" for e in capture_logs.records)
+    text = capture_logs.text() + caplog.text
+    for needle in (G_ACCESS, G_REFRESH, "code-1"):
+        assert needle not in text
+
+
+async def test_id_token_proof_deletion_does_not_revoke(
+    pg_client, sessions, make_user, apple, notices, _rsa_key, g_exchange
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    r = await _post(
+        pg_client, tu, {"method": "google", "id_token": _g_token(_rsa_key, tu.id)}
+    )
+    assert r.status_code == 204, r.text
+    assert g_exchange.revokes == [] and g_exchange.calls == 0
+
+
+async def test_failed_code_proof_deletion_does_not_revoke(
+    pg_client, sessions, make_user, apple, notices, _rsa_key, g_exchange
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    g_exchange.token(_g_token(_rsa_key, "someone-else-sub"))  # subject mismatch
+    r = await _post(pg_client, tu, _google_code())
+    assert r.status_code == 403
+    assert await _exists(sessions, tu.id)
+    assert g_exchange.revokes == []
+
+
+@pytest.mark.parametrize("responder", [
+    lambda req: httpx.Response(302, headers={"location": "https://evil.example/token"}),
+    lambda req: httpx.Response(200, text="<html>not json</html>"),
+    lambda req: httpx.Response(401, json={"error": "invalid_client"}),
+], ids=["redirect", "non-json", "invalid_client-4xx"])
+async def test_google_code_proof_exchange_failures_are_503(
+    pg_client, sessions, make_user, apple, notices, g_exchange, responder
+):
+    tu = await _viewer(make_user, sessions, password=None, google=True)
+    g_exchange.responder = responder
+    r = await _post(pg_client, tu, _google_code())
+    assert r.status_code == 503
+    assert await _exists(sessions, tu.id)
+    assert g_exchange.revokes == []
