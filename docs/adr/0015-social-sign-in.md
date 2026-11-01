@@ -288,6 +288,11 @@ Staff always sign in via `/auth/login`.
 - **Date:** 2026-11-01. **Deciders:** Isaac (GC0 passed 2026-11-01).
 - Android sign-in accepts a one-time Google server auth code as an alternative to the
   ID token. iOS and the ID-token contract are unchanged.
+- **Verified live (2026-11-01):** a bogus code sent with the real web client id and secret
+  returns `400 invalid_grant` (not `invalid_client` / `redirect_uri_mismatch`), and the full
+  on-device checklist passed on Android and iOS — including immediate re-sign-in after sign-out,
+  repeated cold-start sign-ins, a second Google account, and Google-confirmed account deletion
+  with the account picker shown. `redirect_uri=""` is accepted by Google for Android codes.
 
 ### Problem
 
