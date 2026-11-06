@@ -111,7 +111,7 @@ export default function DevGalleryScreen() {
       </Section>
 
       <Section title="Typography — display (Newsreader, 400 only)">
-        {(['hero', 'title', 'section', 'row', 'compact'] as DisplayVariant[]).map((variant) => (
+        {(['hero', 'title', 'shelf', 'section', 'row', 'compact'] as DisplayVariant[]).map((variant) => (
           <AppText key={variant} variant={`display.${variant}`} style={styles.stack}>
             {variant} — The kingdom of heaven
           </AppText>
