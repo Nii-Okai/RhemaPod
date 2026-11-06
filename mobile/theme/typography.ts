@@ -20,7 +20,7 @@ export const fontFamily = {
   mono: 'IBMPlexMono_400Regular',
 } as const;
 
-export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact';
+export type DisplayVariant = 'hero' | 'title' | 'shelf' | 'section' | 'row' | 'compact';
 export type UiVariant =
   | 'bodyLarge'
   | 'body'
@@ -46,6 +46,8 @@ interface TypeStyle {
 export const displayScale: Record<DisplayVariant, TypeStyle> = {
   hero: { fontFamily: fontFamily.display, fontSize: 32, lineHeightRatio: 1.08 },
   title: { fontFamily: fontFamily.display, fontSize: 26, lineHeightRatio: 1.1 },
+  /** Signature Home shelf headers — a step above `section` so they stand out (Nii, 2026-11-06). */
+  shelf: { fontFamily: fontFamily.display, fontSize: 28, lineHeightRatio: 1.1 },
   section: { fontFamily: fontFamily.display, fontSize: 24, lineHeightRatio: 1.15 },
   row: { fontFamily: fontFamily.display, fontSize: 20, lineHeightRatio: 1.1 },
   compact: { fontFamily: fontFamily.display, fontSize: 17, lineHeightRatio: 1.2 },
