@@ -60,7 +60,10 @@ announcements, and never leave listeners with an empty day.
    import with check step and clash handling (skip / replace draft / move to pool).
 7. **No streak shaming:** missed days show as a bud on the vine, never a reset counter.
 
-## Open decisions for `[HUMAN_GATE DV0]` (planner recommendation in **bold**)
+## Decisions at `[HUMAN_GATE DV0]` (bold = chosen)
+
+`[HUMAN_GATE DV0]` passed 2026-11-09: Nii approved the plan with every recommendation below
+(decision card in the project thread).
 
 - **D1 Text-to-speech engine.** **On-device (`expo-speech`): free, works offline, voice depends on
   the phone.** Alternative: cloud TTS rendered once at publish time (consistent voice, per-character
@@ -114,7 +117,7 @@ Indexes: `ix_devotionals_date_status (date, status)`, partial unique on `date`.
 
 `church_settings` new columns (all with server defaults so the singleton row stays valid):
 `devotional_reading_fallback` (`text`|`tts`, default `text`), `devotional_allow_override`
-(bool, true), `devotional_tts_voice` (varchar 60, null), `devotional_tts_rate` (numeric(3,2), 0.90),
+(bool, true), `devotional_tts_voice` (varchar 60, null), `devotional_tts_rate_pct` (smallint 50–150, 90),
 `devotional_publish_hour` (smallint 0–23, 5), `devotional_gap_alert_days` (smallint, 14),
 `devotional_still_seconds` (smallint, 60), `devotional_default_translation` (varchar 20, `kjv`).
 
