@@ -42,6 +42,10 @@ from app.core.redis import check_redis
 from app.core.storage import get_storage
 from app.core.token_store import TokenStoreUnavailable
 from app.db.database import PrimarySession, check_db, primary_engine
+from app.services.captions_scheduler import (
+    start_captions_scheduler,
+    stop_captions_scheduler,
+)
 from app.services.retention_scheduler import (
     start_retention_scheduler,
     stop_retention_scheduler,
@@ -76,11 +80,16 @@ async def lifespan(app: FastAPI):
         retention_task = start_retention_scheduler(session_factory=PrimarySession)
     elif settings.environment != "test":
         logger.warning("retention_scheduler_disabled")
+    captions_task = None
+    if settings.captions_scheduler_enabled:
+        captions_task = start_captions_scheduler(session_factory=PrimarySession)
     try:
         yield
     finally:
         logger.info("shutdown")
         try:
+            if captions_task is not None:
+                await stop_captions_scheduler(captions_task)
             if retention_task is not None:
                 await stop_retention_scheduler(retention_task)
         finally:

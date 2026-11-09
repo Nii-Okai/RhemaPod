@@ -389,6 +389,36 @@ describe('PlayerScreen — speed control', () => {
   });
 });
 
+describe('PlayerScreen — subtitles', () => {
+  it('hides the CC control until the video has subtitle tracks', async () => {
+    mockReads();
+    const { findByTestId, queryByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    expect(queryByLabelText('Subtitles, off')).toBeNull();
+  });
+
+  it('cycles off -> English -> French -> off and sets the native track', async () => {
+    mockReads();
+    const { findByTestId, findByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    act(() => {
+      player.__simulateSubtitleTracks([
+        { language: 'en', label: 'English (auto-generated)' },
+        { language: 'fr', label: 'Français' },
+      ]);
+    });
+
+    expect(player.subtitleTrack).toBeNull();
+    fireEvent.press(await findByLabelText('Subtitles, off'));
+    await waitFor(() => expect(player.subtitleTrack?.language).toBe('en'));
+    fireEvent.press(await findByLabelText('Subtitles, English'));
+    await waitFor(() => expect(player.subtitleTrack?.language).toBe('fr'));
+    fireEvent.press(await findByLabelText('Subtitles, French'));
+    await waitFor(() => expect(player.subtitleTrack).toBeNull());
+  });
+});
+
 describe('PlayerScreen — back control', () => {
   it('fires router.back() from the header', async () => {
     mockReads();

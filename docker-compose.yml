@@ -75,6 +75,7 @@ services:
       <<: *app-env
       DEBUG: "true"
       RETENTION_SCHEDULER_ENABLED: "true"
+      CAPTIONS_SCHEDULER_ENABLED: "true"
       UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
     ports:
       - "8000:8000"
