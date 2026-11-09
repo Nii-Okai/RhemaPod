@@ -360,6 +360,24 @@ export interface paths {
         patch: operations["update_settings_api_v1_admin_settings_patch"];
         trace?: never;
     };
+    "/api/v1/admin/settings/devotionals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Devotional Settings */
+        get: operations["get_devotional_settings_api_v1_admin_settings_devotionals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Devotional Settings */
+        patch: operations["update_devotional_settings_api_v1_admin_settings_devotionals_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/settings/sign-in-image": {
         parameters: {
             query?: never;
@@ -733,6 +751,91 @@ export interface paths {
          * @description Pull it from public view, back to approved.
          */
         post: operations["unpublish_announcement_api_v1_approvals_announcements__announcement_id__unpublish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional Review Queue */
+        get: operations["devotional_review_queue_api_v1_approvals_devotionals_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Devotional */
+        post: operations["approve_devotional_api_v1_approvals_devotionals__devotional_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Devotional */
+        post: operations["archive_devotional_api_v1_approvals_devotionals__devotional_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Devotional */
+        post: operations["reject_devotional_api_v1_approvals_devotionals__devotional_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Devotional */
+        post: operations["restore_devotional_api_v1_approvals_devotionals__devotional_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1506,6 +1609,298 @@ export interface paths {
         put?: never;
         /** Report Comment */
         post: operations["report_comment_api_v1_comments__comment_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Devotional
+         * @description Create a draft. `date` null puts it in the evergreen pool.
+         */
+        post: operations["create_devotional_api_v1_devotionals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devotionals */
+        get: operations["list_devotionals_api_v1_devotionals_admin_all_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional Calendar */
+        get: operations["devotional_calendar_api_v1_devotionals_admin_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Devotionals
+         * @description Import devotionals from a CSV body (`Content-Type: text/csv`). Run with
+         *     `dry_run=true` (the default) to check every row, then `dry_run=false` to
+         *     save. Rows with errors are never saved.
+         */
+        post: operations["import_devotionals_api_v1_devotionals_admin_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/import/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Template */
+        get: operations["import_template_api_v1_devotionals_admin_import_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/passage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Passage
+         * @description Fill the passage text from a reference (KJV/WEB, via bible-api.com).
+         */
+        get: operations["lookup_passage_api_v1_devotionals_admin_passage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/{devotional_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Devotional */
+        get: operations["get_devotional_api_v1_devotionals_admin__devotional_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/{devotional_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional History */
+        get: operations["devotional_history_api_v1_devotionals_admin__devotional_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/day/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devotional For Day
+         * @description The devotional for the caller's local `day` (YYYY-MM-DD): the one
+         *     scheduled for that date, else one from the evergreen pool.
+         */
+        get: operations["devotional_for_day_api_v1_devotionals_day__day__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devotionals For Days
+         * @description Consecutive days from `from` for offline prefetch. Days with nothing to
+         *     show (no dated devotional and an empty evergreen pool) are left out.
+         */
+        get: operations["devotionals_for_days_api_v1_devotionals_days_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Devotional */
+        delete: operations["delete_devotional_api_v1_devotionals__devotional_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Devotional */
+        patch: operations["update_devotional_api_v1_devotionals__devotional_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Reading Remove */
+        delete: operations["reading_remove_api_v1_devotionals__devotional_id__reading_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reading Upload Url */
+        post: operations["reading_upload_url_api_v1_devotionals__devotional_id__reading_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reading Confirm */
+        post: operations["reading_confirm_api_v1_devotionals__devotional_id__reading_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Devotional */
+        post: operations["submit_devotional_api_v1_devotionals__devotional_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Devotional */
+        post: operations["withdraw_devotional_api_v1_devotionals__devotional_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3758,6 +4153,409 @@ export interface components {
             /** Tables */
             tables: components["schemas"]["DataTable"][];
         };
+        /** DevotionalAdminItem */
+        DevotionalAdminItem: {
+            /** Author Name */
+            author_name: string | null;
+            /** Author Speaker Id */
+            author_speaker_id: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Date */
+            date: string | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "draft" | "pending_review" | "rejected" | "archived" | "scheduled" | "published" | "evergreen";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Evergreen */
+            is_evergreen: boolean;
+            /** Moment End S */
+            moment_end_s: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id: string | null;
+            /** Moment Sermon Title */
+            moment_sermon_title: string | null;
+            /** Moment Start S */
+            moment_start_s: number | null;
+            /** Passage Ref */
+            passage_ref: string;
+            /** Passage Text */
+            passage_text: string;
+            /** Passage Translation */
+            passage_translation: string;
+            /** Pray Question */
+            pray_question: string;
+            /** Pray Text */
+            pray_text: string;
+            /** Reading Duration S */
+            reading_duration_s: number | null;
+            reading_fallback: components["schemas"]["ReadingFallback"] | null;
+            /** Reading Url */
+            reading_url: string | null;
+            /** Reflection Md */
+            reflection_md: string;
+            status: components["schemas"]["DevotionalStatus"];
+            /** Still Breath In */
+            still_breath_in: string | null;
+            /** Still Breath Out */
+            still_breath_out: string | null;
+            /** Still Seconds */
+            still_seconds: number | null;
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** DevotionalApprovalLogItem */
+        DevotionalApprovalLogItem: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** From Status */
+            from_status: string | null;
+            /** Note */
+            note: string | null;
+            /** To Status */
+            to_status: string;
+        };
+        /** DevotionalAuthor */
+        DevotionalAuthor: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** DevotionalCalendar */
+        DevotionalCalendar: {
+            /** Days */
+            days: components["schemas"]["DevotionalCalendarDay"][];
+            /** Evergreen Ready */
+            evergreen_ready: number;
+            /** Gap Alert Days */
+            gap_alert_days: number;
+            /** Ready Days Ahead */
+            ready_days_ahead: number;
+        };
+        /** DevotionalCalendarDay */
+        DevotionalCalendarDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            devotional: components["schemas"]["DevotionalListItem"] | null;
+        };
+        /**
+         * DevotionalCreate
+         * @description A new draft. `date` null = the evergreen pool.
+         */
+        DevotionalCreate: {
+            /** Author Speaker Id */
+            author_speaker_id?: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Moment End S */
+            moment_end_s?: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id?: string | null;
+            /** Moment Start S */
+            moment_start_s?: number | null;
+            /** Passage Ref */
+            passage_ref: string;
+            /** Passage Text */
+            passage_text: string;
+            /** Passage Translation */
+            passage_translation: string;
+            /** Pray Question */
+            pray_question: string;
+            /** Pray Text */
+            pray_text: string;
+            reading_fallback?: components["schemas"]["ReadingFallback"] | null;
+            /** Reflection Md */
+            reflection_md: string;
+            /** Still Breath In */
+            still_breath_in?: string | null;
+            /** Still Breath Out */
+            still_breath_out?: string | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Suggested Word */
+            suggested_word?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DevotionalListItem */
+        DevotionalListItem: {
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Date */
+            date: string | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "draft" | "pending_review" | "rejected" | "archived" | "scheduled" | "published" | "evergreen";
+            /** Has Reading */
+            has_reading: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Evergreen */
+            is_evergreen: boolean;
+            /** Passage Ref */
+            passage_ref: string;
+            status: components["schemas"]["DevotionalStatus"];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** DevotionalMoment */
+        DevotionalMoment: {
+            /** Cover Url */
+            cover_url: string | null;
+            /** End S */
+            end_s: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Start S */
+            start_s: number;
+            /** Title */
+            title: string;
+        };
+        /** DevotionalPassage */
+        DevotionalPassage: {
+            /** Ref */
+            ref: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+            /** Verses */
+            verses: components["schemas"]["DevotionalVerse"][];
+        };
+        /** DevotionalPray */
+        DevotionalPray: {
+            /** Question */
+            question: string;
+            /** Text */
+            text: string;
+        };
+        /** DevotionalPublic */
+        DevotionalPublic: {
+            author: components["schemas"]["DevotionalAuthor"] | null;
+            /** Carry Verse Ref */
+            carry_verse_ref: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            moment: components["schemas"]["DevotionalMoment"] | null;
+            passage: components["schemas"]["DevotionalPassage"];
+            pray: components["schemas"]["DevotionalPray"];
+            /** Publish Hour */
+            publish_hour: number;
+            reading: components["schemas"]["DevotionalReading"] | null;
+            /**
+             * Reading Fallback
+             * @enum {string}
+             */
+            reading_fallback: "text" | "tts";
+            /** Reflection Md */
+            reflection_md: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "dated" | "evergreen";
+            still: components["schemas"]["DevotionalStill"];
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string;
+            tts: components["schemas"]["DevotionalTts"] | null;
+        };
+        /** DevotionalReading */
+        DevotionalReading: {
+            /** Duration S */
+            duration_s: number | null;
+            /** Url */
+            url: string;
+        };
+        /** DevotionalRejectRequest */
+        DevotionalRejectRequest: {
+            /** Note */
+            note: string;
+        };
+        /** DevotionalSettings */
+        DevotionalSettings: {
+            /** Allow Override */
+            allow_override: boolean;
+            /** Default Translation */
+            default_translation: string;
+            /** Gap Alert Days */
+            gap_alert_days: number;
+            /** Publish Hour */
+            publish_hour: number;
+            /**
+             * Reading Fallback
+             * @enum {string}
+             */
+            reading_fallback: "text" | "tts";
+            /** Still Seconds */
+            still_seconds: number;
+            /** Tts Rate Pct */
+            tts_rate_pct: number;
+            /** Tts Voice */
+            tts_voice: string | null;
+            /** Version */
+            version: number;
+        };
+        /** DevotionalSettingsUpdate */
+        DevotionalSettingsUpdate: {
+            /** Allow Override */
+            allow_override?: boolean | null;
+            /** Default Translation */
+            default_translation?: string | null;
+            /** Gap Alert Days */
+            gap_alert_days?: number | null;
+            /** Publish Hour */
+            publish_hour?: number | null;
+            /** Reading Fallback */
+            reading_fallback?: ("text" | "tts") | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Tts Rate Pct */
+            tts_rate_pct?: number | null;
+            /** Tts Voice */
+            tts_voice?: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * DevotionalStatus
+         * @enum {string}
+         */
+        DevotionalStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
+        /** DevotionalStatusResponse */
+        DevotionalStatusResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["DevotionalStatus"];
+        };
+        /** DevotionalStill */
+        DevotionalStill: {
+            /** Breath In */
+            breath_in: string | null;
+            /** Breath Out */
+            breath_out: string | null;
+            /** Seconds */
+            seconds: number;
+        };
+        /** DevotionalTts */
+        DevotionalTts: {
+            /** Rate */
+            rate: number;
+            /** Voice */
+            voice: string | null;
+        };
+        /**
+         * DevotionalUpdate
+         * @description Partial update; send `date: null` to move a devotional to the evergreen pool.
+         */
+        DevotionalUpdate: {
+            /** Author Speaker Id */
+            author_speaker_id?: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Moment End S */
+            moment_end_s?: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id?: string | null;
+            /** Moment Start S */
+            moment_start_s?: number | null;
+            /** Passage Ref */
+            passage_ref?: string | null;
+            /** Passage Text */
+            passage_text?: string | null;
+            /** Passage Translation */
+            passage_translation?: string | null;
+            /** Pray Question */
+            pray_question?: string | null;
+            /** Pray Text */
+            pray_text?: string | null;
+            reading_fallback?: components["schemas"]["ReadingFallback"] | null;
+            /** Reflection Md */
+            reflection_md?: string | null;
+            /** Still Breath In */
+            still_breath_in?: string | null;
+            /** Still Breath Out */
+            still_breath_out?: string | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Suggested Word */
+            suggested_word?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** DevotionalVerse */
+        DevotionalVerse: {
+            /** Number */
+            number: number | null;
+            /** Text */
+            text: string;
+        };
         /**
          * EpisodeOrderItem
          * @description One row of the reordered episode list — the minimum the client needs to
@@ -3832,6 +4630,63 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportResult */
+        ImportResult: {
+            /** Clashes */
+            clashes: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors: number;
+            /**
+             * Pooled
+             * @default 0
+             */
+            pooled: number;
+            /** Ready */
+            ready: number;
+            /**
+             * Replaced
+             * @default 0
+             */
+            replaced: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowResult"][];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Warnings */
+            warnings: number;
+        };
+        /** ImportRowResult */
+        ImportRowResult: {
+            /** Clash With */
+            clash_with?: string | null;
+            /** Date */
+            date: string | null;
+            /** Messages */
+            messages: string[];
+            /** Passage Ref */
+            passage_ref: string | null;
+            /** Row */
+            row: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "warning" | "error" | "clash";
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string | null;
         };
         /**
          * LikeState
@@ -4003,6 +4858,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[DevotionalListItem] */
+        Page_DevotionalListItem_: {
+            /** Items */
+            items: components["schemas"]["DevotionalListItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[ReviewQueueItem] */
         Page_ReviewQueueItem_: {
             /** Items */
@@ -4046,6 +4912,15 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PassageLookup */
+        PassageLookup: {
+            /** Ref */
+            ref: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
         };
         /** PasswordDeletionRequest */
         PasswordDeletionRequest: {
@@ -4306,6 +5181,39 @@ export interface components {
             /** Notified Subscriber Count */
             notified_subscriber_count: number;
             status: components["schemas"]["SermonStatus"];
+        };
+        /** ReadingConfirm */
+        ReadingConfirm: {
+            /** Duration S */
+            duration_s?: number | null;
+            /** Reading Key */
+            reading_key: string;
+        };
+        /**
+         * ReadingFallback
+         * @description What the Hear step does when no pastor's reading was uploaded.
+         * @enum {string}
+         */
+        ReadingFallback: "text" | "tts";
+        /** ReadingTicket */
+        ReadingTicket: {
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers: {
+                [key: string]: string;
+            };
+            /** Reading Key */
+            reading_key: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** ReadingUploadRequest */
+        ReadingUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -6070,6 +6978,59 @@ export interface operations {
             };
         };
     };
+    get_devotional_settings_api_v1_admin_settings_devotionals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalSettings"];
+                };
+            };
+        };
+    };
+    update_devotional_settings_api_v1_admin_settings_devotionals_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete: {
         parameters: {
             query?: never;
@@ -6718,6 +7679,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnnouncementStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_review_queue_api_v1_approvals_devotionals_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalListItem"][];
+                };
+            };
+        };
+    };
+    approve_devotional_api_v1_approvals_devotionals__devotional_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_devotional_api_v1_approvals_devotionals__devotional_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_devotional_api_v1_approvals_devotionals__devotional_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_devotional_api_v1_approvals_devotionals__devotional_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8038,6 +9147,546 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_devotional_api_v1_devotionals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devotionals_api_v1_devotionals_admin_all_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                status?: components["schemas"]["DevotionalStatus"] | null;
+                evergreen?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DevotionalListItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_calendar_api_v1_devotionals_admin_calendar_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalCalendar"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_devotionals_api_v1_devotionals_admin_import_post: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+                as?: "draft" | "approved";
+                on_clash?: "skip" | "replace_draft" | "to_pool";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_template_api_v1_devotionals_admin_import_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    lookup_passage_api_v1_devotionals_admin_passage_get: {
+        parameters: {
+            query: {
+                ref: string;
+                translation?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassageLookup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_devotional_api_v1_devotionals_admin__devotional_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_history_api_v1_devotionals_admin__devotional_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalApprovalLogItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_for_day_api_v1_devotionals_day__day__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotionals_for_days_api_v1_devotionals_days_get: {
+        parameters: {
+            query: {
+                from: string;
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_devotional_api_v1_devotionals__devotional_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_devotional_api_v1_devotionals__devotional_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_remove_api_v1_devotionals__devotional_id__reading_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_upload_url_api_v1_devotionals__devotional_id__reading_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadingTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_confirm_api_v1_devotionals__devotional_id__reading_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_devotional_api_v1_devotionals__devotional_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_devotional_api_v1_devotionals__devotional_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

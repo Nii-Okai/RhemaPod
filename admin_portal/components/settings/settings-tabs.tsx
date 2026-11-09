@@ -7,7 +7,7 @@ import { cn } from "cn";
 import { useSession } from "@/lib/auth/session-context";
 
 /* =============================================================================
-   SettingsTabs — the sub-nav shared by /settings/{profile,audit,reports}
+   SettingsTabs — the sub-nav shared by /settings/{profile,devotionals,audit,reports,data}
    (plan-admin-settings S17).
 
    Tabs are hidden by role, mirroring each route's own `requireRole`: Profile
@@ -18,6 +18,7 @@ import { useSession } from "@/lib/auth/session-context";
 
 const TABS = [
   { href: "/settings/profile", label: "Profile", adminOnly: false },
+  { href: "/settings/devotionals", label: "Devotionals", adminOnly: false },
   { href: "/settings/audit", label: "Audit trail", adminOnly: true },
   { href: "/settings/reports", label: "Reports", adminOnly: false },
   { href: "/settings/data", label: "Data", adminOnly: true },
