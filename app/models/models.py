@@ -405,6 +405,71 @@ class MediaRef(Base):
     )
 
     sermon: Mapped["Sermon"] = relationship("Sermon", back_populates="media_refs")
+    captions: Mapped[list["MediaCaption"]] = relationship(
+        "MediaCaption",
+        back_populates="media_ref",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class CaptionStatus(str, enum.Enum):
+    PENDING = "pending"         # wanted; generation/translation not started yet
+    GENERATING = "generating"   # Stream is transcribing (English) — poll it
+    READY = "ready"             # track is on the Stream video and in the manifest
+    ERROR = "error"             # gave up after retries; staff can retry/upload
+
+
+class CaptionSource(str, enum.Enum):
+    GENERATED = "generated"     # Stream AI transcription of the audio
+    TRANSLATED = "translated"   # machine-translated from the English track
+    UPLOADED = "uploaded"       # staff-supplied .vtt; never overwritten by automation
+
+
+class MediaCaption(Base):
+    """One caption language on one Stream-ingested video rendition.
+
+    The caption files themselves live on Cloudflare Stream (which serves them
+    inside the HLS manifest); this row only tracks the pipeline state so the
+    captions scheduler knows what to poll or translate next and the admin
+    portal can show progress.
+    """
+
+    __tablename__ = "media_captions"
+    __table_args__ = (
+        UniqueConstraint("media_ref_id", "language", name="uq_media_caption_language"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    media_ref_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_refs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[CaptionStatus] = mapped_column(
+        Enum(CaptionStatus, name="caption_status", native_enum=False, length=20),
+        default=CaptionStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[CaptionSource] = mapped_column(
+        Enum(CaptionSource, name="caption_source", native_enum=False, length=20),
+        nullable=False,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    media_ref: Mapped["MediaRef"] = relationship("MediaRef", back_populates="captions")
 
 
 class SermonTag(Base):

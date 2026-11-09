@@ -84,6 +84,11 @@ envVarGroups:
       # The first run is unbatched; batch by id if audit volume grows.
       - key: RETENTION_SCHEDULER_ENABLED
         value: "true"
+      # Advances video captions (Stream English transcription -> French
+      # translation). Stream sends no webhook for captions, so this polls
+      # every 2 minutes while the service is awake.
+      - key: CAPTIONS_SCHEDULER_ENABLED
+        value: "true"
 
 databases:
   - name: rhemapod-dev-db

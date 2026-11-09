@@ -79,6 +79,8 @@ export const queryKeys = {
       [...queryKeys.sermons.detail(sermonId), "media"] as const,
     uploads: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "uploads"] as const,
+    captions: (sermonId: string) =>
+      [...queryKeys.sermons.detail(sermonId), "captions"] as const,
     approvalLog: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "approval-log"] as const,
     /** Signed playback URLs (`GET /sermons/{id}/stream`). Nested under

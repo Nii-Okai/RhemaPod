@@ -7,7 +7,8 @@ import { spacing } from '../../../theme/spacing';
 import { formatDuration } from '../../../lib/format/duration';
 import { formatPlaybackSpeed } from './cyclePlaybackSpeed';
 import { PlayerSeekBar } from './PlayerSeekBar';
-import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
+import type { CaptionLanguageCode, PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
+import { captionAccessibilityLabel, captionBadge } from './captions';
 
 /** One skip step, in seconds — the rewind/forward buttons and the seek bar's a11y step. */
 export const SEEK_SECONDS = 10;
@@ -110,6 +111,12 @@ export interface PlayerBottomBarProps {
   onScrubStart: () => void;
   onScrubEnd: () => void;
   onCycleSpeed: () => void;
+  /** Subtitle languages on this video; empty hides the CC control (audio, or captions
+   * not ready yet). */
+  captionLanguages?: CaptionLanguageCode[];
+  /** Language on screen, `null` when subtitles are off. */
+  activeCaptionLanguage?: CaptionLanguageCode | null;
+  onCycleCaptions?: () => void;
   onOpenSleepTimer: () => void;
   onToggleFullscreen: () => void;
 }
@@ -134,6 +141,9 @@ export function PlayerBottomBar({
   onScrubStart,
   onScrubEnd,
   onCycleSpeed,
+  captionLanguages = [],
+  activeCaptionLanguage = null,
+  onCycleCaptions,
   onOpenSleepTimer,
   onToggleFullscreen,
 }: PlayerBottomBarProps) {
@@ -181,6 +191,22 @@ export function PlayerBottomBar({
             {formatPlaybackSpeed(playbackSpeed)}
           </AppText>
         </Pressable>
+
+        {captionLanguages.length > 0 && onCycleCaptions ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={captionAccessibilityLabel(activeCaptionLanguage)}
+            accessibilityHint="Switches subtitles between off, English and French"
+            accessibilityState={{ selected: activeCaptionLanguage !== null }}
+            onPress={onCycleCaptions}
+            hitSlop={spacing.sm}
+            style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+          >
+            <AppText variant="ui.badge" tone={activeCaptionLanguage ? 'gold' : 'secondary'}>
+              {captionBadge(activeCaptionLanguage)}
+            </AppText>
+          </Pressable>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"

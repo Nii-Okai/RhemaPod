@@ -171,6 +171,18 @@ uv run python -m app.scripts.purge_audit_log
 It is not part of the compose `sweeps` loop; schedule it on the same real
 scheduler as the jobs above.
 
+Video captions also need a frequent job (every few minutes), because
+Cloudflare Stream sends no webhook when generated captions finish:
+
+```bash
+# Every 2-5 minutes — polls Stream for English captions still generating and
+# translates finished English tracks into French (§12 "Video captions").
+# If CAPTIONS_SCHEDULER_ENABLED=true the app runs this in-process every 2
+# minutes (advisory-lock guarded); keep it false wherever this CLI runs on a
+# real scheduler.
+uv run python -m app.scripts.sweep_captions
+```
+
 **Local / self-host:** the compose `sweeps` profile runs all three on a
 1-hour `sleep` loop:
 
@@ -397,6 +409,45 @@ existing presigned-PUT flow, which this does not touch.
    presigned-S3 path for any Stream-ingested rendition rather than failing
    the request — see `app/services/media_service.py`'s
    `_resolve_variant_url`.
+
+### Video captions (English + French subtitles)
+
+Every video that finishes Stream ingest gets subtitles automatically:
+
+1. The ready webhook (or `sweep_stream_jobs`) asks Stream to transcribe the
+   audio into **English** captions (`POST /stream/{uid}/captions/en/generate`).
+2. `sweep_captions` (or the in-process captions scheduler) polls until the
+   English track is ready, then translates it to **French** with Workers AI
+   (`@cf/meta/m2m100-1.2b`, `CAPTIONS_TRANSLATION_MODEL`) and uploads it as
+   the `fr` track.
+3. Stream lists ready tracks in the HLS manifest, so the signed playback URL
+   already carries them: the mobile player's CC button and the admin review
+   player pick them up with no extra request.
+
+Setup:
+
+- The Workers AI call reuses `CF_STREAM_API_TOKEN` unless
+  `CF_WORKERS_AI_API_TOKEN` is set. Either way the token needs the
+  **Workers AI: Read** permission in addition to Stream: Edit. Without it,
+  English captions still work and the French rows end in `error` with the
+  Workers AI 403 visible in the admin portal's Captions card.
+- `CAPTIONS_AUTO_GENERATE=false` stops the automatic part; staff can still
+  upload `.vtt` files by hand.
+- Videos ingested before this shipped have no captions. Queue them once:
+
+  ```bash
+  uv run python -m app.scripts.backfill_captions            # dry run: count
+  uv run python -m app.scripts.backfill_captions --execute  # queue them
+  ```
+
+  Sermons still on the pre-Stream S3 path need `backfill_stream` first.
+
+Staff manage captions from the sermon editor's **Captions** card: download a
+track as `.vtt`, correct it, upload it back (uploaded tracks are never
+overwritten automatically; a new English upload re-translates a
+machine-translated French track), or regenerate/re-translate a track.
+
+Offline downloads play the MP4 without captions.
 
 ### Glacier Deep Archive setup
 

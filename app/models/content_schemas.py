@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 
 from app.core.text_safety import normalise_text, raw_length_exceeded
 from app.models.models import (
+    CaptionSource,
+    CaptionStatus,
     CommentReportReason,
     CommentStatus,
     ContentTier,
@@ -1334,3 +1336,37 @@ class CommentAdmin(CommentAdminForEditor):
     hidden_by_id: uuid.UUID | None = None
     author_id: uuid.UUID
     author_email: str
+
+
+# ── Captions ──────────────────────────────────────────────────────────────────
+class CaptionPublic(BaseModel):
+    """One caption language on a sermon's video, as the admin portal shows it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    language: str
+    status: CaptionStatus
+    source: CaptionSource
+    error_message: str | None
+    updated_at: datetime | None
+
+
+class CaptionListResponse(BaseModel):
+    """GET /sermons/{id}/captions. `available` is false when the sermon has no
+    processed Stream video (audio-only, still processing, or a pre-Stream
+    video not yet backfilled) — captions can't be added until it does."""
+
+    available: bool
+    default_language: str
+    captions: list[CaptionPublic]
+
+
+class CaptionUpload(BaseModel):
+    """PUT /sermons/{id}/captions/{language}: a WebVTT file's text."""
+
+    vtt: str = Field(min_length=6, max_length=1024 * 1024)
+
+
+class CaptionVtt(BaseModel):
+    language: str
+    vtt: str

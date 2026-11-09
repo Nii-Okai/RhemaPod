@@ -65,6 +65,17 @@ class StreamStatus:
     error_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class CaptionTrack:
+    """One caption track as Cloudflare Stream reports it
+    (`GET /stream/{uid}/captions`)."""
+
+    language: str
+    status: str  # "inprogress" | "ready" | "error" (generated); uploaded = "ready"
+    generated: bool
+    label: str | None = None
+
+
 class StreamProvider(Protocol):
     name: str
 
@@ -77,6 +88,26 @@ class StreamProvider(Protocol):
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]: ...
 
     def signed_playback_url(self, *, uid: str, expires_in: int) -> str: ...
+
+    # ── Captions (WebVTT tracks served inside the HLS manifest) ──────────────
+    async def generate_captions(self, *, uid: str, language: str) -> None: ...
+
+    async def list_captions(self, *, uid: str) -> list[CaptionTrack]: ...
+
+    async def get_captions_vtt(self, *, uid: str, language: str) -> str: ...
+
+    async def upload_captions(self, *, uid: str, language: str, vtt: bytes) -> None: ...
+
+    async def delete_captions(self, *, uid: str, language: str) -> None: ...
+
+
+_STUB_GENERATED_VTT = (
+    "WEBVTT\n\n"
+    "00:00:00.000 --> 00:00:04.000\n"
+    "Welcome, church. Let us open our Bibles.\n\n"
+    "00:00:04.000 --> 00:00:08.000\n"
+    "Today we read from the book of John.\n"
+)
 
 
 class LocalStream:
@@ -91,10 +122,25 @@ class LocalStream:
         # otherwise. Instance state, so a fresh LocalStream (see the `client`
         # fixture) starts clean and nothing bleeds between tests.
         self._statuses: dict[str, StreamStatus] = {}
+        # uid -> language -> (track, vtt). Generated tracks start
+        # "inprogress"; tests flip them with set_caption_status().
+        self._captions: dict[str, dict[str, tuple[CaptionTrack, str]]] = {}
 
     def reset(self) -> None:
         self._counter = 0
         self._statuses.clear()
+        self._captions.clear()
+
+    def set_caption_status(self, uid: str, language: str, status: str) -> None:
+        """Test seam: move a stub caption track to another status."""
+        track, vtt = self._captions[uid][language]
+        self._captions[uid][language] = (
+            CaptionTrack(
+                language=language, status=status,
+                generated=track.generated, label=track.label,
+            ),
+            vtt,
+        )
 
     def set_status(self, uid: str, status: StreamStatus | None) -> None:
         """Test seam: declare what `get_status` should return for this uid."""
@@ -141,6 +187,36 @@ class LocalStream:
             f"https://stub.cloudflarestream.test/{uid}/manifest/video.m3u8"
             f"?stub_token=1&expires_in={expires_in}"
         )
+
+    async def generate_captions(self, *, uid: str, language: str) -> None:
+        tracks = self._captions.setdefault(uid, {})
+        if language in tracks:
+            raise StreamError(f"Caption '{language}' already exists for '{uid}'")
+        tracks[language] = (
+            CaptionTrack(
+                language=language, status="inprogress", generated=True,
+                label=f"{language} (auto-generated)",
+            ),
+            _STUB_GENERATED_VTT,
+        )
+
+    async def list_captions(self, *, uid: str) -> list[CaptionTrack]:
+        return [track for track, _ in self._captions.get(uid, {}).values()]
+
+    async def get_captions_vtt(self, *, uid: str, language: str) -> str:
+        try:
+            return self._captions[uid][language][1]
+        except KeyError:
+            raise StreamError(f"No caption '{language}' for '{uid}'") from None
+
+    async def upload_captions(self, *, uid: str, language: str, vtt: bytes) -> None:
+        self._captions.setdefault(uid, {})[language] = (
+            CaptionTrack(language=language, status="ready", generated=False, label=language),
+            vtt.decode("utf-8"),
+        )
+
+    async def delete_captions(self, *, uid: str, language: str) -> None:
+        self._captions.get(uid, {}).pop(language, None)
 
 
 def _parse_cf_response(resp: httpx.Response, label: str) -> dict[str, Any]:
@@ -304,6 +380,68 @@ class CloudflareStreamProvider:
             f"https://customer-{settings.cf_stream_customer_subdomain}"
             f".cloudflarestream.com/{token}/manifest/video.m3u8"
         )
+
+
+    # ── Captions ─────────────────────────────────────────────────────────────
+    # Cloudflare docs, "Add captions": each language exists at most once per
+    # video; generated tracks report status inprogress/ready/error; a ready
+    # track is listed in the video's HLS manifest as a subtitle rendition, so
+    # the signed playback URL carries it with no extra work.
+    async def _request(
+        self, method: str, path: str, label: str, **kwargs: Any
+    ) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                return await client.request(
+                    method, f"{self._base}{path}", headers=self._headers, **kwargs
+                )
+            except httpx.HTTPError as exc:
+                raise StreamError(f"{label} request failed: {exc}") from exc
+
+    async def generate_captions(self, *, uid: str, language: str) -> None:
+        resp = await self._request(
+            "POST", f"/{uid}/captions/{language}/generate", "Stream caption generate"
+        )
+        _parse_cf_response(resp, "Stream caption generate")
+        log.info("stream_captions_generate_requested", uid=uid, language=language)
+
+    async def list_captions(self, *, uid: str) -> list[CaptionTrack]:
+        resp = await self._request("GET", f"/{uid}/captions", "Stream caption list")
+        data = _parse_cf_response(resp, "Stream caption list")
+        return [
+            CaptionTrack(
+                language=str(item.get("language") or ""),
+                # Uploaded tracks have no generation status; they're usable.
+                status=str(item.get("status") or "ready"),
+                generated=bool(item.get("generated", False)),
+                label=item.get("label"),
+            )
+            for item in (data.get("result") or [])
+        ]
+
+    async def get_captions_vtt(self, *, uid: str, language: str) -> str:
+        resp = await self._request(
+            "GET", f"/{uid}/captions/{language}/vtt", "Stream caption fetch"
+        )
+        if resp.status_code >= 400:
+            _parse_cf_response(resp, "Stream caption fetch")  # raises
+        return resp.text
+
+    async def upload_captions(self, *, uid: str, language: str, vtt: bytes) -> None:
+        resp = await self._request(
+            "PUT", f"/{uid}/captions/{language}", "Stream caption upload",
+            files={"file": (f"{language}.vtt", vtt, "text/vtt")},
+        )
+        _parse_cf_response(resp, "Stream caption upload")
+        log.info("stream_captions_uploaded", uid=uid, language=language)
+
+    async def delete_captions(self, *, uid: str, language: str) -> None:
+        resp = await self._request(
+            "DELETE", f"/{uid}/captions/{language}", "Stream caption delete"
+        )
+        if resp.status_code == 404:
+            return  # already gone — deleting is idempotent for our callers
+        _parse_cf_response(resp, "Stream caption delete")
 
 
 _provider: StreamProvider | None = None

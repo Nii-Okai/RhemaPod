@@ -15,6 +15,7 @@ import { ApprovalLogCard } from "@/components/sermons/editor/approval-log-card";
 import { CommentsCard } from "@/components/sermons/editor/comments-card";
 import { DetailsCard } from "@/components/sermons/editor/details-card";
 import { EditorSkeleton } from "@/components/sermons/editor/editor-skeleton";
+import { CaptionsCard } from "@/components/sermons/editor/captions-card";
 import { MediaJobsCard } from "@/components/sermons/editor/media-jobs-card";
 import { SaveStamp } from "@/components/sermons/editor/save-stamp";
 import { ThumbnailCard } from "@/components/sermons/editor/thumbnail-card";
@@ -510,6 +511,8 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               sermonDurationSeconds={current?.duration_seconds ?? null}
               disabled={locked || !sermonId}
             />
+
+            {sermonId ? <CaptionsCard sermonId={sermonId} /> : null}
           </div>
 
           <div className="flex flex-col gap-16">

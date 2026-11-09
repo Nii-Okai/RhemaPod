@@ -12,7 +12,7 @@ import { useSermonDetail, type SermonDetail } from '../../lib/query/hooks/useSer
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
 import { useStream, selectPlaybackVariant, type StreamVariant } from '../../lib/query/hooks/useStream';
 import { usePlaybackPreferences } from '../../lib/settings/usePlaybackPreferences';
-import type { PlaybackSpeed } from '../../lib/settings/playbackPreferences';
+import type { CaptionPreference, PlaybackSpeed } from '../../lib/settings/playbackPreferences';
 import { isPlayable } from '../sermon/_detail/isPlayable';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { useLocalPlayback } from '../../lib/downloads/useLocalPlayback';
@@ -28,6 +28,12 @@ import { useControlsOverlay } from './_player/useControlsOverlay';
 import { useProgressFlush } from './_player/useProgressFlush';
 import { useSleepTimer } from './_player/useSleepTimer';
 import { nextPlaybackSpeed } from './_player/cyclePlaybackSpeed';
+import {
+  activeCaptionLanguage,
+  availableCaptionLanguages,
+  nextCaptionPreference,
+  trackForPreference,
+} from './_player/captions';
 import { SignaturePlayerHeader } from './_signature/SignaturePlayerHeader';
 import { NowPlayingDetails } from './_signature/NowPlayingDetails';
 import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
@@ -339,6 +345,8 @@ export default function PlayerScreen() {
         initialPositionSeconds={initialPositionSeconds}
         defaultSpeed={preferences.preferences.defaultSpeed}
         onChangeDefaultSpeed={preferences.setDefaultSpeed}
+        captionPreference={preferences.preferences.captionLanguage}
+        onChangeCaptionPreference={preferences.setCaptionLanguage}
         onPlayToEnd={advanceToNext}
         queueContext={queueContext}
         onExit={cacheSource.reportExit}
@@ -404,6 +412,9 @@ interface PlayerContentProps {
   initialPositionSeconds: number;
   defaultSpeed: PlaybackSpeed;
   onChangeDefaultSpeed: (speed: PlaybackSpeed) => Promise<void>;
+  /** Remembered subtitle choice ('off', 'en' or 'fr'), seeded once at mount like `defaultSpeed`. */
+  captionPreference: CaptionPreference;
+  onChangeCaptionPreference: (language: CaptionPreference) => Promise<void>;
   /** Advances to the next sermon in a playlist queue — `null` when this sermon wasn't
    * opened as part of one, or is the queue's last item and repeat is off (see
    * `PlayerScreen`'s own doc comment on `queue`/`queueIndex`/`repeat`). */
@@ -435,6 +446,8 @@ function PlayerContent({
   initialPositionSeconds,
   defaultSpeed,
   onChangeDefaultSpeed,
+  captionPreference,
+  onChangeCaptionPreference,
   onPlayToEnd,
   queueContext,
   onExit,
@@ -527,6 +540,33 @@ function PlayerContent({
     onChangeDefaultSpeed(next).catch(() => {});
   };
 
+  // Subtitles: the HLS manifest carries the English/French caption tracks; they show up
+  // here once the source has loaded. The remembered preference picks the track, falling
+  // back to English when the chosen language isn't on this video.
+  const { availableSubtitleTracks } = useEvent(player, 'availableSubtitleTracksChange', {
+    availableSubtitleTracks: player.availableSubtitleTracks ?? [],
+  });
+  const subtitleTracks = availableSubtitleTracks ?? [];
+  const captionLanguages = availableCaptionLanguages(subtitleTracks);
+  const [captions, setCaptions] = useState<CaptionPreference>(captionPreference);
+  const shownTrack = trackForPreference(subtitleTracks, captions);
+  const shownCaptionLanguage = activeCaptionLanguage(shownTrack);
+  useEffect(() => {
+    // Best-effort: a native refusal must never interrupt playback.
+    try {
+      player.subtitleTrack = shownTrack;
+    } catch {
+      // ignore
+    }
+    // Keyed on the resolved language, not the track object (a fresh array each event).
+  }, [shownCaptionLanguage, subtitleTracks.length]);
+
+  const cycleCaptions = () => {
+    const next = nextCaptionPreference(shownCaptionLanguage ?? 'off', captionLanguages);
+    setCaptions(next);
+    onChangeCaptionPreference(next).catch(() => {});
+  };
+
   const sleepTimer = useSleepTimer({ onExpire: () => player.pause() });
   const [sleepSheetOpen, setSleepSheetOpen] = useState(false);
 
@@ -606,6 +646,9 @@ function PlayerContent({
       onScrubStart={() => setIsScrubbing(true)}
       onScrubEnd={() => setIsScrubbing(false)}
       onCycleSpeed={cycleSpeed}
+      captionLanguages={captionLanguages}
+      activeCaptionLanguage={shownCaptionLanguage}
+      onCycleCaptions={cycleCaptions}
       onOpenSleepTimer={() => setSleepSheetOpen(true)}
       onToggleFullscreen={toggleFullscreen}
     />

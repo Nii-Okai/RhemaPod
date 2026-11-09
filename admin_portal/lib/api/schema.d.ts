@@ -2033,6 +2033,91 @@ export interface paths {
         patch: operations["update_sermon_api_v1_sermons__sermon_id__patch"];
         trace?: never;
     };
+    "/api/v1/sermons/{sermon_id}/captions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Captions
+         * @description Caption tracks (English, French) on the sermon's video and where each
+         *     one is in the pipeline: generating, ready, or error.
+         */
+        get: operations["list_captions_api_v1_sermons__sermon_id__captions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Caption
+         * @description Replace one language's captions with a staff-supplied WebVTT file.
+         *     Uploaded tracks are never overwritten automatically. Uploading English
+         *     re-translates a machine-translated French track from the new English.
+         */
+        put: operations["upload_caption_api_v1_sermons__sermon_id__captions__language__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Caption
+         * @description Discard a track and redo it automatically (English: re-transcribe;
+         *     French: re-translate from English). Also the retry for a failed track.
+         */
+        post: operations["regenerate_caption_api_v1_sermons__sermon_id__captions__language__regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}/vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Caption Vtt
+         * @description The current WebVTT text for one language, so staff can download,
+         *     correct and re-upload it.
+         */
+        get: operations["get_caption_vtt_api_v1_sermons__sermon_id__captions__language__vtt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}/comments": {
         parameters: {
             query?: never;
@@ -3139,6 +3224,59 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /**
+         * CaptionListResponse
+         * @description GET /sermons/{id}/captions. `available` is false when the sermon has no
+         *     processed Stream video (audio-only, still processing, or a pre-Stream
+         *     video not yet backfilled) — captions can't be added until it does.
+         */
+        CaptionListResponse: {
+            /** Available */
+            available: boolean;
+            /** Captions */
+            captions: components["schemas"]["CaptionPublic"][];
+            /** Default Language */
+            default_language: string;
+        };
+        /**
+         * CaptionPublic
+         * @description One caption language on a sermon's video, as the admin portal shows it.
+         */
+        CaptionPublic: {
+            /** Error Message */
+            error_message: string | null;
+            /** Language */
+            language: string;
+            source: components["schemas"]["CaptionSource"];
+            status: components["schemas"]["CaptionStatus"];
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * CaptionSource
+         * @enum {string}
+         */
+        CaptionSource: "generated" | "translated" | "uploaded";
+        /**
+         * CaptionStatus
+         * @enum {string}
+         */
+        CaptionStatus: "pending" | "generating" | "ready" | "error";
+        /**
+         * CaptionUpload
+         * @description PUT /sermons/{id}/captions/{language}: a WebVTT file's text.
+         */
+        CaptionUpload: {
+            /** Vtt */
+            vtt: string;
+        };
+        /** CaptionVtt */
+        CaptionVtt: {
+            /** Language */
+            language: string;
+            /** Vtt */
+            vtt: string;
         };
         /** CategoryCreate */
         CategoryCreate: {
@@ -8994,6 +9132,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SermonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_captions_api_v1_sermons__sermon_id__captions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_caption_api_v1_sermons__sermon_id__captions__language__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptionUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_caption_api_v1_sermons__sermon_id__captions__language__regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_caption_vtt_api_v1_sermons__sermon_id__captions__language__vtt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionVtt"];
                 };
             };
             /** @description Validation Error */

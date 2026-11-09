@@ -7,7 +7,7 @@ import { colors } from '../../../theme/colors';
 import { spacing } from '../../../theme/spacing';
 import { PlaybackOverlayControls, PlayerBottomBar } from './TransportControls';
 import type { ControlsOverlay } from './useControlsOverlay';
-import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
+import type { CaptionLanguageCode, PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
 
 const FADE_IN_MS = 150;
 const FADE_OUT_MS = 200;
@@ -51,6 +51,11 @@ export interface VideoSurfaceProps {
   onScrubStart: () => void;
   onScrubEnd: () => void;
   onCycleSpeed: () => void;
+  /** Subtitle languages on this video (empty hides the CC control). */
+  captionLanguages?: CaptionLanguageCode[];
+  /** Language currently on screen, `null` when subtitles are off. */
+  activeCaptionLanguage?: CaptionLanguageCode | null;
+  onCycleCaptions?: () => void;
   onOpenSleepTimer: () => void;
   onToggleFullscreen: () => void;
 }
@@ -90,6 +95,9 @@ export function VideoSurface({
   onScrubStart,
   onScrubEnd,
   onCycleSpeed,
+  captionLanguages,
+  activeCaptionLanguage,
+  onCycleCaptions,
   onOpenSleepTimer,
   onToggleFullscreen,
 }: VideoSurfaceProps) {
@@ -199,6 +207,9 @@ export function VideoSurface({
               onScrubStart={onScrubStart}
               onScrubEnd={onScrubEnd}
               onCycleSpeed={act(onCycleSpeed)}
+              captionLanguages={captionLanguages}
+              activeCaptionLanguage={activeCaptionLanguage}
+              onCycleCaptions={onCycleCaptions ? act(onCycleCaptions) : undefined}
               onOpenSleepTimer={act(onOpenSleepTimer)}
               onToggleFullscreen={act(onToggleFullscreen)}
             />

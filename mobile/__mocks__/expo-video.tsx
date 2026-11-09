@@ -51,6 +51,8 @@ export class MockVideoPlayer extends MockEventEmitter {
   showNowPlayingNotification = false;
   timeUpdateEventInterval = 0;
   loop = false;
+  availableSubtitleTracks: { id?: string; language: string; label: string }[] = [];
+  subtitleTrack: { id?: string; language: string; label: string } | null = null;
   private _muted = false;
   get muted() {
     return this._muted;
@@ -91,6 +93,13 @@ export class MockVideoPlayer extends MockEventEmitter {
     this.currentTime = currentTime;
     this.bufferedPosition = currentTime;
     this.emit('timeUpdate', { currentTime, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: currentTime });
+  }
+
+  /** Test helper: simulates the manifest's subtitle tracks becoming known. */
+  __simulateSubtitleTracks(tracks: { language: string; label: string }[]) {
+    const old = this.availableSubtitleTracks;
+    this.availableSubtitleTracks = tracks;
+    this.emit('availableSubtitleTracksChange', { availableSubtitleTracks: tracks, oldAvailableSubtitleTracks: old });
   }
 
   /** Test helper: simulates reaching the end of the source. */

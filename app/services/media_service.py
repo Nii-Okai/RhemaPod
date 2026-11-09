@@ -51,6 +51,7 @@ from app.models.models import (
     User,
     UserRole,
 )
+from app.services import captions_service
 from app.services.content_service import (
     ContentError,
     effective_tier,
@@ -1163,6 +1164,8 @@ async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
         outcome = await _apply_stream_state(
             ref, job, state=state, ready_to_stream=bool(event.get("readyToStream", False)),
         )
+        if outcome == "ready":
+            await captions_service.on_video_ready(db, ref)
 
     db.add(ProcessedWebhook(provider=provider_name, event_id=event_id, event_type=state))
     try:
@@ -1252,6 +1255,8 @@ async def sweep_stream_jobs(db: AsyncSession, older_than_minutes: int | None = N
                 sermon_id=str(ref.sermon_id), uid=ref.stream_uid, error=str(exc),
             )
             continue
+        if outcome == "ready":
+            await captions_service.on_video_ready(db, ref)
         if outcome != "not_terminal":
             resolved += 1
 

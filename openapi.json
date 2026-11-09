@@ -1054,6 +1054,133 @@
         "title": "BlockPublic",
         "type": "object"
       },
+      "CaptionListResponse": {
+        "description": "GET /sermons/{id}/captions. `available` is false when the sermon has no\nprocessed Stream video (audio-only, still processing, or a pre-Stream\nvideo not yet backfilled) \u2014 captions can't be added until it does.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "captions": {
+            "items": {
+              "$ref": "#/components/schemas/CaptionPublic"
+            },
+            "title": "Captions",
+            "type": "array"
+          },
+          "default_language": {
+            "title": "Default Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "default_language",
+          "captions"
+        ],
+        "title": "CaptionListResponse",
+        "type": "object"
+      },
+      "CaptionPublic": {
+        "description": "One caption language on a sermon's video, as the admin portal shows it.",
+        "properties": {
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CaptionSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaptionStatus"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "language",
+          "status",
+          "source",
+          "error_message",
+          "updated_at"
+        ],
+        "title": "CaptionPublic",
+        "type": "object"
+      },
+      "CaptionSource": {
+        "enum": [
+          "generated",
+          "translated",
+          "uploaded"
+        ],
+        "title": "CaptionSource",
+        "type": "string"
+      },
+      "CaptionStatus": {
+        "enum": [
+          "pending",
+          "generating",
+          "ready",
+          "error"
+        ],
+        "title": "CaptionStatus",
+        "type": "string"
+      },
+      "CaptionUpload": {
+        "description": "PUT /sermons/{id}/captions/{language}: a WebVTT file's text.",
+        "properties": {
+          "vtt": {
+            "maxLength": 1048576,
+            "minLength": 6,
+            "title": "Vtt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vtt"
+        ],
+        "title": "CaptionUpload",
+        "type": "object"
+      },
+      "CaptionVtt": {
+        "properties": {
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "vtt": {
+            "title": "Vtt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "language",
+          "vtt"
+        ],
+        "title": "CaptionVtt",
+        "type": "object"
+      },
       "CategoryCreate": {
         "properties": {
           "name": {
@@ -13086,6 +13213,239 @@
         "summary": "Update Sermon",
         "tags": [
           "sermons"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/captions": {
+      "get": {
+        "description": "Caption tracks (English, French) on the sermon's video and where each\none is in the pipeline: generating, ready, or error.",
+        "operationId": "list_captions_api_v1_sermons__sermon_id__captions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Captions",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/captions/{language}": {
+      "put": {
+        "description": "Replace one language's captions with a staff-supplied WebVTT file.\nUploaded tracks are never overwritten automatically. Uploading English\nre-translates a machine-translated French track from the new English.",
+        "operationId": "upload_caption_api_v1_sermons__sermon_id__captions__language__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "language",
+            "required": true,
+            "schema": {
+              "title": "Language",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptionUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Caption",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/captions/{language}/regenerate": {
+      "post": {
+        "description": "Discard a track and redo it automatically (English: re-transcribe;\nFrench: re-translate from English). Also the retry for a failed track.",
+        "operationId": "regenerate_caption_api_v1_sermons__sermon_id__captions__language__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "language",
+            "required": true,
+            "schema": {
+              "title": "Language",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Regenerate Caption",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/sermons/{sermon_id}/captions/{language}/vtt": {
+      "get": {
+        "description": "The current WebVTT text for one language, so staff can download,\ncorrect and re-upload it.",
+        "operationId": "get_caption_vtt_api_v1_sermons__sermon_id__captions__language__vtt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sermon_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sermon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "language",
+            "required": true,
+            "schema": {
+              "title": "Language",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptionVtt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Caption Vtt",
+        "tags": [
+          "media"
         ]
       }
     },
