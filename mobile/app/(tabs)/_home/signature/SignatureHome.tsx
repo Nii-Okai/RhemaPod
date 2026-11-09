@@ -3,8 +3,7 @@ import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { AppText, Avatar, StaggerItem } from '../../../../components';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
+import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { userMessageFor } from '../../../../lib/api/errors';
 import { useHeroSermons } from '../../../../lib/query/hooks/useHeroSermons';
@@ -38,8 +37,6 @@ import {
   TrendingCard,
 } from './shelfCards';
 import { useSeriesWalk } from './useSeriesWalk';
-import { leaf } from './leaf';
-import { radius } from '../../../../theme/radius';
 
 /** The Series grid: one row of two (Nii's call, 2026-10-21); "See all" opens the full list. */
 const SERIES_COLUMNS = 2;
@@ -51,30 +48,6 @@ function chunk<T>(items: T[], size: number): T[][] {
   return rows;
 }
 
-/** Fading gold hairline that runs from a shelf title toward the screen edge. */
-function TitleRule() {
-  const { colors } = useTheme();
-  const styles = useStyles();
-  return (
-    <View style={styles.rule} pointerEvents="none">
-      <Svg width="100%" height="100%" preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id="shelfRule" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={colors.accent.goldLine} stopOpacity={1} />
-            <Stop offset="1" stopColor={colors.accent.goldLine} stopOpacity={0} />
-          </LinearGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#shelfRule)" />
-      </Svg>
-    </View>
-  );
-}
-
-/**
- * Shelf header (Nii's approved mockup, 2026-11-06): a gold leaf marker, the title one step
- * up the display scale, a fading gold rule and, where there is one, a "See all" pill — so
- * the headers hold their own against the artwork, especially in dark mode.
- */
 function SectionTitle({
   children,
   onSeeAll,
@@ -87,21 +60,18 @@ function SectionTitle({
   const styles = useStyles();
   return (
     <View style={styles.titleRow}>
-      <View style={styles.titleMark} />
-      <AppText variant="display.shelf" accessibilityRole="header" style={styles.titleText}>
+      <AppText variant="display.section" accessibilityRole="header">
         {children}
       </AppText>
-      <TitleRule />
       {onSeeAll ? (
         <Pressable
           onPress={onSeeAll}
           accessibilityRole="button"
           accessibilityLabel={seeAllLabel}
           hitSlop={spacing.md}
-          style={styles.seeAll}
         >
           <AppText variant="ui.label" tone="gold">
-            See all ›
+            See all
           </AppText>
         </Pressable>
       ) : null}
@@ -282,7 +252,7 @@ export function SignatureHomeScreen() {
           <View style={[styles.section, styles.gutter]}>
             <SectionTitle>
               Prophet&rsquo;s{' '}
-              <AppText variant="display.shelf" tone="gold">
+              <AppText variant="display.section" tone="gold">
                 Pick
               </AppText>
             </SectionTitle>
@@ -348,7 +318,7 @@ export function SignatureHomeScreen() {
                   />
                 </View>
               ) : null}
-              <AppText variant="display.shelf" accessibilityRole="header" style={styles.catalogTitle}>
+              <AppText variant="display.section" accessibilityRole="header" style={styles.catalogTitle}>
                 Prophet&rsquo;s Catalog
               </AppText>
             </View>
@@ -401,30 +371,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  titleMark: {
-    width: 6,
-    height: 28,
-    backgroundColor: colors.accent.gold,
-    ...leaf(4, 1),
-  },
-  titleText: {
-    flexShrink: 1,
-  },
-  rule: {
-    flex: 1,
-    minWidth: spacing.md,
-    height: 1,
-  },
-  seeAll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.accent.goldLine,
-    backgroundColor: colors.accent.goldWash,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
   row: {
     gap: spacing.md,

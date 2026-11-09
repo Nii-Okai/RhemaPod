@@ -63,10 +63,6 @@ export const accent = {
   goldHover: '#F0C878',
   /** Filled-gold button hover state — no confirmed MVP surface yet, kept for parity. */
   goldHoverFilled: '#D9A947',
-  /** Translucent gold for hairlines and outlines (shelf-header rule, "See all" pill border). */
-  goldLine: 'rgba(224, 180, 92, 0.38)',
-  /** Faint gold wash behind a gold-outlined pill. */
-  goldWash: 'rgba(201, 154, 51, 0.10)',
 } as const;
 
 /** Status pairs — bg + text (+ optional border/dot), each a distinct semantic status. */
@@ -191,14 +187,7 @@ export const lightColors: ColorTokens = {
   track: { default: '#F0EADD' },
   chip: lightChip,
   text: { primary: '#16140F', secondary: '#5B5648', tertiary: '#6E6858' },
-  accent: {
-    gold: '#A87A22',
-    goldText: '#85600F',
-    goldHover: '#6E4E0C',
-    goldHoverFilled: '#966B12',
-    goldLine: 'rgba(168, 122, 34, 0.38)',
-    goldWash: 'rgba(168, 122, 34, 0.08)',
-  },
+  accent: { gold: '#A87A22', goldText: '#85600F', goldHover: '#6E4E0C', goldHoverFilled: '#966B12' },
   overlay,
   fade: {
     layers: [
