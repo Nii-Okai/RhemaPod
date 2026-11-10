@@ -27,6 +27,7 @@ import { SignatureHeroCard } from './SignatureHeroCard';
 import { SeriesSpotlightCard } from './SeriesSpotlightCard';
 import { SeriesWalkCard } from './SeriesWalkCard';
 import { VerseCard } from './VerseCard';
+import { DailyRhemaCard } from './DailyRhemaCard';
 import {
   CatalogCard,
   PickCard,
@@ -197,6 +198,9 @@ export function SignatureHomeScreen() {
       >
         <View style={styles.gutter}>
           <VerseCard />
+        </View>
+        <View style={styles.gutter}>
+          <DailyRhemaCard />
         </View>
 
         <View style={styles.gutter}>

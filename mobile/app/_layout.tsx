@@ -178,6 +178,11 @@ function RootNavigator() {
         {/* Me > Delete account (ADR 0020). Own bare-chevron header, same pattern; no
             swipe-back mid-request, the screen's own back button is disabled while it runs. */}
         <Stack.Screen name="delete-account" options={{ headerShown: false, gestureEnabled: false }} />
+        {/* Daily Rhema (plan-daily-devotional M3/M7): the quiet-time flow is a full-screen
+            modal-style stack page with its own close button; the word garden is a plain
+            page with the bare-chevron header. */}
+        <Stack.Screen name="devotional/[date]" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
+        <Stack.Screen name="devotional/garden" options={{ headerShown: false }} />
       </Stack>
     </>
   );

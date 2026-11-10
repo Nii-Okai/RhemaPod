@@ -193,6 +193,21 @@ audit-logged (`audit_service`).
 - **M8** Light + dark theme pass, accessibility (Dynamic Type, screen reader order). On-device
   checklist. `[HUMAN_GATE DV4]`.
 
+**Build notes (2026-11-10), where the build differs from the steps above:**
+- Approvals happen on the devotional's own editor and on the "Waiting for review" panel in
+  Library › Devotionals, not in the sermon review queue (that queue is sermon-only).
+- Year view (A2) is not built. Quarter is the widest view.
+- An approved devotional is read-only for everyone, managers included, until it is sent back
+  with "Request changes" (ADR 0022 consequence, enforced on the server).
+- M5: the sermon moment opens the existing player at `start_s` (new `startAt` param) and shows
+  the end time. It does not stop playback at `end_s`.
+- M6: Carry shares text through the system share sheet. A share image is deferred.
+- M7: the word garden lives at `/devotional/garden`, reached from the Home card and from Carry.
+  It shows each kept word with that day's verse and journal. Past days can't be reopened in
+  full because the server window only covers yesterday onwards.
+- D4: the week ahead is kept as text on the phone. The pastor's reading streams, so with no
+  network the Hear step falls back to the text (or the phone's voice when the church chose TTS).
+
 ### Phase 4 — later (separate gates)
 Midday reminder + morning notification (`expo-notifications`), lock-screen widget, church-wide
 "words kept today" count, 7/21-day plans, evening Examen variant.

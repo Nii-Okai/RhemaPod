@@ -88,6 +88,14 @@ export const queryKeys = {
     all: ['verses'] as const,
     today: () => [...queryKeys.verses.all, 'today'] as const,
   },
+  /** `GET /devotionals/days` — the Daily Rhema prefetch window (plan-daily-devotional M1).
+      Keyed by the window's first date so a new day refetches. */
+  devotionals: {
+    all: ['devotionals'] as const,
+    window: (from: string) => [...queryKeys.devotionals.all, 'window', from] as const,
+    /** The on-device journal (D2) — local storage only, cached here so screens share it. */
+    journal: () => [...queryKeys.devotionals.all, 'journal'] as const,
+  },
   /** `GET /settings/public` — church contact email, comment guidelines and legal links
       (plan-admin-settings S18). One public, unauthenticated read. */
   settings: {
