@@ -141,6 +141,18 @@ export const queryKeys = {
     list: (params: AnnouncementListParams = {}) =>
       [...queryKeys.announcements.lists(), params] as const,
   },
+  /** Daily devotionals (plans/plan-daily-devotional.md, Phase 2). */
+  devotionals: {
+    all: () => ["devotionals"] as const,
+    calendar: (from: string, to: string) =>
+      [...queryKeys.devotionals.all(), "calendar", { from, to }] as const,
+    pool: () => [...queryKeys.devotionals.all(), "pool"] as const,
+    pending: () => [...queryKeys.devotionals.all(), "pending"] as const,
+    detail: (id: string) => [...queryKeys.devotionals.all(), "detail", id] as const,
+    history: (id: string) =>
+      [...queryKeys.devotionals.detail(id), "history"] as const,
+    settings: () => [...queryKeys.devotionals.all(), "settings"] as const,
+  },
   nav: {
     all: () => ["nav"] as const,
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */

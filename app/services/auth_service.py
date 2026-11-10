@@ -858,6 +858,8 @@ _HISTORY_LABELS = {
     "upload_jobs": "media uploads",
     "announcements": "announcements",
     "announcement_approval_log": "announcement review steps",
+    "devotionals": "devotionals",
+    "devotional_approval_log": "devotional review steps",
 }
 
 

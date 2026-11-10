@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import date, datetime
+from datetime import date as _date
 
 from sqlalchemy import (
     Boolean,
@@ -1101,6 +1102,31 @@ class ChurchSettings(Base):
     # through `/admin/settings/sign-in-image-url` + `.../confirm`; null means
     # the portal's built-in artwork.
     sign_in_image_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Daily devotional settings (plans/plan-daily-devotional.md). Server
+    # defaults keep the singleton row valid without a data backfill.
+    devotional_reading_fallback: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="text", server_default=text("'text'")
+    )
+    devotional_allow_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    devotional_tts_voice: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Speech rate as a percentage of normal (90 = 0.9x).
+    devotional_tts_rate_pct: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=90, server_default=text("90")
+    )
+    devotional_publish_hour: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=5, server_default=text("5")
+    )
+    devotional_gap_alert_days: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=14, server_default=text("14")
+    )
+    devotional_still_seconds: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=60, server_default=text("60")
+    )
+    devotional_default_translation: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="kjv", server_default=text("'kjv'")
+    )
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")
     )
@@ -1113,6 +1139,18 @@ class ChurchSettings(Base):
 
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_church_settings_singleton"),
+        CheckConstraint(
+            "devotional_reading_fallback IN ('text', 'tts')",
+            name="ck_church_settings_devotional_fallback",
+        ),
+        CheckConstraint(
+            "devotional_publish_hour BETWEEN 0 AND 23",
+            name="ck_church_settings_devotional_publish_hour",
+        ),
+        CheckConstraint(
+            "devotional_tts_rate_pct BETWEEN 50 AND 150",
+            name="ck_church_settings_devotional_tts_rate",
+        ),
     )
 
 
@@ -1487,4 +1525,155 @@ class Verse(Base):
     )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Daily devotional ("Daily Rhema", plans/plan-daily-devotional.md)
+# ═══════════════════════════════════════════════════════════════════════════════
+class DevotionalStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING_REVIEW = "pending_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+
+
+class ReadingFallback(str, enum.Enum):
+    """What the Hear step does when no pastor's reading was uploaded."""
+
+    TEXT = "text"
+    TTS = "tts"
+
+
+class Devotional(Base):
+    """One day's quiet time: Still, Hear, Ponder, Pray, Carry.
+
+    `date` is a listener-local calendar date, not an instant: 9 Nov is 9 Nov in
+    every time zone, and each listener's app asks for its own local date. A row
+    with no date is in the evergreen pool, which fills days nobody scheduled
+    (`is_evergreen` mirrors `date IS NULL` under a CHECK so the pool can be
+    indexed and queried without a null test).
+
+    Like `Announcement`, "scheduled" and "published" are labels derived at read
+    time (approved + date in the future / today-or-past), not stored states, so
+    no worker has to be alive at the publish hour.
+    """
+
+    __tablename__ = "devotionals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # `_date`, not `date`: this attribute shadows the name inside the class body.
+    date: Mapped[_date | None] = mapped_column(Date, nullable=True)
+    is_evergreen: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[DevotionalStatus] = mapped_column(
+        Enum(DevotionalStatus, name="devotional_status", native_enum=False, length=20),
+        default=DevotionalStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    # The "Voice" in the editor: whose devotional it is (and, when a reading is
+    # uploaded, whose voice reads the passage).
+    author_speaker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("speakers.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # 1 · Still
+    still_breath_in: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    still_breath_out: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Null = the church default (`church_settings.devotional_still_seconds`).
+    still_seconds: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
+    # 2 · Hear
+    passage_ref: Mapped[str] = mapped_column(String(100), nullable=False)
+    passage_translation: Mapped[str] = mapped_column(String(20), nullable=False)
+    # One verse per line, each optionally prefixed with its verse number ("10 Be still…").
+    passage_text: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_word: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reading_media_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    reading_duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Null = the church setting; a value is a per-devotional override, honoured
+    # only while `church_settings.devotional_allow_override` is on.
+    reading_fallback: Mapped[ReadingFallback | None] = mapped_column(
+        Enum(ReadingFallback, name="devotional_reading_fallback", native_enum=False, length=10),
+        nullable=True,
+    )
+
+    # 3 · Ponder
+    reflection_md: Mapped[str] = mapped_column(Text, nullable=False)
+    moment_sermon_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sermons.id", ondelete="SET NULL"), nullable=True
+    )
+    moment_start_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    moment_end_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # 4 · Pray
+    pray_question: Mapped[str] = mapped_column(String(300), nullable=False)
+    pray_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # 5 · Carry — null = `passage_ref`.
+    carry_verse_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        # NULL dates (the evergreen pool) never collide under a plain UNIQUE in
+        # either PostgreSQL or SQLite, so no partial index is needed.
+        UniqueConstraint("date", name="uq_devotionals_date"),
+        CheckConstraint(
+            "(date IS NULL) = is_evergreen", name="ck_devotionals_evergreen_has_no_date"
+        ),
+        CheckConstraint(
+            "(moment_start_s IS NULL) = (moment_end_s IS NULL)",
+            name="ck_devotionals_moment_both_or_neither",
+        ),
+        CheckConstraint(
+            "moment_start_s IS NULL OR (moment_start_s >= 0 AND moment_end_s > moment_start_s"
+            " AND moment_end_s - moment_start_s <= 600)",
+            name="ck_devotionals_moment_bounds",
+        ),
+        CheckConstraint(
+            "still_seconds IS NULL OR still_seconds BETWEEN 10 AND 600",
+            name="ck_devotionals_still_seconds",
+        ),
+        Index("ix_devotionals_date_status", "date", "status"),
+    )
+
+
+class DevotionalApprovalLog(Base):
+    """Append-only trail of devotional status transitions (mirrors
+    `AnnouncementApprovalLog`)."""
+
+    __tablename__ = "devotional_approval_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    devotional_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("devotionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -20,6 +20,9 @@ from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
 from app.api.comments import router as comments_router
+from app.api.devotionals import approvals_router as devotional_approvals_router
+from app.api.devotionals import router as devotionals_router
+from app.api.devotionals import settings_router as devotional_settings_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
 from app.api.playlists import router as playlists_router
@@ -229,12 +232,15 @@ for _router in (
     admin_comments_router,
     admin_subscriptions_router,
     admin_audit_router,
+    devotional_settings_router,
     admin_settings_router,
     admin_data_router,
     settings_public_router,
     announcement_approvals_router,
     sermon_approval_router,
     verses_router,
+    devotionals_router,
+    devotional_approvals_router,
 ):
     app.include_router(_router, prefix=API_PREFIX)
 

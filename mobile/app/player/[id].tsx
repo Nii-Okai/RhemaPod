@@ -97,12 +97,15 @@ import { LEAF } from '../(tabs)/_home/signature/leaf';
  */
 export default function PlayerScreen() {
   const styles = useStyles();
-  const { id: sermonId, queue, queueIndex, playlistId, repeat } = useLocalSearchParams<{
+  const { id: sermonId, queue, queueIndex, playlistId, repeat, startAt } = useLocalSearchParams<{
     id: string;
     queue?: string;
     queueIndex?: string;
     playlistId?: string;
     repeat?: string;
+    /** Whole seconds to start from instead of the saved resume point — a devotional's
+        "sermon moment" (plan-daily-devotional M5). Ignored inside a queue. */
+    startAt?: string;
   }>();
   const router = useRouter();
   // Playing through a playlist (`[id].tsx`'s own Play/Shuffle, Isaac's ask, session
@@ -315,8 +318,9 @@ export default function PlayerScreen() {
     );
   }
 
+  const momentStart = !queue && startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
   const initialPositionSeconds =
-    progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0;
+    momentStart ?? (progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0);
 
   return (
     // Android needs no `behavior` at all here — same convention `(auth)/_components/

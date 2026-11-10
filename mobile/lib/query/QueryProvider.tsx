@@ -32,6 +32,9 @@ export function shouldPersistQuery(query: Query): boolean {
   if (root === queryKeys.comments.all[0]) return false;
   if (root === queryKeys.me.all[0] && query.queryKey[1] === 'blocks') return false;
   if (root === queryKeys.stream.all[0]) return false;
+  // Daily Rhema keeps its own on-device copies (lib/devotionals/storage.ts); the journal
+  // in particular is private to the phone and has no business in a second store.
+  if (root === queryKeys.devotionals.all[0]) return false;
   return defaultShouldDehydrateQuery(query);
 }
 

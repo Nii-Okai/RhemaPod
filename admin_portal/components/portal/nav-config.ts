@@ -53,6 +53,7 @@ const LIBRARY: NavGroup = {
     { label: "Sermons", href: "/sermons", count: "sermons" },
     { label: "Sermon editor", href: "/sermons/new" },
     { label: "Series", href: "/series", count: "series" },
+    { label: "Devotionals", href: "/devotionals" },
     { label: "Speakers & categories", href: "/people" },
   ],
 };

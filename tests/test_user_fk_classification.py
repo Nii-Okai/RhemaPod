@@ -27,6 +27,8 @@ USER_FKS: dict[tuple[str, str], str] = {
     ("announcements", "created_by"): RESTRICT,
     ("approval_log", "actor_id"): RESTRICT,
     ("comment_moderation_log", "actor_id"): SET_NULL,
+    ("devotional_approval_log", "actor_id"): RESTRICT,
+    ("devotionals", "created_by"): RESTRICT,
     ("listener_day", "user_id"): CASCADE,
     ("playback_sessions", "user_id"): CASCADE,
     ("playlists", "user_id"): CASCADE,

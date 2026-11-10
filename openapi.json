@@ -2595,6 +2595,1475 @@
         "title": "DataTablesResponse",
         "type": "object"
       },
+      "DevotionalAdminItem": {
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_speaker_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Speaker Id"
+          },
+          "carry_verse_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Verse Ref"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "display_status": {
+            "enum": [
+              "draft",
+              "pending_review",
+              "rejected",
+              "archived",
+              "scheduled",
+              "published",
+              "evergreen"
+            ],
+            "title": "Display Status",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_evergreen": {
+            "title": "Is Evergreen",
+            "type": "boolean"
+          },
+          "moment_end_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment End S"
+          },
+          "moment_sermon_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Sermon Id"
+          },
+          "moment_sermon_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Sermon Title"
+          },
+          "moment_start_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Start S"
+          },
+          "passage_ref": {
+            "title": "Passage Ref",
+            "type": "string"
+          },
+          "passage_text": {
+            "title": "Passage Text",
+            "type": "string"
+          },
+          "passage_translation": {
+            "title": "Passage Translation",
+            "type": "string"
+          },
+          "pray_question": {
+            "title": "Pray Question",
+            "type": "string"
+          },
+          "pray_text": {
+            "title": "Pray Text",
+            "type": "string"
+          },
+          "reading_duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Duration S"
+          },
+          "reading_fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadingFallback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reading_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Url"
+          },
+          "reflection_md": {
+            "title": "Reflection Md",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DevotionalStatus"
+          },
+          "still_breath_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath In"
+          },
+          "still_breath_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath Out"
+          },
+          "still_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Seconds"
+          },
+          "suggested_word": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Word"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "is_evergreen",
+          "title",
+          "status",
+          "display_status",
+          "author_speaker_id",
+          "author_name",
+          "still_breath_in",
+          "still_breath_out",
+          "still_seconds",
+          "passage_ref",
+          "passage_translation",
+          "passage_text",
+          "suggested_word",
+          "reading_url",
+          "reading_duration_s",
+          "reading_fallback",
+          "reflection_md",
+          "moment_sermon_id",
+          "moment_sermon_title",
+          "moment_start_s",
+          "moment_end_s",
+          "pray_question",
+          "pray_text",
+          "carry_verse_ref",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DevotionalAdminItem",
+        "type": "object"
+      },
+      "DevotionalApprovalLogItem": {
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "to_status": {
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "actor_id",
+          "actor_name",
+          "note",
+          "created_at"
+        ],
+        "title": "DevotionalApprovalLogItem",
+        "type": "object"
+      },
+      "DevotionalAuthor": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DevotionalAuthor",
+        "type": "object"
+      },
+      "DevotionalCalendar": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DevotionalCalendarDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "evergreen_ready": {
+            "title": "Evergreen Ready",
+            "type": "integer"
+          },
+          "gap_alert_days": {
+            "title": "Gap Alert Days",
+            "type": "integer"
+          },
+          "ready_days_ahead": {
+            "title": "Ready Days Ahead",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days",
+          "ready_days_ahead",
+          "gap_alert_days",
+          "evergreen_ready"
+        ],
+        "title": "DevotionalCalendar",
+        "type": "object"
+      },
+      "DevotionalCalendarDay": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "devotional": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DevotionalListItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "devotional"
+        ],
+        "title": "DevotionalCalendarDay",
+        "type": "object"
+      },
+      "DevotionalCreate": {
+        "description": "A new draft. `date` null = the evergreen pool.",
+        "properties": {
+          "author_speaker_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Speaker Id"
+          },
+          "carry_verse_ref": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Verse Ref"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "moment_end_s": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment End S"
+          },
+          "moment_sermon_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Sermon Id"
+          },
+          "moment_start_s": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Start S"
+          },
+          "passage_ref": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Passage Ref",
+            "type": "string"
+          },
+          "passage_text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Passage Text",
+            "type": "string"
+          },
+          "passage_translation": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Passage Translation",
+            "type": "string"
+          },
+          "pray_question": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Pray Question",
+            "type": "string"
+          },
+          "pray_text": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Pray Text",
+            "type": "string"
+          },
+          "reading_fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadingFallback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reflection_md": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Reflection Md",
+            "type": "string"
+          },
+          "still_breath_in": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath In"
+          },
+          "still_breath_out": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath Out"
+          },
+          "still_seconds": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Seconds"
+          },
+          "suggested_word": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Word"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "passage_ref",
+          "passage_translation",
+          "passage_text",
+          "reflection_md",
+          "pray_question",
+          "pray_text"
+        ],
+        "title": "DevotionalCreate",
+        "type": "object"
+      },
+      "DevotionalListItem": {
+        "properties": {
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "display_status": {
+            "enum": [
+              "draft",
+              "pending_review",
+              "rejected",
+              "archived",
+              "scheduled",
+              "published",
+              "evergreen"
+            ],
+            "title": "Display Status",
+            "type": "string"
+          },
+          "has_reading": {
+            "title": "Has Reading",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_evergreen": {
+            "title": "Is Evergreen",
+            "type": "boolean"
+          },
+          "passage_ref": {
+            "title": "Passage Ref",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DevotionalStatus"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "is_evergreen",
+          "title",
+          "status",
+          "display_status",
+          "passage_ref",
+          "has_reading",
+          "created_by",
+          "updated_at"
+        ],
+        "title": "DevotionalListItem",
+        "type": "object"
+      },
+      "DevotionalMoment": {
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "end_s": {
+            "title": "End S",
+            "type": "integer"
+          },
+          "sermon_id": {
+            "format": "uuid",
+            "title": "Sermon Id",
+            "type": "string"
+          },
+          "start_s": {
+            "title": "Start S",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sermon_id",
+          "title",
+          "cover_url",
+          "start_s",
+          "end_s"
+        ],
+        "title": "DevotionalMoment",
+        "type": "object"
+      },
+      "DevotionalPassage": {
+        "properties": {
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "translation": {
+            "title": "Translation",
+            "type": "string"
+          },
+          "verses": {
+            "items": {
+              "$ref": "#/components/schemas/DevotionalVerse"
+            },
+            "title": "Verses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ref",
+          "translation",
+          "text",
+          "verses"
+        ],
+        "title": "DevotionalPassage",
+        "type": "object"
+      },
+      "DevotionalPray": {
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "text"
+        ],
+        "title": "DevotionalPray",
+        "type": "object"
+      },
+      "DevotionalPublic": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DevotionalAuthor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "carry_verse_ref": {
+            "title": "Carry Verse Ref",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "moment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DevotionalMoment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "passage": {
+            "$ref": "#/components/schemas/DevotionalPassage"
+          },
+          "pray": {
+            "$ref": "#/components/schemas/DevotionalPray"
+          },
+          "publish_hour": {
+            "title": "Publish Hour",
+            "type": "integer"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DevotionalReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reading_fallback": {
+            "enum": [
+              "text",
+              "tts"
+            ],
+            "title": "Reading Fallback",
+            "type": "string"
+          },
+          "reflection_md": {
+            "title": "Reflection Md",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "dated",
+              "evergreen"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "still": {
+            "$ref": "#/components/schemas/DevotionalStill"
+          },
+          "suggested_word": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Word"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DevotionalTts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "source",
+          "title",
+          "author",
+          "still",
+          "passage",
+          "suggested_word",
+          "reading",
+          "reading_fallback",
+          "tts",
+          "reflection_md",
+          "moment",
+          "pray",
+          "carry_verse_ref",
+          "publish_hour"
+        ],
+        "title": "DevotionalPublic",
+        "type": "object"
+      },
+      "DevotionalReading": {
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "duration_s"
+        ],
+        "title": "DevotionalReading",
+        "type": "object"
+      },
+      "DevotionalRejectRequest": {
+        "properties": {
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "DevotionalRejectRequest",
+        "type": "object"
+      },
+      "DevotionalSettings": {
+        "properties": {
+          "allow_override": {
+            "title": "Allow Override",
+            "type": "boolean"
+          },
+          "default_translation": {
+            "title": "Default Translation",
+            "type": "string"
+          },
+          "gap_alert_days": {
+            "title": "Gap Alert Days",
+            "type": "integer"
+          },
+          "publish_hour": {
+            "title": "Publish Hour",
+            "type": "integer"
+          },
+          "reading_fallback": {
+            "enum": [
+              "text",
+              "tts"
+            ],
+            "title": "Reading Fallback",
+            "type": "string"
+          },
+          "still_seconds": {
+            "title": "Still Seconds",
+            "type": "integer"
+          },
+          "tts_rate_pct": {
+            "title": "Tts Rate Pct",
+            "type": "integer"
+          },
+          "tts_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Voice"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reading_fallback",
+          "allow_override",
+          "tts_voice",
+          "tts_rate_pct",
+          "publish_hour",
+          "gap_alert_days",
+          "still_seconds",
+          "default_translation",
+          "version"
+        ],
+        "title": "DevotionalSettings",
+        "type": "object"
+      },
+      "DevotionalSettingsUpdate": {
+        "properties": {
+          "allow_override": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Override"
+          },
+          "default_translation": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Translation"
+          },
+          "gap_alert_days": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Alert Days"
+          },
+          "publish_hour": {
+            "anyOf": [
+              {
+                "maximum": 23.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Hour"
+          },
+          "reading_fallback": {
+            "anyOf": [
+              {
+                "enum": [
+                  "text",
+                  "tts"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Fallback"
+          },
+          "still_seconds": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Seconds"
+          },
+          "tts_rate_pct": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 50.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Rate Pct"
+          },
+          "tts_voice": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Voice"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "DevotionalSettingsUpdate",
+        "type": "object"
+      },
+      "DevotionalStatus": {
+        "enum": [
+          "draft",
+          "pending_review",
+          "approved",
+          "rejected",
+          "archived"
+        ],
+        "title": "DevotionalStatus",
+        "type": "string"
+      },
+      "DevotionalStatusResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DevotionalStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "DevotionalStatusResponse",
+        "type": "object"
+      },
+      "DevotionalStill": {
+        "properties": {
+          "breath_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath In"
+          },
+          "breath_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath Out"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "breath_in",
+          "breath_out",
+          "seconds"
+        ],
+        "title": "DevotionalStill",
+        "type": "object"
+      },
+      "DevotionalTts": {
+        "properties": {
+          "rate": {
+            "title": "Rate",
+            "type": "number"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          }
+        },
+        "required": [
+          "voice",
+          "rate"
+        ],
+        "title": "DevotionalTts",
+        "type": "object"
+      },
+      "DevotionalUpdate": {
+        "description": "Partial update; send `date: null` to move a devotional to the evergreen pool.",
+        "properties": {
+          "author_speaker_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Speaker Id"
+          },
+          "carry_verse_ref": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Verse Ref"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "moment_end_s": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment End S"
+          },
+          "moment_sermon_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Sermon Id"
+          },
+          "moment_start_s": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Start S"
+          },
+          "passage_ref": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passage Ref"
+          },
+          "passage_text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passage Text"
+          },
+          "passage_translation": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passage Translation"
+          },
+          "pray_question": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pray Question"
+          },
+          "pray_text": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pray Text"
+          },
+          "reading_fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadingFallback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reflection_md": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reflection Md"
+          },
+          "still_breath_in": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath In"
+          },
+          "still_breath_out": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Breath Out"
+          },
+          "still_seconds": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Seconds"
+          },
+          "suggested_word": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Word"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "DevotionalUpdate",
+        "type": "object"
+      },
+      "DevotionalVerse": {
+        "properties": {
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "text"
+        ],
+        "title": "DevotionalVerse",
+        "type": "object"
+      },
       "EpisodeOrderItem": {
         "description": "One row of the reordered episode list \u2014 the minimum the client needs to\napply the new order locally.",
         "properties": {
@@ -2746,6 +4215,159 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportResult": {
+        "properties": {
+          "clashes": {
+            "title": "Clashes",
+            "type": "integer"
+          },
+          "created": {
+            "default": 0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "pooled": {
+            "default": 0,
+            "title": "Pooled",
+            "type": "integer"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "integer"
+          },
+          "replaced": {
+            "default": 0,
+            "title": "Replaced",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowResult"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "warnings": {
+            "title": "Warnings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "rows",
+          "ready",
+          "warnings",
+          "errors",
+          "clashes"
+        ],
+        "title": "ImportResult",
+        "type": "object"
+      },
+      "ImportRowResult": {
+        "properties": {
+          "clash_with": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clash With"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "messages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "passage_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passage Ref"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "warning",
+              "error",
+              "clash"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_word": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Word"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "row",
+          "date",
+          "title",
+          "passage_ref",
+          "suggested_word",
+          "status",
+          "messages"
+        ],
+        "title": "ImportRowResult",
         "type": "object"
       },
       "LikeState": {
@@ -3103,6 +4725,37 @@
         "title": "Page[CommentPublic]",
         "type": "object"
       },
+      "Page_DevotionalListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DevotionalListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DevotionalListItem]",
+        "type": "object"
+      },
       "Page_ReviewQueueItem_": {
         "properties": {
           "items": {
@@ -3225,6 +4878,29 @@
           "offset"
         ],
         "title": "Page[UserPublic]",
+        "type": "object"
+      },
+      "PassageLookup": {
+        "properties": {
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "translation": {
+            "title": "Translation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "translation",
+          "text"
+        ],
+        "title": "PassageLookup",
         "type": "object"
       },
       "PasswordDeletionRequest": {
@@ -3830,6 +5506,96 @@
           "notified_subscriber_count"
         ],
         "title": "PublishResponse",
+        "type": "object"
+      },
+      "ReadingConfirm": {
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "maximum": 3600.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "reading_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Reading Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reading_key"
+        ],
+        "title": "ReadingConfirm",
+        "type": "object"
+      },
+      "ReadingFallback": {
+        "description": "What the Hear step does when no pastor's reading was uploaded.",
+        "enum": [
+          "text",
+          "tts"
+        ],
+        "title": "ReadingFallback",
+        "type": "string"
+      },
+      "ReadingTicket": {
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "reading_key": {
+            "title": "Reading Key",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "headers",
+          "expires_in",
+          "reading_key"
+        ],
+        "title": "ReadingTicket",
+        "type": "object"
+      },
+      "ReadingUploadRequest": {
+        "properties": {
+          "content_type": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_type"
+        ],
+        "title": "ReadingUploadRequest",
         "type": "object"
       },
       "RefreshRequest": {
@@ -8176,6 +9942,76 @@
         ]
       }
     },
+    "/api/v1/admin/settings/devotionals": {
+      "get": {
+        "operationId": "get_devotional_settings_api_v1_admin_settings_devotionals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Devotional Settings",
+        "tags": [
+          "admin settings"
+        ]
+      },
+      "patch": {
+        "operationId": "update_devotional_settings_api_v1_admin_settings_devotionals_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevotionalSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Devotional Settings",
+        "tags": [
+          "admin settings"
+        ]
+      }
+    },
     "/api/v1/admin/settings/sign-in-image": {
       "delete": {
         "description": "Go back to the portal's built-in sign-in artwork.",
@@ -9257,6 +11093,238 @@
         "summary": "Unpublish Announcement",
         "tags": [
           "announcement approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/devotionals/review-queue": {
+      "get": {
+        "operationId": "devotional_review_queue_api_v1_approvals_devotionals_review_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DevotionalListItem"
+                  },
+                  "title": "Response Devotional Review Queue Api V1 Approvals Devotionals Review Queue Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Devotional Review Queue",
+        "tags": [
+          "devotional approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/devotionals/{devotional_id}/approve": {
+      "post": {
+        "operationId": "approve_devotional_api_v1_approvals_devotionals__devotional_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Devotional",
+        "tags": [
+          "devotional approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/devotionals/{devotional_id}/archive": {
+      "post": {
+        "operationId": "archive_devotional_api_v1_approvals_devotionals__devotional_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Archive Devotional",
+        "tags": [
+          "devotional approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/devotionals/{devotional_id}/reject": {
+      "post": {
+        "operationId": "reject_devotional_api_v1_approvals_devotionals__devotional_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevotionalRejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Devotional",
+        "tags": [
+          "devotional approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/devotionals/{devotional_id}/restore": {
+      "post": {
+        "operationId": "restore_devotional_api_v1_approvals_devotionals__devotional_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Devotional",
+        "tags": [
+          "devotional approvals"
         ]
       }
     },
@@ -11236,6 +13304,968 @@
         "summary": "Report Comment",
         "tags": [
           "comments"
+        ]
+      }
+    },
+    "/api/v1/devotionals": {
+      "post": {
+        "description": "Create a draft. `date` null puts it in the evergreen pool.",
+        "operationId": "create_devotional_api_v1_devotionals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevotionalCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Devotional",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/all": {
+      "get": {
+        "operationId": "list_devotionals_api_v1_devotionals_admin_all_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DevotionalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evergreen",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evergreen"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DevotionalListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Devotionals",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/calendar": {
+      "get": {
+        "operationId": "devotional_calendar_api_v1_devotionals_admin_calendar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalCalendar"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Devotional Calendar",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/import": {
+      "post": {
+        "description": "Import devotionals from a CSV body (`Content-Type: text/csv`). Run with\n`dry_run=true` (the default) to check every row, then `dry_run=false` to\nsave. Rows with errors are never saved.",
+        "operationId": "import_devotionals_api_v1_devotionals_admin_import_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as",
+            "required": false,
+            "schema": {
+              "default": "draft",
+              "enum": [
+                "draft",
+                "approved"
+              ],
+              "title": "As",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "on_clash",
+            "required": false,
+            "schema": {
+              "default": "skip",
+              "enum": [
+                "skip",
+                "replace_draft",
+                "to_pool"
+              ],
+              "title": "On Clash",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Devotionals",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/import/template": {
+      "get": {
+        "operationId": "import_template_api_v1_devotionals_admin_import_template_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Template",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/passage": {
+      "get": {
+        "description": "Fill the passage text from a reference (KJV/WEB, via bible-api.com).",
+        "operationId": "lookup_passage_api_v1_devotionals_admin_passage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "translation",
+            "required": false,
+            "schema": {
+              "default": "kjv",
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Translation",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassageLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup Passage",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/{devotional_id}": {
+      "get": {
+        "operationId": "get_devotional_api_v1_devotionals_admin__devotional_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Devotional",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/admin/{devotional_id}/history": {
+      "get": {
+        "operationId": "devotional_history_api_v1_devotionals_admin__devotional_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DevotionalApprovalLogItem"
+                  },
+                  "title": "Response Devotional History Api V1 Devotionals Admin  Devotional Id  History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Devotional History",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/day/{day}": {
+      "get": {
+        "description": "The devotional for the caller's local `day` (YYYY-MM-DD): the one\nscheduled for that date, else one from the evergreen pool.",
+        "operationId": "devotional_for_day_api_v1_devotionals_day__day__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Devotional For Day",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/days": {
+      "get": {
+        "description": "Consecutive days from `from` for offline prefetch. Days with nothing to\nshow (no dated devotional and an empty evergreen pool) are left out.",
+        "operationId": "devotionals_for_days_api_v1_devotionals_days_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 8,
+              "minimum": 1,
+              "title": "Count",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DevotionalPublic"
+                  },
+                  "title": "Response Devotionals For Days Api V1 Devotionals Days Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Devotionals For Days",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}": {
+      "delete": {
+        "operationId": "delete_devotional_api_v1_devotionals__devotional_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Devotional",
+        "tags": [
+          "devotionals"
+        ]
+      },
+      "patch": {
+        "operationId": "update_devotional_api_v1_devotionals__devotional_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevotionalUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Devotional",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}/reading": {
+      "delete": {
+        "operationId": "reading_remove_api_v1_devotionals__devotional_id__reading_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reading Remove",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}/reading-url": {
+      "post": {
+        "operationId": "reading_upload_url_api_v1_devotionals__devotional_id__reading_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadingTicket"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reading Upload Url",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}/reading/confirm": {
+      "post": {
+        "operationId": "reading_confirm_api_v1_devotionals__devotional_id__reading_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalAdminItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reading Confirm",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}/submit": {
+      "post": {
+        "operationId": "submit_devotional_api_v1_devotionals__devotional_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Devotional",
+        "tags": [
+          "devotionals"
+        ]
+      }
+    },
+    "/api/v1/devotionals/{devotional_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_devotional_api_v1_devotionals__devotional_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "devotional_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Devotional Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevotionalStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Devotional",
+        "tags": [
+          "devotionals"
         ]
       }
     },
