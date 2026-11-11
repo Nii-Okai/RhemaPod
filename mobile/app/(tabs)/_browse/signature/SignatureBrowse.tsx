@@ -12,6 +12,9 @@ import { useCategories } from '../../../../lib/query/hooks/useCategories';
 import { useProphetsCatalog } from '../../../../lib/query/hooks/useProphetsCatalog';
 import { useSearchResults } from '../../../../lib/query/hooks/useSearch';
 import { useSpeakers, type Speaker } from '../../../../lib/query/hooks/useSpeakers';
+import { useSeriesList } from '../../../../lib/query/hooks/useSeries';
+import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
+import { SeriesTile } from '../../_home/signature/shelfCards';
 import { LEAF_SM } from '../../_home/signature/leaf';
 import { CatalogCollectionCard } from './CatalogCollectionCard';
 import { ResultRow } from './ResultRow';
@@ -23,6 +26,7 @@ const COLLAPSED_CATEGORY_COUNT = 6;
 const GRID_COLUMNS = 2;
 // Same debounce as the search screen, for the same per-user rate limit.
 const DEBOUNCE_MS = 300;
+const SERIES_SHELF_MAX = 8;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const rows: T[][] = [];
@@ -42,8 +46,9 @@ function joinMeta(parts: (string | null | undefined)[]): string {
 }
 
 /**
- * Browse, Signature redesign (Nii's approved mockup "RhemaPod — Signature", 2026-10-21),
- * behind `SIGNATURE_BROWSE_ENABLED`.
+ * Discover (formerly Browse). Signature redesign (Nii's approved mockup, 2026-10-21),
+ * reworked for the Daybreak redesign (2026-11, canvas B3): "What do you need today?"
+ * category tiles with their sermon counts, a "Series to start" shelf, then the speakers.
  *
  * Search lives on the page instead of behind a pushed `/search` screen, and it is never
  * blank: with nothing typed, the page under the field is Browse itself (Prophet's
@@ -61,7 +66,9 @@ export function SignatureBrowseScreen() {
   const categories = useCategories();
   const speakers = useSpeakers();
   const prophetsCatalog = useProphetsCatalog();
-  const pullToRefresh = usePullToRefresh([categories, speakers, prophetsCatalog]);
+  const series = useSeriesList();
+  const pullToRefresh = usePullToRefresh([categories, speakers, prophetsCatalog, series]);
+  const seriesItems = (series.data ?? []).slice(0, SERIES_SHELF_MAX);
   const [rawQuery, setRawQuery] = useState('');
   const [showAllCategories, setShowAllCategories] = useState(false);
 
@@ -102,14 +109,14 @@ export function SignatureBrowseScreen() {
     <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.lg) }]}>
       <View style={styles.header}>
         <AppText variant="display.hero" accessibilityRole="header">
-          Browse
+          Discover
         </AppText>
         <View style={styles.field}>
           <PlatformIcon name="search" size={20} color={colors.text.secondary} />
           <TextInput
             value={rawQuery}
             onChangeText={setRawQuery}
-            placeholder="Search sermons, series, speakers"
+            placeholder="Sermons, series, speakers"
             placeholderTextColor={colors.text.secondary}
             style={styles.input}
             accessibilityLabel="Search sermons, series, speakers"
@@ -197,8 +204,8 @@ export function SignatureBrowseScreen() {
             ) : null}
 
             <View style={[styles.section, styles.gutter]}>
-              <AppText variant="display.section" accessibilityRole="header">
-                Categories
+              <AppText variant="display.row" accessibilityRole="header">
+                What do you need today?
               </AppText>
               <QueryState
                 isLoading={categories.isLoading}
@@ -252,6 +259,33 @@ export function SignatureBrowseScreen() {
                 ) : null}
               </QueryState>
             </View>
+
+            {seriesItems.length > 0 ? (
+              <View style={styles.section}>
+                <View style={[styles.gutter, styles.titleRow]}>
+                  <AppText variant="display.section" accessibilityRole="header">
+                    Series to start
+                  </AppText>
+                  <Pressable
+                    onPress={() => router.push(pathnameFor(routeByKey('series')))}
+                    accessibilityRole="button"
+                    accessibilityLabel="All series"
+                    hitSlop={spacing.md}
+                  >
+                    <AppText variant="ui.label" tone="gold">
+                      All series
+                    </AppText>
+                  </Pressable>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
+                  {seriesItems.map((item) => (
+                    <View key={item.id} style={styles.seriesCell}>
+                      <SeriesTile series={item} onPress={() => goToSeries(item.id)} />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
 
             <View style={[styles.section, styles.gutter]}>
               <AppText variant="display.section" accessibilityRole="header">
@@ -342,11 +376,24 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
   },
   grid: {
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  shelf: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  seriesCell: {
+    width: 140,
   },
   gridRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
   },
   gridCell: {
     flex: 1,

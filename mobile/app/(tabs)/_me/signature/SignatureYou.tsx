@@ -15,8 +15,10 @@ import { useChurchContent } from '../../../../lib/query/hooks/useChurchSettings'
 import { usePlaybackPreferences } from '../../../../lib/settings/usePlaybackPreferences';
 import { useDownloads } from '../../../../lib/downloads/useDownloads';
 import { TermsSheet } from '../../../player/_comments/TermsSheet';
-import { Flame } from '../../_home/signature/Flame';
-import { LEAF, LEAF_SM } from '../../_home/signature/leaf';
+import { LEAF_SM } from '../../_home/signature/leaf';
+import { useJournal } from '../../../../lib/query/hooks/useDevotionals';
+import { usePlaylists } from '../../../../lib/query/hooks/usePlaylists';
+import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
 import { ProfileAvatarPicker } from '../ProfileAvatarPicker';
 import { ProfileDetailsSheet } from '../ProfileDetailsSheet';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -152,6 +154,11 @@ export function SignatureYouScreen() {
   const [guidelinesOpen, setGuidelinesOpen] = React.useState(false);
   const [profileUpdated, setProfileUpdated] = React.useState(false);
 
+  const { journal } = useJournal();
+  const playlists = usePlaylists();
+  const keptWords = Object.values(journal ?? {}).filter((entry) => entry.completedAt && entry.word).length;
+  const playlistCount = playlists.data?.length ?? 0;
+
   const profile = profileQuery.data;
   const publicName = previewDisplayName((profile?.full_name ?? '').trim());
   // Server values when available; the shipped constants otherwise (offline, error, first launch).
@@ -171,16 +178,18 @@ export function SignatureYouScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl {...pullToRefresh} />}
     >
+      <AppText variant="display.hero" accessibilityRole="header">
+        You
+      </AppText>
+
       <View style={styles.profileCard}>
-        <View style={styles.profileFlame} pointerEvents="none">
-          <Flame width={120} fill={colors.accent.gold} />
-        </View>
+        <View style={styles.profileOrb} pointerEvents="none" />
         {profileQuery.isLoading ? (
-          <AppText variant="ui.body" tone="secondary">
+          <AppText variant="ui.body" style={styles.onFeatureMuted}>
             Loading profile…
           </AppText>
         ) : profileQuery.isError || !profile ? (
-          <AppText variant="ui.body" tone="secondary">
+          <AppText variant="ui.body" style={styles.onFeatureMuted}>
             Couldn't load your profile.
           </AppText>
         ) : (
@@ -194,10 +203,10 @@ export function SignatureYouScreen() {
                 ringColor={colors.accent.gold}
               />
               <View style={styles.profileText}>
-                <AppText variant="display.title" numberOfLines={2}>
+                <AppText variant="display.title" numberOfLines={2} style={styles.onFeature}>
                   {profile.full_name || displayEmail(profile.email)}
                 </AppText>
-                <AppText variant="ui.body" tone="secondary" numberOfLines={1}>
+                <AppText variant="ui.body" numberOfLines={1} style={styles.onFeatureMuted}>
                   {displayEmail(profile.email)}
                 </AppText>
               </View>
@@ -205,12 +214,12 @@ export function SignatureYouScreen() {
             <View style={styles.profileBottom}>
               <View style={styles.profileNotes}>
                 {profileUpdated ? (
-                  <AppText variant="ui.badge" tone="secondary" accessibilityLiveRegion="polite">
+                  <AppText variant="ui.badge" style={styles.onFeatureMuted} accessibilityLiveRegion="polite">
                     Profile updated.
                   </AppText>
                 ) : null}
                 {publicName ? (
-                  <AppText variant="ui.body" tone="tertiary">
+                  <AppText variant="ui.body" style={styles.onFeatureMuted}>
                     {`Shown as '${publicName}' on comments.`}
                   </AppText>
                 ) : null}
@@ -221,13 +230,42 @@ export function SignatureYouScreen() {
                 accessibilityLabel="Edit profile"
                 style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
               >
-                <AppText variant="ui.label" tone="gold">
+                <AppText variant="ui.label" style={styles.editText}>
                   Edit profile
                 </AppText>
               </Pressable>
             </View>
           </>
         )}
+      </View>
+
+      <View style={styles.stats}>
+        <Pressable
+          onPress={() => router.push('/devotional/garden')}
+          accessibilityRole="button"
+          accessibilityLabel={`${keptWords} ${keptWords === 1 ? 'word' : 'words'} in your garden`}
+          style={({ pressed }) => [styles.stat, styles.statGarden, pressed && styles.pressed]}
+        >
+          <AppText variant="display.title" style={styles.statGardenText}>
+            {String(keptWords)}
+          </AppText>
+          <AppText variant="ui.badge" style={styles.statGardenText}>
+            {keptWords === 1 ? 'word in your garden' : 'words in your garden'}
+          </AppText>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push(pathnameFor(routeByKey('library')))}
+          accessibilityRole="button"
+          accessibilityLabel={`${playlistCount} ${playlistCount === 1 ? 'playlist' : 'playlists'}`}
+          style={({ pressed }) => [styles.stat, styles.statPlaylists, pressed && styles.pressed]}
+        >
+          <AppText variant="display.title" style={styles.statPlaylistsText}>
+            {String(playlistCount)}
+          </AppText>
+          <AppText variant="ui.badge" style={styles.statPlaylistsText}>
+            {playlistCount === 1 ? 'playlist' : 'playlists'}
+          </AppText>
+        </Pressable>
       </View>
 
       <Group label="Appearance">
@@ -371,20 +409,55 @@ const useStyles = createThemedStyles((colors) => ({
     paddingBottom: spacing.xxl * 2,
     gap: spacing.xxl + spacing.xs,
   },
+  // Daybreak (canvas F1): the profile sits on the navy feature card in both themes.
   profileCard: {
-    ...LEAF,
+    borderRadius: 26,
     overflow: 'hidden',
     padding: spacing.xl,
     gap: spacing.lg,
-    backgroundColor: colors.surface.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.default,
+    backgroundColor: colors.feature.bg,
+    borderWidth: 1,
+    borderColor: colors.feature.border,
   },
-  profileFlame: {
+  profileOrb: {
     position: 'absolute',
-    right: -18,
-    top: -24,
-    opacity: 0.12,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    right: -30,
+    top: -40,
+    backgroundColor: colors.feature.orb,
+  },
+  onFeature: {
+    color: colors.feature.text,
+  },
+  onFeatureMuted: {
+    color: colors.feature.muted,
+  },
+  editText: {
+    color: colors.feature.eyebrow,
+  },
+  stats: {
+    flexDirection: 'row',
+    gap: spacing.sm + 2,
+  },
+  stat: {
+    flex: 1,
+    padding: spacing.md + 2,
+    gap: 2,
+    borderRadius: 20,
+  },
+  statGarden: {
+    backgroundColor: colors.status.sage.bg,
+  },
+  statGardenText: {
+    color: colors.status.sage.text,
+  },
+  statPlaylists: {
+    backgroundColor: colors.status.slate.bg,
+  },
+  statPlaylistsText: {
+    color: colors.status.slate.text,
   },
   profileTop: {
     flexDirection: 'row',
@@ -412,7 +485,7 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.md + 2,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border.card,
+    borderColor: colors.feature.muted,
   },
   group: {
     gap: spacing.sm + 2,

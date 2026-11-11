@@ -40,7 +40,7 @@ function Caption({ title, meta }: { title: string; meta?: string | null }) {
   );
 }
 
-/** "Pick up where you left off": art with the progress line along its foot, then the title and "CATEGORY · 1:58 LEFT". */
+/** "Keep listening": art with the progress line along its foot, then the title and "CATEGORY · 1:58 LEFT". */
 export function ResumeCard({ item, onPress }: { item: ContinueWatchingItem; onPress: () => void }) {
   const left =
     item.duration_seconds !== null
