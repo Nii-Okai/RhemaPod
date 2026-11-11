@@ -18,8 +18,7 @@ export interface NavIconProps {
  * avatar") renders the caller's own `Avatar` here instead of a generic person glyph,
  * same as every reference app with a profile-picture tab (YouTube's own "You"). Every
  * other route still gets the plain device-appropriate `PlatformIcon`. Shared by every
- * nav chrome that shows icons (`IconNavItem` — Android bottom bar + tablet rail — and
- * `PhoneTabBarIOS`) so the avatar special-case exists in exactly one place.
+ * nav chrome that shows icons (`IconNavItem` on the tablet rail, and `FloatingDock`) so the avatar special-case exists in exactly one place.
  *
  * A gold ring stands in for `PlatformIcon`'s own color-only active state — an avatar is
  * already a filled circle, so there's no "outline vs. filled" glyph swap to lean on.

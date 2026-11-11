@@ -2,8 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { usePlatformOS } from './platform';
-import { PhoneTabBarAndroid } from './PhoneTabBarAndroid';
-import { PhoneTabBarIOS } from './PhoneTabBarIOS';
+import { FloatingDock } from './FloatingDock';
 import { TabletRail } from './TabletRail';
 import { resolveChromeVariant, useDeviceClass } from './useDeviceClass';
 
@@ -36,7 +35,8 @@ export function NavShell({ children }: NavShellProps) {
   return (
     <View style={styles.stackedLayout}>
       <View style={styles.content}>{children}</View>
-      {variant === 'ios-tabs' ? <PhoneTabBarIOS /> : <PhoneTabBarAndroid />}
+      {/* Daybreak redesign: one floating dock on both phone platforms. */}
+      <FloatingDock />
     </View>
   );
 }

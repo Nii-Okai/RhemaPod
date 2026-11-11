@@ -94,13 +94,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon-light.png",
-          "imageWidth": 280,
+          "image": "./assets/brand/mark-bronze.png",
+          "imageWidth": 150,
           "resizeMode": "contain",
           "backgroundColor": "#F7F4EF",
           "dark": {
-            "image": "./assets/splash-icon.png",
-            "backgroundColor": "#0B1725"
+            "image": "./assets/brand/mark-gold.png",
+            "backgroundColor": "#0D111A"
           }
         }
       ],

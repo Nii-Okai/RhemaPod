@@ -1,16 +1,17 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { AppText } from '../../../../components';
+import { Pressable, Share, View } from 'react-native';
+import * as Speech from 'expo-speech';
+import { AppText, PlatformIcon } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
+import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { useVerseOfTheDay } from '../../../../lib/query/hooks/useVerseOfTheDay';
-import { Flame } from './Flame';
-import { LEAF_SM } from './leaf';
 
 /**
- * Signature Home's opening panel: the verse of the day on its own (it's a daily pick, not
- * tied to any sermon). Same quiet failure as the classic `VerseStrip` — nothing renders
- * while loading, on an error, or when the server has no verse.
+ * Home's opening card (Daybreak redesign, canvas B1/B2): the verse of the day on a warm
+ * gold wash (light) or a raised navy card (dark), with Listen (read aloud on the phone)
+ * and Share. Same quiet failure as before: nothing renders while loading, on an error, or
+ * when the server has no verse.
  */
 export function VerseCard() {
   const styles = useStyles();
@@ -22,23 +23,55 @@ export function VerseCard() {
   // Verses come in as entered in the admin portal, sometimes with hard line breaks and
   // stray spaces mid-sentence (Nii's phone test, 2026-10-21). One flowing line reads right.
   const text = verse.text.replace(/\s+/g, ' ').trim();
+  const reference = `${verse.reference} · ${verse.translation.toUpperCase()}`;
+
+  const listen = () => {
+    void Speech.isSpeakingAsync()
+      .then((speaking) => {
+        if (speaking) return Speech.stop();
+        Speech.speak(`${text} ${verse.reference}.`);
+      })
+      .catch(() => undefined);
+  };
+  const share = () => {
+    void Share.share({ message: `“${text}” ${verse.reference} (${verse.translation.toUpperCase()})` }).catch(
+      () => undefined,
+    );
+  };
 
   return (
-    <View
-      style={styles.card}
-      accessible
-      accessibilityLabel={`Verse of the day. ${text}. ${verse.reference}, ${verse.translation}`}
-    >
-      <View style={styles.flame}>
-        <Flame width={12} fill={colors.accent.gold} />
-      </View>
-      <View style={styles.body}>
-        <AppText variant="mono.meta" tone="gold">
+    <View style={styles.card}>
+      <View style={styles.top}>
+        <AppText variant="ui.badge" style={styles.eyebrow}>
           VERSE OF THE DAY
         </AppText>
-        <AppText variant="display.compact">“{text}”</AppText>
-        <AppText variant="mono.meta" tone="tertiary">
-          {`${verse.reference} · ${verse.translation}`.toUpperCase()}
+        <View style={styles.tools}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Listen to the verse"
+            onPress={listen}
+            hitSlop={spacing.xs}
+            style={({ pressed }) => [styles.tool, pressed && styles.pressed]}
+          >
+            <PlatformIcon name="volume-high-outline" size={18} color={colors.verse.icon} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share the verse"
+            onPress={share}
+            hitSlop={spacing.xs}
+            style={({ pressed }) => [styles.tool, pressed && styles.pressed]}
+          >
+            <PlatformIcon name="share-outline" size={18} color={colors.verse.icon} />
+          </Pressable>
+        </View>
+      </View>
+      <View accessible accessibilityLabel={`Verse of the day. ${text}. ${verse.reference}, ${verse.translation}`}>
+        <AppText variant="display.row">
+          “{text}”
+        </AppText>
+        <AppText variant="mono.meta" style={styles.reference}>
+          {reference.toUpperCase()}
         </AppText>
       </View>
     </View>
@@ -47,19 +80,40 @@ export function VerseCard() {
 
 const useStyles = createThemedStyles((colors) => ({
   card: {
-    ...LEAF_SM,
+    borderRadius: 24,
+    paddingHorizontal: spacing.lg + 2,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.xs,
+    backgroundColor: colors.verse.bg,
+    borderWidth: 1,
+    borderColor: colors.verse.border,
+  },
+  top: {
     flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.lg,
-    backgroundColor: colors.surface.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.default,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  flame: {
-    paddingTop: spacing.xs,
+  eyebrow: {
+    color: colors.verse.eyebrow,
+    letterSpacing: 1.2,
   },
-  body: {
-    flex: 1,
-    gap: spacing.sm,
+  tools: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  tool: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  reference: {
+    color: colors.verse.eyebrow,
+    marginTop: spacing.sm,
   },
 }));

@@ -47,7 +47,7 @@ describe('NavShell — one route, three chromes', () => {
     setWindowWidth(375);
   });
 
-  it('renders the iOS text-only tab bar under 768pt on iOS, same route content', () => {
+  it('renders the floating dock under 768pt on iOS, same route content', () => {
     mockedUsePlatformOS.mockReturnValue('ios');
     setWindowWidth(375);
 
@@ -57,13 +57,12 @@ describe('NavShell — one route, three chromes', () => {
       </NavShell>,
     );
 
-    expect(getByTestId('phone-tab-bar-ios')).toBeTruthy();
-    expect(queryByTestId('phone-tab-bar-android')).toBeNull();
+    expect(getByTestId('floating-dock')).toBeTruthy();
     expect(queryByTestId('tablet-rail')).toBeNull();
     expect(getByText('Home route content')).toBeTruthy();
   });
 
-  it('renders the Android M3 nav bar under 768pt on Android, same route content', () => {
+  it('renders the same floating dock under 768pt on Android, same route content', () => {
     mockedUsePlatformOS.mockReturnValue('android');
     setWindowWidth(375);
 
@@ -73,8 +72,7 @@ describe('NavShell — one route, three chromes', () => {
       </NavShell>,
     );
 
-    expect(getByTestId('phone-tab-bar-android')).toBeTruthy();
-    expect(queryByTestId('phone-tab-bar-ios')).toBeNull();
+    expect(getByTestId('floating-dock')).toBeTruthy();
     expect(queryByTestId('tablet-rail')).toBeNull();
     expect(getByText('Home route content')).toBeTruthy();
   });
@@ -90,8 +88,7 @@ describe('NavShell — one route, three chromes', () => {
     );
 
     expect(getByTestId('tablet-rail')).toBeTruthy();
-    expect(queryByTestId('phone-tab-bar-ios')).toBeNull();
-    expect(queryByTestId('phone-tab-bar-android')).toBeNull();
+    expect(queryByTestId('floating-dock')).toBeNull();
     expect(getByText('Home route content')).toBeTruthy();
   });
 
@@ -111,7 +108,7 @@ describe('NavShell — one route, three chromes', () => {
     setWindowWidth(320);
 
     expect(queryByTestId('tablet-rail')).toBeNull();
-    expect(getByTestId('phone-tab-bar-ios')).toBeTruthy();
+    expect(getByTestId('floating-dock')).toBeTruthy();
   });
 
   it('restores the tablet rail live when the same instance widens back out of Split View', () => {
@@ -124,11 +121,11 @@ describe('NavShell — one route, three chromes', () => {
       </NavShell>,
     );
 
-    expect(getByTestId('phone-tab-bar-ios')).toBeTruthy();
+    expect(getByTestId('floating-dock')).toBeTruthy();
 
     setWindowWidth(1024);
 
-    expect(queryByTestId('phone-tab-bar-ios')).toBeNull();
+    expect(queryByTestId('floating-dock')).toBeNull();
     expect(getByTestId('tablet-rail')).toBeTruthy();
   });
 });

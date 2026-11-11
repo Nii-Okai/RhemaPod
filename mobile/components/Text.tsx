@@ -50,7 +50,7 @@ function resolveTypeStyle(variant: AppTextVariant) {
 
 /**
  * Text primitive enforcing the app's strict font-role separation (theme/typography.ts):
- * `display.*` variants render Newsreader, `ui.*` render Figtree, `mono.*` render IBM Plex
+ * `display.*` variants render Fraunces, `ui.*` render Plus Jakarta Sans, `mono.*` render IBM Plex
  * Mono. Never override `fontFamily` at a call site — add a new variant instead.
  *
  * `allowFontScaling` is intentionally left at its RN default (`true`) so OS-level

@@ -21,13 +21,14 @@ import { SectionError } from '../../../../components/SectionError';
 import { ShelfSkeleton } from '../../../../components/ShelfSkeleton';
 import { HeroCarousel } from '../HeroCarousel';
 import { HeroSkeleton } from '../HeroSkeleton';
-import { HomeTopBar } from '../HomeTopBar';
+import { HomeHeader } from '../HomeHeader';
 import { CountdownCard } from './CountdownCard';
 import { SignatureHeroCard } from './SignatureHeroCard';
 import { SeriesSpotlightCard } from './SeriesSpotlightCard';
 import { SeriesWalkCard } from './SeriesWalkCard';
 import { VerseCard } from './VerseCard';
 import { DailyRhemaCard } from './DailyRhemaCard';
+import { ChurchWeekSection } from './ChurchWeekSection';
 import {
   CatalogCard,
   PickCard,
@@ -125,16 +126,16 @@ function Shelf<T extends { id: string }>({
 
 /**
  * Home, Signature redesign (Nii's approved mockup "RhemaPod — Signature", 2026-10-21),
- * behind `SIGNATURE_HOME_ENABLED`. Same data and destinations as the classic Home, plus
- * the countdown to the next scheduled message (`GET /catalog/sermons/upcoming`):
+ * reworked for the Daybreak redesign (2026-11, canvas B1/B2): a greeting header, then
  *
- *  verse of the day → "New this week" hero → pick up where you left off → new releases →
- *  next message countdown (only while one is scheduled) → Prophet's Pick → Series ("your
+ *  verse of the day → Daily Rhema → keep listening → "New this week" hero → new releases →
+ *  this week at church → next message countdown (only while one is scheduled) →
+ *  Prophet's Pick → Series ("your
  *  walk" — or, with none yet, a spotlight on one series — above a two-column grid of the
  *  other series) → Prophet's Catalog → recommended for you → trending.
  *
- * The top bar sits above the scroll in normal flow (not over the art, as on the classic
- * Home) because the verse, not the hero, now opens the page.
+ * The header sits above the scroll in normal flow because the verse, not the hero, opens
+ * the page.
  */
 export function SignatureHomeScreen() {
   const styles = useStyles();
@@ -183,7 +184,7 @@ export function SignatureHomeScreen() {
 
   return (
     <View style={styles.screen}>
-      <HomeTopBar
+      <HomeHeader
         onSearchPress={() => router.push('/search')}
         onNotificationsPress={() => router.push('/notifications')}
         unseenNotificationsCount={notificationsBadge.unseenCount}
@@ -202,6 +203,12 @@ export function SignatureHomeScreen() {
         <View style={styles.gutter}>
           <DailyRhemaCard />
         </View>
+
+        <Shelf
+          title="Keep listening"
+          query={continueWatching}
+          renderItem={(item) => <ResumeCard item={item} onPress={() => goToSermon(item.id)} />}
+        />
 
         <View style={styles.gutter}>
           {hero.isLoading ? (
@@ -227,16 +234,14 @@ export function SignatureHomeScreen() {
         </View>
 
         <Shelf
-          title="Pick up where you left off"
-          query={continueWatching}
-          renderItem={(item) => <ResumeCard item={item} onPress={() => goToSermon(item.id)} />}
-        />
-
-        <Shelf
           title="New releases"
           query={newReleases}
           renderItem={(item) => <ReleaseCard sermon={item} onPress={() => goToSermon(item.id)} />}
         />
+
+        <View style={styles.gutter}>
+          <ChurchWeekSection onOpenAll={() => router.push(pathnameFor(routeByKey('announcements')))} />
+        </View>
 
         {upcoming.data ? (
           <View style={styles.gutter}>
@@ -363,9 +368,9 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   content: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl * 2,
-    gap: spacing.xxl + spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+    gap: spacing.xxl + spacing.xs,
   },
   gutter: {
     paddingHorizontal: spacing.lg,

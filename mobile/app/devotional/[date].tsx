@@ -19,6 +19,9 @@ import { CarryStep, HearStep, PonderStep, PrayStep, StillStep } from './_flow/st
  * at the furthest step reached. Only an unlocked day (its date and publish hour have
  * arrived) can be opened.
  */
+/** The route param that means "whatever today's devotional is". */
+const TODAY = 'today';
+
 const TITLES: Record<Step, string> = {
   still: 'Still',
   hear: 'Hear',
@@ -28,10 +31,13 @@ const TITLES: Record<Step, string> = {
 };
 
 export default function DevotionalScreen() {
-  const { date } = useLocalSearchParams<{ date: string }>();
+  const { date: param } = useLocalSearchParams<{ date: string }>();
   const router = useRouter();
   const window = useDevotionalWindow();
   const { journal, loaded, update } = useJournal();
+  // `/devotional/today` (the tab dock's Today button) resolves here, against the church's
+  // real publish hour, so the dock never has to load devotional data itself.
+  const date = param === TODAY ? window.currentDate : param;
   const dev = window.days.find((d) => d.date === date) ?? null;
 
   if (window.isLoading || !loaded) {

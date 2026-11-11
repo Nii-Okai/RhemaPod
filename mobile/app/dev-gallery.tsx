@@ -110,7 +110,7 @@ export default function DevGalleryScreen() {
         </SwatchRow>
       </Section>
 
-      <Section title="Typography — display (Newsreader, 400 only)">
+      <Section title="Typography — display (Fraunces, 400 only)">
         {(['hero', 'title', 'section', 'row', 'compact'] as DisplayVariant[]).map((variant) => (
           <AppText key={variant} variant={`display.${variant}`} style={styles.stack}>
             {variant} — The kingdom of heaven
@@ -118,7 +118,7 @@ export default function DevGalleryScreen() {
         ))}
       </Section>
 
-      <Section title="Typography — UI (Figtree)">
+      <Section title="Typography — UI (Plus Jakarta Sans)">
         {(['bodyLarge', 'body', 'label', 'button', 'badge', 'avatarInitials'] as UiVariant[]).map((variant) => (
           <AppText key={variant} variant={`ui.${variant}`} style={styles.stack}>
             {variant} — Sign in to continue

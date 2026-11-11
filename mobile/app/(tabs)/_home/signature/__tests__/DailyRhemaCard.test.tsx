@@ -74,6 +74,18 @@ it("shows today's devotional and opens the flow", async () => {
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/devotional/[date]', params: { date: today } });
 });
 
+it('picks up at the step reached', async () => {
+  kv().__set(
+    'rhemapod-devotional-journal',
+    JSON.stringify({ [today]: { date: today, word: null, completedAt: null, step: 'ponder', holdUp: [] } }),
+  );
+  mockedGet.mockResolvedValue([devotional]);
+  const ui = renderCard();
+  fireEvent.press(await ui.findByText('Continue · Ponder'));
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/devotional/[date]', params: { date: today } });
+  expect(ui.getByLabelText('2 of 5 steps: Still, Hear, Ponder, Pray, Carry')).toBeTruthy();
+});
+
 it('shrinks to the kept word once today is done', async () => {
   kv().__set(
     'rhemapod-devotional-journal',
@@ -82,7 +94,10 @@ it('shrinks to the kept word once today is done', async () => {
   mockedGet.mockResolvedValue([devotional]);
   const ui = renderCard();
   expect(await ui.findByText('refuge')).toBeTruthy();
+  expect(ui.getByText('Quiet time done')).toBeTruthy();
   expect(ui.queryByText('Begin quiet time')).toBeNull();
+  fireEvent.press(ui.getByLabelText('Quiet time done. You kept the word refuge. Open your word garden.'));
+  expect(mockPush).toHaveBeenCalledWith('/devotional/garden');
 });
 
 it('renders nothing when there is no devotional', async () => {

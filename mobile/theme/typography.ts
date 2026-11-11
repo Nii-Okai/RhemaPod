@@ -2,10 +2,11 @@ import { PixelRatio } from 'react-native';
 
 /**
  * Font family roles — strict separation per spec §1.2, a hard constraint from the brief,
- * not a suggestion:
- *  - Newsreader: display only (hero/section/card/list titles). Always weight 400 — no
+ * not a suggestion. Daybreak redesign (2026-11) swapped the faces from
+ * Newsreader/Figtree to Fraunces/Plus Jakarta Sans; the roles are unchanged.
+ *  - Fraunces: display only (hero/section/card/list titles). Always weight 400 — no
  *    bold serif anywhere in the source.
- *  - Figtree: all UI text — body, labels, buttons, badges, avatar initials.
+ *  - Plus Jakarta Sans: all UI text — body, labels, buttons, badges, avatar initials.
  *  - IBM Plex Mono: numeric/temporal data only (durations, dates, episode numbers, file
  *    sizes, timestamps). Always weight 400. Never carries a UI label; sans text never
  *    carries a number that reads as a duration/timestamp/episode index.
@@ -13,10 +14,10 @@ import { PixelRatio } from 'react-native';
  * Only load the weights actually used above — see theme/fonts.ts.
  */
 export const fontFamily = {
-  display: 'Newsreader_400Regular',
-  ui: 'Figtree_400Regular',
-  uiSemiBold: 'Figtree_600SemiBold',
-  uiBold: 'Figtree_700Bold',
+  display: 'Fraunces_400Regular',
+  ui: 'PlusJakartaSans_400Regular',
+  uiSemiBold: 'PlusJakartaSans_600SemiBold',
+  uiBold: 'PlusJakartaSans_700Bold',
   mono: 'IBMPlexMono_400Regular',
 } as const;
 
@@ -40,7 +41,7 @@ interface TypeStyle {
 }
 
 /**
- * Display scale (Newsreader, 400 weight only). Sizes rationalized from spec §1.2's
+ * Display scale (Fraunces, 400 weight only). Sizes rationalized from spec §1.2's
  * observed ranges — target is within ±1-2px of source, not byte-exact.
  */
 export const displayScale: Record<DisplayVariant, TypeStyle> = {
@@ -51,7 +52,7 @@ export const displayScale: Record<DisplayVariant, TypeStyle> = {
   compact: { fontFamily: fontFamily.display, fontSize: 17, lineHeightRatio: 1.2 },
 };
 
-/** UI scale (Figtree). `label`/`button`/`badge`/`avatarInitials` carry weight via family. */
+/** UI scale (Plus Jakarta Sans). `label`/`button`/`badge`/`avatarInitials` carry weight via family. */
 export const uiScale: Record<UiVariant, TypeStyle> = {
   bodyLarge: { fontFamily: fontFamily.ui, fontSize: 16, lineHeightRatio: 1.4 },
   body: { fontFamily: fontFamily.ui, fontSize: 14, lineHeightRatio: 1.4 },

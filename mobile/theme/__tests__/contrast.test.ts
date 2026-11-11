@@ -42,6 +42,17 @@ const PAIRS: Pair[] = [
   // Signature Browse's wheat category tile sets its name in the dot colour.
   ['status.wheat dot on bg', (c) => c.status.wheat.dot, (c) => c.status.wheat.bg, TEXT],
   ['gold fill on track', (c) => c.accent.gold, (c) => c.track.default, NON_TEXT],
+  // Daybreak redesign surfaces.
+  ['splash tagline on ground', (c) => c.splash.tagline, (c) => c.splash.ground, TEXT],
+  ['dock icon on dock', (c) => c.dock.icon, (c) => c.dock.bg, TEXT],
+  ['dock active icon on dock', (c) => c.dock.iconActive, (c) => c.dock.bg, TEXT],
+  ['Today glyph on its gold button', (c) => c.dock.todayIcon, (c) => c.dock.todayBg, TEXT],
+  ['feature text on feature card', (c) => c.feature.text, (c) => c.feature.bg, TEXT],
+  ['feature muted on feature card', (c) => c.feature.muted, (c) => c.feature.bg, TEXT],
+  ['feature eyebrow on feature card', (c) => c.feature.eyebrow, (c) => c.feature.bg, TEXT],
+  ['verse eyebrow on verse card', (c) => c.verse.eyebrow, (c) => c.verse.bg, TEXT],
+  ['verse text on verse card', (c) => c.text.primary, (c) => c.verse.bg, TEXT],
+  ['sun button text on sun', (c) => c.sunButton.text, (c) => c.sunButton.bg, TEXT],
 ];
 
 describe.each([
