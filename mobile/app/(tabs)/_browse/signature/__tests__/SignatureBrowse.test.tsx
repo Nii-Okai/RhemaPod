@@ -159,7 +159,7 @@ describe('SignatureBrowseScreen — searching', () => {
     expect(await screen.findByText('God the Holy Spirit')).toBeTruthy();
     expect(screen.getByText('SERMON · HOLY SPIRIT · 1:13:00')).toBeTruthy();
     expect(screen.getByText('SERIES · 2 EPISODES')).toBeTruthy();
-    expect(screen.queryByText('Categories')).toBeNull();
+    expect(screen.queryByText('What do you need today?')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('The Liberty of the Spirit, series · 2 episodes'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/series/[id]', params: { id: 'se1' } });
@@ -174,6 +174,6 @@ describe('SignatureBrowseScreen — searching', () => {
     expect(screen.getByText('Try a series name or a category like Faith.')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Clear search'));
-    expect(screen.getByText('Categories')).toBeTruthy();
+    expect(screen.getByText('What do you need today?')).toBeTruthy();
   });
 });

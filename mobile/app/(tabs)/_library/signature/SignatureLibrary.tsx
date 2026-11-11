@@ -39,7 +39,7 @@ function countLabel(count: number, one: string, many: string): string {
  * screens"), behind `SIGNATURE_LIBRARY_ENABLED`. Same data, sorting and actions as the
  * classic tab — playlists and downloads interleaved through `librarySort.ts`, client-side
  * search, the sort sheet, list/grid, long-press delete — restyled in the Signature
- * language: a Newsreader title with a mono tally, Home's "Pick up where you left off"
+ * language: a Newsreader title with a mono tally, Home's "Keep listening"
  * shelf, the You screen's segmented track for the filter (now with an explicit "All"
  * and per-filter counts), and leaf-cornered art with mono meta lines.
  */
@@ -177,7 +177,7 @@ export function SignatureLibraryScreen() {
               accessibilityLabel="New playlist"
               style={({ pressed }) => [styles.newButton, pressed && styles.pressed]}
             >
-              <PlatformIcon name="add" size={22} color={colors.primaryButton.text} />
+              <PlatformIcon name="add" size={22} color={colors.dock.iconActive} />
             </Pressable>
           </View>
         </View>
@@ -185,7 +185,7 @@ export function SignatureLibraryScreen() {
         {continueWatching.isLoading || continueWatching.isError || resumeItems.length > 0 ? (
           <View style={styles.section}>
             <AppText variant="display.section" accessibilityRole="header" style={styles.gutter}>
-              Pick up where you left off
+              Keep listening
             </AppText>
             {continueWatching.isLoading ? (
               <View style={styles.gutter}>
@@ -350,11 +350,12 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.xs,
   },
+  // Daybreak: the navy action disc, the same navy as the dock in both themes.
   newButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
-    backgroundColor: colors.primaryButton.bg,
+    backgroundColor: colors.dock.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -46,7 +46,9 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
     <View testID="home-header" style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.md }]}>
       <View style={styles.titles}>
         <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessibilityLabel="RhemaPod" />
-        <AppText variant="display.title" accessibilityRole="header" numberOfLines={1}>
+        {/* Two lines at most, smallest display size: a long first name wraps rather than
+            being cut off (Nii's phone test, 2026-11-11). */}
+        <AppText variant="display.row" accessibilityRole="header" numberOfLines={2}>
           {firstName ? `${greeting}, ${firstName}` : greeting}
         </AppText>
       </View>
@@ -78,7 +80,7 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
 const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
@@ -90,16 +92,16 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.xs + 2,
   },
   wordmark: {
-    width: 122,
-    height: 22,
+    width: 100,
+    height: 18,
   },
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
   round: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: radius.pill,
     backgroundColor: colors.surface.raised,
     borderWidth: 1,
@@ -112,8 +114,8 @@ const useStyles = createThemedStyles((colors) => ({
   },
   dot: {
     position: 'absolute',
-    top: 9,
-    right: 10,
+    top: 8,
+    right: 9,
     width: 9,
     height: 9,
     borderRadius: 5,

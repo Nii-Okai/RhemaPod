@@ -3,8 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppText, PressableScale } from '../../../../components';
 import type { ColorTokens } from '../../../../theme/colors';
 import { spacing } from '../../../../theme/spacing';
-import { Flame } from '../../_home/signature/Flame';
-import { LEAF_SM } from '../../_home/signature/leaf';
 import type { Category } from '../../../../lib/query/hooks/useCategories';
 
 export interface TopicTone {
@@ -31,7 +29,7 @@ function countLabel(count: number): string {
   return count === 1 ? '1 sermon' : `${count} sermons`;
 }
 
-const TILE_HEIGHT = 80;
+const TILE_HEIGHT = 92;
 
 export interface TopicTileProps {
   category: Category;
@@ -40,9 +38,8 @@ export interface TopicTileProps {
 }
 
 /**
- * One colour-coded category tile on Signature Browse: the name in the serif, with a large
- * faint flame tucked into the corner. As on the classic tile, the sermon count is read
- * out but not shown.
+ * One colour-coded category tile on Discover (Daybreak redesign, canvas B3): the name in
+ * bold over its sermon count, with a faint disc of the same colour tucked into the corner.
  */
 export function TopicTile({ category, tone, onPress }: TopicTileProps) {
   return (
@@ -50,13 +47,14 @@ export function TopicTile({ category, tone, onPress }: TopicTileProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${category.name}, ${countLabel(category.sermon_count)}`}
-      style={[styles.tile, LEAF_SM, { backgroundColor: tone.bg }]}
+      style={[styles.tile, { backgroundColor: tone.bg }]}
     >
-      <View style={styles.flame} pointerEvents="none">
-        <Flame width={48} fill={tone.fg} />
-      </View>
-      <AppText variant="display.row" numberOfLines={2} style={{ color: tone.fg }}>
+      <View style={[styles.disc, { backgroundColor: tone.fg }]} pointerEvents="none" />
+      <AppText variant="ui.bodyBold" numberOfLines={2} style={{ color: tone.fg }}>
         {category.name}
+      </AppText>
+      <AppText variant="ui.badge" style={{ color: tone.fg }}>
+        {countLabel(category.sermon_count)}
       </AppText>
     </PressableScale>
   );
@@ -65,14 +63,18 @@ export function TopicTile({ category, tone, onPress }: TopicTileProps) {
 const styles = StyleSheet.create({
   tile: {
     height: TILE_HEIGHT,
+    borderRadius: 20,
     overflow: 'hidden',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    padding: spacing.md + 2,
+    justifyContent: 'space-between',
   },
-  flame: {
+  disc: {
     position: 'absolute',
-    right: -6,
-    bottom: -10,
-    opacity: 0.35,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    right: -20,
+    bottom: -30,
+    opacity: 0.14,
   },
 });

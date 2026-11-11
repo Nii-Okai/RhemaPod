@@ -316,11 +316,11 @@ describe('SignatureLibraryScreen', () => {
 
   it('shows the resume shelf only when something is in progress, and opens the sermon', () => {
     const { queryByText, rerender, getByText, getByLabelText } = render(<LibraryScreen />);
-    expect(queryByText('Pick up where you left off')).toBeNull();
+    expect(queryByText('Keep listening')).toBeNull();
 
     mockedUseContinueWatching.mockReturnValue(baseContinueWatchingHook({ data: [continueWatchingItem()] }));
     rerender(<LibraryScreen />);
-    expect(getByText('Pick up where you left off')).toBeTruthy();
+    expect(getByText('Keep listening')).toBeTruthy();
     fireEvent.press(getByLabelText('Anchored in the Storm, 20:00 left'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-cw1' } });
   });
@@ -332,6 +332,6 @@ describe('SignatureLibraryScreen', () => {
 
     mockedUseContinueWatching.mockReturnValue(baseContinueWatchingHook({ isError: true, error: new Error('boom') }));
     rerender(<LibraryScreen />);
-    expect(getByText('Pick up where you left off')).toBeTruthy();
+    expect(getByText('Keep listening')).toBeTruthy();
   });
 });

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
-import { AppText, IconButton, LinkButton, PrimaryButton, SkeletonBlock } from '../../components';
-import { createThemedStyles } from '../../theme/ThemeContext';
+import { AppText, IconButton, LinkButton, PlatformIcon, PrimaryButton, SkeletonBlock } from '../../components';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { radius } from '../../theme/radius';
 import { longDayLabel } from '../../lib/devotionals/dates';
@@ -85,6 +85,7 @@ function Flow({
   update: (patch: Partial<Omit<JournalEntry, 'date' | 'devotionalId'>>) => void;
 }) {
   const styles = useStyles();
+  const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView>(null);
@@ -127,7 +128,9 @@ function Flow({
             <View key={s} style={[styles.leaf, i <= index ? styles.leafOn : null]} />
           ))}
         </View>
-        <View style={styles.headerSpacer} />
+        <AppText variant="mono.meta" tone="tertiary" style={styles.counter} accessible={false}>
+          {`${index + 1}/5`}
+        </AppText>
       </View>
 
       <ScrollView
@@ -156,7 +159,14 @@ function Flow({
 
       {step !== 'still' ? (
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-          <IconButton icon="chevron-back" accessibilityLabel="Previous step" onPress={() => go(STEPS[index - 1])} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous step"
+            onPress={() => go(STEPS[index - 1])}
+            style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+          >
+            <PlatformIcon name="chevron-back" size={22} color={colors.text.primary} />
+          </Pressable>
           <View style={styles.flex}>
             {step === 'carry' ? (
               <PrimaryButton label={entry?.completedAt ? 'Close' : 'Amen'} onPress={finish} fullWidth />
@@ -174,17 +184,30 @@ const useStyles = createThemedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.surface.app },
   loading: { padding: spacing.xxl, gap: spacing.lg, justifyContent: 'center' },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
-  headerSpacer: { width: 44 },
-  leaves: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
-  leaf: {
-    width: 22,
-    height: 8,
-    borderTopLeftRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-    backgroundColor: colors.track.default,
+  // Daybreak (canvas D1–D5): five even segments across the top with a 3/5 counter.
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xl,
+    paddingBottom: spacing.sm,
   },
-  leafOn: { backgroundColor: colors.accent.gold },
+  counter: { minWidth: 24, textAlign: 'right' },
+  leaves: { flex: 1, flexDirection: 'row', gap: 5 },
+  leaf: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.border.default },
+  leafOn: { backgroundColor: colors.sunButton.bg },
+  back: {
+    width: 54,
+    height: 54,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.raised,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  pressed: { opacity: 0.7 },
   content: { flexGrow: 1, paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl, gap: spacing.lg },
   titleBlock: { gap: spacing.xs, paddingTop: spacing.sm },
   footer: {
@@ -193,8 +216,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.default,
     backgroundColor: colors.surface.app,
   },
 }));
