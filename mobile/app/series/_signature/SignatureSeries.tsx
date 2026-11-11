@@ -6,7 +6,6 @@ import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
-import { Flame, GlowingFlame } from '../../(tabs)/_home/signature/Flame';
 import type { DetailTab } from '../_detail/DetailTabs';
 import { seriesMetaLine } from '../_detail/meta';
 import { SeriesDetailSkeleton } from '../_detail/Skeleton';
@@ -21,10 +20,14 @@ import { usePullToRefresh } from '../../../lib/hooks/usePullToRefresh';
 // Full-bleed cover, running up under the status bar (Nii's edit to the mockup: a bigger
 // top image than the classic page's inset 4:3 banner).
 const HERO_ASPECT = 3 / 4;
-const HERO_CORNER = 28;
-const FLAME_WIDTH = 15;
+const HERO_CORNER = 36;
 
 /**
+ * Daybreak redesign (canvas C2): the cover with rounded lower corners, a gold "Series
+ * · N episodes" eyebrow over the title, the Resume pill, the action tiles, then
+ * Episodes / Related with "N of M finished" on the tab row and the episodes drawn as a
+ * path of numbered nodes (green when finished, gold for the one you're on).
+ *
  * Series detail in the Signature redesign (mockup "RhemaPod — Signature", series page),
  * behind `EXPO_PUBLIC_SIGNATURE_SERIES`. Same data and actions as the classic screen —
  * both read `useSeriesScreen` — drawn as: a full-width cover, tier and meta, the title
@@ -89,13 +92,6 @@ export function SignatureSeriesScreen() {
     downloadableEpisodes.every((ep) => downloads.find(ep.sermonId)?.state === 'ready');
   const episodeWord = (n: number) => `${n} episode${n === 1 ? '' : 's'}`;
 
-  const flame = (state: EpisodeProgress['state'], episodeId: string) => {
-    if (episodeId === resumeId) return <GlowingFlame width={FLAME_WIDTH} fill="transparent" stroke={colors.accent.gold} />;
-    if (state === 'done') return <Flame width={FLAME_WIDTH} fill={colors.accent.gold} stroke={colors.accent.gold} />;
-    if (state === 'started') return <Flame width={FLAME_WIDTH} fill="transparent" stroke={colors.accent.gold} />;
-    return <Flame width={FLAME_WIDTH} fill="transparent" stroke={colors.border.card} />;
-  };
-
   return (
     <View style={styles.screen}>
       {header}
@@ -112,10 +108,10 @@ export function SignatureSeriesScreen() {
 
         <View style={styles.body}>
           <View style={styles.metaRow}>
-            <Tag label={detail.tier === 'paid' ? 'Members' : 'Free'} />
-            <AppText variant="mono.meta" tone="tertiary" style={styles.shrink}>
+            <AppText variant="ui.badge" tone="gold" style={[styles.shrink, styles.eyebrow]}>
               {`Series · ${seriesMetaLine(detail)}`.toUpperCase()}
             </AppText>
+            <Tag label={detail.tier === 'paid' ? 'Members' : 'Free'} />
           </View>
 
           <View style={styles.titleBlock}>
@@ -146,21 +142,6 @@ export function SignatureSeriesScreen() {
                 </AppText>
               ) : null}
             </Pressable>
-          ) : null}
-
-          {showWalk ? (
-            <View
-              style={styles.walk}
-              accessible
-              accessibilityLabel={`${doneCount} of ${episodeWord(episodeItems.length)} watched`}
-            >
-              {episodeItems.map((ep) => (
-                <View key={ep.id}>{flame(progress.get(ep.id)?.state ?? 'ahead', ep.id)}</View>
-              ))}
-              <AppText variant="mono.meta" tone="tertiary" style={styles.walkCount}>
-                {`${doneCount} OF ${episodeItems.length} WATCHED`}
-              </AppText>
-            </View>
           ) : null}
 
           <View style={styles.actionRow}>
@@ -216,7 +197,11 @@ export function SignatureSeriesScreen() {
           ) : null}
         </View>
 
-        <SignatureTabs active={tab} onChange={setTab} />
+        <SignatureTabs
+          active={tab}
+          onChange={setTab}
+          note={showWalk ? `${doneCount} of ${episodeItems.length} finished` : null}
+        />
 
         {tab === 'episodes' ? (
           <View style={styles.episodes}>
@@ -225,12 +210,14 @@ export function SignatureSeriesScreen() {
                 No episodes yet. Check back once this series has published episodes.
               </AppText>
             ) : (
-              episodeItems.map((ep) => (
+              episodeItems.map((ep, index) => (
                 <SignatureEpisodeRow
                   key={ep.id}
                   episode={ep}
                   progress={progress.get(ep.id) as EpisodeProgress}
                   current={ep.id === resumeId}
+                  position={index + 1}
+                  last={index === episodeItems.length - 1}
                   onPress={() => screen.playEpisode(ep.id)}
                 />
               ))
@@ -258,11 +245,16 @@ const useStyles = createThemedStyles((colors) => ({
     overflow: 'hidden',
     backgroundColor: colors.surface.sunken,
     borderBottomRightRadius: HERO_CORNER,
-    borderBottomLeftRadius: 6,
+    borderBottomLeftRadius: HERO_CORNER,
   },
   body: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
     gap: spacing.lg,
+  },
+  eyebrow: {
+    letterSpacing: 1.5,
   },
   metaRow: {
     flexDirection: 'row',
@@ -288,15 +280,6 @@ const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.85,
   },
-  walk: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  walkCount: {
-    marginLeft: spacing.xs,
-  },
   actionRow: {
     flexDirection: 'row',
   },
@@ -305,8 +288,7 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
   },
   episodes: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.lg + 2,
   },
 }));

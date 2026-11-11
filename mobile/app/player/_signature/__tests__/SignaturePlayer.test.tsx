@@ -227,7 +227,7 @@ describe('Signature player', () => {
     expect(screen.getByLabelText('Playback speed, 1.25×')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Sleep timer, off'));
-    expect(await screen.findByText('15 minutes')).toBeTruthy();
+    expect(await screen.findByText('15 min')).toBeTruthy();
   });
 
   it('shows the comments card with its count and the latest comment', async () => {

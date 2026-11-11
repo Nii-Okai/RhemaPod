@@ -2,7 +2,6 @@ import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createThemedStyles } from '../theme/ThemeContext';
-import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
 export interface SheetProps {
@@ -43,6 +42,7 @@ export function Sheet({ visible, onClose, children, onDismiss }: SheetProps) {
           <View style={styles.scrim} />
         </Pressable>
         <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]} accessibilityViewIsModal>
+          <View style={styles.grab} />
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.content}
@@ -61,20 +61,29 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  // Daybreak (canvas C6/C7): a navy dim in both themes, then a paper sheet with 32pt
+  // corners and a grab handle.
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.surface.app,
-    opacity: 0.6,
+    backgroundColor: colors.overlay.chipFill,
   },
   sheet: {
     maxHeight: '85%',
-    backgroundColor: colors.surface.raised,
-    borderColor: colors.border.card,
+    backgroundColor: colors.surface.app,
+    borderColor: colors.border.default,
     borderWidth: StyleSheet.hairlineWidth,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: spacing.sm + 2,
+    paddingHorizontal: spacing.lg + 4,
+  },
+  grab: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    marginBottom: spacing.md,
+    backgroundColor: colors.border.card,
   },
   content: {
     gap: spacing.md,

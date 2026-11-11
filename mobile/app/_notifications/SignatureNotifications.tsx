@@ -2,93 +2,42 @@ import React from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, FittedArt, IconButton, PlatformIcon, PressableScale, QueryState, StaggerItem } from '../../components';
-import { darkColors as onArt } from '../../theme/colors';
+import { AppText, CircleButton, FittedArt, PlatformIcon, QueryState, StaggerItem } from '../../components';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
-import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
-import { fontFamily } from '../../theme/typography';
-import { formatDuration } from '../../lib/format/duration';
 import { useNewReleases } from '../../lib/query/hooks/useNewReleases';
 import { useNotificationsBadge } from '../../lib/query/hooks/useNotificationsBadge';
 import type { SermonListItem } from '../../lib/query/hooks/useSermons';
-import { ArtScrim } from '../(tabs)/_home/signature/ArtScrim';
-import { Flame } from '../(tabs)/_home/signature/Flame';
-import { LEAF, leaf } from '../(tabs)/_home/signature/leaf';
 import { formatWhen, isFresh, splitNotifications } from './notificationTime';
 import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
-const ROW_ART_WIDTH = 96;
-const ROW_LEAF = leaf(12, 3);
-
-/** "Category · 1:48", or whichever half exists. */
-function categoryAndLength(sermon: SermonListItem): string | null {
-  const parts = [sermon.category_name, sermon.duration_seconds ? formatDuration(sermon.duration_seconds) : null];
-  const text = parts.filter(Boolean).join(' · ');
-  return text || null;
-}
-
 /**
- * The newest release, featured. Like Signature Home's hero, the art keeps its own
- * landscape shape (the title is in the artwork) and fades into a panel that stays dark in
- * both themes, so it reads `darkColors` directly.
+ * One notification (canvas B9). Unread ones are white cards with a gold dot; read and
+ * older ones are plain rows on the page. "New sermon:" leads the line, in bold.
  */
-function LatestReleaseCard({ sermon, unread, onPress }: { sermon: SermonListItem; unread: boolean; onPress: () => void }) {
-  const when = formatWhen(sermon.publish_at);
-  const chip = [isFresh(sermon.publish_at) ? 'Just released' : 'Latest release', when?.toLowerCase()]
-    .filter(Boolean)
-    .join(' · ');
-  const meta = categoryAndLength(sermon);
-  return (
-    <PressableScale
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={[sermon.title, meta, unread ? 'unread' : null].filter(Boolean).join(', ')}
-      style={featured.card}
-    >
-      <View style={featured.art}>
-        {sermon.thumbnail_url ? (
-          <FittedArt uri={sermon.thumbnail_url} />
-        ) : null}
-        <ArtScrim height="40%" />
-        <View style={featured.chip} pointerEvents="none">
-          <Flame width={8} fill={unread ? onArt.accent.goldText : onArt.text.tertiary} />
-          <AppText variant="ui.badge" style={featured.onArtText}>
-            {chip}
-          </AppText>
-        </View>
-      </View>
-      <View style={featured.panel}>
-        <View style={featured.panelText}>
-          <AppText variant="display.title" style={featured.onArtText} numberOfLines={2}>
-            {sermon.title}
-          </AppText>
-          {meta ? (
-            <AppText variant="ui.body" style={featured.onArtSecondary} numberOfLines={1}>
-              {meta}
-            </AppText>
-          ) : null}
-        </View>
-        <View style={featured.play} pointerEvents="none">
-          <PlatformIcon name="play" size={18} color={onArt.primaryButton.text} />
-        </View>
-      </View>
-    </PressableScale>
-  );
-}
-
-function NotificationRow({ sermon, unread, onPress }: { sermon: SermonListItem; unread: boolean; onPress: () => void }) {
+function NotificationRow({
+  sermon,
+  unread,
+  card,
+  onPress,
+}: {
+  sermon: SermonListItem;
+  unread: boolean;
+  card: boolean;
+  onPress: () => void;
+}) {
   const styles = useStyles();
   const { colors } = useTheme();
   const when = formatWhen(sermon.publish_at);
+  const meta = [when, sermon.category_name].filter(Boolean).join(' · ');
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={unread ? `${sermon.title}, unread` : sermon.title}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [card ? styles.card : styles.row, pressed && styles.rowPressed]}
     >
-      <View style={[styles.rowArt, ROW_LEAF]}>
+      <View style={[styles.rowArt, card ? styles.cardArt : null]}>
         {sermon.thumbnail_url ? (
           <FittedArt uri={sermon.thumbnail_url} />
         ) : (
@@ -96,24 +45,19 @@ function NotificationRow({ sermon, unread, onPress }: { sermon: SermonListItem; 
         )}
       </View>
       <View style={styles.rowText}>
-        <AppText
-          variant="ui.bodyLarge"
-          tone={unread ? 'primary' : 'secondary'}
-          style={unread ? styles.unreadTitle : undefined}
-          numberOfLines={2}
-        >
+        <AppText variant="ui.body" tone={unread ? 'primary' : 'secondary'} numberOfLines={2}>
+          <AppText variant="ui.bodyBold" tone={unread ? 'primary' : 'secondary'}>
+            {'New sermon: '}
+          </AppText>
           {sermon.title}
         </AppText>
-        <AppText variant="ui.body" tone="secondary" numberOfLines={1}>
-          {sermon.category_name ?? ''}
-          {when ? (
-            <AppText variant="mono.meta" tone="tertiary">
-              {sermon.category_name ? `  ·  ${when}` : when}
-            </AppText>
-          ) : null}
-        </AppText>
+        {meta ? (
+          <AppText variant="ui.badge" tone="tertiary" numberOfLines={1}>
+            {meta}
+          </AppText>
+        ) : null}
       </View>
-      <View style={styles.dotSlot}>{unread ? <Flame width={10} fill={colors.accent.gold} /> : null}</View>
+      <View style={styles.dotSlot}>{unread ? <View style={styles.dot} /> : null}</View>
     </Pressable>
   );
 }
@@ -124,24 +68,31 @@ function Section({
   isRead,
   onOpen,
   offset,
+  cards,
 }: {
   label: string;
   items: SermonListItem[];
   isRead: (id: string) => boolean;
   onOpen: (sermon: SermonListItem) => void;
   offset: number;
+  cards: boolean;
 }) {
   const styles = useStyles();
   if (items.length === 0) return null;
   return (
     <View style={styles.section}>
-      <AppText variant="mono.meta" tone="tertiary" accessibilityRole="header">
+      <AppText variant="ui.badge" tone="tertiary" accessibilityRole="header" style={styles.eyebrow}>
         {label.toUpperCase()}
       </AppText>
-      <View>
+      <View style={cards ? styles.cardList : null}>
         {items.map((sermon, index) => (
           <StaggerItem key={sermon.id} index={offset + index}>
-            <NotificationRow sermon={sermon} unread={!isRead(sermon.id)} onPress={() => onOpen(sermon)} />
+            <NotificationRow
+              sermon={sermon}
+              unread={!isRead(sermon.id)}
+              card={cards}
+              onPress={() => onOpen(sermon)}
+            />
           </StaggerItem>
         ))}
       </View>
@@ -150,6 +101,11 @@ function Section({
 }
 
 /**
+ * Daybreak redesign (canvas B9): round back button and "Mark all read", the title with
+ * a gold count of unread, then "New" as white cards with a gold dot for unread and
+ * "Earlier" as plain rows. The featured release card is gone; the newest release simply
+ * leads the New list.
+ *
  * Notifications, Signature redesign (Nii's approved mockup "RhemaPod — Signature",
  * 2026-10-21), behind `SIGNATURE_NOTIFICATIONS_ENABLED`. Same data and read/unread
  * tracking as the classic screen — `useNewReleases()` with `useNotificationsBadge()` —
@@ -167,6 +123,10 @@ export function SignatureNotificationsScreen() {
   const items = newReleases.data ?? [];
   const { latest, fresh, earlier } = splitNotifications(items);
   const unread = badge.unseenCount;
+  // The newest release leads "New" while it's still in its first week, else "Earlier".
+  const latestIsFresh = latest ? isFresh(latest.publish_at) : false;
+  const newItems = latest && latestIsFresh ? [latest, ...fresh] : fresh;
+  const earlierItems = latest && !latestIsFresh ? [latest, ...earlier] : earlier;
 
   const open = (sermon: SermonListItem) => {
     badge.markRead(sermon.id);
@@ -177,9 +137,9 @@ export function SignatureNotificationsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
         <View style={styles.headerBar}>
-          <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+          <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
           {items.length > 0 ? (
             <Pressable
               onPress={badge.markAllRead}
@@ -189,7 +149,7 @@ export function SignatureNotificationsScreen() {
               hitSlop={spacing.sm}
               style={styles.markAll}
             >
-              <AppText variant="ui.label" tone={unread > 0 ? 'gold' : 'tertiary'}>
+              <AppText variant="ui.bodyBold" tone={unread > 0 ? 'gold' : 'tertiary'}>
                 Mark all read
               </AppText>
             </Pressable>
@@ -200,9 +160,11 @@ export function SignatureNotificationsScreen() {
             Notifications
           </AppText>
           {unread > 0 ? (
-            <AppText variant="mono.meta" tone="gold">
-              {unread > 9 ? '9+ NEW' : `${unread} NEW`}
-            </AppText>
+            <View style={styles.newPill}>
+              <AppText variant="ui.badge" style={styles.newPillText}>
+                {unread > 9 ? '9+ NEW' : `${unread} NEW`}
+              </AppText>
+            </View>
           ) : null}
         </View>
       </View>
@@ -225,13 +187,15 @@ export function SignatureNotificationsScreen() {
           loadingLabel="Loading new releases"
         >
           <View style={styles.body}>
-            {latest ? (
-              <StaggerItem index={0}>
-                <LatestReleaseCard sermon={latest} unread={!badge.isRead(latest.id)} onPress={() => open(latest)} />
-              </StaggerItem>
-            ) : null}
-            <Section label="New" items={fresh} isRead={badge.isRead} onOpen={open} offset={1} />
-            <Section label="Earlier" items={earlier} isRead={badge.isRead} onOpen={open} offset={1 + fresh.length} />
+            <Section label="New" items={newItems} isRead={badge.isRead} onOpen={open} offset={0} cards />
+            <Section
+              label="Earlier"
+              items={earlierItems}
+              isRead={badge.isRead}
+              onOpen={open}
+              offset={newItems.length}
+              cards={false}
+            />
           </View>
         </QueryState>
       </ScrollView>
@@ -245,9 +209,9 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.surface.app,
   },
   header: {
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.lg + 4,
     paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    gap: spacing.lg,
   },
   headerBar: {
     flexDirection: 'row',
@@ -257,34 +221,58 @@ const useStyles = createThemedStyles((colors) => ({
   markAll: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.md - 2,
-    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  newPill: {
+    height: 24,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.sunButton.bg,
+  },
+  newPillText: {
+    color: colors.sunButton.text,
+    letterSpacing: 0.6,
   },
   scroll: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl,
   },
   body: {
-    gap: spacing.xxl - spacing.xs,
+    gap: spacing.xl,
   },
   section: {
-    gap: spacing.xs,
+    gap: spacing.sm + 2,
+  },
+  eyebrow: {
+    letterSpacing: 1.5,
+  },
+  cardList: {
+    gap: spacing.sm + 2,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md + 2,
+    padding: spacing.md + 2,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+    backgroundColor: colors.surface.raised,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 72,
-    paddingVertical: spacing.sm,
+    gap: spacing.md + 2,
+    paddingVertical: spacing.sm + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.default,
   },
@@ -292,75 +280,32 @@ const useStyles = createThemedStyles((colors) => ({
     opacity: 0.7,
   },
   rowArt: {
-    width: ROW_ART_WIDTH,
-    aspectRatio: 16 / 9,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.surface.sunken,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardArt: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+  },
   rowText: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
-  },
-  unreadTitle: {
-    fontFamily: fontFamily.uiSemiBold,
+    gap: 4,
   },
   dotSlot: {
     width: 10,
     alignItems: 'center',
   },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.sunButton.bg,
+  },
 }));
-
-const featured = StyleSheet.create({
-  card: {
-    ...LEAF,
-    overflow: 'hidden',
-    backgroundColor: onArt.surface.app,
-  },
-  art: {
-    aspectRatio: 16 / 9,
-    backgroundColor: onArt.surface.sunken,
-  },
-  chip: {
-    position: 'absolute',
-    top: spacing.md,
-    left: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 2,
-    paddingHorizontal: spacing.md - 2,
-    paddingVertical: spacing.xs + 1,
-    borderRadius: radius.pill,
-    backgroundColor: onArt.overlay.chipFill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: onArt.overlay.chipBorder,
-  },
-  panel: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.lg,
-  },
-  panelText: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  onArtText: {
-    color: onArt.text.primary,
-  },
-  onArtSecondary: {
-    color: onArt.text.secondary,
-  },
-  play: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: onArt.primaryButton.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

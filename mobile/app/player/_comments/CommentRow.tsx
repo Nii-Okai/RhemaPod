@@ -68,7 +68,7 @@ export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }
       ];
 
   return (
-    <View style={[styles.row, showDivider && styles.divider]}>
+    <View style={[styles.row, showDivider && !comment.is_mine && styles.divider, comment.is_mine && styles.mine]}>
       {/* The row's combined label already carries the name; the avatar's own label would
           make a screen reader announce it twice. */}
       <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
@@ -88,8 +88,15 @@ export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }
           style={styles.content}
         >
           <View style={styles.metaLine}>
-            <AppText variant="ui.label">{name}</AppText>
-            <AppText variant="mono.meta" tone="tertiary" accessibilityLabel={`Posted ${time}`}>
+            <AppText variant="ui.bodyBold">{name}</AppText>
+            {comment.is_mine ? (
+              <View style={styles.youPill}>
+                <AppText variant="ui.badge" style={styles.youText}>
+                  YOU
+                </AppText>
+              </View>
+            ) : null}
+            <AppText variant="ui.badge" tone="tertiary" accessibilityLabel={`Posted ${time}`}>
               {time}
             </AppText>
           </View>
@@ -99,7 +106,7 @@ export function CommentRow({ comment, showDivider, onReport, onBlock, onDelete }
         </View>
         <View style={styles.actions}>
           {comment.is_mine ? (
-            <ActionLink icon="trash-outline" label="Delete" accessibilityLabel="Delete your comment" onPress={() => onDelete(comment)} />
+            <ActionLink icon="trash-outline" label="Delete" accessibilityLabel="Delete your comment" onPress={() => onDelete(comment)} danger />
           ) : (
             <>
               <ActionLink icon="flag-outline" label="Report" accessibilityLabel={`Report comment by ${name}`} onPress={() => onReport(comment)} />
@@ -117,9 +124,11 @@ interface ActionLinkProps {
   label: string;
   accessibilityLabel: string;
   onPress: () => void;
+  /** Rose, for Delete. */
+  danger?: boolean;
 }
 
-function ActionLink({ icon, label, accessibilityLabel, onPress }: ActionLinkProps) {
+function ActionLink({ icon, label, accessibilityLabel, onPress, danger = false }: ActionLinkProps) {
   const { colors } = useTheme();
   const styles = useStyles();
   return (
@@ -129,8 +138,8 @@ function ActionLink({ icon, label, accessibilityLabel, onPress }: ActionLinkProp
       onPress={onPress}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <PlatformIcon name={icon} size={14} color={colors.text.tertiary} />
-      <AppText variant="ui.badge" tone="tertiary">
+      <PlatformIcon name={icon} size={14} color={danger ? colors.status.rose.text : colors.text.tertiary} />
+      <AppText variant="ui.badge" tone="tertiary" style={danger ? styles.danger : undefined}>
         {label}
       </AppText>
     </Pressable>
@@ -147,6 +156,28 @@ const useStyles = createThemedStyles((colors) => ({
   divider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.default,
+  },
+  // Daybreak (canvas C5): your own comment sits on a warm card with a "You" pill.
+  mine: {
+    marginHorizontal: spacing.sm,
+    marginVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: 16,
+    backgroundColor: colors.verse.bg,
+  },
+  youPill: {
+    height: 20,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+    justifyContent: 'center',
+    backgroundColor: colors.iris.soft,
+  },
+  youText: {
+    color: colors.iris.ink,
+    letterSpacing: 0.6,
+  },
+  danger: {
+    color: colors.status.rose.text,
   },
   column: {
     flex: 1,

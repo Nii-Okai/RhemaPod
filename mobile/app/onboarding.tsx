@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -14,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { AppText, PlatformIcon } from '../components';
 import { darkColors as onArt } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { onboardingSlides } from '../lib/onboarding/slides';
@@ -62,13 +64,20 @@ const KEN_BURNS_MAX_SCALE = 1.06;
  * a per-slide fade+rise-in on the text card, both removed for that reason).
  * Each slide clips with `overflow: 'hidden'` so the zoom never visibly escapes its page.
  *
- * Redesign (Nii's ask, 2026-10-23 — the copy vanished in light mode because the old
+ * Daybreak redesign (canvas A2): the photo now fills the top half with rounded lower
+ * corners, the wordmark and Skip on it; the copy, pill dots and a full-width Continue
+ * sit on the page's own ground below, so this screen follows the theme. Only the
+ * wordmark, Skip and the scrim on the photo are pinned to the dark palette (`onArt`).
+ *
+ * Earlier (Nii's ask, 2026-10-23 — the copy vanished in light mode because the old
  * light card used the dark palette's pill colour as its fill while `AppText`'s theme-aware
  * `inverse` tone flipped to near-white): the photo now fills the whole page and the copy
  * sits on a dark gradient at its foot. Everything here is drawn from the dark palette
  * (`onArt`) on purpose — it is all on photography, so it looks the same in both themes.
  */
 export default function OnboardingScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
@@ -131,61 +140,63 @@ export default function OnboardingScreen() {
               testID={`onboarding-slide-${index}`}
               style={[styles.slide, width && height ? { width, height } : styles.pageFallback]}
             >
-              <Animated.Image
-                source={slide.image}
-                style={[styles.image, { transform: [{ scale: kenBurnsScale }] }]}
-                resizeMode="cover"
-              />
-              <Scrim id={`onboardingTop${index}`} edge="top" />
-              <Scrim id={`onboardingBottom${index}`} edge="bottom" />
-
-              <View style={[styles.skipRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
-                <Pressable
-                  onPress={finish}
-                  accessibilityRole="button"
-                  accessibilityLabel="Skip"
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.skipChip, pressed && styles.pressed]}
-                >
-                  <AppText variant="ui.label" style={styles.onArtPrimary}>
-                    Skip
-                  </AppText>
-                </Pressable>
+              <View style={styles.photo}>
+                <Animated.Image
+                  source={slide.image}
+                  style={[styles.image, { transform: [{ scale: kenBurnsScale }] }]}
+                  resizeMode="cover"
+                />
+                <Scrim id={`onboardingTop${index}`} edge="top" />
+                <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
+                  <Image
+                    source={require('../assets/brand/wordmark-on-dark.png')}
+                    style={styles.wordmark}
+                    resizeMode="contain"
+                    accessibilityLabel="RhemaPod"
+                  />
+                  <Pressable
+                    onPress={finish}
+                    accessibilityRole="button"
+                    accessibilityLabel="Skip"
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
+                  >
+                    <AppText variant="ui.bodyBold" style={styles.onArtPrimary}>
+                      Skip
+                    </AppText>
+                  </Pressable>
+                </View>
               </View>
 
               <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.md }]}>
+                <View style={styles.dots}>
+                  {onboardingSlides.map((_, dotIndex) => (
+                    <View
+                      key={dotIndex}
+                      testID={`onboarding-dot-${index}-${dotIndex}`}
+                      style={[styles.dot, dotIndex === page && styles.dotActive]}
+                    />
+                  ))}
+                </View>
                 <View style={styles.copy}>
-                  <AppText variant="mono.meta" style={styles.eyebrow}>
-                    {`${String(index + 1).padStart(2, '0')} / ${String(onboardingSlides.length).padStart(2, '0')}`}
-                  </AppText>
-                  <AppText variant="display.hero" style={styles.onArtPrimary}>
+                  <AppText variant="display.hero" accessibilityRole="header">
                     {slide.headline}
                   </AppText>
-                  <AppText variant="ui.bodyLarge" style={styles.onArtSecondary}>
+                  <AppText variant="ui.bodyLarge" tone="secondary">
                     {slide.body}
                   </AppText>
                 </View>
-                <View style={styles.footer}>
-                  <View style={styles.dots}>
-                    {onboardingSlides.map((_, dotIndex) => (
-                      <View
-                        key={dotIndex}
-                        testID={`onboarding-dot-${index}-${dotIndex}`}
-                        style={[styles.dot, dotIndex === page && styles.dotActive]}
-                      />
-                    ))}
-                  </View>
-                  <Pressable
-                    onPress={isLast ? finish : () => goToSlide(index + 1)}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
-                  >
-                    <AppText variant="ui.button" style={styles.ctaText}>
-                      {isLast ? 'Get Started' : 'Next'}
-                    </AppText>
-                    <PlatformIcon name="chevron-forward" size={16} color={onArt.primaryButton.text} />
-                  </Pressable>
-                </View>
+                <View style={styles.grow} />
+                <Pressable
+                  onPress={isLast ? finish : () => goToSlide(index + 1)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
+                >
+                  <AppText variant="ui.button" tone="inverse">
+                    {isLast ? 'Get started' : 'Continue'}
+                  </AppText>
+                  <PlatformIcon name="chevron-forward" size={18} color={colors.primaryButton.text} />
+                </Pressable>
               </View>
             </View>
           );
@@ -201,9 +212,10 @@ export default function OnboardingScreen() {
  * sits on photography, whose brightness the theme doesn't change.
  */
 function Scrim({ id, edge }: { id: string; edge: 'top' | 'bottom' }) {
+  const styles = useStyles();
   const bottom = edge === 'bottom';
   return (
-    <View style={bottom ? styles.scrimBottom : styles.scrimTop} pointerEvents="none">
+    <View style={styles.scrimTop} pointerEvents="none">
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id={id} x1="0" y1={bottom ? '0' : '1'} x2="0" y2={bottom ? '1' : '0'}>
@@ -218,18 +230,24 @@ function Scrim({ id, edge }: { id: string; edge: 'top' | 'bottom' }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   flex: {
     flex: 1,
-    backgroundColor: onArt.surface.app,
+    backgroundColor: colors.surface.app,
   },
   slide: {
     overflow: 'hidden',
-    justifyContent: 'flex-end',
   },
   pageFallback: {
     width: '100%',
     flex: 1,
+  },
+  photo: {
+    height: '56%',
+    overflow: 'hidden',
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    backgroundColor: onArt.surface.raised,
   },
   image: {
     ...StyleSheet.absoluteFillObject,
@@ -241,75 +259,64 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '22%',
+    height: '40%',
   },
-  scrimBottom: {
+  topRow: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '62%',
+    left: spacing.lg + 4,
+    right: spacing.lg + 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  skipRow: {
-    position: 'absolute',
-    right: spacing.lg,
+  wordmark: {
+    width: 133,
+    height: 24,
   },
-  skipChip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: onArt.overlay.chipFill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: onArt.overlay.chipBorder,
+  skip: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
   pressed: {
     opacity: 0.85,
   },
   content: {
-    paddingHorizontal: spacing.xxl,
+    flex: 1,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.xxl,
+    gap: spacing.lg,
   },
   copy: {
     gap: spacing.md,
   },
-  eyebrow: {
-    color: onArt.accent.goldText,
-  },
   onArtPrimary: {
     color: onArt.text.primary,
   },
-  onArtSecondary: {
-    color: onArt.text.secondary,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.xxl,
+  grow: {
+    flex: 1,
   },
   dots: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 6,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: radius.pill,
-    backgroundColor: onArt.overlay.chipBorder,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border.default,
   },
   dotActive: {
-    backgroundColor: onArt.accent.gold,
-    width: 20,
+    width: 28,
+    backgroundColor: colors.text.primary,
   },
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: onArt.primaryButton.bg,
+    minHeight: 54,
+    backgroundColor: colors.primaryButton.bg,
     borderRadius: radius.pill,
-    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
   },
-  ctaText: {
-    color: onArt.primaryButton.text,
-  },
-});
+}));

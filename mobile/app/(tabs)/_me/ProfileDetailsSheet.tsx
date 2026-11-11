@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppText, LinkButton, PrimaryButton, Sheet } from '../../../components';
+import { Pressable, TextInput, View } from 'react-native';
+import { AppText, Avatar, PrimaryButton, Sheet } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
-import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
 import { useUpdateProfileDetails, type Gender, type UserPublic } from '../../../lib/query/hooks/useProfile';
@@ -21,6 +20,11 @@ export interface ProfileDetailsSheetProps {
   initialGender: Gender | null;
   onClose: () => void;
   onSaved: (user: UserPublic) => void;
+  /** Shown at the top of the sheet (canvas F2). The photo itself is changed from the
+   * profile card on the You page, so this one is display-only. */
+  avatarName?: string;
+  avatarSeed?: string;
+  avatarUrl?: string | null;
 }
 
 /**
@@ -38,6 +42,9 @@ export function ProfileDetailsSheet({
   initialGender,
   onClose,
   onSaved,
+  avatarName,
+  avatarSeed,
+  avatarUrl,
 }: ProfileDetailsSheetProps) {
   const { colors } = useTheme();
   const styles = useStyles();
@@ -45,6 +52,7 @@ export function ProfileDetailsSheet({
   const [lastName, setLastName] = useState(initialLastName);
   const [gender, setGender] = useState<Gender | null>(initialGender);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<'first' | 'last' | null>(null);
   const update = useUpdateProfileDetails();
 
   useEffect(() => {
@@ -73,9 +81,30 @@ export function ProfileDetailsSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <AppText variant="ui.label" tone="tertiary" accessibilityRole="header" style={styles.heading}>
-        Your details
-      </AppText>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          hitSlop={spacing.sm}
+          style={styles.cancel}
+        >
+          <AppText variant="ui.body">Cancel</AppText>
+        </Pressable>
+        <AppText variant="display.row" accessibilityRole="header" style={styles.heading}>
+          Your details
+        </AppText>
+        <View style={styles.cancel} />
+      </View>
+
+      <View style={styles.avatar}>
+        <Avatar
+          name={avatarName || `${firstName} ${lastName}`}
+          seed={avatarSeed}
+          imageUri={avatarUrl}
+          size={96}
+        />
+      </View>
 
       <View style={styles.nameRow}>
         <View style={[styles.field, styles.nameField]}>
@@ -86,12 +115,15 @@ export function ProfileDetailsSheet({
             accessibilityLabel="First name"
             value={firstName}
             onChangeText={setFirstName}
+            onFocus={() => setFocused('first')}
+            onBlur={() => setFocused(null)}
             maxLength={MAX_NAME_LENGTH}
             autoComplete="given-name"
             textContentType="givenName"
             autoCapitalize="words"
             placeholderTextColor={colors.text.tertiary}
-            style={styles.input}
+            selectionColor={colors.iris.fill}
+            style={[styles.input, focused === 'first' && styles.inputFocused]}
           />
         </View>
         <View style={[styles.field, styles.nameField]}>
@@ -102,12 +134,15 @@ export function ProfileDetailsSheet({
             accessibilityLabel="Last name"
             value={lastName}
             onChangeText={setLastName}
+            onFocus={() => setFocused('last')}
+            onBlur={() => setFocused(null)}
             maxLength={MAX_NAME_LENGTH}
             autoComplete="family-name"
             textContentType="familyName"
             autoCapitalize="words"
             placeholderTextColor={colors.text.tertiary}
-            style={styles.input}
+            selectionColor={colors.iris.fill}
+            style={[styles.input, focused === 'last' && styles.inputFocused]}
           />
         </View>
       </View>
@@ -128,7 +163,7 @@ export function ProfileDetailsSheet({
                 onPress={() => setGender(option.value)}
                 style={({ pressed }) => [styles.genderChip, active && styles.genderChipActive, pressed && styles.genderChipPressed]}
               >
-                <AppText variant="ui.badge" tone={active ? 'gold' : 'secondary'}>
+                <AppText variant="ui.bodyBold" style={active ? styles.genderTextActive : null}>
                   {option.label}
                 </AppText>
               </Pressable>
@@ -137,6 +172,10 @@ export function ProfileDetailsSheet({
         </View>
       </View>
 
+      <AppText variant="ui.label" tone="tertiary">
+        Comments show your first name and last initial, never your email.
+      </AppText>
+
       {error ? (
         <AppText variant="ui.badge" style={styles.error} accessibilityLiveRegion="polite">
           {error}
@@ -144,55 +183,76 @@ export function ProfileDetailsSheet({
       ) : null}
 
       <View style={styles.actions}>
-        <PrimaryButton label="Save" disabled={!canSave} loading={update.isPending} onPress={save} />
-        <View style={styles.cancel}>
-          <LinkButton label="Cancel" onPress={onClose} />
-        </View>
+        <PrimaryButton label="Save" fullWidth disabled={!canSave} loading={update.isPending} onPress={save} />
       </View>
     </Sheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  // Daybreak (canvas F2): Cancel on the left, the Fraunces title centred.
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cancel: {
+    minWidth: 56,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   heading: {
-    textTransform: 'uppercase',
+    flex: 1,
+    textAlign: 'center',
+  },
+  avatar: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
   },
   nameRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
   },
   field: {
-    gap: spacing.xs,
+    gap: spacing.xs + 2,
   },
   nameField: {
     flex: 1,
   },
   input: {
-    minHeight: 48,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.card,
-    backgroundColor: colors.surface.sunken,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
+    minHeight: 54,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
+    backgroundColor: colors.surface.raised,
+    borderRadius: 16,
+    paddingHorizontal: spacing.lg,
     color: colors.text.primary,
     fontFamily: fontFamily.ui,
     fontSize: 16,
   },
+  inputFocused: {
+    borderColor: colors.iris.fill,
+  },
   genderRow: {
     flexDirection: 'row',
-    backgroundColor: colors.surface.sunken,
-    borderRadius: radius.lg,
-    padding: 3,
-    gap: 3,
+    gap: spacing.sm + 2,
   },
   genderChip: {
     flex: 1,
+    height: 52,
     alignItems: 'center',
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
   },
+  // Selected is an ink tile, like the add-to-playlist sheet's Done pill.
   genderChipActive: {
-    backgroundColor: colors.chip.square,
+    backgroundColor: colors.text.primary,
+    borderColor: colors.text.primary,
+  },
+  genderTextActive: {
+    color: colors.surface.app,
   },
   genderChipPressed: {
     opacity: 0.7,
@@ -201,10 +261,6 @@ const useStyles = createThemedStyles((colors) => ({
     color: colors.status.rose.text,
   },
   actions: {
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  cancel: {
-    alignItems: 'center',
+    marginTop: spacing.xs,
   },
 }));

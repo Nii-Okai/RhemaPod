@@ -7,6 +7,7 @@ import { ApiError } from '../../../lib/api/errors';
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
+  useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => mockParams,
 }));
 
@@ -42,7 +43,7 @@ describe('VerifyEmailScreen', () => {
     const { verifyEmail, resendVerification } = mockAuth();
     const { getByText, getByLabelText } = render(<VerifyEmailScreen />);
 
-    expect(getByText('Enter the 6-digit code we sent to user@example.com.')).toBeTruthy();
+    expect(getByText('Sent to user@example.com. It may take a minute to arrive.')).toBeTruthy();
     fireEvent.changeText(getByLabelText('Verification code'), '12 34-56');
 
     await waitFor(() => expect(verifyEmail).toHaveBeenCalledWith('user@example.com', '123456'));

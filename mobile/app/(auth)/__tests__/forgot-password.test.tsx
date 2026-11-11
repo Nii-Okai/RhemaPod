@@ -5,6 +5,7 @@ import { useAuth } from '../../../lib/auth/AuthContext';
 
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
+  useRouter: () => ({ back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({

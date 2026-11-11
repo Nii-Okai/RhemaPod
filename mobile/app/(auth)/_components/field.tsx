@@ -3,7 +3,6 @@ import { TextInput, View, type TextInputProps } from 'react-native';
 import { AppText, IconButton, PlatformIcon, type AppIconName } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
-import { LEAF_SM } from '../../(tabs)/_home/signature/leaf';
 
 export interface FieldProps extends TextInputProps {
   label: string;
@@ -20,8 +19,8 @@ export interface FieldProps extends TextInputProps {
  * `Field` (`admin_portal/app/(public)/_components/field.tsx`): label turns
  * rose on error, rose border, 12px rose message below.
  *
- * Signature redesign: the input takes the small leaf corner, an optional leading icon,
- * and a gold border while focused (rose still wins when there's an error).
+ * Daybreak redesign (canvas A3/A4): a 54pt white input with a 16pt corner, an optional
+ * leading icon, and a blue border while focused (rose still wins when there's an error).
  *
  * `secureTextEntry` fields (Isaac's ask, session 2026-10-15: "add feature to
  * allow viewing password") get a show/hide eye toggle for free — the field
@@ -41,20 +40,20 @@ export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
 
   return (
     <View style={styles.container}>
-      <AppText variant="ui.label" tone="secondary" style={error ? styles.errorLabel : undefined}>
+      <AppText variant="ui.label" tone="primary" style={error ? styles.errorLabel : undefined}>
         {label}
       </AppText>
       <View style={styles.inputRow}>
         {icon ? (
           <View style={styles.leading} pointerEvents="none">
-            <PlatformIcon name={icon} size={18} color={focused ? colors.accent.goldText : colors.text.tertiary} />
+            <PlatformIcon name={icon} size={18} color={focused ? colors.iris.fill : colors.text.tertiary} />
           </View>
         ) : null}
         <TextInput
           ref={ref}
           accessibilityLabel={label}
           placeholderTextColor={colors.text.tertiary}
-          selectionColor={colors.accent.gold}
+          selectionColor={colors.iris.fill}
           secureTextEntry={isPasswordField && !revealed}
           onFocus={(e) => {
             setFocused(true);
@@ -104,11 +103,11 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   input: {
-    ...LEAF_SM,
-    minHeight: 50,
-    borderWidth: 1,
+    borderRadius: 16,
+    minHeight: 54,
+    borderWidth: 1.5,
     borderColor: colors.border.default,
-    backgroundColor: colors.surface.sunken,
+    backgroundColor: colors.surface.raised,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     color: colors.text.primary,
@@ -124,7 +123,7 @@ const useStyles = createThemedStyles((colors) => ({
     paddingRight: 48,
   },
   inputFocused: {
-    borderColor: colors.accent.gold,
+    borderColor: colors.iris.fill,
   },
   leading: {
     position: 'absolute',

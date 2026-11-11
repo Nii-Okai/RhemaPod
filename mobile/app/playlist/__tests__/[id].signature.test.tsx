@@ -188,7 +188,8 @@ describe('Signature playlist detail', () => {
     const { findByText, getByText, getByLabelText, queryByLabelText } = renderScreen();
 
     expect(await findByText('Morning Dew')).toBeTruthy();
-    expect(getByText('PUBLIC PLAYLIST · 0 ITEMS · 0 MIN')).toBeTruthy();
+    expect(getByText('PLAYLIST · PUBLIC')).toBeTruthy();
+    expect(getByText('0 items · 0 min')).toBeTruthy();
     expect(getByText('Nii Okai')).toBeTruthy();
     expect(getByLabelText('Change playlist cover')).toBeTruthy();
     expect(queryByLabelText('Play this playlist')).toBeNull();
@@ -273,7 +274,7 @@ describe('Signature playlist detail', () => {
     mockedPost.mockResolvedValue(detail());
     const { findByText, getByLabelText, queryByLabelText } = renderScreen();
 
-    expect(await findByText('Recommended sermons')).toBeTruthy();
+    expect(await findByText('RECOMMENDED FOR THIS PLAYLIST')).toBeTruthy();
     expect(queryByLabelText('Add Anchored in the Storm')).toBeNull();
     fireEvent.press(getByLabelText('Add Faith Over Fear'));
     await waitFor(() =>

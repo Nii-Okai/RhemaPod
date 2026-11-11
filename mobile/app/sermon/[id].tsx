@@ -1,11 +1,10 @@
 import React, { useEffect } from 'react';
-import { Image, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, PrimaryButton, Tag } from '../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, FittedArt, PrimaryButton, Tag } from '../../components';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { createThemedStyles } from '../../theme/ThemeContext';
-import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
 import { isNotFoundError } from '../../lib/api/errors';
 import { nextRelatedSermonRoute, RELATED_PARAM, RELATED_PARAM_VALUE } from '../../lib/navigation/detailTransition';
@@ -18,6 +17,9 @@ import { isPlayable } from './_detail/isPlayable';
 import { sermonMetaLine } from './_detail/meta';
 import { DetailSkeleton } from './_detail/Skeleton';
 import { TagsRow } from './_detail/TagsRow';
+
+/** Daybreak's sermon art panel height, before the status bar inset (canvas C1). */
+const HERO_HEIGHT = 300;
 
 /**
  * Free sermon-detail screen (design spec §8, W4.0/W4.1). Binds only the fields §8.0 lists
@@ -134,16 +136,16 @@ export default function SermonDetailScreen() {
           Pull-to-dismiss (which does move the hero, along with everything else) is the
           Stack screen's own native vertical gesture (`app/_layout.tsx`'s
           `gestureDirection: 'vertical'`), not anything this screen drives itself. */}
-      <View style={{ paddingTop: insets.top }}>
-        {detail.thumbnail_url ? (
-          <Image source={{ uri: detail.thumbnail_url }} style={styles.hero} resizeMode="cover" />
-        ) : (
-          <View style={styles.heroFallback} />
-        )}
+      {/* Daybreak (canvas C1): the art runs full bleed under the status bar with rounded
+          lower corners; the glass Back / Cast / Close chips sit on it. */}
+      <View style={[styles.hero, { height: HERO_HEIGHT + insets.top }]}>
+        {detail.thumbnail_url ? <FittedArt uri={detail.thumbnail_url} /> : null}
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>
-          <AppText variant="display.compact">{detail.title}</AppText>
+          <AppText variant="display.title" accessibilityRole="header">
+            {detail.title}
+          </AppText>
           <View style={styles.metaRow}>
             <AppText variant="mono.meta" tone="tertiary">
               {metaLine}
@@ -231,20 +233,16 @@ const useStyles = createThemedStyles((colors) => ({
   // `resizeMode="cover"`'s own default) reads as spilling past the rounded edge instead
   // of a clean center crop (same fix series detail's own hero needed).
   hero: {
-    aspectRatio: 16 / 9,
-    marginHorizontal: spacing.xs,
-    borderRadius: radius.lg,
     overflow: 'hidden',
-  },
-  heroFallback: {
-    aspectRatio: 16 / 9,
-    marginHorizontal: spacing.xs,
-    borderRadius: radius.lg,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
     backgroundColor: colors.surface.sunken,
   },
   body: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    gap: spacing.md + 2,
   },
   metaRow: {
     flexDirection: 'row',
@@ -259,14 +257,15 @@ const useStyles = createThemedStyles((colors) => ({
   // scale's own max (`spacing.xxl`) per Isaac's own follow-up ask, same session.
   actionRow: {
     flexDirection: 'row',
-    gap: spacing.xxl * 2,
+    gap: spacing.xxl,
+    paddingVertical: spacing.xs,
   },
   relatedSection: {
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
   relatedHeaderWrap: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg + 4,
     alignSelf: 'flex-start',
     gap: spacing.xs,
   },
@@ -277,9 +276,9 @@ const useStyles = createThemedStyles((colors) => ({
   // `DetailTabs`' own selected-tab treatment on series detail) — a static section
   // header here, not a toggleable tab, so the underline always shows.
   relatedHeaderUnderline: {
-    height: 2,
+    height: 3,
     width: 56,
-    backgroundColor: colors.accent.gold,
-    borderRadius: 1,
+    backgroundColor: colors.text.primary,
+    borderRadius: 2,
   },
 }));

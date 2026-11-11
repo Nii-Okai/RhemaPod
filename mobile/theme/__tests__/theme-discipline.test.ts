@@ -28,8 +28,6 @@ const ALLOWED = new Set([
   'app/(tabs)/_home/signature/CountdownCard.tsx',
   'app/(tabs)/_home/signature/SignatureHeroCard.tsx',
   'app/(tabs)/_home/signature/shelfCards.tsx',
-  // Signature Notifications: the latest-release card is the same dark frame as the hero.
-  'app/_notifications/SignatureNotifications.tsx',
   // Signature Browse: the Prophet's Catalog card's text sits on a photo.
   'app/(tabs)/_browse/signature/CatalogCollectionCard.tsx',
   // Signature Library: download badges and the preview chip are drawn on the art.
@@ -39,6 +37,8 @@ const ALLOWED = new Set([
   'app/(tabs)/_me/ProfileAvatarPicker.tsx',
   'app/playlist/_detail/PlaylistCoverPicker.tsx',
   'components/CastCloseHeader.tsx',
+  // CircleButton's glass tone sits on art or a dark wash; its other tones are themed.
+  'components/CircleButton.tsx',
   // Artwork backdrop dim — a photo surface.
   'components/FittedArt.tsx',
   // The queue's now-playing visualiser sits on the cover art.

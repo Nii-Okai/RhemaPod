@@ -125,7 +125,7 @@ describe('SearchScreen — empty query', () => {
     expect(mockedGet).not.toHaveBeenCalled();
   });
 
-  it('fires router.back() on the back chevron', () => {
+  it('fires router.back() on Cancel', () => {
     const { getByLabelText } = renderSearch();
     fireEvent.press(getByLabelText('Back'));
     expect(mockBack).toHaveBeenCalledTimes(1);
@@ -285,12 +285,12 @@ describe('SearchScreen — no results', () => {
 });
 
 describe('SearchScreen — grouped results (Decision 4)', () => {
-  it('renders sermons, series, and speakers with no group headings, and navigates from each', async () => {
+  it('leads with the matching series as the top result, lists each group under its heading, and navigates from each', async () => {
     mockedGet.mockImplementation((path: string) =>
       path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(groupedResults),
     );
 
-    const { getByLabelText, findByText, getByText, queryByText } = renderSearch();
+    const { getByLabelText, findByText, getByText, getAllByText } = renderSearch();
     fireEvent.changeText(getByLabelText('Search'), 'storm');
     act(() => {
       jest.advanceTimersByTime(300);
@@ -299,11 +299,13 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
     await findByText('Anchored in the Storm');
     expect(getByText('Storm Stories')).toBeTruthy();
     expect(getByText('Ada Nwosu')).toBeTruthy();
-    // No "sermons · N" / "series · N" / "speakers · N" heading above any group (Isaac's
-    // ask, session 2026-10-02 — "only show search results without headings").
-    expect(queryByText(/^sermons ·/)).toBeNull();
-    expect(queryByText(/^series ·/)).toBeNull();
-    expect(queryByText(/^speakers ·/)).toBeNull();
+    // Daybreak (canvas B4): a top result card, then headed groups, with counted filter chips.
+    expect(getByText('TOP RESULT')).toBeTruthy();
+    expect(getByText('SERMONS')).toBeTruthy();
+    expect(getByText('SPEAKERS')).toBeTruthy();
+    expect(getByText('Series · 1')).toBeTruthy();
+    // Only the top card's pill says SERIES: no Series heading, since its one match leads.
+    expect(getAllByText('SERIES')).toHaveLength(1);
 
     fireEvent.press(getByText('Storm Stories'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/series/[id]', params: { id: 'series-1' } });
@@ -315,7 +317,7 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
     });
   });
 
-  it('a group with no matches contributes no rows (and never did show an empty heading)', async () => {
+  it('a group with no matches shows no heading and no rows', async () => {
     mockedGet.mockImplementation((path: string) =>
       path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(sermonResults),
     );
@@ -327,8 +329,26 @@ describe('SearchScreen — grouped results (Decision 4)', () => {
     });
 
     await findByText('Anchored in the Storm');
-    expect(queryByText(/^series ·/)).toBeNull();
-    expect(queryByText(/^speakers ·/)).toBeNull();
+    expect(queryByText('SERIES')).toBeNull();
+    expect(queryByText('SPEAKERS')).toBeNull();
+  });
+
+  it('the Speakers chip narrows the list to speakers', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      path === '/search/suggest' ? Promise.resolve([]) : Promise.resolve(groupedResults),
+    );
+
+    const { getByLabelText, findByText, getByText, queryByText } = renderSearch();
+    fireEvent.changeText(getByLabelText('Search'), 'storm');
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    await findByText('Anchored in the Storm');
+    fireEvent.press(getByText('Speakers · 1'));
+    expect(queryByText('Anchored in the Storm')).toBeNull();
+    expect(queryByText('Storm Stories')).toBeNull();
+    expect(getByText('Ada Nwosu')).toBeTruthy();
   });
 });
 

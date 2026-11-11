@@ -7,13 +7,13 @@ import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { fontFamily } from '../../../../theme/typography';
 import type { PlaylistItemPublic } from '../../../../lib/query/hooks/usePlaylists';
-import { leaf } from '../../../(tabs)/_home/signature/leaf';
 import { metaLineFor } from '../sermonMeta';
 import type { AddableSermon } from '../SermonAddRow';
 
-const ART_WIDTH = 104;
-const ADD_ART_WIDTH = 88;
-const ART_LEAF = leaf(12, 3);
+// Daybreak (canvas E2/E4): square art with 14pt corners.
+const ART_WIDTH = 56;
+const ADD_ART_WIDTH = 52;
+const ART_LEAF = { borderRadius: 14 };
 
 function Art({ uri, width }: { uri: string | null | undefined; width: number }) {
   const { colors } = useTheme();
@@ -205,7 +205,7 @@ const useStyles = createThemedStyles((colors) => ({
     width: 18,
   },
   art: {
-    aspectRatio: 16 / 9,
+    aspectRatio: 1,
     overflow: 'hidden',
     backgroundColor: colors.surface.sunken,
     alignItems: 'center',
@@ -256,7 +256,7 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   actionDone: {
-    backgroundColor: colors.accent.gold,
-    borderColor: colors.accent.gold,
+    backgroundColor: colors.status.sage.text,
+    borderColor: colors.status.sage.text,
   },
 }));

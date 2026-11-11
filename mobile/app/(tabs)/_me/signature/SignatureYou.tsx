@@ -388,6 +388,9 @@ export function SignatureYouScreen() {
         initialFirstName={profile?.first_name ?? ''}
         initialLastName={profile?.last_name ?? ''}
         initialGender={profile?.gender ?? null}
+        avatarName={profile ? profile.full_name || profile.email : undefined}
+        avatarSeed={profile?.id}
+        avatarUrl={profile?.avatar_url ?? null}
         onClose={() => setDetailsSheetOpen(false)}
         onSaved={() => {
           setDetailsSheetOpen(false);

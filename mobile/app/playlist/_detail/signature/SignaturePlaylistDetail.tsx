@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Avatar, DetailError, DetailNotAvailable, IconButton, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
+import { AppText, Avatar, CircleButton, DetailError, DetailNotAvailable, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
 import type { AppIconName } from '../../../../components/PlatformIcon';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -12,8 +12,6 @@ import { formatPlaylistMinutes } from '../../../../lib/format/playlistDuration';
 import { shareContent } from '../../../../lib/share/shareContent';
 import { useRecommended } from '../../../../lib/query/hooks/useRecommended';
 import { useAddPlaylistItem, usePlaylist, useRemovePlaylistItem } from '../../../../lib/query/hooks/usePlaylists';
-import { Flame } from '../../../(tabs)/_home/signature/Flame';
-import { LEAF } from '../../../(tabs)/_home/signature/leaf';
 import { PlaylistCover } from '../../../(tabs)/_library/signature/PlaylistCover';
 import { PlaylistCoverPicker } from '../PlaylistCoverPicker';
 import { PlaylistDetailsSheet } from '../PlaylistDetailsSheet';
@@ -25,8 +23,9 @@ import { SignatureAddToPlaylistSheet } from './SignatureAddToPlaylistSheet';
 import { SignaturePlaylistItemRow, SignatureSermonAddRow } from './SignatureSermonRows';
 import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 
-const GUTTER = spacing.lg;
-const MAX_COVER = 240;
+const GUTTER = spacing.lg + 4;
+const COVER = 132;
+const COVER_SHAPE = { borderRadius: 24, overflow: 'hidden' as const };
 
 function Action({ icon, label, onPress, disabled }: { icon: AppIconName; label: string; onPress: () => void; disabled?: boolean }) {
   const { colors } = useTheme();
@@ -41,12 +40,15 @@ function Action({ icon, label, onPress, disabled }: { icon: AppIconName; label: 
       style={({ pressed }) => [styles.action, pressed && styles.pressed, disabled && styles.dimmed]}
     >
       <PlatformIcon name={icon} size={22} color={colors.text.primary} />
-      <AppText variant="ui.actionLabel">{label}</AppText>
     </Pressable>
   );
 }
 
 /**
+ * Daybreak redesign (canvas E2): round Back and More buttons; the 132pt cover beside a
+ * "Playlist · Private" eyebrow, the name and its length; Play beside round Shuffle,
+ * Share and Edit; a dashed "Add to this playlist" row heading the list.
+ *
  * Playlist detail, Signature redesign, behind `SIGNATURE_LIBRARY_ENABLED`. Same features
  * as the classic screen (see `app/playlist/[id].tsx`): cover upload, Play/Shuffle as a
  * real queue, share, the options and details sheets, swipe-to-remove, inline previews
@@ -60,7 +62,6 @@ export function SignaturePlaylistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
   const { data: playlist, isLoading, isError, error, refetch } = usePlaylist(id);
   const removeItem = useRemovePlaylistItem(id ?? '');
   const addItem = useAddPlaylistItem(id ?? '');
@@ -75,7 +76,7 @@ export function SignaturePlaylistDetailScreen() {
 
   const topBar = (trailing?: React.ReactNode) => (
     <View style={[styles.topBar, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
-      <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+      <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
       {trailing}
     </View>
   );
@@ -108,18 +109,12 @@ export function SignaturePlaylistDetailScreen() {
     );
   }
 
-  const coverSize = Math.min(windowWidth - GUTTER * 2, MAX_COVER);
   const existingItemIdBySermonId = new Map(playlist.items.map((item) => [item.sermon.id, item.id]));
   const recommendedSermons = (recommended.data ?? []).filter((sermon) => !existingItemIdBySermonId.has(sermon.id));
   const hasItems = playlist.items.length > 0;
   const itemCount = playlist.items.length === 1 ? '1 item' : `${playlist.items.length} items`;
-  const kicker = [
-    playlist.is_public ? 'Public playlist' : 'Private playlist',
-    itemCount,
-    formatPlaylistMinutes(playlist.total_duration_seconds),
-  ]
-    .join(' · ')
-    .toUpperCase();
+  const kicker = `Playlist · ${playlist.is_public ? 'Public' : 'Private'}`.toUpperCase();
+  const meta = `${itemCount} · ${formatPlaylistMinutes(playlist.total_duration_seconds)}`;
 
   const isOwner = playlist.is_owner;
   const openShareSheet = () =>
@@ -162,55 +157,63 @@ export function SignaturePlaylistDetailScreen() {
       >
         {topBar(
           isOwner ? (
-            <IconButton icon="ellipsis-horizontal" accessibilityLabel="More options" onPress={() => setOptionsOpen(true)} />
+            <CircleButton icon="ellipsis-horizontal" accessibilityLabel="More options" onPress={() => setOptionsOpen(true)} />
           ) : undefined,
         )}
 
-        <View style={styles.coverWrap}>
-          <View style={[styles.coverShadow, LEAF]}>
+        {/* Daybreak (canvas E2): the cover beside its name, then Play and round buttons. */}
+        <View style={styles.headRow}>
+          <View style={[styles.coverShadow, COVER_SHAPE]}>
             {isOwner ? (
               <PlaylistCoverPicker
                 playlistId={playlist.id}
                 coverUrl={playlist.cover_url}
-                size={coverSize}
-                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={coverSize} shape={LEAF} />}
+                size={COVER}
+                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />}
               />
             ) : (
-              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={coverSize} shape={LEAF} />
+              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />
             )}
           </View>
-        </View>
-
-        <View style={styles.info}>
-          <View style={styles.kicker}>
-            <PlatformIcon
-              name={playlist.is_public ? 'globe-outline' : 'lock-closed-outline'}
-              size={12}
-              color={colors.text.tertiary}
-            />
-            <AppText variant="mono.meta" tone="tertiary">
-              {kicker}
-            </AppText>
-          </View>
-          <AppText variant="display.hero" accessibilityRole="header">
-            {playlist.name}
-          </AppText>
-          {playlist.description ? (
-            <AppText variant="ui.body" tone="secondary">
-              {playlist.description}
-            </AppText>
-          ) : null}
-          {playlist.owner_name ? (
-            <View style={styles.owner}>
-              <Avatar name={playlist.owner_name} size={22} />
-              <AppText variant="ui.body" tone="secondary">
-                {playlist.owner_name}
+          <View style={styles.info}>
+            <View style={styles.kicker}>
+              <PlatformIcon
+                name={playlist.is_public ? 'globe-outline' : 'lock-closed-outline'}
+                size={12}
+                color={colors.text.tertiary}
+              />
+              <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+                {kicker}
               </AppText>
             </View>
-          ) : null}
+            <AppText variant="display.title" accessibilityRole="header" numberOfLines={3}>
+              {playlist.name}
+            </AppText>
+            <AppText variant="ui.badge" tone="tertiary">
+              {meta}
+            </AppText>
+          </View>
         </View>
 
-        <View style={styles.gutter}>
+        {playlist.description || playlist.owner_name ? (
+          <View style={styles.gutterCol}>
+            {playlist.description ? (
+              <AppText variant="ui.body" tone="secondary">
+                {playlist.description}
+              </AppText>
+            ) : null}
+            {playlist.owner_name ? (
+              <View style={styles.owner}>
+                <Avatar name={playlist.owner_name} size={22} />
+                <AppText variant="ui.body" tone="secondary">
+                  {playlist.owner_name}
+                </AppText>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.actions}>
           {hasItems ? (
             <PressableScale
               onPress={() => startQueue(ids())}
@@ -223,36 +226,37 @@ export function SignaturePlaylistDetailScreen() {
                 Play
               </AppText>
             </PressableScale>
-          ) : isOwner ? (
-            <PressableScale
-              onPress={() => setAddOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Add to this playlist"
-              style={styles.playPill}
-            >
-              <PlatformIcon name="add" size={18} color={colors.primaryButton.text} />
-              <AppText variant="ui.button" tone="inverse">
-                Add to this playlist
-              </AppText>
-            </PressableScale>
-          ) : null}
-        </View>
-
-        <View style={styles.actions}>
-          {isOwner ? <Action icon="add" label="Add" onPress={() => setAddOpen(true)} /> : null}
+          ) : (
+            <View style={styles.grow} />
+          )}
           <Action icon="shuffle" label="Shuffle" onPress={() => startQueue(shuffled(ids()))} disabled={!hasItems} />
           <Action icon="share-outline" label="Share" onPress={share} disabled={shareDisabled} />
           {isOwner ? <Action icon="pencil" label="Edit" onPress={() => setDetailsOpen(true)} /> : null}
         </View>
 
+        {isOwner ? (
+          <View style={styles.gutter}>
+            <Pressable
+              onPress={() => setAddOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add to this playlist"
+              style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
+            >
+              <View style={styles.addTile}>
+                <PlatformIcon name="add" size={24} color={colors.iris.fill} />
+              </View>
+              <AppText variant="ui.bodyBold" style={styles.addText}>
+                Add to this playlist
+              </AppText>
+            </Pressable>
+          </View>
+        ) : null}
+
         {hasItems ? (
           <View style={styles.section}>
-            <View style={styles.sectionLabel}>
-              <Flame width={8} fill={colors.accent.gold} />
-              <AppText variant="mono.meta" tone="tertiary" accessibilityRole="header">
-                {`IN THIS PLAYLIST · ${playlist.items.length}`}
-              </AppText>
-            </View>
+            <AppText variant="ui.badge" tone="tertiary" accessibilityRole="header" style={styles.eyebrow}>
+              {`IN THIS PLAYLIST · ${playlist.items.length}`}
+            </AppText>
             <View style={styles.list}>
               {playlist.items.map((item, index) => (
                 <StaggerItem key={item.id} index={index}>
@@ -273,8 +277,8 @@ export function SignaturePlaylistDetailScreen() {
 
         {isOwner && recommendedSermons.length > 0 ? (
           <View style={styles.section}>
-            <AppText variant="display.section" accessibilityRole="header">
-              Recommended sermons
+            <AppText variant="ui.badge" tone="tertiary" accessibilityRole="header" style={styles.eyebrow}>
+              RECOMMENDED FOR THIS PLAYLIST
             </AppText>
             <View>
               {recommendedSermons.map((sermon) => (
@@ -331,44 +335,65 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingBottom: spacing.xxl * 2,
-    gap: spacing.xl,
+    gap: spacing.lg + 2,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: GUTTER,
   },
   gutter: {
     paddingHorizontal: GUTTER,
   },
-  coverWrap: {
-    alignItems: 'center',
+  gutterCol: {
+    paddingHorizontal: GUTTER,
+    gap: spacing.sm,
+  },
+  headRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.lg,
+    paddingHorizontal: GUTTER,
+    paddingTop: spacing.sm,
   },
   coverShadow: {
     backgroundColor: colors.surface.sunken,
     shadowColor: colors.shadow.card,
     shadowOpacity: 1,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
     elevation: 8,
   },
   info: {
-    paddingHorizontal: GUTTER,
-    gap: spacing.sm,
+    flex: 1,
+    gap: 6,
   },
   kicker: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 2,
   },
+  eyebrow: {
+    letterSpacing: 1.5,
+  },
   owner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+    paddingHorizontal: GUTTER,
+  },
+  grow: {
+    flex: 1,
+  },
   playPill: {
-    height: 52,
+    flex: 1,
+    height: 54,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -376,16 +401,15 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     backgroundColor: colors.primaryButton.bg,
   },
-  actions: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.sm,
-  },
   action: {
-    flex: 1,
-    minHeight: 64,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    backgroundColor: colors.surface.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
   },
   pressed: {
     opacity: 0.7,
@@ -393,18 +417,28 @@ const useStyles = createThemedStyles((colors) => ({
   dimmed: {
     opacity: 0.45,
   },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md + 2,
+    paddingVertical: spacing.xs,
+  },
+  addTile: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.iris.fill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addText: {
+    color: colors.iris.fill,
+  },
   section: {
     paddingHorizontal: GUTTER,
     gap: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border.default,
-  },
-  sectionLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.md,
   },
   list: {
     gap: spacing.sm,

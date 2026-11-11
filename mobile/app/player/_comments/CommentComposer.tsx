@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Avatar, PlatformIcon } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
-import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
 
@@ -163,10 +162,10 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'flex-end',
     gap: spacing.sm,
     minHeight: 44,
-    backgroundColor: colors.surface.sunken,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.card,
-    borderRadius: radius.xl,
+    backgroundColor: colors.surface.raised,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
+    borderRadius: 26,
     padding: spacing.xs,
   },
   input: {
@@ -187,7 +186,7 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   sendEnabled: {
-    backgroundColor: colors.accent.gold,
+    backgroundColor: colors.primaryButton.bg,
   },
   sendDisabled: {
     backgroundColor: colors.track.default,

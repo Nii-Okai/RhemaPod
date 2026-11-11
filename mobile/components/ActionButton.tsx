@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
 import { PlatformIcon, type AppIconName } from './PlatformIcon';
 import { PopIn } from './PopIn';
@@ -76,8 +76,8 @@ export function ActionButton({
       accessibilityState={{ selected }}
       style={({ pressed }) => [styles.button, pressed && styles.pressed]}
     >
-      <View style={styles.iconWrap}>
-        <PlatformIcon name={icon} size={ICON_SIZE} color={selected ? colors.accent.gold : colors.text.primary} />
+      <View style={[styles.iconWrap, selected && styles.iconWrapOn]}>
+        <PlatformIcon name={icon} size={ICON_SIZE} color={selected ? colors.verse.icon : colors.text.primary} />
         {showBadge ? (
           // The anchor carries the absolute top-right positioning; `PopIn` wraps the
           // circle itself, one layer further in. `PopIn`'s own `Animated.View` has no
@@ -99,14 +99,16 @@ export function ActionButton({
           </View>
         ) : null}
       </View>
-      <AppText variant="ui.actionLabel" tone={selected ? 'gold' : 'secondary'} style={styles.label}>
+      <AppText variant="ui.badge" tone={selected ? 'gold' : 'secondary'} style={styles.label}>
         {label}
       </AppText>
     </Pressable>
   );
 }
 
-const ICON_SIZE = 28;
+const ICON_SIZE = 22;
+/** Daybreak (canvas C1): each action is a round 48pt tile with its label under it. */
+const TILE_SIZE = 48;
 const BADGE_MIN_SIZE = 18;
 
 const useStyles = createThemedStyles((colors) => ({
@@ -115,13 +117,23 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.xs,
   },
   iconWrap: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
+    width: TILE_SIZE,
+    height: TILE_SIZE,
+    borderRadius: TILE_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  iconWrapOn: {
+    backgroundColor: colors.verse.bg,
+    borderColor: colors.verse.border,
   },
   badgeAnchor: {
     position: 'absolute',
-    top: -6,
-    right: -10,
+    top: -4,
+    right: -6,
   },
   badge: {
     minWidth: BADGE_MIN_SIZE,

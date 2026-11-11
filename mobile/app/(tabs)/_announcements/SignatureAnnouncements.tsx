@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, PressableScale, QueryState, StaggerItem } from '../../../components';
+import { AppText, CircleButton, IconButton, PlatformIcon, QueryState, StaggerItem } from '../../../components';
 import { useDeviceClass } from '../../../components/navigation/useDeviceClass';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { sortPinnedFirst } from '../../../lib/format/pinnedFirst';
 import { useAnnouncements, type AnnouncementListItem } from '../../../lib/query/hooks/useAnnouncements';
-import { Flame } from '../_home/signature/Flame';
-import { LEAF, LEAF_SM } from '../_home/signature/leaf';
 import { formatAnnouncementWhen } from './announcementWhen';
 import { usePullToRefresh } from '../../../lib/hooks/usePullToRefresh';
 
@@ -33,11 +31,23 @@ function PosterArt({ uri, title, onOpen }: { uri: string; title: string; onOpen:
   );
 }
 
+const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** The weekday-over-day tile on a news card (canvas B8), from when it goes live. */
+function dateTileFor(announcement: AnnouncementListItem): { weekday: string; day: string } | null {
+  const iso = announcement.publish_at ?? announcement.created_at;
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return { weekday: WEEKDAYS[date.getDay()], day: String(date.getDate()) };
+}
+
 function AnnouncementCard({
   announcement,
+  index,
   onOpenPoster,
 }: {
   announcement: AnnouncementListItem;
+  index: number;
   onOpenPoster: (announcement: AnnouncementListItem) => void;
 }) {
   const styles = useStyles();
@@ -46,48 +56,97 @@ function AnnouncementCard({
   const { pinned, description } = announcement;
   const when = formatAnnouncementWhen(announcement);
   const long = (description?.length ?? 0) > LONG_DESCRIPTION;
+  const tile = pinned ? null : dateTileFor(announcement);
+  // Alternate the tile's wash so a run of cards doesn't read as one block.
+  const sage = index % 2 === 1;
 
-  const text = (
-    <View style={styles.cardText}>
-      <View style={styles.whenRow}>
-        <Flame width={8} fill={pinned ? colors.accent.gold : colors.text.tertiary} />
-        <AppText variant="mono.meta" tone={pinned ? 'gold' : 'tertiary'} numberOfLines={1} style={styles.whenText}>
-          {[pinned ? 'PINNED' : null, when].filter(Boolean).join('  ·  ')}
-        </AppText>
-      </View>
-      <AppText variant="display.row" numberOfLines={3}>
-        {announcement.title}
+  const readMore = long ? (
+    <Pressable
+      onPress={() => setExpanded((open) => !open)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      accessibilityHint={expanded ? 'Shows less' : 'Shows the full announcement'}
+      hitSlop={spacing.xs}
+    >
+      <AppText variant="ui.label" style={pinned ? styles.pinnedLink : styles.link}>
+        {expanded ? 'Show less' : 'Read more'}
       </AppText>
-      {description ? (
-        <AppText variant="ui.body" tone="secondary" numberOfLines={long && !expanded ? CLAMPED_LINES : undefined}>
-          {description}
-        </AppText>
-      ) : null}
-      {long ? (
-        <AppText variant="ui.label" tone="gold">
-          {expanded ? 'Show less' : 'Read more'}
-        </AppText>
-      ) : null}
-    </View>
-  );
+    </Pressable>
+  ) : null;
+
+  if (pinned) {
+    // The pinned item is the navy feature card with a sun in its corner.
+    return (
+      <View style={styles.pinnedCard} accessibilityRole="summary">
+        <View style={styles.sun} pointerEvents="none" />
+        {announcement.image_url ? (
+          <PosterArt uri={announcement.image_url} title={announcement.title} onOpen={() => onOpenPoster(announcement)} />
+        ) : null}
+        <View style={styles.pinnedText}>
+          <View style={styles.whenRow}>
+            <PlatformIcon name="megaphone-outline" size={14} color={colors.feature.sun} />
+            <AppText variant="ui.badge" numberOfLines={1} style={styles.pinnedEyebrow}>
+              {['PINNED', when].filter(Boolean).join(' · ')}
+            </AppText>
+          </View>
+          <AppText variant="display.section" numberOfLines={3} style={styles.pinnedTitle}>
+            {announcement.title}
+          </AppText>
+          {description ? (
+            <AppText variant="ui.body" numberOfLines={long && !expanded ? CLAMPED_LINES : undefined} style={styles.pinnedBody}>
+              {description}
+            </AppText>
+          ) : null}
+          <View style={styles.pinnedActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void Share.share({ message: [announcement.title, description].filter(Boolean).join('\n\n') })}
+              style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
+            >
+              <AppText variant="ui.button" style={styles.shareText}>
+                Share
+              </AppText>
+            </Pressable>
+            {readMore}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.card, pinned ? styles.pinnedCard : styles.standardCard]} accessibilityRole="summary">
+    <View style={styles.card} accessibilityRole="summary">
       {announcement.image_url ? (
         <PosterArt uri={announcement.image_url} title={announcement.title} onOpen={() => onOpenPoster(announcement)} />
       ) : null}
-      {long ? (
-        <PressableScale
-          onPress={() => setExpanded((open) => !open)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          accessibilityHint={expanded ? 'Shows less' : 'Shows the full announcement'}
-        >
-          {text}
-        </PressableScale>
-      ) : (
-        text
-      )}
+      <View style={styles.cardRow}>
+        {tile ? (
+          <View style={[styles.tile, sage ? styles.tileSage : styles.tileIris]}>
+            <AppText variant="ui.badge" style={sage ? styles.tileTextSage : styles.tileTextIris}>
+              {tile.weekday}
+            </AppText>
+            <AppText variant="display.row" style={sage ? styles.tileTextSage : styles.tileTextIris}>
+              {tile.day}
+            </AppText>
+          </View>
+        ) : null}
+        <View style={styles.cardText}>
+          <AppText variant="ui.bodyBold" numberOfLines={3} style={styles.cardTitle}>
+            {announcement.title}
+          </AppText>
+          {description ? (
+            <AppText variant="ui.body" tone="secondary" numberOfLines={long && !expanded ? CLAMPED_LINES : undefined}>
+              {description}
+            </AppText>
+          ) : null}
+          {when ? (
+            <AppText variant="ui.badge" tone="tertiary" numberOfLines={1}>
+              {when}
+            </AppText>
+          ) : null}
+          {readMore}
+        </View>
+      </View>
     </View>
   );
 }
@@ -136,13 +195,13 @@ function Section({
   return (
     <View style={styles.section}>
       {label ? (
-        <AppText variant="mono.meta" tone="tertiary" accessibilityRole="header">
+        <AppText variant="ui.badge" tone="tertiary" accessibilityRole="header" style={styles.eyebrow}>
           {label.toUpperCase()}
         </AppText>
       ) : null}
       {items.map((announcement, index) => (
         <StaggerItem key={announcement.id} index={offset + index}>
-          <AnnouncementCard announcement={announcement} onOpenPoster={onOpenPoster} />
+          <AnnouncementCard announcement={announcement} index={index} onOpenPoster={onOpenPoster} />
         </StaggerItem>
       ))}
     </View>
@@ -150,6 +209,10 @@ function Section({
 }
 
 /**
+ * Daybreak redesign (canvas B8): round back button, "This week at church" over the
+ * title with a green live count, the pinned item as the navy card with a sun in its
+ * corner and a gold Share button, the rest as white cards with a weekday-and-day tile.
+ *
  * Announcements, Signature redesign (Nii's ask, 2026-10-22: "feel free to redesign
  * announcement screen"), behind `SIGNATURE_ANNOUNCEMENTS_ENABLED`. Same data as the
  * classic screen — `useAnnouncements()` with the defensive pinned-first re-sort, no
@@ -175,20 +238,28 @@ export function SignatureAnnouncementsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
         {isTablet ? null : (
           <View style={styles.headerBar}>
-            <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+            <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
           </View>
         )}
         <View style={styles.titleRow}>
-          <AppText variant="display.hero" accessibilityRole="header">
-            Announcements
-          </AppText>
-          {items.length > 0 ? (
-            <AppText variant="mono.meta" tone="gold">
-              {`${items.length} LIVE`}
+          <View style={styles.titles}>
+            <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+              THIS WEEK AT CHURCH
             </AppText>
+            <AppText variant="display.hero" accessibilityRole="header">
+              Announcements
+            </AppText>
+          </View>
+          {items.length > 0 ? (
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <AppText variant="ui.badge" style={styles.liveText}>
+                {`${items.length} LIVE`}
+              </AppText>
+            </View>
           ) : null}
         </View>
       </View>
@@ -227,9 +298,9 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.surface.app,
   },
   header: {
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.lg + 4,
     paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    gap: spacing.lg,
   },
   headerBar: {
     flexDirection: 'row',
@@ -237,37 +308,146 @@ const useStyles = createThemedStyles((colors) => ({
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.md - 2,
-    paddingHorizontal: spacing.md,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  titles: {
+    flexShrink: 1,
+    gap: 6,
+  },
+  eyebrow: {
+    letterSpacing: 1.5,
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 24,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: colors.status.sage.bg,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.status.sage.text,
+  },
+  liveText: {
+    color: colors.status.sage.text,
+    letterSpacing: 0.6,
   },
   scroll: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl * 2,
   },
   body: {
-    gap: spacing.xxl,
+    gap: spacing.xl,
   },
   section: {
-    gap: spacing.lg,
+    gap: spacing.md + 2,
   },
-  card: {
-    ...LEAF_SM,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  standardCard: {
-    backgroundColor: colors.surface.raised,
-    borderColor: colors.border.card,
+  pressed: {
+    opacity: 0.85,
   },
   pinnedCard: {
-    ...LEAF,
-    backgroundColor: colors.status.wheat.bg,
-    borderColor: colors.status.wheat.border,
+    overflow: 'hidden',
+    borderRadius: 24,
+    backgroundColor: colors.feature.bg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.feature.border,
+  },
+  sun: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    right: -30,
+    top: -30,
+    backgroundColor: colors.feature.sun,
+  },
+  pinnedText: {
+    padding: spacing.xl,
+    gap: spacing.sm + 2,
+  },
+  pinnedEyebrow: {
+    color: colors.feature.sun,
+    letterSpacing: 1.5,
+    flexShrink: 1,
+  },
+  pinnedTitle: {
+    color: colors.feature.text,
+    maxWidth: 260,
+  },
+  pinnedBody: {
+    color: colors.feature.muted,
+  },
+  pinnedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.xs,
+  },
+  shareButton: {
+    height: 44,
+    paddingHorizontal: spacing.lg + 2,
+    borderRadius: 22,
+    justifyContent: 'center',
+    backgroundColor: colors.sunButton.bg,
+  },
+  shareText: {
+    color: colors.sunButton.text,
+  },
+  pinnedLink: {
+    color: colors.feature.text,
+  },
+  link: {
+    color: colors.accent.goldText,
+  },
+  card: {
+    overflow: 'hidden',
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+    backgroundColor: colors.surface.raised,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md + 2,
+    padding: spacing.lg,
+  },
+  tile: {
+    width: 52,
+    height: 56,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileIris: {
+    backgroundColor: colors.iris.soft,
+  },
+  tileSage: {
+    backgroundColor: colors.status.sage.bg,
+  },
+  tileTextIris: {
+    color: colors.iris.ink,
+  },
+  tileTextSage: {
+    color: colors.status.sage.text,
+  },
+  cardText: {
+    flex: 1,
+    gap: 6,
+  },
+  cardTitle: {
+    color: colors.text.primary,
   },
   art: {
     aspectRatio: 16 / 9,
@@ -279,19 +459,10 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.surface.sunken,
     opacity: 0.45,
   },
-  cardText: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.sm,
-  },
   whenRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm - 2,
-  },
-  whenText: {
-    flexShrink: 1,
+    gap: 6,
   },
   viewer: {
     flex: 1,

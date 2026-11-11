@@ -92,15 +92,18 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
           <AppText variant="ui.bodyLarge">Thanks. We'll review this comment.</AppText>
         </View>
         {blockRow}
-        <PrimaryButton label="Done" onPress={onClose} />
+        <PrimaryButton label="Done" onPress={onClose} fullWidth />
       </Sheet>
     );
   }
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <AppText variant="ui.label" tone="tertiary" accessibilityRole="header" style={styles.heading}>
+      <AppText variant="display.row" accessibilityRole="header">
         Why are you reporting this?
+      </AppText>
+      <AppText variant="ui.body" tone="secondary">
+        {`Your report is private. ${authorName} won't know it was you.`}
       </AppText>
       {REASONS.map((item) => {
         const selected = item.reason === reason;
@@ -111,19 +114,15 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
             accessibilityState={{ selected }}
             accessibilityLabel={item.label}
             onPress={() => setReason(item.reason)}
-            style={({ pressed }) => [styles.reasonRow, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.reasonRow, selected && styles.reasonRowOn, pressed && styles.pressed]}
           >
+            <View style={[styles.radio, selected && styles.radioOn]}>{selected ? <View style={styles.radioDot} /> : null}</View>
             <View style={styles.reasonText}>
-              <AppText variant="ui.bodyLarge">{item.label}</AppText>
+              <AppText variant="ui.bodyBold">{item.label}</AppText>
               <AppText variant="ui.badge" tone="tertiary">
                 {item.helper}
               </AppText>
             </View>
-            <PlatformIcon
-              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={selected ? colors.accent.goldText : colors.text.tertiary}
-            />
           </Pressable>
         );
       })}
@@ -149,23 +148,45 @@ export function ReportSheet({ visible, authorName, onClose, onSubmit, onBlock, e
           {error}
         </AppText>
       ) : null}
-      <PrimaryButton label="Submit report" disabled={!reason} loading={submitting} onPress={submit} />
+      <PrimaryButton label="Submit report" disabled={!reason} loading={submitting} onPress={submit} fullWidth />
       {blockRow}
     </Sheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  heading: {
-    textTransform: 'uppercase',
-  },
   reasonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
-    minHeight: 52,
-    paddingVertical: spacing.md,
+    minHeight: 56,
+    paddingVertical: spacing.md - 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
+    backgroundColor: colors.surface.raised,
+  },
+  reasonRowOn: {
+    borderColor: colors.iris.fill,
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.border.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: {
+    borderColor: colors.iris.fill,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.iris.fill,
   },
   reasonText: {
     flex: 1,
