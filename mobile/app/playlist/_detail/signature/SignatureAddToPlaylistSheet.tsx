@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { AppText, PlatformIcon, Sheet } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
-import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { fontFamily } from '../../../../theme/typography';
 import { userMessageFor } from '../../../../lib/api/errors';
@@ -72,13 +71,25 @@ export function SignatureAddToPlaylistSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <View style={styles.heading}>
-        <AppText variant="display.title" accessibilityRole="header">
-          Add to playlist
-        </AppText>
-        <AppText variant="mono.meta" tone="gold">
-          {`${inPlaylist} IN THIS PLAYLIST`}
-        </AppText>
+      <View style={styles.headRow}>
+        <View style={styles.heading}>
+          <AppText variant="display.row" accessibilityRole="header">
+            Add to playlist
+          </AppText>
+          <AppText variant="ui.badge" tone="tertiary">
+            {`${inPlaylist} in this playlist`}
+          </AppText>
+        </View>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Done"
+          style={({ pressed }) => [styles.done, pressed && styles.pressed]}
+        >
+          <AppText variant="ui.button" style={styles.doneText}>
+            Done
+          </AppText>
+        </Pressable>
       </View>
 
       <SegmentedControl<SheetTab>
@@ -93,7 +104,7 @@ export function SignatureAddToPlaylistSheet({
       />
 
       <View style={styles.searchRow}>
-        <PlatformIcon name="search" size={16} color={colors.text.tertiary} />
+        <PlatformIcon name="search" size={20} color={colors.text.tertiary} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -137,19 +148,40 @@ export function SignatureAddToPlaylistSheet({
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  headRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
   heading: {
-    gap: spacing.xs,
+    flex: 1,
+    gap: 2,
+  },
+  // Daybreak (canvas E4): a small ink pill.
+  done: {
+    height: 44,
+    paddingHorizontal: spacing.lg + 2,
+    borderRadius: 22,
+    justifyContent: 'center',
+    backgroundColor: colors.text.primary,
+  },
+  doneText: {
+    color: colors.surface.app,
+  },
+  pressed: {
+    opacity: 0.8,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface.app,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.card,
+    gap: spacing.sm + 2,
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 16,
+    backgroundColor: colors.surface.raised,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
   },
   searchInput: {
     flex: 1,

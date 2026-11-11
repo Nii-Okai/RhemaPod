@@ -204,7 +204,7 @@ describe('SignatureAddToPlaylistSheet — same behaviour as the classic sheet', 
 
     expect(await findByText('Standalone Sermon')).toBeTruthy();
     expect(getByText('Add to playlist')).toBeTruthy();
-    expect(getByText('1 IN THIS PLAYLIST')).toBeTruthy();
+    expect(getByText('1 in this playlist')).toBeTruthy();
     expect(getByLabelText('Sermons').props.accessibilityState).toEqual({ selected: true });
   });
 
