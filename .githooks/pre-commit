@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 # Pre-commit hook: detect staged secrets and sensitive files
-# This hook scans staged content for AWS keys, Stripe live keys, PEM private keys,
-# and .env files. Future: replace with gitleaks for comprehensive secret scanning.
+# gitleaks (required, fails closed if missing) scans staged content against its
+# full ruleset; the targeted checks below are kept as a second net for .env files
+# and the key shapes this repo actually uses.
 #
-# To bypass (if false positive): git commit --no-verify
+# Known false positives go in .gitleaksignore (fingerprints), not --no-verify.
+# To bypass (last resort): git commit --no-verify
 
 set -euo pipefail
 
 errors=0
 error_lines=""
+
+if ! command -v gitleaks > /dev/null 2>&1; then
+	echo "Commit blocked: gitleaks is not installed (brew install gitleaks)."
+	exit 1
+fi
+
+if ! gitleaks git --pre-commit --staged --redact --no-banner --log-level warn; then
+	error_lines="${error_lines}gitleaks found staged secrets (see findings above)\n"
+	errors=$((errors + 1))
+fi
 
 # Check for staged .env file
 while IFS= read -r file; do

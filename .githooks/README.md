@@ -4,4 +4,4 @@ This directory is the repository's hook path (configured via `git config core.ho
 
 ## Current Hooks
 
-- **pre-commit** — Scans staged changes for secrets: AWS credentials (AKIA/ASIA patterns, secret access keys), PEM private keys, Stripe live keys (sk_live_/rk_live_), and .env files. Blocks commits that contain detected secrets. Future: upgrade to gitleaks for comprehensive secret scanning.
+- **pre-commit** — Scans staged changes for secrets with [gitleaks](https://github.com/gitleaks/gitleaks) (required: `brew install gitleaks`; the hook fails closed without it), plus targeted checks for AWS credentials, PEM private keys, Stripe live keys, long `SECRET_KEY` values and staged `.env` files. Reviewed false positives are listed by fingerprint in `.gitleaksignore` at the repo root.
