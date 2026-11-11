@@ -2,11 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, LinkButton, PrimaryButton } from '../components';
+import { AppText, CircleButton, LinkButton, PlatformIcon, type AppIconName } from '../components';
 import { createThemedStyles, useTheme } from '../theme/ThemeContext';
-import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { useAuth } from '../lib/auth/AuthContext';
+import { displayEmail } from '../lib/auth/displayEmail';
 import { performAppleSignIn, useAppleSignInAvailable } from '../lib/auth/appleSignIn';
 import { performGoogleSignIn } from '../lib/auth/googleSignIn';
 import {
@@ -33,6 +33,14 @@ const MANUAL_APPLE_REVOKE =
   Platform.OS === 'ios'
     ? 'Your Apple sign-in for RhemaPod won\'t be removed automatically. To remove it, open Settings, tap your name, then Sign-In & Security > Sign in with Apple > RhemaPod > Stop Using Apple ID.'
     : 'Your Apple sign-in for RhemaPod won\'t be removed automatically. To remove it, go to account.apple.com, then Sign-In and Security > Sign in with Apple > RhemaPod, and stop using it.';
+
+/** What goes, as the Daybreak list (canvas F4). */
+const DELETED: { icon: AppIconName; label: string }[] = [
+  { icon: 'person-outline', label: 'Your profile, photo and sign-in methods' },
+  { icon: 'library-outline', label: 'Playlists, My List and likes' },
+  { icon: 'chatbubble-outline', label: 'Your comments' },
+  { icon: 'time-outline', label: 'Watch history, progress, settings and downloads on this device' },
+];
 
 const METHOD_LABEL: Record<DeletionMethod, string> = {
   apple: 'Confirm with Apple',
@@ -157,17 +165,20 @@ export default function DeleteAccountScreen() {
     if (mounted.current) setSubmitting(false);
   }
 
+  const showSteps = Boolean(profile && plan && !isStaff);
   const header = (
-    <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
-      <IconButton
+    <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
+      <CircleButton
         icon="chevron-back"
         accessibilityLabel="Back"
         disabled={submitting}
         onPress={() => (step === 'confirm' ? setStep('notice') : router.back())}
       />
-      <AppText variant="ui.bodyLarge" style={styles.headerTitle} accessibilityRole="header">
-        Delete account
-      </AppText>
+      {showSteps ? (
+        <AppText variant="ui.label" tone="tertiary">
+          {step === 'notice' ? 'Step 1 of 2' : 'Step 2 of 2'}
+        </AppText>
+      ) : null}
       <View style={styles.headerSpacer} />
     </View>
   );
@@ -197,27 +208,60 @@ export default function DeleteAccountScreen() {
   } else if (step === 'notice') {
     body = (
       <>
-        <AppText variant="display.title">This can't be undone</AppText>
-        <View style={styles.section}>
-          <AppText variant="ui.label">What's deleted</AppText>
-          <AppText variant="ui.body" tone="secondary">
-            Your profile and photo, your sign-in methods, playlists, comments, likes, watch history and
-            settings. Downloads on this device are removed too.
+        <View style={styles.titleBlock}>
+          <AppText variant="display.hero" accessibilityRole="header">
+            Delete your account?
+          </AppText>
+          <AppText variant="ui.bodyLarge" tone="secondary">
+            This removes everything tied to {displayEmail(profile.email)}. It can't be undone.
           </AppText>
         </View>
         <View style={styles.section}>
-          <AppText variant="ui.label">What's kept for a while</AppText>
-          <AppText variant="ui.body" tone="secondary">
-            Encrypted backups for up to 30 days. Copies of comments someone reported, for up to 90 days. A
-            security log of account events, without your email, for up to 365 days.
+          <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+            What's deleted
           </AppText>
+          {DELETED.map((item) => (
+            <View key={item.label} style={styles.listItem}>
+              <View style={styles.listIcon}>
+                <PlatformIcon name={item.icon} size={16} color={colors.status.rose.text} />
+              </View>
+              <AppText variant="ui.body" style={styles.listText}>
+                {item.label}
+              </AppText>
+            </View>
+          ))}
         </View>
-        <InlineAlert variant="warning" title="Subscriptions aren't cancelled">
-          Deleting your account doesn't cancel a subscription bought through the{' '}
-          {Platform.OS === 'ios' ? 'App Store' : 'Google Play Store'}. Cancel it there first.
-        </InlineAlert>
-        <LinkButton label="Manage subscriptions" onPress={() => void Linking.openURL(SUBSCRIPTIONS_URL)} />
-        <PrimaryButton label="Continue" fullWidth onPress={() => setStep('confirm')} />
+        <AppText variant="ui.label" tone="tertiary">
+          Kept for a while: encrypted backups for up to 30 days, copies of comments someone reported for up
+          to 90 days, and a security log of account events, without your email, for up to 365 days.
+        </AppText>
+        <View style={styles.subsCard}>
+          <AppText variant="ui.bodyBold" style={styles.subsText}>
+            Subscriptions aren't cancelled
+          </AppText>
+          <AppText variant="ui.label" style={styles.subsText}>
+            Cancel any {Platform.OS === 'ios' ? 'App Store' : 'Google Play'} subscription yourself first.
+          </AppText>
+          <LinkButton label="Manage subscriptions" onPress={() => void Linking.openURL(SUBSCRIPTIONS_URL)} />
+        </View>
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setStep('confirm')}
+            style={({ pressed }) => [styles.danger, pressed && styles.pressed]}
+          >
+            <AppText variant="ui.button" style={styles.dangerText}>
+              Continue
+            </AppText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.keep, pressed && styles.pressed]}
+          >
+            <AppText variant="ui.button">Keep my account</AppText>
+          </Pressable>
+        </View>
       </>
     );
   } else if (method === null) {
@@ -233,7 +277,9 @@ export default function DeleteAccountScreen() {
   } else {
     body = (
       <>
-        <AppText variant="display.title">Confirm it's you</AppText>
+        <AppText variant="display.hero" accessibilityRole="header">
+          Confirm it's you
+        </AppText>
         <AppText variant="ui.body" tone="secondary">
           {method === 'apple'
             ? "Sign in with Apple once more. We'll also remove RhemaPod from your Apple ID."
@@ -297,7 +343,7 @@ export default function DeleteAccountScreen() {
           style={({ pressed }) => [styles.danger, (pressed || submitting) && styles.pressed]}
         >
           {submitting ? (
-            <ActivityIndicator color={colors.status.rose.text} />
+            <ActivityIndicator color={colors.surface.app} />
           ) : (
             <AppText variant="ui.button" style={styles.dangerText}>
               {method === 'password' ? 'Delete permanently' : `${METHOD_LABEL[method]} and delete`}
@@ -331,14 +377,10 @@ const useStyles = createThemedStyles((colors) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg + 4,
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-  },
-  // Balances the back button's width so the centered title is actually centered.
+  // Balances the back button so the step label sits centred.
   headerSpacer: {
     width: 44,
   },
@@ -346,24 +388,71 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg + 4,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl * 2,
     gap: spacing.lg,
   },
-  section: {
-    gap: spacing.xs,
+  titleBlock: {
+    gap: spacing.sm + 2,
   },
-  danger: {
-    minHeight: 52,
+  section: {
+    gap: spacing.sm + 2,
+  },
+  eyebrow: {
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  listIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.status.rose.border,
     backgroundColor: colors.status.rose.bg,
   },
+  listText: {
+    flex: 1,
+  },
+  // Daybreak (canvas F4): a wheat card for the store-subscription notice.
+  subsCard: {
+    gap: spacing.xs + 2,
+    padding: spacing.lg,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.verse.border,
+    backgroundColor: colors.verse.bg,
+    alignItems: 'flex-start',
+  },
+  subsText: {
+    color: colors.verse.icon,
+  },
+  actions: {
+    gap: spacing.sm + 2,
+    marginTop: spacing.sm,
+  },
+  danger: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 27,
+    backgroundColor: colors.status.rose.text,
+  },
   dangerText: {
-    color: colors.status.rose.text,
+    color: colors.surface.app,
+  },
+  keep: {
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 27,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
   },
   pressed: {
     opacity: 0.7,

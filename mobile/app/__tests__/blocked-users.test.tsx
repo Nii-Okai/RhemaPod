@@ -47,7 +47,7 @@ beforeEach(() => {
 describe('BlockedUsersScreen', () => {
   it('renders the established bare-chevron + centered-title header, and the chevron goes back', async () => {
     const { getByText, getByLabelText } = renderScreen();
-    expect(getByText('Blocked users')).toBeTruthy();
+    expect(getByText('Blocked people')).toBeTruthy();
     fireEvent.press(getByLabelText('Back'));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
