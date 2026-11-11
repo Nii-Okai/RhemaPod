@@ -9,6 +9,8 @@ export interface FieldProps extends TextInputProps {
   error?: string | null;
   /** Leading glyph inside the input (Signature: mail for email, lock for passwords). */
   icon?: AppIconName;
+  /** Sits at the right end of the label row ("Forgot?" beside Password, canvas A3). */
+  labelAccessory?: React.ReactNode;
 }
 
 /**
@@ -29,7 +31,7 @@ export interface FieldProps extends TextInputProps {
  * `secureTextEntry` renders exactly as before, no toggle, no layout change.
  */
 export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
-  { label, error, icon, style, secureTextEntry, onFocus, onBlur, ...rest },
+  { label, error, icon, labelAccessory, style, secureTextEntry, onFocus, onBlur, ...rest },
   ref,
 ) {
   const { colors } = useTheme();
@@ -40,9 +42,12 @@ export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
 
   return (
     <View style={styles.container}>
-      <AppText variant="ui.label" tone="primary" style={error ? styles.errorLabel : undefined}>
-        {label}
-      </AppText>
+      <View style={styles.labelRow}>
+        <AppText variant="ui.label" tone="primary" style={error ? styles.errorLabel : undefined}>
+          {label}
+        </AppText>
+        {labelAccessory}
+      </View>
       <View style={styles.inputRow}>
         {icon ? (
           <View style={styles.leading} pointerEvents="none">
@@ -95,6 +100,11 @@ export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
 });
 
 const useStyles = createThemedStyles((colors) => ({
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   container: {
     gap: spacing.sm - 2,
   },

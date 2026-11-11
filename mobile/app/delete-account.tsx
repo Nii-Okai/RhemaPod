@@ -174,12 +174,17 @@ export default function DeleteAccountScreen() {
         disabled={submitting}
         onPress={() => (step === 'confirm' ? setStep('notice') : router.back())}
       />
-      {showSteps ? (
-        <AppText variant="ui.label" tone="tertiary">
-          {step === 'notice' ? 'Step 1 of 2' : 'Step 2 of 2'}
+      {/* Back sits on the title's row (Nii, 2026-11-11), with the step over the title. */}
+      <View style={styles.headerTitles}>
+        {showSteps ? (
+          <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+            {step === 'notice' ? 'Step 1 of 2' : 'Step 2 of 2'}
+          </AppText>
+        ) : null}
+        <AppText variant="display.title" accessibilityRole="header">
+          {!showSteps ? 'Delete account' : step === 'notice' ? 'Delete your account?' : "Confirm it's you"}
         </AppText>
-      ) : null}
-      <View style={styles.headerSpacer} />
+      </View>
     </View>
   );
 
@@ -208,14 +213,9 @@ export default function DeleteAccountScreen() {
   } else if (step === 'notice') {
     body = (
       <>
-        <View style={styles.titleBlock}>
-          <AppText variant="display.hero" accessibilityRole="header">
-            Delete your account?
-          </AppText>
-          <AppText variant="ui.bodyLarge" tone="secondary">
-            This removes everything tied to {displayEmail(profile.email)}. It can't be undone.
-          </AppText>
-        </View>
+        <AppText variant="ui.bodyLarge" tone="secondary">
+          This removes everything tied to {displayEmail(profile.email)}. It can't be undone.
+        </AppText>
         <View style={styles.section}>
           <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
             What's deleted
@@ -277,9 +277,6 @@ export default function DeleteAccountScreen() {
   } else {
     body = (
       <>
-        <AppText variant="display.hero" accessibilityRole="header">
-          Confirm it's you
-        </AppText>
         <AppText variant="ui.body" tone="secondary">
           {method === 'apple'
             ? "Sign in with Apple once more. We'll also remove RhemaPod from your Apple ID."
@@ -377,12 +374,12 @@ const useStyles = createThemedStyles((colors) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
     paddingHorizontal: spacing.lg + 4,
   },
-  // Balances the back button so the step label sits centred.
-  headerSpacer: {
-    width: 44,
+  headerTitles: {
+    flex: 1,
+    gap: 2,
   },
   scroll: {
     flex: 1,
@@ -392,9 +389,6 @@ const useStyles = createThemedStyles((colors) => ({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xxl * 2,
     gap: spacing.lg,
-  },
-  titleBlock: {
-    gap: spacing.sm + 2,
   },
   section: {
     gap: spacing.sm + 2,

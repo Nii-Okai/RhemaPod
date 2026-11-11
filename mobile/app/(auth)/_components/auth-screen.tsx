@@ -14,6 +14,7 @@ import { spacing } from '../../../theme/spacing';
  *    optional "Step 2 of 2" in the middle;
  *  - an optional badge or eyebrow, then a Fraunces heading and a short line under it;
  *  - the screen's own content;
+ *  - the heading and the screen's content are centred between the top row and the footer;
  *  - `footer` is pinned to the foot of the screen: the main button and the switch line
  *    ("New here? Create an account"). It scrolls with the rest when the keyboard is up.
  */
@@ -65,7 +66,10 @@ export function AuthScreen({
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md, paddingBottom: insets.bottom + spacing.xl },
+          {
+            paddingTop: Math.max(insets.top, spacing.lg) + spacing.md,
+            paddingBottom: insets.bottom + spacing.xl,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -84,37 +88,44 @@ export function AuthScreen({
           <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessibilityLabel="RhemaPod" />
         )}
 
-        {art ? <View style={styles.art}>{art}</View> : null}
+        {/* The heading and form sit centred in the room between the top row and the
+            pinned footer (Nii's phone test, 2026-11-11); on a short phone the two spacers
+            shrink to nothing and it reads top to bottom as before. */}
+        <View style={styles.grow} />
 
-        <View style={[styles.header, centerHeader && styles.headerCentered]}>
-          {badge ? (
-            <View style={styles.badge}>
-              <AppText variant="ui.badge" style={styles.badgeText}>
-                {badge.toUpperCase()}
+        <View style={styles.main}>
+          {art ? <View style={styles.art}>{art}</View> : null}
+
+          <View style={[styles.header, centerHeader && styles.headerCentered]}>
+            {badge ? (
+              <View style={styles.badge}>
+                <AppText variant="ui.badge" style={styles.badgeText}>
+                  {badge.toUpperCase()}
+                </AppText>
+              </View>
+            ) : null}
+            {eyebrow ? (
+              <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+                {eyebrow.toUpperCase()}
               </AppText>
-            </View>
-          ) : null}
-          {eyebrow ? (
-            <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
-              {eyebrow.toUpperCase()}
+            ) : null}
+            <AppText
+              variant={headingVariant}
+              tone="primary"
+              accessibilityRole="header"
+              style={centerHeader ? styles.textCentered : null}
+            >
+              {heading}
             </AppText>
-          ) : null}
-          <AppText
-            variant={headingVariant}
-            tone="primary"
-            accessibilityRole="header"
-            style={centerHeader ? styles.textCentered : null}
-          >
-            {heading}
-          </AppText>
-          {subhead ? (
-            <AppText variant={subheadVariant} tone="secondary" style={centerHeader ? styles.textCentered : null}>
-              {subhead}
-            </AppText>
-          ) : null}
-        </View>
+            {subhead ? (
+              <AppText variant={subheadVariant} tone="secondary" style={centerHeader ? styles.textCentered : null}>
+                {subhead}
+              </AppText>
+            ) : null}
+          </View>
 
-        {children ? <View style={styles.body}>{children}</View> : null}
+          {children ? <View style={styles.body}>{children}</View> : null}
+        </View>
 
         <View style={styles.grow} />
 
@@ -174,6 +185,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   eyebrow: {
     letterSpacing: 1.5,
+  },
+  main: {
+    gap: spacing.xl,
   },
   body: {
     gap: spacing.xl,

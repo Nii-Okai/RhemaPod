@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, FittedArt, PlatformIcon, Tag } from '../../../components';
+import { ActionButton, AppText, CastCloseHeader, HeroStatusBar, DetailError, DetailNotAvailable, FittedArt, PlatformIcon, Tag } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -43,6 +43,8 @@ export function SignatureSeriesScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>('episodes');
+  // Light status-bar glyphs while the cover is under the bar (see HeroStatusBar).
+  const [overHero, setOverHero] = useState(true);
   const screen = useSeriesScreen(id);
   const pullToRefresh = usePullToRefresh([screen.series, screen.episodes, screen.history]);
   const { series, episodes, episodeItems, historyMap, cta, downloads, downloadableEpisodes } = screen;
@@ -92,15 +94,19 @@ export function SignatureSeriesScreen() {
     downloadableEpisodes.every((ep) => downloads.find(ep.sermonId)?.state === 'ready');
   const episodeWord = (n: number) => `${n} episode${n === 1 ? '' : 's'}`;
 
+  const heroHeight = width * HERO_ASPECT + insets.top;
   return (
     <View style={styles.screen}>
+      <HeroStatusBar active={overHero} />
       {header}
       <ScrollView
+        onScroll={(e) => setOverHero(e.nativeEvent.contentOffset.y < heroHeight - insets.top)}
+        scrollEventThrottle={32}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
       >
-        <View testID="series-hero" style={[styles.hero, { height: width * HERO_ASPECT + insets.top }]}>
+        <View testID="series-hero" style={[styles.hero, { height: heroHeight }]}>
           {detail.thumbnail_url ? (
             <FittedArt uri={detail.thumbnail_url} />
           ) : null}

@@ -56,15 +56,16 @@ export default function SeriesScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
       >
-        {isTablet ? null : (
-          <View style={styles.backRow}>
-            <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
-          </View>
-        )}
         <View style={styles.titles}>
-          <AppText variant="display.hero" accessibilityRole="header">
-            Series
-          </AppText>
+          {/* Back sits on the title's row (Nii, 2026-11-11). */}
+          <View style={styles.backRow}>
+            {isTablet ? null : (
+              <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+            )}
+            <AppText variant="display.hero" accessibilityRole="header">
+              Series
+            </AppText>
+          </View>
           <AppText variant="ui.body" tone="secondary">
             Teaching that builds week by week. Start one and we'll keep your place.
           </AppText>
@@ -183,6 +184,8 @@ const useStyles = createThemedStyles((colors) => ({
   },
   backRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   titles: {
     gap: spacing.xs + 2,

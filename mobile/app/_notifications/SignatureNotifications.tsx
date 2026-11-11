@@ -138,9 +138,24 @@ export function SignatureNotificationsScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-        <View style={styles.headerBar}>
+        {/* Back sits on the title's row (Nii, 2026-11-11). */}
+        <View style={styles.titleRow}>
           <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
-          {items.length > 0 ? (
+          <AppText variant="display.hero" accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit style={styles.title}>
+            Notifications
+          </AppText>
+        </View>
+        {items.length > 0 ? (
+          <View style={styles.headerBar}>
+            {unread > 0 ? (
+              <View style={styles.newPill}>
+                <AppText variant="ui.badge" style={styles.newPillText}>
+                  {unread > 9 ? '9+ NEW' : `${unread} NEW`}
+                </AppText>
+              </View>
+            ) : (
+              <View />
+            )}
             <Pressable
               onPress={badge.markAllRead}
               disabled={unread === 0}
@@ -153,20 +168,8 @@ export function SignatureNotificationsScreen() {
                 Mark all read
               </AppText>
             </Pressable>
-          ) : null}
-        </View>
-        <View style={styles.titleRow}>
-          <AppText variant="display.hero" accessibilityRole="header">
-            Notifications
-          </AppText>
-          {unread > 0 ? (
-            <View style={styles.newPill}>
-              <AppText variant="ui.badge" style={styles.newPillText}>
-                {unread > 9 ? '9+ NEW' : `${unread} NEW`}
-              </AppText>
-            </View>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
       <ScrollView
         style={styles.scroll}
@@ -211,7 +214,7 @@ const useStyles = createThemedStyles((colors) => ({
   header: {
     paddingHorizontal: spacing.lg + 4,
     paddingBottom: spacing.sm,
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   headerBar: {
     flexDirection: 'row',
@@ -226,6 +229,9 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  title: {
+    flex: 1,
   },
   newPill: {
     height: 24,
