@@ -3,7 +3,6 @@ import { Pressable, TextInput, View } from 'react-native';
 import { AppText } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
-import { LEAF_SM } from '../../(tabs)/_home/signature/leaf';
 
 export const CODE_LENGTH = 6;
 
@@ -62,7 +61,7 @@ export function CodeInput({
                 error ? styles.boxError : null,
               ]}
             >
-              <AppText variant="mono.counter" tone="primary">
+              <AppText variant="display.title" tone="primary">
                 {digit}
               </AppText>
             </View>
@@ -82,7 +81,7 @@ export function CodeInput({
         maxLength={CODE_LENGTH}
         accessibilityLabel="Verification code"
         caretHidden
-        selectionColor={colors.accent.gold}
+        selectionColor={colors.iris.fill}
         style={styles.hiddenInput}
       />
       {error ? (
@@ -103,21 +102,21 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   box: {
-    ...LEAF_SM,
+    borderRadius: 16,
     flex: 1,
-    aspectRatio: 0.82,
+    aspectRatio: 0.8,
     maxHeight: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border.default,
-    backgroundColor: colors.surface.sunken,
+    backgroundColor: colors.surface.raised,
   },
   boxFilled: {
-    borderColor: colors.border.card,
+    borderColor: colors.text.primary,
   },
   boxActive: {
-    borderColor: colors.accent.gold,
+    borderColor: colors.iris.fill,
   },
   boxError: {
     borderColor: colors.status.rose.border,

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useLocalSearchParams } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
@@ -21,6 +22,7 @@ import { retryWindowText } from './_components/socialAuthErrorCopy';
  */
 export default function VerifyEmailScreen() {
   const { verifyEmail, resendVerification } = useAuth();
+  const router = useRouter();
   const params = useLocalSearchParams<{ email?: string; resend?: string }>();
   const email = typeof params.email === 'string' ? params.email : '';
 
@@ -74,24 +76,30 @@ export default function VerifyEmailScreen() {
   return (
     <AuthScreen
       eyebrow="One more step"
-      heading="Confirm your email"
-      subhead={`Enter the ${CODE_LENGTH}-digit code we sent to ${email || 'your email'}.`}
+      heading="Enter the code we emailed you"
+      subhead={`Sent to ${email || 'your email'}. It may take a minute to arrive.`}
+      onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'))}
+      stepLabel="Step 2 of 2"
       footer={
-        <Link href="/(auth)/sign-in" asChild>
-          <LinkButton label="Back to sign in" />
-        </Link>
+        <>
+          <PrimaryButton
+            label={submitting ? 'Verifying…' : 'Verify and continue'}
+            onPress={() => onSubmit(code)}
+            loading={submitting}
+            fullWidth
+          />
+          <View style={styles.centered}>
+            <Link href="/(auth)/sign-in" asChild>
+              <LinkButton label="Back to sign in" />
+            </Link>
+          </View>
+        </>
       }
     >
       <CodeInput value={code} onChangeText={setCode} error={error} onComplete={onSubmit} />
 
       {arrivalNotice ? <InlineAlert variant="success" title={arrivalNotice} /> : null}
 
-      <PrimaryButton
-        label={submitting ? 'Verifying…' : 'Verify and continue'}
-        onPress={() => onSubmit(code)}
-        loading={submitting}
-        fullWidth
-      />
 
       <CheckEmailBody
         email={email}
@@ -103,3 +111,9 @@ export default function VerifyEmailScreen() {
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: {
+    alignItems: 'center',
+  },
+});

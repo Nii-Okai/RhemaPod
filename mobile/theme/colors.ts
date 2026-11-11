@@ -107,8 +107,8 @@ export const fade = {
  * caution against conflating them.
  */
 export const primaryButton = {
-  bg: '#EEF1F6',
-  text: '#101520',
+  bg: '#D9A947',
+  text: '#1A1406',
 } as const;
 
 /**
@@ -183,6 +183,17 @@ export const sunButton = {
   text: '#2A1B00',
 } as const;
 
+/**
+ * Daybreak's quiet blue: the topic header wash, the "Series" and "Free, always" pills,
+ * the focus ring round an input and the speaker avatar. `fill` is the solid, `soft` the
+ * wash, `ink` text set on the wash.
+ */
+export const iris = {
+  fill: '#7FA0C4',
+  soft: '#1F3255',
+  ink: '#A9BEDA',
+} as const;
+
 /** The original dark palette. */
 export const darkColors = {
   surface,
@@ -202,6 +213,7 @@ export const darkColors = {
   feature,
   verse,
   sunButton,
+  iris,
 } as const;
 
 /** Same shape as the dark palette, with every leaf widened to `string`. */
@@ -227,7 +239,7 @@ export type ColorTokens = Widen<typeof darkColors>;
  * - chip: warm gold-tinted washes rather than a pale blue inversion of the navy chips.
  * - overlay: unchanged — it sits on sermon art, whose brightness the theme doesn't change.
  * - fade: same alpha stops, base rgb swapped to the light card (`surface.raised`, white).
- * - primaryButton: fully flipped to a dark-ink pill. Where a primary pill sits ON art
+ * - primaryButton: Daybreak's navy pill (gold in dark). Where a primary pill sits ON art
  *   (the hero "Watch" pill, the onboarding card) it uses the dark palette's pill in both
  *   themes instead (Isaac's decision, 2026-10-21).
  * - shadow.card: a warm near-black at low opacity; a shadow in the surface's own (near
@@ -259,7 +271,7 @@ export const lightColors: ColorTokens = {
     ],
   },
   status: lightStatus,
-  primaryButton: { bg: '#16140F', text: '#F7F4EF' },
+  primaryButton: { bg: '#1F4276', text: '#FFFFFF' },
   avatarPalette: [lightStatus.slate.bg, lightStatus.sage.bg, lightChip.circle],
   shadow: { card: 'rgba(22, 20, 15, 0.16)' },
   splash: {
@@ -275,6 +287,7 @@ export const lightColors: ColorTokens = {
   feature: { ...feature, border: surface.raised },
   verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
   sunButton,
+  iris: { fill: '#1F4276', soft: '#E3EAF4', ink: '#18355F' },
 };
 
 export type ColorScheme = 'light' | 'dark';

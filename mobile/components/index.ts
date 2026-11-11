@@ -27,3 +27,4 @@ export * from './ShelfSkeleton';
 export * from './SectionError';
 export * from './FittedArt';
 export * from './EqualizerBars';
+export * from './CircleButton';

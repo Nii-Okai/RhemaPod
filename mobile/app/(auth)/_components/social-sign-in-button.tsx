@@ -1,6 +1,6 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, type PressableProps } from 'react-native';
+import { Pressable, type PressableProps } from 'react-native';
 import { AppText } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
@@ -13,7 +13,7 @@ export interface SocialSignInButtonProps extends Omit<PressableProps, 'style' | 
 }
 
 /**
- * "Continue with Google/Apple" — the bordered-surface look (Isaac's ask, session
+ * "Continue with Google/Apple": Daybreak's 54pt outlined pill (canvas A3). Originally the bordered-surface look (Isaac's ask, session
  * 2026-10-15), not a filled gold pill (reserved for the primary "Sign in" action, see
  * `Button.tsx`'s own doc comment) and not the bare gold text link (`LinkButton`).
  * Mirrors the admin portal's `secondary` button variant's intent (bordered, surface
@@ -56,12 +56,12 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1.5,
     borderColor: colors.border.default,
-    backgroundColor: colors.surface.sunken,
+    backgroundColor: 'transparent',
     borderRadius: radius.pill,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
+    minHeight: 54,
+    paddingHorizontal: spacing.xl,
   },
   pressed: {
     backgroundColor: colors.surface.raised,

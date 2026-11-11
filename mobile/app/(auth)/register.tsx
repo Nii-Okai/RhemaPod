@@ -98,13 +98,19 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreen
+      badge="Free, always"
       heading="Start listening"
-      subhead="Build playlists and download sermons for later."
-      subheadVariant="ui.body"
-      centerHeader
-      centerBrand
-      compactTop
+      subhead="Save your place across devices, keep playlists and download for offline."
+      onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'))}
       footer={
+        <>
+          <PrimaryButton
+            label={submitting ? 'Creating account…' : 'Create account'}
+            onPress={onSubmit}
+            loading={submitting}
+            disabled={socialSubmitting !== null}
+            fullWidth
+          />
         <View style={styles.footerRow}>
           <AppText variant="ui.body" tone="secondary">
             Already have an account?
@@ -113,6 +119,7 @@ export default function RegisterScreen() {
             <LinkButton label="Sign in" />
           </Link>
         </View>
+        </>
       }
     >
       <View style={styles.socialStack}>
@@ -139,7 +146,7 @@ export default function RegisterScreen() {
         ) : null}
       </View>
 
-      <OrDivider label="or sign up with email" />
+      <OrDivider label="or use email" />
 
       <View style={styles.fieldGroup}>
         <Field
@@ -179,13 +186,6 @@ export default function RegisterScreen() {
         </InlineAlert>
       ) : null}
 
-      <PrimaryButton
-        label={submitting ? 'Creating account…' : 'Create account'}
-        onPress={onSubmit}
-        loading={submitting}
-        disabled={socialSubmitting !== null}
-        fullWidth
-      />
     </AuthScreen>
   );
 }
@@ -203,6 +203,7 @@ const useStyles = createThemedStyles(() => ({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
   },
 }));

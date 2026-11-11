@@ -52,6 +52,8 @@ const PAIRS: Pair[] = [
   ['feature eyebrow on feature card', (c) => c.feature.eyebrow, (c) => c.feature.bg, TEXT],
   ['verse eyebrow on verse card', (c) => c.verse.eyebrow, (c) => c.verse.bg, TEXT],
   ['verse text on verse card', (c) => c.text.primary, (c) => c.verse.bg, TEXT],
+  ['iris ink on its wash', (c) => c.iris.ink, (c) => c.iris.soft, TEXT],
+  ['text.primary on the iris wash', (c) => c.text.primary, (c) => c.iris.soft, TEXT],
   ['sun button text on sun', (c) => c.sunButton.text, (c) => c.sunButton.bg, TEXT],
 ];
 

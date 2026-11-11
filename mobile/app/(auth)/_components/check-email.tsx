@@ -3,8 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { AppText, LinkButton, PlatformIcon } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
-import { Flame } from '../../(tabs)/_home/signature/Flame';
-import { LEAF_SM } from '../../(tabs)/_home/signature/leaf';
 import { InlineAlert } from './inline-alert';
 
 export type CheckEmailKind = 'code' | 'reset';
@@ -74,26 +72,17 @@ export function CheckEmailBody({
 
   return (
     <View style={styles.body}>
-      <View style={styles.sentTo}>
-        <View style={styles.mailChip}>
-          <PlatformIcon name="mail-outline" size={20} color={colors.accent.goldText} />
-        </View>
-        <View style={styles.sentToText}>
-          <AppText variant="mono.meta" tone="tertiary">
-            SENT TO
-          </AppText>
-          <AppText variant="ui.bodyLarge" tone="primary" numberOfLines={1}>
-            {email || 'your email address'}
-          </AppText>
-        </View>
+      <View style={styles.sentTo} accessible accessibilityLabel={`Sent to ${email || 'your email address'}`}>
+        <PlatformIcon name="mail-outline" size={18} color={colors.text.tertiary} />
+        <AppText variant="ui.bodyBold" tone="primary" numberOfLines={1} style={styles.sentToText}>
+          {email || 'your email address'}
+        </AppText>
       </View>
 
       <View style={styles.tips}>
         {TIPS[kind].map((tip) => (
           <View key={tip} style={styles.tip}>
-            <View style={styles.tipFlame}>
-              <Flame width={8} fill={colors.accent.gold} />
-            </View>
+            <View style={styles.tipDot} />
             <AppText variant="ui.body" tone="secondary" style={styles.tipText}>
               {tip}
             </AppText>
@@ -142,27 +131,20 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.xl,
   },
   sentTo: {
-    ...LEAF_SM,
+    alignSelf: 'center',
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.surface.sunken,
+    gap: spacing.sm,
+    height: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 20,
+    backgroundColor: colors.surface.raised,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.default,
   },
-  mailChip: {
-    ...LEAF_SM,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.chip.circle,
-  },
   sentToText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
+    flexShrink: 1,
   },
   tips: {
     gap: spacing.md,
@@ -171,8 +153,12 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     gap: spacing.md,
   },
-  tipFlame: {
-    paddingTop: 4,
+  tipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 7,
+    backgroundColor: colors.sunButton.bg,
   },
   tipText: {
     flex: 1,
@@ -183,5 +169,71 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+}));
+
+/**
+ * The "Check your email" illustration (canvas A5): a letter rising out of a navy
+ * envelope on a soft blue tile, with a green tick at its corner.
+ */
+export function MailArt() {
+  const styles = useArtStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={styles.wrap} accessible={false} importantForAccessibility="no-hide-descendants">
+      <View style={styles.tile} />
+      <View style={styles.letter}>
+        <View style={[styles.line, styles.lineSun]} />
+        <View style={[styles.line, styles.lineLong]} />
+        <View style={[styles.line, styles.lineShort]} />
+      </View>
+      <View style={styles.envelope} />
+      <View style={styles.tick}>
+        <PlatformIcon name="checkmark" size={22} color={colors.status.sage.bg} />
+      </View>
+    </View>
+  );
+}
+
+const useArtStyles = createThemedStyles((colors) => ({
+  wrap: { width: 180, height: 150 },
+  tile: { position: 'absolute', left: 0, right: 0, top: 20, bottom: 0, borderRadius: 28, backgroundColor: colors.iris.soft },
+  letter: {
+    position: 'absolute',
+    left: 30,
+    right: 30,
+    top: 0,
+    height: 96,
+    borderRadius: 18,
+    padding: 18,
+    gap: 8,
+    backgroundColor: colors.surface.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  line: { height: 6, borderRadius: 3, backgroundColor: colors.border.default },
+  lineSun: { height: 8, width: '70%', borderRadius: 4, backgroundColor: colors.sunButton.bg },
+  lineLong: { width: '90%' },
+  lineShort: { width: '60%' },
+  envelope: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 80,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    backgroundColor: colors.iris.fill,
+  },
+  tick: {
+    position: 'absolute',
+    right: -6,
+    top: 6,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.status.sage.text,
   },
 }));

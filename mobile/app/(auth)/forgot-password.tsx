@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Link } from 'expo-router';
-import { AppText, LinkButton, PrimaryButton } from '../../components';
+import { Link, useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { AuthScreen } from './_components/auth-screen';
-import { CheckEmailBody } from './_components/check-email';
+import { CheckEmailBody, MailArt } from './_components/check-email';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
+import { SocialTip } from './_components/social-tip';
 
 /**
  * The backend's `/auth/forgot-password` always answers the same generic 200
@@ -20,6 +22,8 @@ const GENERIC_SUCCESS = 'If that email exists, a reset link has been sent.';
 
 export default function ForgotPasswordScreen() {
   const { forgotPassword } = useAuth();
+  const router = useRouter();
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'));
 
   const [email, setEmail] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -63,7 +67,11 @@ export default function ForgotPasswordScreen() {
         eyebrow="Reset link sent"
         heading="Check your email"
         subhead={GENERIC_SUCCESS}
-        footer={backToSignIn}
+        centerHeader
+        art={<MailArt />}
+        onBack={goBack}
+        backLabel="Back to sign in"
+        footer={<View style={styles.centered}>{backToSignIn}</View>}
       >
         <CheckEmailBody
           email={email.trim()}
@@ -80,10 +88,20 @@ export default function ForgotPasswordScreen() {
   return (
     <AuthScreen
       heading="Forgot your password?"
-      headingVariant="display.title"
       subhead="Enter the email you signed up with and we'll send you a link to set a new one."
-      subheadVariant="ui.body"
-      footer={backToSignIn}
+      onBack={goBack}
+      backLabel="Back to sign in"
+      footer={
+        <>
+          <PrimaryButton
+            label={submitting ? 'Sending…' : 'Send reset link'}
+            onPress={onSubmit}
+            loading={submitting}
+            fullWidth
+          />
+          <View style={styles.centered}>{backToSignIn}</View>
+        </>
+      }
     >
       <Field
         label="Email"
@@ -106,16 +124,13 @@ export default function ForgotPasswordScreen() {
         </InlineAlert>
       ) : null}
 
-      <PrimaryButton
-        label={submitting ? 'Sending…' : 'Send reset link'}
-        onPress={onSubmit}
-        loading={submitting}
-        fullWidth
-      />
-
-      <AppText variant="ui.badge" tone="tertiary">
-        Signed up with Google or Apple? You can keep using that button to sign in, no password needed.
-      </AppText>
+      <SocialTip />
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: {
+    alignItems: 'center',
+  },
+});

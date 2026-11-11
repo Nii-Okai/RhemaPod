@@ -114,6 +114,7 @@ const ICONS = {
   'mail-outline': { ios: 'mail-outline', android: 'mail-outline' },
   'document-text-outline': { ios: 'document-text-outline', android: 'description' },
   'shield-checkmark-outline': { ios: 'shield-checkmark-outline', android: 'verified-user' },
+  'information-circle-outline': { ios: 'information-circle-outline', android: 'info-outline' },
 } satisfies Record<string, { ios: IoniconsName; android: MaterialIconsName }>;
 
 export type AppIconName = keyof typeof ICONS;

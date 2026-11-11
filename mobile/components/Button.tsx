@@ -19,8 +19,8 @@ export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'chil
 }
 
 /**
- * The white-pill primary action (spec §4/§1.1) — the only filled non-gold primary
- * button. Gold is reserved for accents/links/progress, never a general primary action.
+ * The filled primary action: Daybreak's navy pill in light, gold in dark (the
+ * `primaryButton` tokens).
  */
 export function PrimaryButton({ label, loading = false, disabled, icon, fullWidth = false, ...rest }: PrimaryButtonProps) {
   const { colors } = useTheme();
@@ -99,6 +99,8 @@ const useStyles = createThemedStyles((colors) => ({
   },
   fullWidth: {
     width: '100%',
+    // Daybreak's full-width action is a 54pt pill (canvas `.btn`).
+    minHeight: 54,
   },
   contentRow: {
     flexDirection: 'row',

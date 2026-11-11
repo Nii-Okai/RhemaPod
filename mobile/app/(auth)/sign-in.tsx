@@ -127,15 +127,17 @@ export default function SignInScreen() {
 
   return (
     <AuthScreen
-      heading="Pick up where you left off"
-      headingVariant="display.title"
-      subhead="Sign in to your sermons and playlists."
-      subheadVariant="ui.body"
-      centerHeader
-      centerBrand
-      compactTop
+      heading="Welcome back"
+      subhead="Pick up right where you left off."
       footer={
         <>
+          <PrimaryButton
+            label={submitting ? 'Signing in…' : 'Sign in'}
+            onPress={onSubmit}
+            loading={submitting}
+            disabled={socialSubmitting !== null}
+            fullWidth
+          />
           <View style={styles.footerRow}>
             <AppText variant="ui.body" tone="secondary">
               New here?
@@ -155,7 +157,7 @@ export default function SignInScreen() {
 
       {socialButtons}
 
-      <OrDivider label="or with email" />
+      <OrDivider label="or use email" />
 
       <View style={styles.fieldGroup}>
         <Field
@@ -209,13 +211,6 @@ export default function SignInScreen() {
         </InlineAlert>
       ) : null}
 
-      <PrimaryButton
-        label={submitting ? 'Signing in…' : 'Sign in'}
-        onPress={onSubmit}
-        loading={submitting}
-        disabled={socialSubmitting !== null}
-        fullWidth
-      />
     </AuthScreen>
   );
 }
@@ -237,6 +232,7 @@ const useStyles = createThemedStyles(() => ({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
   },
 }));
