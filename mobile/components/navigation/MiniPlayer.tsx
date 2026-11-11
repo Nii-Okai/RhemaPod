@@ -18,20 +18,25 @@ import { AppText } from '../Text';
  *
  * Renders nothing while the full player is open or once nothing is playing.
  */
-export function MiniPlayer() {
+export function MiniPlayer({ floating = false }: { floating?: boolean } = {}) {
   const nowPlaying = useNowPlaying();
   if (!nowPlaying?.session || !nowPlaying.player || nowPlaying.attached) return null;
-  return <MiniPlayerCard session={nowPlaying.session} player={nowPlaying.player} onClose={nowPlaying.stop} />;
+  return (
+    <MiniPlayerCard session={nowPlaying.session} player={nowPlaying.player} onClose={nowPlaying.stop} floating={floating} />
+  );
 }
 
 function MiniPlayerCard({
   session,
   player,
   onClose,
+  floating,
 }: {
   session: NowPlayingSession;
   player: VideoPlayer;
   onClose: () => void;
+  /** Over a pushed screen (`StackMiniPlayer`): no page-coloured band behind the card. */
+  floating: boolean;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -46,7 +51,7 @@ function MiniPlayerCard({
   const fraction = player.duration > 0 ? Math.min(1, Math.max(0, currentTime / player.duration)) : 0;
 
   return (
-    <View testID="mini-player" style={styles.wrap}>
+    <View testID="mini-player" style={[styles.wrap, floating && styles.wrapFloating]}>
       <Pressable
         onPress={() => router.push({ pathname: '/player/[id]', params: { id: session.sermonId } })}
         accessibilityRole="button"
@@ -101,6 +106,9 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.surface.app,
     paddingHorizontal: spacing.md + 2,
     paddingTop: spacing.sm,
+  },
+  wrapFloating: {
+    backgroundColor: 'transparent',
   },
   card: {
     height: 62,

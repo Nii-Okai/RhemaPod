@@ -6,3 +6,4 @@ export * from './FloatingDock';
 export * from './MiniPlayer';
 export * from './TabletRail';
 export * from './NavShell';
+export * from './StackMiniPlayer';

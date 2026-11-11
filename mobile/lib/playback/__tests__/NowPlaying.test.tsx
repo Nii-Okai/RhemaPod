@@ -4,6 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NowPlayingProvider, useNowPlaying, useSharedPlayer, type SharedPlayerInput } from '../NowPlaying';
 import { MiniPlayer } from '../../../components/navigation/MiniPlayer';
+import { StackMiniPlayer } from '../../../components/navigation/StackMiniPlayer';
 import { api } from '../../api/typedClient';
 import type { MockVideoPlayer } from '../../../__mocks__/expo-video';
 
@@ -11,7 +12,11 @@ jest.mock('expo-video');
 jest.mock('@expo/vector-icons');
 jest.mock('../../api/typedClient', () => ({ api: { post: jest.fn(() => Promise.resolve({})) } }));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+let mockSegments: string[] = ['(tabs)'];
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useSegments: () => mockSegments }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 const input = (sermonId: string, extra: Partial<SharedPlayerInput> = {}): SharedPlayerInput => ({
   sermonId,
@@ -125,5 +130,35 @@ describe('NowPlayingProvider', () => {
         expect.objectContaining({ params: { path: { sermon_id: 's1' } }, body: expect.objectContaining({ position_seconds: 120 }) }),
       ),
     );
+  });
+});
+
+describe('StackMiniPlayer (Nii, 2026-11-11: the mini player was missing on pushed screens)', () => {
+  function Stacked({ screen }: { screen: SharedPlayerInput | null }) {
+    return (
+      <QueryClientProvider client={client}>
+        <NowPlayingProvider>
+          {screen ? <Screen key={screen.sermonId} sermon={screen} /> : null}
+          <StackMiniPlayer />
+        </NowPlayingProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  it.each([['series'], ['sermon'], ['playlist'], ['speaker'], ['search'], ['notifications']])(
+    'shows on a pushed %s screen',
+    (first) => {
+      mockSegments = [first, '[id]'];
+      const view = render(<Stacked screen={input('s1')} />);
+      view.rerender(<Stacked screen={null} />);
+      expect(view.getByTestId('mini-player')).toBeTruthy();
+    },
+  );
+
+  it.each([['(tabs)'], ['player'], ['devotional'], ['(auth)']])('stays out of the way on %s', (first) => {
+    mockSegments = [first];
+    const view = render(<Stacked screen={input('s1')} />);
+    view.rerender(<Stacked screen={null} />);
+    expect(view.queryByTestId('mini-player')).toBeNull();
   });
 });

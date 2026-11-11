@@ -10,6 +10,7 @@ import { ThemeProvider, useTheme } from '../theme/ThemeContext';
 import { useAppFonts } from '../theme/fonts';
 import { AnimatedSplash } from '../components/splash/AnimatedSplash';
 import { NowPlayingProvider, useNowPlaying } from '../lib/playback/NowPlaying';
+import { StackMiniPlayer } from '../components/navigation/StackMiniPlayer';
 
 // The native splash stays up until the animated one has painted over it (see `Launch`).
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -192,6 +193,8 @@ function RootNavigator() {
         <Stack.Screen name="devotional/[date]" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
         <Stack.Screen name="devotional/garden" options={{ headerShown: false }} />
       </Stack>
+      {/* The mini player over pushed screens; the tabs draw their own above the dock. */}
+      <StackMiniPlayer />
     </>
   );
 }
