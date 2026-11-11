@@ -1,9 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components';
-import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
+import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
-import { Flame } from '../../(tabs)/_home/signature/Flame';
 import type { DetailTab } from '../_detail/DetailTabs';
 
 const TABS: { key: DetailTab; label: string }[] = [
@@ -14,12 +13,13 @@ const TABS: { key: DetailTab; label: string }[] = [
 export interface SignatureTabsProps {
   active: DetailTab;
   onChange: (tab: DetailTab) => void;
+  /** Right-aligned note on the tab row ("2 of 8 finished"). */
+  note?: string | null;
 }
 
-/** Episodes / Related, with Signature's small gold flame under the active tab in place of an underline. */
-export function SignatureTabs({ active, onChange }: SignatureTabsProps) {
+/** Episodes / Related, the active one bold with a 3pt ink underline (Daybreak canvas C2). */
+export function SignatureTabs({ active, onChange, note }: SignatureTabsProps) {
   const styles = useStyles();
-  const { colors } = useTheme();
   return (
     <View style={styles.row} accessibilityRole="tablist">
       {TABS.map((tab) => {
@@ -31,15 +31,19 @@ export function SignatureTabs({ active, onChange }: SignatureTabsProps) {
             onPress={() => onChange(tab.key)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={styles.tab}
+            style={[styles.tab, selected && styles.tabOn]}
           >
-            <AppText variant="ui.button" tone={selected ? 'primary' : 'secondary'}>
+            <AppText variant="ui.bodyBold" tone={selected ? 'primary' : 'tertiary'}>
               {tab.label}
             </AppText>
-            <Flame width={8} fill={selected ? colors.accent.goldText : 'transparent'} />
           </Pressable>
         );
       })}
+      {note ? (
+        <AppText variant="ui.badge" tone="tertiary" style={styles.note}>
+          {note}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -47,16 +51,24 @@ export function SignatureTabs({ active, onChange }: SignatureTabsProps) {
 const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    marginHorizontal: spacing.lg + 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.default,
   },
   tab: {
     minHeight: 44,
-    paddingTop: spacing.sm,
+    paddingVertical: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  tabOn: {
+    borderBottomColor: colors.text.primary,
+  },
+  note: {
+    marginLeft: 'auto',
   },
 }));

@@ -205,12 +205,11 @@ describe('SignatureSeriesScreen', () => {
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ id: 'e2' }) }));
   });
 
-  it('shows a flame per episode with the watched count, and each row its watch state', async () => {
+  it('shows the finished count on the tab row, and each episode its watch state', async () => {
     mockApi();
-    const { findByText, getByLabelText, getByText, getByTestId, queryByTestId } = renderScreen();
+    const { findByText, getByText, getByTestId, queryByTestId } = renderScreen();
 
-    await findByText('1 OF 3 WATCHED');
-    expect(getByLabelText('1 of 3 episodes watched')).toBeTruthy();
+    await findByText('1 of 3 finished');
     expect(getByText('1:22:00 · WATCHED')).toBeTruthy();
     expect(getByText('1:30:00 · 41:00 LEFT')).toBeTruthy();
     expect(getByText('1:22:00')).toBeTruthy();
@@ -218,12 +217,13 @@ describe('SignatureSeriesScreen', () => {
     expect(queryByTestId('episode-progress-e3')).toBeNull();
   });
 
-  it('leaves the flames out and offers Play before anything is watched', async () => {
+  it('leaves the finished count out and offers Play before anything is watched', async () => {
     mockApi({ '/me/history': [] });
     const { findByText, queryByText } = renderScreen();
 
     await findByText('Play Part 1');
     expect(queryByText(/WATCHED$/)).toBeNull();
+    expect(queryByText(/finished$/)).toBeNull();
   });
 
   it('queues every episode from Download all, and shows Downloaded once they all are', async () => {
@@ -242,7 +242,7 @@ describe('SignatureSeriesScreen', () => {
     mockApi();
     const { findByText, findByLabelText, getByTestId, queryByLabelText } = renderScreen();
 
-    await findByText('Part One');
+    await findByText('1 · Part One');
     fireEvent.press(getByTestId('detail-tab-related'));
     fireEvent.press(await findByLabelText('Divine Patterns · Part 1'));
     expect(queryByLabelText('Divine Patterns · Part 2')).toBeNull();
@@ -262,7 +262,7 @@ describe('SignatureSeriesScreen', () => {
       imageUrl: 'https://cdn.example.com/destiny.jpg',
       startTime: 2940,
     });
-    fireEvent.press(getByText('Part One'));
+    fireEvent.press(getByText('1 · Part One'));
     expect(mockCastPlay).toHaveBeenLastCalledWith(expect.objectContaining({ sermonId: 'e1', startTime: 0 }));
     expect(mockPush).not.toHaveBeenCalled();
   });
