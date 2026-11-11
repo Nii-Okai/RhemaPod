@@ -1,21 +1,37 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AppText, PrimaryButton } from '../../../../components';
-import { createThemedStyles } from '../../../../theme/ThemeContext';
+import { AppText, PlatformIcon } from '../../../../components';
+import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
+import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { weekOf, weekdayInitial } from '../../../../lib/devotionals/dates';
+import { STEPS, type Step } from '../../../../lib/devotionals/storage';
 import { useDevotionalWindow, useJournal } from '../../../../lib/query/hooks/useDevotionals';
-import { LEAF_SM } from './leaf';
+
+const STEP_LABEL: Record<Step, string> = {
+  still: 'Still',
+  hear: 'Hear',
+  ponder: 'Ponder',
+  pray: 'Pray',
+  carry: 'Carry',
+};
 
 /**
- * Home's Daily Rhema card (plan-daily-devotional M2): today's devotional and a week vine
- * of seven leaves, filled for each day completed. Once today is done it shrinks to the
- * kept word. Renders nothing while loading, with nothing to show, or on an error, like the
- * verse card: Home never blocks on it.
+ * Home's Daily Rhema card (Daybreak redesign, canvas B1/B2; plan-daily-devotional M2).
+ *
+ * Before today's quiet time is finished it is the navy feature card in both themes: the
+ * day's title and passage, five segments for Still · Hear · Ponder · Pray · Carry, a gold
+ * Begin (or Continue at the step reached) button and the count of words kept so far,
+ * which opens the word garden. Once today is done it becomes a calm green "Quiet time
+ * done" card with the kept word and this week's vine of seven leaves.
+ *
+ * Renders nothing while loading, with nothing to show, or on an error, like the verse
+ * card: Home never blocks on it.
  */
 export function DailyRhemaCard() {
   const styles = useStyles();
+  const { colors } = useTheme();
   const router = useRouter();
   const { today, currentDate } = useDevotionalWindow();
   const { journal } = useJournal();
@@ -24,48 +40,88 @@ export function DailyRhemaCard() {
   const entry = journal?.[today.date];
   const done = Boolean(entry?.completedAt);
   const started = Boolean(entry && !done && entry.step !== 'still');
+  const reached = entry ? STEPS.indexOf(entry.step) + (done ? 1 : 0) : 0;
   const open = () => router.push({ pathname: '/devotional/[date]', params: { date: today.date } });
-  const week = weekOf(currentDate);
+  const openGarden = () => router.push('/devotional/garden');
+  const keptWords = Object.values(journal ?? {}).filter((e) => e.completedAt && e.word).length;
 
   if (done) {
     return (
       <Pressable
-        style={styles.compact}
-        onPress={open}
+        style={({ pressed }) => [styles.done, pressed && styles.pressed]}
+        onPress={openGarden}
         accessibilityRole="button"
-        accessibilityLabel={`Your word today: ${entry?.word ?? ''}. Open today's devotional.`}
+        accessibilityLabel={`Quiet time done. You kept the word ${entry?.word ?? ''}. Open your word garden.`}
       >
-        <AppText variant="mono.meta" tone="gold">
-          YOUR WORD TODAY
-        </AppText>
-        <AppText variant="display.row" tone="gold">
+        <View style={styles.doneTop}>
+          <View style={styles.check}>
+            <PlatformIcon name="checkmark" size={20} color={colors.status.sage.bg} />
+          </View>
+          <View style={styles.doneText}>
+            <AppText variant="ui.bodyBold" style={styles.doneTitle}>
+              Quiet time done
+            </AppText>
+            <AppText variant="ui.body" style={styles.doneTitle}>
+              You kept the word
+            </AppText>
+          </View>
+          <PlatformIcon name="chevron-forward" size={20} color={colors.status.sage.text} />
+        </View>
+        <AppText variant="display.title" style={styles.doneWord}>
           {entry?.word ?? today.passage.ref}
         </AppText>
-        <Vine week={week} journal={journal ?? {}} current={currentDate} />
+        <Vine week={weekOf(currentDate)} journal={journal ?? {}} current={currentDate} />
       </Pressable>
     );
   }
 
   return (
     <View style={styles.card}>
-      <AppText variant="mono.meta" tone="gold">
-        DAILY RHEMA
-      </AppText>
-      <AppText variant="display.title" accessibilityRole="header">
-        {today.title}
-      </AppText>
-      <AppText variant="mono.meta" tone="tertiary">
-        {`${today.passage.ref} · ${today.passage.translation}`.toUpperCase()}
-      </AppText>
-      <View style={styles.actions}>
-        <PrimaryButton label={started ? 'Continue quiet time' : 'Begin quiet time'} onPress={open} />
-        <Pressable onPress={() => router.push('/devotional/garden')} accessibilityRole="button" hitSlop={spacing.md}>
-          <AppText variant="ui.label" tone="gold">
-            Word garden
-          </AppText>
-        </Pressable>
+      <View style={[styles.orb, styles.orbBig]} />
+      <View style={[styles.orb, styles.orbSun]} />
+      <View style={styles.body}>
+        <AppText variant="ui.badge" style={styles.eyebrow}>
+          DAILY RHEMA · YOUR WORD TODAY
+        </AppText>
+        <AppText variant="display.title" accessibilityRole="header" style={styles.title}>
+          {today.title}
+        </AppText>
+        <AppText variant="mono.meta" style={styles.meta}>
+          {`${today.passage.ref} · ${today.passage.translation}`.toUpperCase()}
+        </AppText>
+        <View
+          style={styles.steps}
+          accessible
+          accessibilityLabel={`${reached} of 5 steps: Still, Hear, Ponder, Pray, Carry`}
+        >
+          {STEPS.map((step, i) => (
+            <View key={step} style={[styles.step, i < reached && styles.stepDone]} />
+          ))}
+        </View>
+        <View style={styles.actions}>
+          <Pressable
+            onPress={open}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.sun, pressed && styles.pressed]}
+          >
+            <AppText variant="ui.button" style={styles.sunText}>
+              {started && entry ? `Continue · ${STEP_LABEL[entry.step]}` : 'Begin quiet time'}
+            </AppText>
+          </Pressable>
+          <Pressable
+            onPress={openGarden}
+            accessibilityRole="button"
+            accessibilityLabel={keptWords > 0 ? `Word garden, ${keptWords} words kept` : 'Word garden'}
+            hitSlop={spacing.md}
+            style={styles.garden}
+          >
+            <PlatformIcon name="leaf-outline" size={18} color={colors.feature.eyebrow} />
+            <AppText variant="ui.label" style={styles.gardenText}>
+              {keptWords > 0 ? `${keptWords} ${keptWords === 1 ? 'word' : 'words'}` : 'Word garden'}
+            </AppText>
+          </Pressable>
+        </View>
       </View>
-      <Vine week={week} journal={journal ?? {}} current={currentDate} />
     </View>
   );
 }
@@ -92,7 +148,7 @@ function Vine({
               d === current ? styles.leafToday : null,
             ]}
           />
-          <AppText variant="mono.meta" tone={d === current ? 'gold' : 'tertiary'}>
+          <AppText variant="mono.meta" style={styles.vineLabel}>
             {weekdayInitial(d)}
           </AppText>
         </View>
@@ -103,32 +159,128 @@ function Vine({
 
 const useStyles = createThemedStyles((colors) => ({
   card: {
-    ...LEAF_SM,
+    borderRadius: 28,
+    overflow: 'hidden',
+    padding: spacing.xl,
+    backgroundColor: colors.feature.bg,
+    borderWidth: 1,
+    borderColor: colors.feature.border,
+  },
+  orb: {
+    position: 'absolute',
+    borderRadius: radius.pill,
+  },
+  orbBig: {
+    width: 200,
+    height: 200,
+    right: -50,
+    top: -60,
+    backgroundColor: colors.feature.orb,
+  },
+  orbSun: {
+    width: 86,
+    height: 86,
+    right: 22,
+    top: 20,
+    backgroundColor: colors.feature.sun,
+  },
+  body: {
+    gap: spacing.sm + 2,
+  },
+  eyebrow: {
+    color: colors.feature.eyebrow,
+    letterSpacing: 1.2,
+  },
+  title: {
+    color: colors.feature.text,
+    maxWidth: 210,
+  },
+  meta: {
+    color: colors.feature.muted,
+  },
+  steps: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 2,
+  },
+  step: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.feature.track,
+  },
+  stepDone: {
+    backgroundColor: colors.feature.sun,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
+  sun: {
+    minHeight: 44,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    backgroundColor: colors.sunButton.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sunText: {
+    color: colors.sunButton.text,
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+  garden: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+  },
+  gardenText: {
+    color: colors.feature.text,
+  },
+  done: {
+    borderRadius: 24,
+    padding: spacing.lg,
     gap: spacing.sm,
-    padding: spacing.lg,
-    backgroundColor: colors.surface.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent.gold,
+    backgroundColor: colors.status.sage.bg,
   },
-  compact: {
-    ...LEAF_SM,
-    gap: spacing.xs,
-    padding: spacing.lg,
-    backgroundColor: colors.surface.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.default,
+  doneTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl, paddingTop: spacing.sm },
-  vine: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.md },
+  check: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.status.sage.text,
+  },
+  doneText: {
+    flex: 1,
+  },
+  doneTitle: {
+    color: colors.status.sage.text,
+  },
+  doneWord: {
+    color: colors.status.sage.text,
+    paddingLeft: 48,
+  },
+  vine: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.sm },
   vineDay: { alignItems: 'center', gap: spacing.xs },
+  vineLabel: { color: colors.status.sage.text },
   leaf: {
     width: 18,
     height: 18,
     borderTopLeftRadius: 9,
     borderBottomRightRadius: 9,
     borderWidth: 1,
-    borderColor: colors.border.card,
+    borderColor: colors.status.sage.text,
   },
-  leafDone: { backgroundColor: colors.accent.gold, borderColor: colors.accent.gold },
-  leafToday: { borderColor: colors.accent.gold },
+  leafDone: { backgroundColor: colors.status.sage.text },
+  leafToday: { borderWidth: 2 },
 }));

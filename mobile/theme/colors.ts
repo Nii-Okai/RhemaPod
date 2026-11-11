@@ -128,6 +128,61 @@ export const shadow = {
   card: 'rgba(13, 17, 26, 0.45)',
 } as const;
 
+/**
+ * Daybreak redesign (2026-11, Nii's approved canvas). Navy and gold stay the brand; these
+ * are the new surfaces the redesign adds, one group per surface so a later tweak to one
+ * can't leak into another.
+ */
+/** The animated launch screen (`components/splash/AnimatedSplash.tsx`). */
+export const splash = {
+  ground: surface.app,
+  orbOuter: surface.raised,
+  orbInner: surface.nav,
+  glow: '#D9A947',
+  shine: '#FFF0C8',
+  tagline: text.secondary,
+} as const;
+
+/** The floating tab dock and its raised gold Today button. Navy in both themes. */
+export const dock = {
+  bg: surface.nav,
+  border: border.card,
+  icon: text.secondary,
+  iconActive: '#FFFFFF',
+  dot: '#D9A947',
+  todayBg: '#D9A947',
+  todayIcon: '#2A1B00',
+  /** The ring that cuts the Today button out of the page behind it. */
+  todayRing: surface.app,
+  shadow: 'rgba(0, 0, 0, 0.45)',
+} as const;
+
+/** The navy feature card (Home's Daily Rhema). Navy in both themes. */
+export const feature = {
+  bg: surface.raised,
+  border: border.card,
+  orb: surface.nav,
+  sun: '#D9A947',
+  text: text.primary,
+  muted: text.secondary,
+  eyebrow: accent.goldText,
+  track: track.default,
+} as const;
+
+/** Home's Verse of the Day card. */
+export const verse = {
+  bg: surface.raised,
+  border: border.card,
+  eyebrow: accent.goldText,
+  icon: accent.goldText,
+} as const;
+
+/** The bright gold "sun" pill used for the one main action on a navy card. */
+export const sunButton = {
+  bg: '#D9A947',
+  text: '#2A1B00',
+} as const;
+
 /** The original dark palette. */
 export const darkColors = {
   surface,
@@ -142,6 +197,11 @@ export const darkColors = {
   primaryButton,
   avatarPalette,
   shadow,
+  splash,
+  dock,
+  feature,
+  verse,
+  sunButton,
 } as const;
 
 /** Same shape as the dark palette, with every leaf widened to `string`. */
@@ -202,6 +262,19 @@ export const lightColors: ColorTokens = {
   primaryButton: { bg: '#16140F', text: '#F7F4EF' },
   avatarPalette: [lightStatus.slate.bg, lightStatus.sage.bg, lightChip.circle],
   shadow: { card: 'rgba(22, 20, 15, 0.16)' },
+  splash: {
+    ground: '#F7F4EF',
+    orbOuter: '#ECE7DD',
+    orbInner: '#FFFFFF',
+    glow: '#E9D4A6',
+    shine: '#FFF6DF',
+    tagline: '#5B5648',
+  },
+  // The dock stays navy on the light ground: it is the one dark anchor on a light page.
+  dock: { ...dock, bg: surface.raised, border: surface.raised, todayRing: '#F7F4EF', shadow: 'rgba(13, 17, 26, 0.28)' },
+  feature: { ...feature, border: surface.raised },
+  verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
+  sunButton,
 };
 
 export type ColorScheme = 'light' | 'dark';

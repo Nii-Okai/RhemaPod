@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { lightColors } from '../colors';
+import { darkColors, lightColors } from '../colors';
 
 const MOBILE_ROOT = path.resolve(__dirname, '..', '..');
 const appJson = require('../../app.json');
@@ -22,10 +22,16 @@ function splashOptions(plugins: unknown[]): SplashOptions {
 describe('native splash', () => {
   const declared = splashOptions(appJson.expo.plugins);
 
-  it('declares a light splash on the light palette and the navy splash for dark', () => {
+  // The native splash shows the mark alone on each palette's own ground, exactly where the
+  // animated splash (`components/splash/AnimatedSplash.tsx`) starts, so the hand-off is
+  // seamless.
+  it('declares the bronze mark on the light ground and the gold mark on the navy ground', () => {
     expect(declared.backgroundColor).toBe(lightColors.surface.app);
-    expect(declared.image).toBe('./assets/splash-icon-light.png');
-    expect(declared.dark).toEqual({ image: './assets/splash-icon.png', backgroundColor: '#0B1725' });
+    expect(declared.image).toBe('./assets/brand/mark-bronze.png');
+    expect(declared.dark).toEqual({
+      image: './assets/brand/mark-gold.png',
+      backgroundColor: darkColors.surface.app,
+    });
   });
 
   it('points at splash images that exist', () => {

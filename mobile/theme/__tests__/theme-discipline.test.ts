@@ -22,7 +22,6 @@ const ALLOWED = new Set([
   'app/player/[id].tsx',
   // Themed files that pin only their on-art elements to the dark palette.
   'app/(tabs)/_home/HeroCard.tsx',
-  'app/(tabs)/_home/HomeTopBar.tsx',
   // Signature Home: the hero and countdown are dark photo frames in both themes; the shelf cards
   // pin only the chips and play buttons drawn on the art.
   'app/(tabs)/_home/signature/ArtScrim.tsx',

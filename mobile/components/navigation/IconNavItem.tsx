@@ -17,10 +17,7 @@ export interface IconNavItemProps {
 
 /**
  * Icon + always-visible label item with an M3-style pill active indicator (design spec
- * §2's "pill active-indicator"). Shared by the Android bottom bar and the tablet rail —
- * `PhoneTabBarIOS` shows icons too now (Isaac's ask, session 2026-10-11), but with its
- * own plainer, non-pill iOS-native treatment rather than reusing this component — the
- * M3 pill indicator is a distinctly Material pattern, not one iOS's own tab bar uses.
+ * §2's "pill active-indicator"). Used by the tablet rail; phones use `FloatingDock`.
  */
 export function IconNavItem({ route, active, onPress, orientation }: IconNavItemProps) {
   const { colors } = useTheme();

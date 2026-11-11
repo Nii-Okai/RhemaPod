@@ -4,7 +4,7 @@ import { useNewReleases } from './useNewReleases';
 import { getReadNotificationIds, markNotificationRead, markNotificationsRead } from '../../settings/notificationsSeen';
 
 /**
- * Backs `HomeTopBar`'s bell badge and the `/notifications` screen it opens (Isaac's
+ * Backs `HomeHeader`'s bell dot and the `/notifications` screen it opens (Isaac's
  * ask, session 2026-10-10: "Notification icon should open notifications page showing
  * new releases. Show counter"). Reuses `useNewReleases()` — Home's own "New Releases"
  * shelf data, `GET /catalog/sermons/new-releases` — rather than a separate feed; there

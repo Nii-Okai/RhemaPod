@@ -31,7 +31,8 @@ export const NAV_ROUTES: readonly NavRoute[] = [
   // Browse is also the sole search entry point (Isaac's ask, session 2026-10-02) — the
   // dedicated Search tab was removed; `app/search.tsx` is now a top-level stack route
   // Browse pushes into, not a tab destination.
-  { key: 'browse', href: '/(tabs)/browse', label: 'Browse', icon: 'grid-outline', iconActive: 'grid' },
+  // Shown as "Discover" since the Daybreak redesign (2026-11); the route stays `browse`.
+  { key: 'browse', href: '/(tabs)/browse', label: 'Discover', icon: 'compass-outline', iconActive: 'compass' },
   {
     // Session 2026-10-10 (Isaac's ask): the former `downloads` destination (P1:
     // "Downloads" on iOS, Android, and tablet alike) is renamed/absorbed into
@@ -61,8 +62,8 @@ export const NAV_ROUTES: readonly NavRoute[] = [
 ] as const;
 
 /**
- * iOS 4-tab bar + Android 4-item M3 nav bar — the same four destinations, just two
- * different chromes (design spec §2, plan W3.4). A dedicated Search tab existed here
+ * The phone dock's four destinations (`FloatingDock`, the same on iOS and Android since
+ * the Daybreak redesign; it adds the raised Today button between the two halves). A dedicated Search tab existed here
  * originally; removed (Isaac's ask, session 2026-10-02) once Browse absorbed its
  * query/suggest/results flow as a pushed, not tabbed, screen.
  */

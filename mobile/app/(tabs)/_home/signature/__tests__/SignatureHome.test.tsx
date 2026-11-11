@@ -110,7 +110,7 @@ describe('SignatureHomeScreen', () => {
     await screen.findByLabelText(/^Divine Patterns\. Continue: Part 2\./);
 
     const headings = [
-      'Pick up where you left off',
+      'Keep listening',
       'New releases',
       'Series',
       'Prophet’s Catalog',
@@ -149,7 +149,7 @@ describe('SignatureHomeScreen', () => {
 
   it('captions shelf cards with titles, not categories', async () => {
     const screen = renderSignature();
-    await screen.findByText('Pick up where you left off');
+    await screen.findByText('Keep listening');
     expect(screen.getAllByText('Divine Patterns · Part 2').length).toBeGreaterThan(0);
     expect(screen.getByText('FAITH · 20:00 LEFT')).toBeTruthy();
     expect(screen.getAllByText('Sunday Service').length).toBeGreaterThan(0);
@@ -205,7 +205,7 @@ describe('SignatureHomeScreen', () => {
   it('hides empty shelves when nothing in progress belongs to a series', async () => {
     const screen = renderSignature({ '/me/continue-watching': [], '/me/recommended': [] });
     await screen.findByText('Trending');
-    expect(screen.queryByText('Pick up where you left off')).toBeNull();
+    expect(screen.queryByText('Keep listening')).toBeNull();
     expect(screen.queryByText('Recommended for you')).toBeNull();
     expect(screen.queryByLabelText(/Continue: Part/)).toBeNull();
     expect(mockedGet).not.toHaveBeenCalledWith('/me/history', expect.anything());

@@ -1,10 +1,17 @@
+import { useCallback, useState } from 'react';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuthGuard } from '../lib/auth/AuthContext';
 import { DETAIL_TRANSITION_DURATION } from '../lib/navigation/detailTransition';
 import { QueryProvider } from '../lib/query/QueryProvider';
 import { ThemeProvider, useTheme } from '../theme/ThemeContext';
+import { useAppFonts } from '../theme/fonts';
+import { AnimatedSplash } from '../components/splash/AnimatedSplash';
+
+// The native splash stays up until the animated one has painted over it (see `Launch`).
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function RootNavigator() {
   useAuthGuard();
@@ -163,7 +170,7 @@ function RootNavigator() {
             Library. */}
         <Stack.Screen name="playlist/create" options={{ headerShown: false, presentation: 'modal' }} />
         {/* Session 2026-10-11 — Home's bell icon opens this instead of Announcements
-            (`HomeTopBar`'s own doc comment). Owns its own header (back chevron + centered
+            (`HomeHeader`). Owns its own header (back chevron + centered
             title), same "native Stack header disabled" pattern `category/[id]` and
             `series.tsx`'s own phone header established — missing this entry here (Isaac's
             report, same session: "Use previously established style for navigation page")
@@ -188,13 +195,36 @@ function RootNavigator() {
   );
 }
 
+/**
+ * App launch (Daybreak redesign): the native splash hands over to `AnimatedSplash`, which
+ * plays for about two seconds and stays until the fonts have loaded. The navigator mounts
+ * underneath as soon as the fonts are in (or failed, in which case the OS face is used),
+ * so auth and the first screen load while the animation runs.
+ */
+function Launch() {
+  const { fontsLoaded, fontError } = useAppFonts();
+  const ready = fontsLoaded || fontError !== null;
+  const [splashDone, setSplashDone] = useState(false);
+  const hideNative = useCallback(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
+  const finish = useCallback(() => setSplashDone(true), []);
+
+  return (
+    <>
+      {ready ? <RootNavigator /> : null}
+      {splashDone ? null : <AnimatedSplash ready={ready} onShown={hideNative} onFinish={finish} />}
+    </>
+  );
+}
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryProvider>
         <AuthProvider>
           <ThemeProvider>
-            <RootNavigator />
+            <Launch />
           </ThemeProvider>
         </AuthProvider>
       </QueryProvider>
