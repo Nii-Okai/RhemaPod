@@ -106,7 +106,7 @@ export function SignatureBrowseScreen() {
     });
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.lg) }]}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md }]}>
       <View style={styles.header}>
         <AppText variant="display.hero" accessibilityRole="header">
           Discover

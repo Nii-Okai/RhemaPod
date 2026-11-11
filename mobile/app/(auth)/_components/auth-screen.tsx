@@ -61,6 +61,44 @@ export function AuthScreen({
       ? require('../../../assets/brand/wordmark-on-light.png')
       : require('../../../assets/brand/wordmark-on-dark.png');
 
+  const inlineBack = Boolean(onBack) && !centerHeader;
+  const kicker = (
+    <>
+      {badge ? (
+        <View style={styles.badge}>
+          <AppText variant="ui.badge" style={styles.badgeText}>
+            {badge.toUpperCase()}
+          </AppText>
+        </View>
+      ) : null}
+      {eyebrow ? (
+        <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+          {eyebrow.toUpperCase()}
+        </AppText>
+      ) : null}
+      {inlineBack && stepLabel && !eyebrow ? (
+        <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+          {stepLabel.toUpperCase()}
+        </AppText>
+      ) : null}
+    </>
+  );
+  const headingText = (
+    <AppText
+      variant={headingVariant}
+      tone="primary"
+      accessibilityRole="header"
+      style={centerHeader ? styles.textCentered : null}
+    >
+      {heading}
+    </AppText>
+  );
+  const subheadText = subhead ? (
+    <AppText variant={subheadVariant} tone="secondary" style={centerHeader ? styles.textCentered : null}>
+      {subhead}
+    </AppText>
+  ) : null;
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
@@ -74,7 +112,16 @@ export function AuthScreen({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {onBack ? (
+        {inlineBack ? (
+          // Back sits on the heading's row (Nii, 2026-11-11); the form below is centred.
+          <View style={styles.inlineRow}>
+            <CircleButton icon="chevron-back" accessibilityLabel={backLabel} onPress={onBack} />
+            <View style={styles.inlineTitles}>
+              {kicker}
+              {headingText}
+            </View>
+          </View>
+        ) : onBack ? (
           <View style={styles.topRow}>
             <CircleButton icon="chevron-back" accessibilityLabel={backLabel} onPress={onBack} />
             {stepLabel ? (
@@ -96,33 +143,15 @@ export function AuthScreen({
         <View style={styles.main}>
           {art ? <View style={styles.art}>{art}</View> : null}
 
-          <View style={[styles.header, centerHeader && styles.headerCentered]}>
-            {badge ? (
-              <View style={styles.badge}>
-                <AppText variant="ui.badge" style={styles.badgeText}>
-                  {badge.toUpperCase()}
-                </AppText>
-              </View>
-            ) : null}
-            {eyebrow ? (
-              <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
-                {eyebrow.toUpperCase()}
-              </AppText>
-            ) : null}
-            <AppText
-              variant={headingVariant}
-              tone="primary"
-              accessibilityRole="header"
-              style={centerHeader ? styles.textCentered : null}
-            >
-              {heading}
-            </AppText>
-            {subhead ? (
-              <AppText variant={subheadVariant} tone="secondary" style={centerHeader ? styles.textCentered : null}>
-                {subhead}
-              </AppText>
-            ) : null}
-          </View>
+          {inlineBack ? (
+            subheadText
+          ) : (
+            <View style={[styles.header, centerHeader && styles.headerCentered]}>
+              {kicker}
+              {headingText}
+              {subheadText}
+            </View>
+          )}
 
           {children ? <View style={styles.body}>{children}</View> : null}
         </View>
@@ -152,6 +181,16 @@ const useStyles = createThemedStyles((colors) => ({
   },
   topSpacer: {
     width: 44,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  inlineTitles: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs + 2,
   },
   wordmark: {
     width: 150,
