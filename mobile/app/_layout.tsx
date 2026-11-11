@@ -1,14 +1,15 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider, useAuthGuard } from '../lib/auth/AuthContext';
+import { AuthProvider, useAuth, useAuthGuard } from '../lib/auth/AuthContext';
 import { DETAIL_TRANSITION_DURATION } from '../lib/navigation/detailTransition';
 import { QueryProvider } from '../lib/query/QueryProvider';
 import { ThemeProvider, useTheme } from '../theme/ThemeContext';
 import { useAppFonts } from '../theme/fonts';
 import { AnimatedSplash } from '../components/splash/AnimatedSplash';
+import { NowPlayingProvider, useNowPlaying } from '../lib/playback/NowPlaying';
 
 // The native splash stays up until the animated one has painted over it (see `Launch`).
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -196,6 +197,19 @@ function RootNavigator() {
 }
 
 /**
+ * Signing out ends whatever was playing in the shared player: it was the signed-out
+ * account's sermon, and its progress could no longer be saved.
+ */
+function StopPlaybackOnSignOut() {
+  const { status } = useAuth();
+  const stop = useNowPlaying()?.stop;
+  useEffect(() => {
+    if (status === 'signedOut') stop?.();
+  }, [status, stop]);
+  return null;
+}
+
+/**
  * App launch (Daybreak redesign): the native splash hands over to `AnimatedSplash`, which
  * plays for about two seconds and stays until the fonts have loaded. The navigator mounts
  * underneath as soon as the fonts are in (or failed, in which case the OS face is used),
@@ -224,7 +238,11 @@ export default function RootLayout() {
       <QueryProvider>
         <AuthProvider>
           <ThemeProvider>
-            <Launch />
+            {/* One app-wide player, so a sermon keeps playing in the mini player. */}
+            <NowPlayingProvider>
+              <StopPlaybackOnSignOut />
+              <Launch />
+            </NowPlayingProvider>
           </ThemeProvider>
         </AuthProvider>
       </QueryProvider>

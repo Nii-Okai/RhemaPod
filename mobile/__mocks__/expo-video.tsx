@@ -79,6 +79,7 @@ export class MockVideoPlayer extends MockEventEmitter {
 
   replace = jest.fn();
   replay = jest.fn();
+  release = jest.fn();
   generateThumbnailsAsync = jest.fn();
 
   /** Test helper, not part of the real API: simulates the native side finishing a load. */
@@ -120,6 +121,13 @@ export function useVideoPlayer(source: unknown, setup?: (player: MockVideoPlayer
     setup?.(playerRef.current);
   }
   return playerRef.current;
+}
+
+/** `createVideoPlayer` (the shared app-wide player, `lib/playback/NowPlaying.tsx`). */
+export function createVideoPlayer(): MockVideoPlayer {
+  const player = new MockVideoPlayer();
+  __lastMockPlayer = player;
+  return player;
 }
 
 export interface MockVideoViewProps extends ViewProps {
