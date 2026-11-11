@@ -110,10 +110,9 @@ beforeEach(() => {
 });
 
 describe('SignatureNotificationsScreen', () => {
-  it.each(['dark', 'light'] as const)('features the newest release, then New and Earlier (%s)', async (theme) => {
+  it.each(['dark', 'light'] as const)('lists the newest release first under New, then Earlier (%s)', async (theme) => {
     const screen = renderScreen(releases, theme);
-    expect(await screen.findByLabelText('Sunday Service, Ministry · 1:48:00, unread')).toBeTruthy();
-    expect(screen.getByText('Just released · 2h ago')).toBeTruthy();
+    expect(await screen.findByLabelText('Sunday Service, unread')).toBeTruthy();
     expect(screen.getByText('3 NEW')).toBeTruthy();
     expect(screen.getByText('NEW')).toBeTruthy();
     expect(screen.getByText('EARLIER')).toBeTruthy();
@@ -135,7 +134,7 @@ describe('SignatureNotificationsScreen', () => {
   it('marks everything read at once', async () => {
     const screen = renderScreen();
     fireEvent.press(await screen.findByText('Mark all read'));
-    expect(await screen.findByLabelText('Sunday Service, Ministry · 1:48:00')).toBeTruthy();
+    expect(await screen.findByLabelText('Sunday Service')).toBeTruthy();
     expect(screen.queryByText(/^\d+ NEW$/)).toBeNull();
     expect(screen.queryByLabelText(/, unread$/)).toBeNull();
     await waitFor(() =>
@@ -146,9 +145,9 @@ describe('SignatureNotificationsScreen', () => {
     );
   });
 
-  it('leaves out an empty section and says when an old release is only the latest', async () => {
+  it('leaves out an empty section, filing an old latest release under Earlier', async () => {
     const screen = renderScreen([sermon('s3', 'Steps to Glory', ago(20 * 24 * HOUR)), releases[2]]);
-    expect(await screen.findByText(/^Latest release · /)).toBeTruthy();
+    expect(await screen.findByText('EARLIER')).toBeTruthy();
     expect(screen.queryByText('NEW')).toBeNull();
   });
 

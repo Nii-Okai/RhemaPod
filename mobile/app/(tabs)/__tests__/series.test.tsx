@@ -88,14 +88,37 @@ describe('SeriesScreen — empty', () => {
 
 describe('SeriesScreen — error', () => {
   it('shows an error state with a working retry', async () => {
-    mockedGet.mockRejectedValueOnce(new Error('network down'));
-    mockedGet.mockResolvedValueOnce(seriesList);
+    let seriesCalls = 0;
+    mockedGet.mockImplementation((path: string) => {
+      if (path !== '/series') return Promise.resolve([]);
+      seriesCalls += 1;
+      return seriesCalls === 1 ? Promise.reject(new Error('network down')) : Promise.resolve(seriesList);
+    });
 
     const { findByText, getByText } = renderScreen();
     await findByText('Something went wrong. Try again.');
 
     fireEvent.press(getByText('Retry'));
-    await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(seriesCalls).toBe(2));
+  });
+});
+
+describe('SeriesScreen — in progress (Daybreak B7)', () => {
+  it('marks a series you have started and filters to it', async () => {
+    mockedGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/series'
+          ? seriesList
+          : [{ id: 'e2', series_id: 's1', episode_number: 2, title: 'Ep 2', last_played_at: '2026-11-10T00:00:00Z' }],
+      ),
+    );
+    const { findByText, getByText, queryByText } = renderScreen();
+
+    await findByText('IN PROGRESS');
+    expect(getByText('2 of 3')).toBeTruthy();
+    fireEvent.press(getByText('In progress · 1'));
+    expect(getByText('Anchored')).toBeTruthy();
+    expect(queryByText('Room at the Table')).toBeNull();
   });
 });
 

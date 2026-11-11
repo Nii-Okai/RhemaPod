@@ -28,8 +28,6 @@ const ALLOWED = new Set([
   'app/(tabs)/_home/signature/CountdownCard.tsx',
   'app/(tabs)/_home/signature/SignatureHeroCard.tsx',
   'app/(tabs)/_home/signature/shelfCards.tsx',
-  // Signature Notifications: the latest-release card is the same dark frame as the hero.
-  'app/_notifications/SignatureNotifications.tsx',
   // Signature Browse: the Prophet's Catalog card's text sits on a photo.
   'app/(tabs)/_browse/signature/CatalogCollectionCard.tsx',
   // Signature Library: download badges and the preview chip are drawn on the art.
