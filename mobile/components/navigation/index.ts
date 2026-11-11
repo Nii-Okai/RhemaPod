@@ -3,5 +3,6 @@ export * from './useDeviceClass';
 export * from './platform';
 export * from './IconNavItem';
 export * from './FloatingDock';
+export * from './MiniPlayer';
 export * from './TabletRail';
 export * from './NavShell';

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { usePlatformOS } from './platform';
 import { FloatingDock } from './FloatingDock';
+import { MiniPlayer } from './MiniPlayer';
 import { TabletRail } from './TabletRail';
 import { resolveChromeVariant, useDeviceClass } from './useDeviceClass';
 
@@ -27,7 +28,10 @@ export function NavShell({ children }: NavShellProps) {
     return (
       <View style={styles.railLayout}>
         <TabletRail />
-        <View style={styles.content}>{children}</View>
+        <View style={styles.content}>
+          <View style={styles.content}>{children}</View>
+          <MiniPlayer />
+        </View>
       </View>
     );
   }
@@ -35,7 +39,9 @@ export function NavShell({ children }: NavShellProps) {
   return (
     <View style={styles.stackedLayout}>
       <View style={styles.content}>{children}</View>
-      {/* Daybreak redesign: one floating dock on both phone platforms. */}
+      {/* Daybreak redesign: one floating dock on both phone platforms, with the mini
+          player above it while a sermon plays on. */}
+      <MiniPlayer />
       <FloatingDock />
     </View>
   );

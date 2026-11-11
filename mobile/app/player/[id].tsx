@@ -3,7 +3,8 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
-import { useVideoPlayer, type VideoView } from 'expo-video';
+import type { VideoView } from 'expo-video';
+import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
 import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles } from '../../theme/ThemeContext';
@@ -37,6 +38,7 @@ import {
 import { SignaturePlayerHeader } from './_signature/SignaturePlayerHeader';
 import { NowPlayingDetails } from './_signature/NowPlayingDetails';
 import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
+import { ListenPanel, ModeSwitch, type PlayerMode } from './_signature/ListenPanel';
 import { useKeyboardVisible } from './_signature/useKeyboardVisible';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
 
@@ -456,14 +458,17 @@ function PlayerContent({
   queueContext,
   onExit,
 }: PlayerContentProps) {
-  const player = useVideoPlayer(
+  const nowPlaying = useNowPlaying();
+  // The app-wide player (`lib/playback/NowPlaying.tsx`), so the sermon keeps playing in
+  // the mini player once this screen closes. `continued` is true when it already was.
+  const { player, continued } = useSharedPlayer(
     {
+      sermonId,
       uri: variant.url,
-      metadata: {
-        title: detail.title,
-        artist: detail.speaker_name ?? undefined,
-        artwork: detail.thumbnail_url ?? undefined,
-      },
+      title: detail.title,
+      artist: detail.speaker_name ?? null,
+      artworkUrl: detail.thumbnail_url ?? null,
+      mediaType: variant.type === 'video' ? 'video' : 'audio',
     },
     (p) => {
       // Background audio + lock-screen/Control-Center remote controls (both platforms) —
@@ -491,7 +496,12 @@ function PlayerContent({
     bufferedPosition: player.bufferedPosition,
   });
 
-  const progressFlush = useProgressFlush(sermonId, initialPositionSeconds);
+  const progressFlush = useProgressFlush(sermonId, continued ? player.currentTime : initialPositionSeconds);
+  useEffect(() => {
+    // Back from the mini player mid-sermon: no `playingChange` will arrive to start the
+    // periodic flush, so start it here.
+    if (continued && player.playing) progressFlush.reportPlaying(true);
+  }, []);
 
   useEventListener(player, 'timeUpdate', ({ currentTime: t }) => progressFlush.reportPosition(t));
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => progressFlush.reportPlaying(playing));
@@ -517,7 +527,7 @@ function PlayerContent({
   // player reports it has enough data to play — not on every later `readyToPlay` a
   // mid-session rebuffer might also report, which would otherwise jump playback back to
   // the original resume point.
-  const hasStartedRef = useRef(false);
+  const hasStartedRef = useRef(continued);
   useEffect(() => {
     if (status === 'readyToPlay' && !hasStartedRef.current) {
       hasStartedRef.current = true;
@@ -529,7 +539,7 @@ function PlayerContent({
     // exhaustive-deps` rule is installed in this project to suppress here.)
   }, [status]);
 
-  const [speed, setSpeed] = useState<PlaybackSpeed>(defaultSpeed);
+  const [speed, setSpeed] = useState<PlaybackSpeed>(continued ? (player.playbackRate as PlaybackSpeed) : defaultSpeed);
   useEffect(() => {
     player.playbackRate = speed;
     // Deliberately `[speed]` only — `player` is stable for this component's lifetime.
@@ -571,7 +581,9 @@ function PlayerContent({
     onChangeCaptionPreference(next).catch(() => {});
   };
 
-  const sleepTimer = useSleepTimer({ onExpire: () => player.pause() });
+  // The shared timer when there is one, so it outlives this screen (see `NowPlaying`).
+  const ownSleepTimer = useSleepTimer({ onExpire: () => player.pause() });
+  const sleepTimer = nowPlaying?.sleepTimer ?? ownSleepTimer;
   const [sleepSheetOpen, setSleepSheetOpen] = useState(false);
 
   const videoRef = useRef<VideoView>(null);
@@ -658,6 +670,34 @@ function PlayerContent({
     />
   );
 
+  // Watch / Listen (Daybreak canvas C3/C4): the same player either way.
+  const [mode, setMode] = useState<PlayerMode>('watch');
+  const listen = (
+    <ListenPanel
+      artworkUrl={detail.thumbnail_url ?? null}
+      isPlaying={isPlaying}
+      isBuffering={status === 'loading'}
+      isEnded={isEnded}
+      currentTimeSeconds={currentTime}
+      durationSeconds={duration}
+      playbackSpeed={speed}
+      sleepRemainingSeconds={sleepTimer.remainingSeconds}
+      onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+      onReplay={() => {
+        player.replay();
+        player.play();
+      }}
+      onSeekBy={(seconds) => player.seekBy(seconds)}
+      onSeekTo={(seconds) => {
+        player.currentTime = seconds;
+      }}
+      onScrubStart={() => setIsScrubbing(true)}
+      onScrubEnd={() => setIsScrubbing(false)}
+      onCycleSpeed={cycleSpeed}
+      onOpenSleepTimer={() => setSleepSheetOpen(true)}
+    />
+  );
+
   return (
     <SignatureLayout
       sermonId={sermonId}
@@ -665,6 +705,9 @@ function PlayerContent({
       queueContext={queueContext}
       isPlaying={isPlaying}
       video={video}
+      listen={listen}
+      mode={mode}
+      onModeChange={setMode}
       sleepSheet={sleepSheet}
     />
   );
@@ -676,6 +719,9 @@ interface SignatureLayoutProps {
   queueContext: QueueListProps | null;
   isPlaying: boolean;
   video: React.ReactNode;
+  listen: React.ReactNode;
+  mode: PlayerMode;
+  onModeChange: (mode: PlayerMode) => void;
   sleepSheet: React.ReactNode;
 }
 
@@ -693,6 +739,9 @@ function SignatureLayout({
   queueContext,
   isPlaying,
   video,
+  listen,
+  mode,
+  onModeChange,
   sleepSheet,
 }: SignatureLayoutProps) {
   const styles = useStyles();
@@ -703,7 +752,8 @@ function SignatureLayout({
 
   return (
     <>
-      {video}
+      {keyboardVisible ? null : <ModeSwitch mode={mode} onChange={onModeChange} />}
+      {mode === 'listen' ? (keyboardVisible ? null : listen) : video}
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>

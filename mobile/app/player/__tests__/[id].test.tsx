@@ -389,6 +389,32 @@ describe('PlayerScreen — speed control', () => {
   });
 });
 
+describe('PlayerScreen — Watch / Listen', () => {
+  it('switches to Listen: the video goes, the big transport drives the same player', async () => {
+    mockReads();
+    const { findByTestId, getByRole, getByTestId, queryByTestId, getAllByLabelText } = renderPlayer();
+    await findByTestId('video-view');
+    const player = __lastMockPlayer!;
+    await act(async () => {
+      player.__simulateReady(1862);
+    });
+    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+
+    fireEvent.press(getByRole('tab', { name: 'Listen' }));
+    expect(getByTestId('listen-panel')).toBeTruthy();
+    expect(queryByTestId('video-view')).toBeNull();
+
+    const [pause] = getAllByLabelText('Pause');
+    fireEvent.press(pause);
+    expect(player.pause).toHaveBeenCalled();
+    fireEvent.press(getAllByLabelText('Skip forward 10 seconds')[0]);
+    expect(player.seekBy).toHaveBeenCalledWith(10);
+
+    fireEvent.press(getByRole('tab', { name: 'Watch' }));
+    expect(getByTestId('video-view')).toBeTruthy();
+  });
+});
+
 describe('PlayerScreen — subtitles', () => {
   it('hides the CC control until the video has subtitle tracks', async () => {
     mockReads();
