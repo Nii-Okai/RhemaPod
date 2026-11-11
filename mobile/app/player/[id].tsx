@@ -545,6 +545,11 @@ function PlayerContent({
     // Deliberately `[speed]` only — `player` is stable for this component's lifetime.
   }, [speed]);
 
+  const chooseSpeed = (next: PlaybackSpeed) => {
+    setSpeed(next);
+    onChangeDefaultSpeed(next).catch(() => {});
+  };
+
   const cycleSpeed = () => {
     const next = nextPlaybackSpeed(speed);
     setSpeed(next);
@@ -621,7 +626,10 @@ function PlayerContent({
     <SleepTimerSheet
       visible={sleepSheetOpen}
       hasActiveTimer={sleepTimer.remainingSeconds !== null}
+      remainingSeconds={sleepTimer.remainingSeconds}
       onSelect={(minutes) => sleepTimer.setMinutes(minutes)}
+      speed={speed}
+      onSpeed={chooseSpeed}
       onClose={() => setSleepSheetOpen(false)}
     />
   );
