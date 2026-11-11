@@ -4973,6 +4973,8 @@ export interface components {
         };
         /** PlaylistCreate */
         PlaylistCreate: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
             /** Description */
             description?: string | null;
             /**
@@ -4992,6 +4994,8 @@ export interface components {
          *     reappears if the sermon is republished.
          */
         PlaylistDetail: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
             /** Cover Url */
             cover_url: string | null;
             /**
@@ -5058,6 +5062,8 @@ export interface components {
         };
         /** PlaylistPublic */
         PlaylistPublic: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
             /** Cover Url */
             cover_url: string | null;
             /**
@@ -5091,6 +5097,8 @@ export interface components {
          *     same convention `SeriesUpdate`/`ProfileDetailsUpdate` already use.
          */
         PlaylistUpdate: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
             /** Description */
             description?: string | null;
             /** Is Public */

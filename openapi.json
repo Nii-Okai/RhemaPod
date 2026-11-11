@@ -5010,6 +5010,25 @@
       "PlaylistCreate": {
         "additionalProperties": false,
         "properties": {
+          "cover_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "navy",
+                  "teal",
+                  "gold",
+                  "berry",
+                  "sage",
+                  "ink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Color"
+          },
           "description": {
             "anyOf": [
               {
@@ -5043,6 +5062,25 @@
       "PlaylistDetail": {
         "description": "Items are pre-filtered to what's currently visible to the viewer \u2014\na sermon unpublished after being added just quietly drops out of the\nlist (same \"invisible content never renders\" rule every other catalog\nread follows), without deleting the underlying `PlaylistItem` row, so it\nreappears if the sermon is republished.",
         "properties": {
+          "cover_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "navy",
+                  "teal",
+                  "gold",
+                  "berry",
+                  "sage",
+                  "ink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Color"
+          },
           "cover_url": {
             "anyOf": [
               {
@@ -5208,6 +5246,25 @@
       },
       "PlaylistPublic": {
         "properties": {
+          "cover_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "navy",
+                  "teal",
+                  "gold",
+                  "berry",
+                  "sage",
+                  "ink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Color"
+          },
           "cover_url": {
             "anyOf": [
               {
@@ -5299,6 +5356,25 @@
         "additionalProperties": false,
         "description": "Every field optional \u2014 a PATCH only touches what the client sends,\nsame convention `SeriesUpdate`/`ProfileDetailsUpdate` already use.",
         "properties": {
+          "cover_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "navy",
+                  "teal",
+                  "gold",
+                  "berry",
+                  "sage",
+                  "ink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Color"
+          },
           "description": {
             "anyOf": [
               {

@@ -55,6 +55,10 @@ const PAIRS: Pair[] = [
   ['iris ink on its wash', (c) => c.iris.ink, (c) => c.iris.soft, TEXT],
   ['text.primary on the iris wash', (c) => c.text.primary, (c) => c.iris.soft, TEXT],
   ['sun button text on sun', (c) => c.sunButton.text, (c) => c.sunButton.bg, TEXT],
+  ...(['navy', 'teal', 'gold', 'berry', 'sage', 'ink'] as const).map(
+    (name) =>
+      [`playlist cover ${name}: initial on fill`, (c: ColorTokens) => c.playlistCover[name].ink, (c: ColorTokens) => c.playlistCover[name].bg, TEXT] as Pair,
+  ),
 ];
 
 describe.each([

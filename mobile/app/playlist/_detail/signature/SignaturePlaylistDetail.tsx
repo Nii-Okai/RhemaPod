@@ -169,10 +169,10 @@ export function SignaturePlaylistDetailScreen() {
                 playlistId={playlist.id}
                 coverUrl={playlist.cover_url}
                 size={COVER}
-                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />}
+                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={COVER} shape={COVER_SHAPE} />}
               />
             ) : (
-              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />
+              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={COVER} shape={COVER_SHAPE} />
             )}
           </View>
           <View style={styles.info}>

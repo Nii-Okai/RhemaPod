@@ -64,7 +64,7 @@ describe('CreatePlaylistScreen', () => {
 
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith('/playlists', {
-        body: { name: 'Road Trip', description: null, is_public: false },
+        body: { name: 'Road Trip', description: null, is_public: false, cover_color: 'navy' },
       }),
     );
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/playlist/[id]', params: { id: 'new-playlist' } });
@@ -81,7 +81,24 @@ describe('CreatePlaylistScreen', () => {
 
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith('/playlists', {
-        body: { name: 'My Playlist #1', description: null, is_public: true },
+        body: { name: 'My Playlist #1', description: null, is_public: true, cover_color: 'navy' },
+      }),
+    );
+  });
+
+  it('sends the cover colour picked from the swatches', async () => {
+    mockedGet.mockResolvedValue([]);
+    mockedPost.mockResolvedValue({ id: 'new-playlist', name: 'Road Trip' });
+    const { findByDisplayValue, getByText, getByLabelText } = renderScreen();
+
+    await findByDisplayValue('My Playlist #1');
+    fireEvent.press(getByLabelText('berry cover'));
+    expect(getByLabelText('berry cover').props.accessibilityState).toEqual({ checked: true });
+    fireEvent.press(getByText('Create'));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith('/playlists', {
+        body: { name: 'My Playlist #1', description: null, is_public: false, cover_color: 'berry' },
       }),
     );
   });

@@ -177,6 +177,19 @@ export const verse = {
   icon: accent.goldText,
 } as const;
 
+/**
+ * Cover colours a playlist without a photo can pick (Daybreak canvas E3). The same in
+ * both themes, like any cover art: `bg` fills the square, `ink` is its initial.
+ */
+export const playlistCover = {
+  navy: { bg: '#1F3A66', ink: '#F4EBDA' },
+  teal: { bg: '#0F4A48', ink: '#F4EBDA' },
+  gold: { bg: '#D9A947', ink: '#1A1406' },
+  berry: { bg: '#7E2440', ink: '#F4EBDA' },
+  sage: { bg: '#2E6B55', ink: '#F4EBDA' },
+  ink: { bg: '#131926', ink: '#E0B45C' },
+} as const;
+
 /** The bright gold "sun" pill used for the one main action on a navy card. */
 export const sunButton = {
   bg: '#D9A947',
@@ -214,6 +227,7 @@ export const darkColors = {
   verse,
   sunButton,
   iris,
+  playlistCover,
 } as const;
 
 /** Same shape as the dark palette, with every leaf widened to `string`. */
@@ -288,6 +302,7 @@ export const lightColors: ColorTokens = {
   verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
   sunButton,
   iris: { fill: '#1F4276', soft: '#E3EAF4', ink: '#18355F' },
+  playlistCover,
 };
 
 export type ColorScheme = 'light' | 'dark';

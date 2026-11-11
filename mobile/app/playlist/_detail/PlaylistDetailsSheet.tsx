@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { PLAYLIST_COVER_COLORS } from '../../(tabs)/_library/signature/PlaylistCover';
 import { AppText, ConfirmDialog, PlatformIcon, PrimaryButton, Sheet } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
@@ -112,6 +113,32 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
           style={styles.descriptionInput}
           accessibilityLabel="Playlist description"
         />
+        {/* The cover colour (canvas E3), for a playlist with no photo; saved on tap. */}
+        {playlist.cover_url ? null : (
+          <View style={styles.swatches} accessibilityRole="radiogroup" accessibilityLabel="Cover colour">
+            {PLAYLIST_COVER_COLORS.map((option) => {
+              const on = option === playlist.cover_color;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() =>
+                    update.mutate(
+                      { coverColor: on ? null : option },
+                      { onError: () => setError("Couldn't change the colour. Try again.") },
+                    )
+                  }
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={`${option} cover`}
+                  hitSlop={4}
+                  style={[styles.swatchRing, on && styles.swatchRingOn]}
+                >
+                  <View style={[styles.swatch, { backgroundColor: colors.playlistCover[option].bg }]} />
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         {error ? (
           <AppText variant="ui.badge" style={styles.error} accessibilityLiveRegion="polite">
             {error}
@@ -162,6 +189,27 @@ export function PlaylistDetailsSheet({ visible, onClose, playlist, onDeleted }: 
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  swatches: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  swatchRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchRingOn: {
+    borderColor: colors.text.primary,
+  },
+  swatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
   heading: {
     textTransform: 'uppercase',
   },
