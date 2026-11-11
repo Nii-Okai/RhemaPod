@@ -630,6 +630,9 @@ function PlayerContent({
       onSelect={(minutes) => sleepTimer.setMinutes(minutes)}
       speed={speed}
       onSpeed={chooseSpeed}
+      // Counts down the rest of the sermon at the current speed (less two seconds, so it
+      // lands before the end), then pauses: in a playlist that stops it moving on.
+      minutesToEnd={duration ? Math.max(0, duration - currentTime - 2) / speed / 60 : null}
       onClose={() => setSleepSheetOpen(false)}
     />
   );

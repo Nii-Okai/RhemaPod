@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, PrimaryButton } from '../../components';
+import { AppText, PlatformIcon, PrimaryButton, Toggle } from '../../components';
 import { PlaylistCover } from '../(tabs)/_library/signature/PlaylistCover';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -41,6 +41,8 @@ export default function CreatePlaylistScreen() {
   // typing never gets overwritten by a suggestion arriving late.
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // New playlists start private, as the server already defaults them (canvas E3).
+  const [isPrivate, setIsPrivate] = useState(true);
 
   useEffect(() => {
     if (!touched) setName(suggested);
@@ -54,7 +56,7 @@ export default function CreatePlaylistScreen() {
     }
     setError(null);
     createPlaylist.mutate(
-      { name: trimmed },
+      { name: trimmed, isPublic: !isPrivate },
       {
         onSuccess: (playlist) => {
           router.replace({ pathname: '/playlist/[id]', params: { id: playlist.id } });
@@ -114,6 +116,16 @@ export default function CreatePlaylistScreen() {
             </AppText>
           ) : null}
         </View>
+        <View style={styles.privacyRow}>
+          <PlatformIcon name="lock-closed-outline" size={20} color={colors.text.secondary} />
+          <View style={styles.privacyText}>
+            <AppText variant="ui.bodyBold">Private</AppText>
+            <AppText variant="ui.badge" tone="tertiary">
+              {isPrivate ? 'Only you can see it until you share' : 'Anyone with the link can see it'}
+            </AppText>
+          </View>
+          <Toggle value={isPrivate} onValueChange={setIsPrivate} accessibilityLabel="Private" />
+        </View>
       </View>
 
       <PrimaryButton label="Create" onPress={create} loading={createPlaylist.isPending} fullWidth />
@@ -125,6 +137,20 @@ const COVER = 200;
 const COVER_SHAPE = { borderRadius: 32, overflow: 'hidden' as const };
 
 const useStyles = createThemedStyles((colors) => ({
+  privacyRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 18,
+    backgroundColor: colors.surface.sunken,
+  },
+  privacyText: {
+    flex: 1,
+    gap: 2,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,

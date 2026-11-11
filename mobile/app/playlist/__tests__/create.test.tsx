@@ -70,6 +70,22 @@ describe('CreatePlaylistScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/playlist/[id]', params: { id: 'new-playlist' } });
   });
 
+  it('creates a public playlist when Private is switched off', async () => {
+    mockedGet.mockResolvedValue([]);
+    mockedPost.mockResolvedValue({ id: 'new-playlist', name: 'Road Trip' });
+    const { findByDisplayValue, getByText, getByLabelText } = renderScreen();
+
+    await findByDisplayValue('My Playlist #1');
+    fireEvent.press(getByLabelText('Private'));
+    fireEvent.press(getByText('Create'));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith('/playlists', {
+        body: { name: 'My Playlist #1', description: null, is_public: true },
+      }),
+    );
+  });
+
   it('closing the modal navigates back without creating anything', async () => {
     mockedGet.mockResolvedValue([]);
     const { findByLabelText } = renderScreen();

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
-import { AppText, Avatar, PrimaryButton, Sheet } from '../../../components';
+import { AppText, Avatar, LinkButton, PrimaryButton, Sheet } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
-import { useUpdateProfileDetails, type Gender, type UserPublic } from '../../../lib/query/hooks/useProfile';
+import * as ImagePicker from 'expo-image-picker';
+import { useUpdateAvatar, useUpdateProfileDetails, type Gender, type UserPublic } from '../../../lib/query/hooks/useProfile';
+import { contentTypeFor, guessExtension } from './ProfileAvatarPicker';
 import { nameErrorMessage } from '../../player/_comments/commentErrors';
 
 const MAX_NAME_LENGTH = 50;
@@ -20,8 +22,7 @@ export interface ProfileDetailsSheetProps {
   initialGender: Gender | null;
   onClose: () => void;
   onSaved: (user: UserPublic) => void;
-  /** Shown at the top of the sheet (canvas F2). The photo itself is changed from the
-   * profile card on the You page, so this one is display-only. */
+  /** Shown at the top of the sheet (canvas F2), with "Change photo" under it. */
   avatarName?: string;
   avatarSeed?: string;
   avatarUrl?: string | null;
@@ -54,6 +55,43 @@ export function ProfileDetailsSheet({
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState<'first' | 'last' | null>(null);
   const update = useUpdateProfileDetails();
+  const updateAvatar = useUpdateAvatar();
+  // The photo just picked, shown straight away while it uploads.
+  const [pickedPhoto, setPickedPhoto] = useState<string | null>(null);
+
+  // "Change photo" goes straight to the photo library: a second sheet can't open over
+  // this one. The camera stays on the You page's own photo button.
+  const changePhoto = async () => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo access is off. Enable it in Settings to choose a photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0]!;
+    const extension = guessExtension(asset.uri);
+    setPickedPhoto(asset.uri);
+    updateAvatar.mutate(
+      {
+        uri: asset.uri,
+        contentType: asset.mimeType ?? contentTypeFor(extension),
+        filename: asset.fileName ?? `avatar.${extension}`,
+      },
+      {
+        onError: () => {
+          setPickedPhoto(null);
+          setError("Couldn't update your photo. Try again.");
+        },
+      },
+    );
+  };
 
   useEffect(() => {
     if (visible) {
@@ -61,6 +99,7 @@ export function ProfileDetailsSheet({
       setLastName(initialLastName);
       setGender(initialGender);
       setError(null);
+      setPickedPhoto(null);
     }
   }, [visible, initialFirstName, initialLastName, initialGender]);
 
@@ -101,8 +140,13 @@ export function ProfileDetailsSheet({
         <Avatar
           name={avatarName || `${firstName} ${lastName}`}
           seed={avatarSeed}
-          imageUri={avatarUrl}
+          imageUri={pickedPhoto ?? avatarUrl}
           size={96}
+        />
+        <LinkButton
+          label={updateAvatar.isPending ? 'Uploading…' : 'Change photo'}
+          disabled={updateAvatar.isPending}
+          onPress={() => void changePhoto()}
         />
       </View>
 
@@ -207,6 +251,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   avatar: {
     alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
   nameRow: {

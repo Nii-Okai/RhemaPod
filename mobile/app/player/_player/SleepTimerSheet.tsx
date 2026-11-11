@@ -18,6 +18,8 @@ export interface SleepTimerSheetProps {
   /** With both of these the sheet also offers the playback speed (canvas C6). */
   speed?: PlaybackSpeed;
   onSpeed?: (speed: PlaybackSpeed) => void;
+  /** Minutes until this sermon ends at the current speed; offers "End of this sermon". */
+  minutesToEnd?: number | null;
   onClose: () => void;
 }
 
@@ -33,6 +35,7 @@ export function SleepTimerSheet({
   onSelect,
   speed,
   onSpeed,
+  minutesToEnd = null,
   onClose,
 }: SleepTimerSheetProps) {
   const styles = useStyles();
@@ -71,6 +74,16 @@ export function SleepTimerSheet({
             </Pressable>
           ))}
         </View>
+        {minutesToEnd !== null && minutesToEnd > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="End of this sermon"
+            onPress={() => choose(minutesToEnd)}
+            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+          >
+            <AppText variant="ui.bodyBold">End of this sermon</AppText>
+          </Pressable>
+        ) : null}
         {hasActiveTimer ? (
           <Pressable
             accessibilityRole="button"

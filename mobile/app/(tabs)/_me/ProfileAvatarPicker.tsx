@@ -17,12 +17,12 @@ export interface ProfileAvatarPickerProps {
   ringColor?: string;
 }
 
-function guessExtension(uri: string): string {
+export function guessExtension(uri: string): string {
   const match = /\.([a-zA-Z0-9]+)(?:\?.*)?$/.exec(uri);
   return match ? match[1]!.toLowerCase() : 'jpg';
 }
 
-function contentTypeFor(extension: string): string {
+export function contentTypeFor(extension: string): string {
   if (extension === 'png') return 'image/png';
   if (extension === 'webp') return 'image/webp';
   return 'image/jpeg';
