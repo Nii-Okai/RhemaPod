@@ -88,7 +88,13 @@ export default function RegisterScreen() {
     try {
       const result = await performAppleSignIn();
       if (result === null) return; // user tapped Apple's own Cancel — silent no-op
-      await signInWithApple(result.identityToken, result.rawNonce, result.authorizationCode, result.givenName, result.familyName);
+      await signInWithApple(
+        result.identityToken,
+        result.rawNonce,
+        result.authorizationCode,
+        result.givenName,
+        result.familyName,
+      );
     } catch (err) {
       setSocialError(socialAuthErrorCopy(err, 'apple'));
     } finally {
@@ -101,24 +107,19 @@ export default function RegisterScreen() {
       badge="Free, always"
       heading="Start listening"
       subhead="Save your place across devices, keep playlists and download for offline."
+      subheadVariant="ui.body"
+      centerHeader
       onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'))}
       footer={
         <>
-          <PrimaryButton
-            label={submitting ? 'Creating account…' : 'Create account'}
-            onPress={onSubmit}
-            loading={submitting}
-            disabled={socialSubmitting !== null}
-            fullWidth
-          />
-        <View style={styles.footerRow}>
-          <AppText variant="ui.body" tone="secondary">
-            Already have an account?
-          </AppText>
-          <Link href="/(auth)/sign-in" asChild>
-            <LinkButton label="Sign in" />
-          </Link>
-        </View>
+          <View style={styles.footerRow}>
+            <AppText variant="ui.body" tone="secondary">
+              Already have an account?
+            </AppText>
+            <Link href="/(auth)/sign-in" asChild>
+              <LinkButton label="Sign in" />
+            </Link>
+          </View>
         </>
       }
     >
@@ -186,6 +187,13 @@ export default function RegisterScreen() {
         </InlineAlert>
       ) : null}
 
+      <PrimaryButton
+        label={submitting ? 'Creating account…' : 'Create account'}
+        onPress={onSubmit}
+        loading={submitting}
+        disabled={socialSubmitting !== null}
+        fullWidth
+      />
     </AuthScreen>
   );
 }
