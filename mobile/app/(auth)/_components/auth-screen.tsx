@@ -22,7 +22,8 @@ import { LEAF } from '../../(tabs)/_home/signature/leaf';
  *    account?" switch line), so the card holds only the task at hand.
  *
  * Anchored near the top rather than vertically centred (Isaac, 2026-10-16: a short form
- * read as floating low when centred).
+ * read as floating low when centred). Sign in opts into `centerVertically` (Isaac,
+ * 2026-11-12: "center the sign in page").
  */
 export function AuthScreen({
   eyebrow,
@@ -32,6 +33,7 @@ export function AuthScreen({
   subhead,
   subheadVariant = 'ui.bodyLarge',
   centerHeader = false,
+  centerVertically = false,
   onBack,
   backLabel = 'Back',
   stepLabel,
@@ -49,6 +51,8 @@ export function AuthScreen({
   subheadVariant?: AppTextVariant;
   /** Centres the header block (sign in, create account, the "Check your email" state). */
   centerHeader?: boolean;
+  /** Centres the whole page vertically when it is shorter than the screen (sign in). */
+  centerVertically?: boolean;
   /** Shows a round back button on the left of the brand row. */
   onBack?: () => void;
   backLabel?: string;
@@ -73,6 +77,7 @@ export function AuthScreen({
       <ScrollView
         contentContainerStyle={[
           styles.content,
+          centerVertically && styles.contentCentered,
           {
             paddingTop: Math.max(insets.top, spacing.lg) + spacing.sm,
             paddingBottom: insets.bottom + spacing.xxl,
@@ -156,6 +161,9 @@ const useStyles = createThemedStyles((colors) => ({
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
     gap: spacing.xl,
+  },
+  contentCentered: {
+    justifyContent: 'center',
   },
   brandRow: {
     flexDirection: 'row',
