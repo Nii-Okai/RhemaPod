@@ -37,11 +37,13 @@ export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
   return (
     <View style={styles.block}>
       <View style={styles.titles}>
-        <AppText variant="display.title" accessibilityRole="header">
+        {/* A step smaller, at most two lines, with the speaker on one: the block felt
+            crowded at the full title size (Nii's phone test, 2026-11-12). */}
+        <AppText variant="display.row" accessibilityRole="header" numberOfLines={2}>
           {detail.title}
         </AppText>
         {meta ? (
-          <AppText variant="ui.body" tone="secondary">
+          <AppText variant="ui.label" tone="secondary" numberOfLines={1}>
             {meta}
           </AppText>
         ) : null}
