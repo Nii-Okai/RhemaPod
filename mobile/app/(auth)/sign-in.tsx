@@ -140,9 +140,8 @@ export default function SignInScreen() {
     <AuthScreen
       heading="Welcome back"
       headingVariant="display.title"
-      subhead="Pick up right where you left off."
-      subheadVariant="ui.body"
       centerHeader
+      centerVertically
       footer={
         <>
           <View style={styles.footerRow}>
