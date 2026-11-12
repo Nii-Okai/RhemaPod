@@ -165,13 +165,13 @@ export const feature = {
   sun: '#D9A947',
   // Daily Rhema's "glass sun" (Nii, 2026-11-12, canvas D7 option A): a see-through gold
   // disc with a rim and a soft glow, over a big circle a touch lighter than `orb` so it
-  // reads through the sun.
+  // reads through the sun. The sun's colours are solid; how see-through each part is
+  // lives in `sunGlassOpacity`, because SVG gradient stops drop an rgba alpha on device
+  // (the first build rendered near-solid gold, Nii 2026-11-12: "too bright").
   orbSoft: '#1C2538',
   orbEdge: 'rgba(224, 180, 92, 0.10)',
-  sunGlassCore: 'rgba(240, 200, 120, 0.42)',
-  sunGlassEdge: 'rgba(224, 180, 92, 0.22)',
-  sunGlassRim: 'rgba(240, 200, 120, 0.55)',
-  sunGlow: 'rgba(224, 180, 92, 0.16)',
+  sunGlassLight: '#F0C878',
+  sunGlassGold: '#E0B45C',
   text: text.primary,
   muted: text.secondary,
   eyebrow: accent.goldText,
