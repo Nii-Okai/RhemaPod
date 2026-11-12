@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { AppText, PlatformIcon } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -78,7 +79,7 @@ export function DailyRhemaCard() {
   return (
     <View style={styles.card}>
       <View style={[styles.orb, styles.orbBig]} />
-      <View style={[styles.orb, styles.orbSun]} />
+      <GlassSun />
       <View style={styles.body}>
         <AppText variant="ui.badge" style={styles.eyebrow}>
           DAILY RHEMA · YOUR WORD TODAY
@@ -125,6 +126,48 @@ export function DailyRhemaCard() {
     </View>
   );
 }
+
+const SUN = 86;
+const GLOW = 40;
+
+/**
+ * The glass sun (Nii, 2026-11-12, canvas D7 option A): see-through gold, brighter at its
+ * centre, with a gold rim and a soft glow, so the big circle behind it shows through
+ * instead of a solid disc shouting over it.
+ */
+function GlassSun() {
+  const { colors } = useTheme();
+  const size = SUN + GLOW * 2;
+  const c = size / 2;
+  return (
+    <View pointerEvents="none" style={glassSunPosition} testID="daily-rhema-sun">
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id="rhemaSunGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset={String(SUN / 2 / c)} stopColor={colors.feature.sunGlow} />
+            <Stop offset="1" stopColor={colors.feature.sunGlow} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="rhemaSunCore" cx="40%" cy="38%" r="60%">
+            <Stop offset="0" stopColor={colors.feature.sunGlassCore} />
+            <Stop offset="0.72" stopColor={colors.feature.sunGlassEdge} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={c} cy={c} r={c} fill="url(#rhemaSunGlow)" />
+        <Circle
+          cx={c}
+          cy={c}
+          r={SUN / 2 - 0.75}
+          fill="url(#rhemaSunCore)"
+          stroke={colors.feature.sunGlassRim}
+          strokeWidth={1.5}
+        />
+      </Svg>
+    </View>
+  );
+}
+
+// Same spot the solid sun sat in (right 22, top 20), widened by the glow on every side.
+const glassSunPosition = { position: 'absolute' as const, right: 22 - GLOW, top: 20 - GLOW };
 
 function Vine({
   week,
@@ -175,14 +218,9 @@ const useStyles = createThemedStyles((colors) => ({
     height: 200,
     right: -50,
     top: -60,
-    backgroundColor: colors.feature.orb,
-  },
-  orbSun: {
-    width: 86,
-    height: 86,
-    right: 22,
-    top: 20,
-    backgroundColor: colors.feature.sun,
+    backgroundColor: colors.feature.orbSoft,
+    borderWidth: 1,
+    borderColor: colors.feature.orbEdge,
   },
   body: {
     gap: spacing.sm + 2,
