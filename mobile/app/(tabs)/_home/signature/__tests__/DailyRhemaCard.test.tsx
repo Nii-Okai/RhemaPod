@@ -74,6 +74,13 @@ it("shows today's devotional and opens the flow", async () => {
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/devotional/[date]', params: { date: today } });
 });
 
+it('draws the glass sun: see-through gold with a rim, not a solid disc (Nii, 2026-11-12)', async () => {
+  mockedGet.mockResolvedValue([devotional]);
+  const ui = renderCard();
+  await ui.findByText('Be still, and know');
+  expect(ui.getByTestId('daily-rhema-sun')).toBeTruthy();
+});
+
 it('picks up at the step reached', async () => {
   kv().__set(
     'rhemapod-devotional-journal',
