@@ -104,7 +104,6 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreen
-      badge="Free, always"
       heading="Start listening"
       subhead="Save your place across devices, keep playlists and download for offline."
       subheadVariant="ui.body"
