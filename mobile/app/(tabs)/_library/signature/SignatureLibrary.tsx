@@ -148,7 +148,7 @@ export function SignatureLibraryScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) }]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.lg }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={

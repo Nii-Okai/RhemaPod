@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, PrimaryButton } from '../../components';
-import { PlaylistCover } from '../(tabs)/_library/signature/PlaylistCover';
+import { AppText, PlatformIcon, PrimaryButton, Toggle } from '../../components';
+import {
+  PLAYLIST_COVER_COLORS,
+  PlaylistCover,
+  type PlaylistCoverColor,
+} from '../(tabs)/_library/signature/PlaylistCover';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { fontFamily } from '../../theme/typography';
@@ -41,6 +45,9 @@ export default function CreatePlaylistScreen() {
   // typing never gets overwritten by a suggestion arriving late.
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // New playlists start private, as the server already defaults them (canvas E3).
+  const [isPrivate, setIsPrivate] = useState(true);
+  const [coverColor, setCoverColor] = useState<PlaylistCoverColor>('navy');
 
   useEffect(() => {
     if (!touched) setName(suggested);
@@ -54,7 +61,7 @@ export default function CreatePlaylistScreen() {
     }
     setError(null);
     createPlaylist.mutate(
-      { name: trimmed },
+      { name: trimmed, isPublic: !isPrivate, coverColor },
       {
         onSuccess: (playlist) => {
           router.replace({ pathname: '/playlist/[id]', params: { id: playlist.id } });
@@ -82,10 +89,22 @@ export default function CreatePlaylistScreen() {
         <View style={styles.cancelSpacer} />
       </View>
 
-      <View style={styles.center}>
+      {/* Scrolls when the keyboard is up on a shorter phone. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.center}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {/* A preview of the cover the new playlist starts with (canvas E3). */}
         <View style={styles.coverShadow}>
-          <PlaylistCover name={name.trim() || suggested} coverUrl={null} size={COVER} shape={COVER_SHAPE} />
+          <PlaylistCover
+            name={name.trim() || suggested}
+            coverUrl={null}
+            color={coverColor}
+            size={COVER}
+            shape={COVER_SHAPE}
+          />
         </View>
         <View style={styles.nameBlock}>
           <AppText variant="ui.badge" tone="tertiary" style={styles.prompt}>
@@ -114,17 +133,90 @@ export default function CreatePlaylistScreen() {
             </AppText>
           ) : null}
         </View>
-      </View>
+        <View style={styles.colorBlock}>
+          <AppText variant="ui.badge" tone="tertiary" style={styles.prompt}>
+            COVER COLOUR
+          </AppText>
+          <View style={styles.swatches} accessibilityRole="radiogroup">
+            {PLAYLIST_COVER_COLORS.map((option) => {
+              const on = option === coverColor;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => setCoverColor(option)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={`${option} cover`}
+                  hitSlop={4}
+                  style={[styles.swatchRing, on && styles.swatchRingOn]}
+                >
+                  <View style={[styles.swatch, { backgroundColor: colors.playlistCover[option].bg }]} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={styles.privacyRow}>
+          <PlatformIcon name="lock-closed-outline" size={20} color={colors.text.secondary} />
+          <View style={styles.privacyText}>
+            <AppText variant="ui.bodyBold">Private</AppText>
+            <AppText variant="ui.badge" tone="tertiary">
+              {isPrivate ? 'Only you can see it until you share' : 'Anyone with the link can see it'}
+            </AppText>
+          </View>
+          <Toggle value={isPrivate} onValueChange={setIsPrivate} accessibilityLabel="Private" />
+        </View>
+      </ScrollView>
 
       <PrimaryButton label="Create" onPress={create} loading={createPlaylist.isPending} fullWidth />
     </View>
   );
 }
 
-const COVER = 200;
+const COVER = 168;
 const COVER_SHAPE = { borderRadius: 32, overflow: 'hidden' as const };
 
 const useStyles = createThemedStyles((colors) => ({
+  colorBlock: {
+    alignSelf: 'stretch',
+    gap: spacing.sm + 2,
+  },
+  swatches: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  // A ring in the page colour then one in ink marks the chosen swatch.
+  swatchRing: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchRingOn: {
+    borderColor: colors.text.primary,
+  },
+  swatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  privacyRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 18,
+    backgroundColor: colors.surface.sunken,
+  },
+  privacyText: {
+    flex: 1,
+    gap: 2,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
@@ -142,8 +234,11 @@ const useStyles = createThemedStyles((colors) => ({
   cancelSpacer: {
     width: 60,
   },
-  center: {
+  scroll: {
     flex: 1,
+  },
+  center: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xl + 2,

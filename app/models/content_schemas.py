@@ -930,12 +930,18 @@ class VerseAdminItem(VersePublic):
 # content type or polymorphic column, unlike the Like tables' sermon/series
 # split.
 # ═══════════════════════════════════════════════════════════════════════════════
+# The cover colours a playlist without a photo can pick (Daybreak canvas E3). Names,
+# not hex: each app draws its own shade per theme.
+PlaylistCoverColor = Literal["navy", "teal", "gold", "berry", "sage", "ink"]
+
+
 class PlaylistCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=300)
     is_public: bool = False
+    cover_color: PlaylistCoverColor | None = None
 
 
 class PlaylistUpdate(BaseModel):
@@ -947,6 +953,8 @@ class PlaylistUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=300)
     is_public: bool | None = None
+    # An explicit null clears the colour back to the default cover.
+    cover_color: PlaylistCoverColor | None = None
 
     @model_validator(mode="after")
     def _no_explicit_null_for_required_columns(self) -> "PlaylistUpdate":
@@ -970,6 +978,7 @@ class PlaylistPublic(BaseModel):
     description: str | None
     is_public: bool
     cover_url: str | None
+    cover_color: PlaylistCoverColor | None = None
     owner_name: str | None
     item_count: int
     total_duration_seconds: int

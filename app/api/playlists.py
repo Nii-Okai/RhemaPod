@@ -55,7 +55,7 @@ async def list_playlists(user: CurrentUserDep, db: DbDep) -> list[PlaylistPublic
 async def create_playlist(data: PlaylistCreate, user: CurrentUserDep, db: DbDep) -> PlaylistPublic:
     try:
         return await playlists_service.create_playlist(
-            db, await _record(db, user), data.name, data.description, data.is_public
+            db, await _record(db, user), data.name, data.description, data.is_public, data.cover_color
         )
     except ContentError as exc:
         raise _err(exc)

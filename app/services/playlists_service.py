@@ -100,6 +100,7 @@ def _to_public(playlist: Playlist, owner_name: str | None, count: int, duration:
         description=playlist.description,
         is_public=playlist.is_public,
         cover_url=_cover_url(playlist.cover_key),
+        cover_color=playlist.cover_color,
         owner_name=owner_name,
         item_count=count,
         total_duration_seconds=duration,
@@ -187,7 +188,12 @@ async def list_playlists(db: AsyncSession, user: User) -> list[PlaylistPublic]:
 
 
 async def create_playlist(
-    db: AsyncSession, user: User, name: str, description: str | None, is_public: bool
+    db: AsyncSession,
+    user: User,
+    name: str,
+    description: str | None,
+    is_public: bool,
+    cover_color: str | None = None,
 ) -> PlaylistPublic:
     name = _clean_name(name)
     description = _clean_description(description)
@@ -198,6 +204,7 @@ async def create_playlist(
         name=name,
         description=description,
         is_public=is_public,
+        cover_color=cover_color,
     )
     db.add(playlist)
     await db.commit()

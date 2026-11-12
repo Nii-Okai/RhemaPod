@@ -109,7 +109,7 @@ export function PlaylistListRow({ playlist, onPress, onDelete }: { playlist: Pla
   return (
     <>
       <RowShell
-        art={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={ROW_ART_SIZE} shape={ROW_LEAF} />}
+        art={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={ROW_ART_SIZE} shape={ROW_LEAF} />}
         title={playlist.name}
         meta={
           <AppText variant="mono.meta" tone="tertiary" numberOfLines={1}>
@@ -245,7 +245,7 @@ export function PlaylistGridTile({
         {...confirm.a11y(onDelete)}
         style={[styles.tile, { width }]}
       >
-        <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={width} shape={LEAF_SM} />
+        <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={width} shape={LEAF_SM} />
         <View style={styles.caption}>
           <AppText variant="ui.label" numberOfLines={2}>
             {playlist.name}

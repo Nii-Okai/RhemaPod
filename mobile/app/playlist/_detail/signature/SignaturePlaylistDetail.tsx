@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Avatar, CircleButton, DetailError, DetailNotAvailable, PlatformIcon, PressableScale, StaggerItem } from '../../../../components';
+import { AppText, Avatar, CircleButton, DetailError, DetailNotAvailable, PlatformIcon, StaggerItem } from '../../../../components';
 import type { AppIconName } from '../../../../components/PlatformIcon';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
@@ -169,10 +169,10 @@ export function SignaturePlaylistDetailScreen() {
                 playlistId={playlist.id}
                 coverUrl={playlist.cover_url}
                 size={COVER}
-                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />}
+                cover={<PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={COVER} shape={COVER_SHAPE} />}
               />
             ) : (
-              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} size={COVER} shape={COVER_SHAPE} />
+              <PlaylistCover name={playlist.name} coverUrl={playlist.cover_url} color={playlist.cover_color} size={COVER} shape={COVER_SHAPE} />
             )}
           </View>
           <View style={styles.info}>
@@ -215,17 +215,19 @@ export function SignaturePlaylistDetailScreen() {
 
         <View style={styles.actions}>
           {hasItems ? (
-            <PressableScale
+            // A plain Pressable: PressableScale styles its inner view, so `flex: 1` never
+            // reached the row and the pill collapsed to a circle (Nii's phone test).
+            <Pressable
               onPress={() => startQueue(ids())}
               accessibilityRole="button"
               accessibilityLabel="Play this playlist"
-              style={styles.playPill}
+              style={({ pressed }) => [styles.playPill, pressed && styles.pressed]}
             >
               <PlatformIcon name="play" size={18} color={colors.primaryButton.text} />
-              <AppText variant="ui.button" tone="inverse">
+              <AppText variant="ui.button" style={styles.playText}>
                 Play
               </AppText>
-            </PressableScale>
+            </Pressable>
           ) : (
             <View style={styles.grow} />
           )}
@@ -400,6 +402,9 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.primaryButton.bg,
+  },
+  playText: {
+    color: colors.primaryButton.text,
   },
   action: {
     width: 54,

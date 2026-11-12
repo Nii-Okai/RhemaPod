@@ -239,28 +239,30 @@ export function SignatureAnnouncementsScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-        {isTablet ? null : (
-          <View style={styles.headerBar}>
-            <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
-          </View>
-        )}
+        {/* Back sits on the title's row (Nii, 2026-11-11); the LIVE pill moves up beside
+            the eyebrow to leave the title its width. */}
         <View style={styles.titleRow}>
+          {isTablet ? null : (
+            <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+          )}
           <View style={styles.titles}>
-            <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
-              THIS WEEK AT CHURCH
-            </AppText>
-            <AppText variant="display.hero" accessibilityRole="header">
+            <View style={styles.eyebrowRow}>
+              <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>
+                THIS WEEK AT CHURCH
+              </AppText>
+              {items.length > 0 ? (
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <AppText variant="ui.badge" style={styles.liveText}>
+                    {`${items.length} LIVE`}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+            <AppText variant="display.hero" accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>
               Announcements
             </AppText>
           </View>
-          {items.length > 0 ? (
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <AppText variant="ui.badge" style={styles.liveText}>
-                {`${items.length} LIVE`}
-              </AppText>
-            </View>
-          ) : null}
         </View>
       </View>
       <ScrollView
@@ -302,19 +304,20 @@ const useStyles = createThemedStyles((colors) => ({
     paddingBottom: spacing.sm,
     gap: spacing.lg,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: spacing.md,
   },
   titles: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     gap: 6,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   eyebrow: {
     letterSpacing: 1.5,

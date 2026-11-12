@@ -38,6 +38,8 @@ export interface CreatePlaylistInput {
   name: string;
   description?: string;
   isPublic?: boolean;
+  /** A named swatch ("navy", "teal", ...) for a cover with no photo. */
+  coverColor?: PlaylistPublic['cover_color'];
 }
 
 /** `POST /playlists` — the "Give your playlist a name" -> Create flow (screenshot
@@ -48,7 +50,12 @@ export function useCreatePlaylist() {
   return useMutation({
     mutationFn: (input: CreatePlaylistInput) =>
       api.post('/playlists', {
-        body: { name: input.name, description: input.description ?? null, is_public: input.isPublic ?? false },
+        body: {
+          name: input.name,
+          description: input.description ?? null,
+          is_public: input.isPublic ?? false,
+          ...(input.coverColor ? { cover_color: input.coverColor } : {}),
+        },
       }),
     onSuccess: (playlist) => {
       queryClient.setQueryData<PlaylistPublic[]>(queryKeys.playlists.list(), (current) =>
@@ -62,6 +69,8 @@ export interface UpdatePlaylistInput {
   name?: string;
   description?: string;
   isPublic?: boolean;
+  /** `null` clears it back to the default cover. */
+  coverColor?: PlaylistPublic['cover_color'];
 }
 
 /** `PATCH /playlists/{id}` — rename, edit description, or toggle public/private
@@ -76,6 +85,7 @@ export function useUpdatePlaylist(playlistId: string) {
       if (input.name !== undefined) body.name = input.name;
       if (input.description !== undefined) body.description = input.description;
       if (input.isPublic !== undefined) body.is_public = input.isPublic;
+      if (input.coverColor !== undefined) body.cover_color = input.coverColor;
       return api.patch('/playlists/{playlist_id}', { params: { path: { playlist_id: playlistId } }, body });
     },
     onSuccess: (playlist) => {

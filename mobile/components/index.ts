@@ -29,3 +29,4 @@ export * from './FittedArt';
 export * from './EqualizerBars';
 export * from './CircleButton';
 export * from './MediaRow';
+export * from './HeroStatusBar';

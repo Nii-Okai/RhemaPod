@@ -1,10 +1,11 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClientProvider } from '@tanstack/react-query';
 import PlayerScreen from '../[id]';
 import { api } from '../../../lib/api/typedClient';
 import { usePlatformOS } from '../../../components/navigation/platform';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
+import { queryKeys } from '../../../lib/query/queryClient';
 // Imported from the mock file's own relative path (not the bare `'expo-video'`
 // specifier) purely so `tsc` — which doesn't know about Jest's manual-mock
 // substitution — can see this member really exists; Jest resolves both this path and
@@ -775,3 +776,36 @@ describe('PlayerScreen — comments', () => {
   });
 });
 
+
+describe('PlayerScreen — downloaded sermon with no connection (Nii, 2026-11-11)', () => {
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('plays the local file from the saved detail, with every network read failing', async () => {
+    onlineManager.setOnline(false);
+    mockedUseIsOnline.mockReturnValue(false);
+    mockedGet.mockRejectedValue(new TypeError('Network request failed'));
+    mockedUseDownloads.mockReturnValue({
+      downloads: [],
+      isLoading: false,
+      download: mockDownload,
+      find: jest.fn(() => ({ sermonId: 'sermon-1', state: 'ready', mediaType: 'video' })),
+    });
+    const client = createTestQueryClient();
+    // What `seedOfflineDetails` puts in the cache from the download's saved detail.
+    client.setQueryData(queryKeys.sermons.detail('sermon-1'), baseDetail, { updatedAt: 0 });
+
+    const screen = render(
+      <QueryClientProvider client={client}>
+        <PlayerScreen />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('video-view')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load this sermon's playback link.")).toBeNull();
+    expect(screen.queryByText('Something went wrong loading this sermon.')).toBeNull();
+    // Never asked the server for a stream link.
+    expect(mockedGet).not.toHaveBeenCalledWith('/sermons/{sermon_id}/stream', expect.anything());
+  });
+});

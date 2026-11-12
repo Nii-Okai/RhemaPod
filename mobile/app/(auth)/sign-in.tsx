@@ -172,26 +172,24 @@ export default function SignInScreen() {
           returnKeyType="next"
           onSubmitEditing={() => passwordRef.current?.focus()}
         />
-        <View style={styles.passwordGroup}>
-          <Field
-            ref={passwordRef}
-            label="Password"
-            icon="lock-closed-outline"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password"
-            textContentType="password"
-            returnKeyType="done"
-            onSubmitEditing={onSubmit}
-          />
-          <View style={styles.forgotRow}>
+        <Field
+          ref={passwordRef}
+          label="Password"
+          icon="lock-closed-outline"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="password"
+          textContentType="password"
+          returnKeyType="done"
+          onSubmitEditing={onSubmit}
+          labelAccessory={
             <Link href="/(auth)/forgot-password" asChild>
-              <LinkButton label="Forgot password?" />
+              <LinkButton label="Forgot?" accessibilityLabel="Forgot password?" />
             </Link>
-          </View>
-        </View>
+          }
+        />
       </View>
 
       {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
@@ -218,13 +216,6 @@ export default function SignInScreen() {
 const useStyles = createThemedStyles(() => ({
   fieldGroup: {
     gap: spacing.lg,
-  },
-  passwordGroup: {
-    gap: spacing.sm,
-  },
-  forgotRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
   },
   socialStack: {
     gap: spacing.md,

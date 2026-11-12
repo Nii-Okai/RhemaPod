@@ -333,3 +333,30 @@ async def test_cover_cannot_be_set_on_another_viewer_s_playlist(client, engine):
         headers=intruder,
     )
     assert r.status_code == 404
+
+
+async def test_cover_color_is_set_on_create_changed_and_cleared(client, engine):
+    """Daybreak canvas E3: a cover colour picked on New playlist, changeable later."""
+    viewer = await make_viewer(client)
+    created = await client.post(
+        f"{API}/playlists", json={"name": "Sunday prep", "cover_color": "teal"}, headers=viewer
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["cover_color"] == "teal"
+
+    changed = await client.patch(f"{API}/playlists/{body['id']}", json={"cover_color": "berry"}, headers=viewer)
+    assert changed.json()["cover_color"] == "berry"
+    detail = await client.get(f"{API}/playlists/{body['id']}", headers=viewer)
+    assert detail.json()["cover_color"] == "berry"
+
+    cleared = await client.patch(f"{API}/playlists/{body['id']}", json={"cover_color": None}, headers=viewer)
+    assert cleared.json()["cover_color"] is None
+
+
+async def test_cover_color_defaults_to_none_and_rejects_unknown_names(client, engine):
+    viewer = await make_viewer(client)
+    body = await make_playlist(client, viewer)
+    assert body["cover_color"] is None
+    bad = await client.post(f"{API}/playlists", json={"name": "X", "cover_color": "#ff0000"}, headers=viewer)
+    assert bad.status_code == 422

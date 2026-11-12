@@ -40,13 +40,14 @@ export default function BlockedUsersScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
+        {/* Back sits on the title's row (Nii, 2026-11-11). */}
         <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+        <AppText variant="display.hero" accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit style={styles.title}>
+          Blocked people
+        </AppText>
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleBlock}>
-          <AppText variant="display.hero" accessibilityRole="header">
-            Blocked people
-          </AppText>
           <AppText variant="ui.body" tone="secondary">
             You won't see their comments on any sermon. They aren't told.
           </AppText>
@@ -127,7 +128,12 @@ const useStyles = createThemedStyles((colors) => ({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     paddingHorizontal: spacing.lg + 4,
+  },
+  title: {
+    flex: 1,
   },
   scroll: {
     flex: 1,

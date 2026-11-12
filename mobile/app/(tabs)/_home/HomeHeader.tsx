@@ -34,7 +34,9 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
   const { scheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { data: user } = useCurrentUser();
-  const firstName = user?.full_name?.trim().split(/\s+/)[0];
+  // No name saved yet (an Apple sign-in that hid it, or a new email account): the greeting
+  // stands alone, "Good evening". The email is never used in its place.
+  const firstName = user?.first_name?.trim() || user?.full_name?.trim().split(/\s+/)[0];
   const greeting = greetingFor(now ?? new Date());
   const wordmark =
     scheme === 'light'

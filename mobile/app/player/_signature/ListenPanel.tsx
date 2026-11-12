@@ -84,9 +84,10 @@ export function ListenPanel({
 }: ListenPanelProps) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  // Leaves room under it for the title block and comments.
-  const artSize = Math.min(width - spacing.xxl * 4, 200);
+  const { width, height } = useWindowDimensions();
+  // Sized to the screen's height as well as its width, so the title block and comments
+  // under it keep their room on a shorter phone.
+  const artSize = Math.max(112, Math.min(width - spacing.xxl * 4, 184, Math.round(height * 0.19)));
   const remaining = durationSeconds ? Math.max(0, durationSeconds - currentTimeSeconds) : null;
 
   return (
@@ -119,7 +120,21 @@ export function ListenPanel({
         </View>
       </View>
 
+      {/* Speed and Sleep sit at the ends of the transport row rather than on a row of
+          their own, so the comments under the title keep their room (Nii's phone test,
+          2026-11-11: Listen cut the comments off). */}
       <View style={styles.transport}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Playback speed ${playbackSpeed}x`}
+          onPress={onCycleSpeed}
+          style={({ pressed }) => [styles.tool, pressed && styles.pressed]}
+        >
+          <AppText variant="ui.bodyBold">{`${playbackSpeed}×`}</AppText>
+          <AppText variant="ui.badge" tone="secondary">
+            Speed
+          </AppText>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Rewind ${SEEK_SECONDS} seconds`}
@@ -147,20 +162,6 @@ export function ListenPanel({
           style={({ pressed }) => [styles.side, pressed && styles.pressed]}
         >
           <PlatformIcon name="play-forward-outline" size={30} color={colors.text.primary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.tools}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Playback speed ${playbackSpeed}x`}
-          onPress={onCycleSpeed}
-          style={({ pressed }) => [styles.tool, pressed && styles.pressed]}
-        >
-          <AppText variant="ui.bodyBold">{`${playbackSpeed}×`}</AppText>
-          <AppText variant="ui.badge" tone="secondary">
-            Speed
-          </AppText>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -205,8 +206,8 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   art: {
     borderRadius: 32,
@@ -228,9 +229,10 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'space-between',
   },
   transport: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xxl,
+    justifyContent: 'space-between',
   },
   side: {
     width: 52,
@@ -239,9 +241,9 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   main: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.sunButton.bg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -249,11 +251,8 @@ const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.7,
   },
-  tools: {
-    flexDirection: 'row',
-    gap: spacing.xxl * 2,
-  },
   tool: {
+    width: 52,
     alignItems: 'center',
     gap: 2,
     minHeight: 44,

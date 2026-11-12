@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActionButton, AppText, CastCloseHeader, DetailError, DetailNotAvailable, FittedArt, PrimaryButton, Tag } from '../../components';
+import { ActionButton, AppText, CastCloseHeader, DetailError, HeroStatusBar, DetailNotAvailable, FittedArt, PrimaryButton, Tag } from '../../components';
 import { RelatedSermons } from '../../components/sermon/RelatedSermons';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -130,6 +130,7 @@ export default function SermonDetailScreen() {
 
   return (
     <View style={styles.screen}>
+      <HeroStatusBar />
       <CastCloseHeader onClose={onCloseAll} onBack={onBack} />
       {/* Outside the ScrollView, in normal flow above it — not absolutely positioned
           behind scrolling content — so it never moves as the content below scrolls.
