@@ -274,8 +274,11 @@ describe('SermonDetailScreen — locked (interim: same as no-media, L1)', () => 
 describe('SermonDetailScreen — header', () => {
   it('fires router.dismissAll() when the close control is pressed — closes every page, not just one level', async () => {
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
     fireEvent.press(await findByLabelText('Close'));
     expect(mockDismissAll).toHaveBeenCalledTimes(1);
     expect(mockBack).not.toHaveBeenCalled();
@@ -302,8 +305,11 @@ describe('SermonDetailScreen — opened from a Related item', () => {
   it('renders a back control that fires router.back(), alongside Cast/Close', async () => {
     mockParams = { id: 'sermon-1', related: '1' };
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
     fireEvent.press(await findByLabelText('Back'));
     expect(mockBack).toHaveBeenCalledTimes(1);
 
@@ -314,8 +320,11 @@ describe('SermonDetailScreen — opened from a Related item', () => {
   it('Close still dismisses every page, not just the one drill-down level Back would', async () => {
     mockParams = { id: 'sermon-1', related: '1' };
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
     fireEvent.press(await findByLabelText('Close'));
     expect(mockDismissAll).toHaveBeenCalledTimes(1);
     expect(mockBack).not.toHaveBeenCalled();
