@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
@@ -81,25 +80,21 @@ export default function VerifyEmailScreen() {
       onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'))}
       stepLabel="Step 2 of 2"
       footer={
-        <>
-          <PrimaryButton
-            label={submitting ? 'Verifying…' : 'Verify and continue'}
-            onPress={() => onSubmit(code)}
-            loading={submitting}
-            fullWidth
-          />
-          <View style={styles.centered}>
-            <Link href="/(auth)/sign-in" asChild>
-              <LinkButton label="Back to sign in" />
-            </Link>
-          </View>
-        </>
+        <Link href="/(auth)/sign-in" asChild>
+          <LinkButton label="Back to sign in" />
+        </Link>
       }
     >
       <CodeInput value={code} onChangeText={setCode} error={error} onComplete={onSubmit} />
 
       {arrivalNotice ? <InlineAlert variant="success" title={arrivalNotice} /> : null}
 
+      <PrimaryButton
+        label={submitting ? 'Verifying…' : 'Verify and continue'}
+        onPress={() => onSubmit(code)}
+        loading={submitting}
+        fullWidth
+      />
 
       <CheckEmailBody
         email={email}
@@ -111,9 +106,3 @@ export default function VerifyEmailScreen() {
     </AuthScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    alignItems: 'center',
-  },
-});

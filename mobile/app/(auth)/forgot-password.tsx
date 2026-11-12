@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Link, useRouter } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
 import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { AuthScreen } from './_components/auth-screen';
@@ -71,7 +70,7 @@ export default function ForgotPasswordScreen() {
         art={<MailArt />}
         onBack={goBack}
         backLabel="Back to sign in"
-        footer={<View style={styles.centered}>{backToSignIn}</View>}
+        footer={backToSignIn}
       >
         <CheckEmailBody
           email={email.trim()}
@@ -88,20 +87,12 @@ export default function ForgotPasswordScreen() {
   return (
     <AuthScreen
       heading="Forgot your password?"
+      headingVariant="display.title"
+      subheadVariant="ui.body"
       subhead="Enter the email you signed up with and we'll send you a link to set a new one."
       onBack={goBack}
       backLabel="Back to sign in"
-      footer={
-        <>
-          <PrimaryButton
-            label={submitting ? 'Sending…' : 'Send reset link'}
-            onPress={onSubmit}
-            loading={submitting}
-            fullWidth
-          />
-          <View style={styles.centered}>{backToSignIn}</View>
-        </>
-      }
+      footer={backToSignIn}
     >
       <Field
         label="Email"
@@ -124,13 +115,14 @@ export default function ForgotPasswordScreen() {
         </InlineAlert>
       ) : null}
 
+      <PrimaryButton
+        label={submitting ? 'Sending…' : 'Send reset link'}
+        onPress={onSubmit}
+        loading={submitting}
+        fullWidth
+      />
+
       <SocialTip />
     </AuthScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    alignItems: 'center',
-  },
-});

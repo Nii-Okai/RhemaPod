@@ -64,7 +64,7 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.xl,
   },
   pressed: {
-    backgroundColor: colors.surface.raised,
+    backgroundColor: colors.surface.sunken,
   },
   disabled: {
     opacity: 0.4,

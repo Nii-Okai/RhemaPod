@@ -7,15 +7,9 @@ import { AppText, IconButton, PlatformIcon, PrimaryButton } from '../../../compo
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
+import { displayScale, monoScale, scaledLineHeight } from '../../../theme/typography';
 import type { Devotional, JournalEntry } from '../../../lib/devotionals/storage';
-import {
-  clock,
-  cleanWord,
-  parseReflection,
-  sameWord,
-  tokenize,
-  verseContaining,
-} from '../../../lib/devotionals/text';
+import { clock, cleanWord, parseReflection, sameWord, tokenize, verseContaining } from '../../../lib/devotionals/text';
 
 /* Daily Rhema steps (plan-daily-devotional M3–M6). Each step is one calm screen; the
    shell (`DevotionalFlow`) owns progress, navigation and saving. */
@@ -50,8 +44,18 @@ export function StillStep({ dev, onDone }: { dev: Devotional; onDone: () => void
     if (reduce) return undefined;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(scale, { toValue: 1.15, duration: BREATH_MS, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 0.8, duration: BREATH_MS, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(scale, {
+          toValue: 1.15,
+          duration: BREATH_MS,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.8,
+          duration: BREATH_MS,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
       ]),
     );
     loop.start();
@@ -67,7 +71,7 @@ export function StillStep({ dev, onDone }: { dev: Devotional; onDone: () => void
     };
   }, []);
 
-  const words = inhale ? dev.still.breath_in ?? 'Breathe in' : dev.still.breath_out ?? 'Breathe out';
+  const words = inhale ? (dev.still.breath_in ?? 'Breathe in') : (dev.still.breath_out ?? 'Breathe out');
   return (
     <View style={styles.center}>
       <Animated.View
@@ -100,7 +104,7 @@ function ReadingAudio({ url, duration }: { url: string; duration: number | null 
   const { colors } = useTheme();
   const player = useAudioPlayer({ uri: url });
   const status = useAudioPlayerStatus(player);
-  const total = status.duration > 0 ? status.duration : duration ?? 0;
+  const total = status.duration > 0 ? status.duration : (duration ?? 0);
   return (
     <View style={styles.reading}>
       <IconButton
@@ -161,6 +165,12 @@ export function HearStep({ dev, entry, update }: { dev: Devotional; entry: Journ
   const styles = useStyles();
   const kept = entry?.word ?? null;
   const passageText = dev.passage.verses.map((v) => v.text).join(' ');
+  // Centres the small verse number on the first line of its verse, at any text size.
+  const numberTop = Math.round(
+    (scaledLineHeight(displayScale.scripture.fontSize, displayScale.scripture.lineHeightRatio) -
+      scaledLineHeight(monoScale.meta.fontSize, monoScale.meta.lineHeightRatio)) /
+      2,
+  );
 
   const keep = (word: string) => {
     const w = cleanWord(word);
@@ -180,37 +190,44 @@ export function HearStep({ dev, entry, update }: { dev: Devotional; entry: Journ
       <AppText variant="ui.body" tone="secondary">
         Read slowly. Tap the word that stands out to you.
       </AppText>
+      {/* Each verse is its own row with the number hanging in a narrow column, and every
+          run inside the verse shares one type style, so the lines keep even, open
+          spacing (Nii, 2026-11-12: the passage looked cramped and clipped). */}
       <View style={styles.passage}>
         {dev.passage.verses.map((v, vi) => (
-          <AppText key={vi} variant="display.compact" style={styles.verse}>
+          <View key={vi} style={styles.verseRow}>
             {v.number != null ? (
-              <AppText variant="mono.meta" tone="tertiary">{`${v.number} `}</AppText>
+              <AppText variant="mono.meta" tone="gold" style={[styles.verseNumber, { paddingTop: numberTop }]}>
+                {String(v.number)}
+              </AppText>
             ) : null}
-            {tokenize(v.text).map((t, ti) =>
-              t.word ? (
-                <AppText
-                  key={ti}
-                  variant="display.compact"
-                  onPress={() => keep(t.text)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: sameWord(t.text, kept) }}
-                  style={
-                    sameWord(t.text, kept)
-                      ? styles.kept
-                      : !kept && sameWord(t.text, dev.suggested_word)
-                        ? styles.suggested
-                        : undefined
-                  }
-                >
-                  {t.text}
-                </AppText>
-              ) : (
-                <AppText key={ti} variant="display.compact">
-                  {t.text}
-                </AppText>
-              ),
-            )}
-          </AppText>
+            <AppText variant="display.scripture" style={styles.verseText}>
+              {tokenize(v.text).map((t, ti) =>
+                t.word ? (
+                  <AppText
+                    key={ti}
+                    variant="display.scripture"
+                    onPress={() => keep(t.text)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: sameWord(t.text, kept) }}
+                    style={
+                      sameWord(t.text, kept)
+                        ? styles.kept
+                        : !kept && sameWord(t.text, dev.suggested_word)
+                          ? styles.suggested
+                          : undefined
+                    }
+                  >
+                    {t.text}
+                  </AppText>
+                ) : (
+                  <AppText key={ti} variant="display.scripture">
+                    {t.text}
+                  </AppText>
+                ),
+              )}
+            </AppText>
+          </View>
         ))}
       </View>
       {kept ? (
@@ -368,7 +385,15 @@ export function PrayStep({ dev, entry, update }: { dev: Devotional; entry: Journ
 }
 
 // ── Carry ─────────────────────────────────────────────────────────────────────
-export function CarryStep({ dev, entry, onGarden }: { dev: Devotional; entry: JournalEntry | undefined; onGarden: () => void }) {
+export function CarryStep({
+  dev,
+  entry,
+  onGarden,
+}: {
+  dev: Devotional;
+  entry: JournalEntry | undefined;
+  onGarden: () => void;
+}) {
   const styles = useStyles();
   const word = entry?.word ?? dev.suggested_word;
   const verse = entry?.wordVerse;
@@ -426,8 +451,13 @@ const useStyles = createThemedStyles((colors) => ({
     borderColor: colors.accent.gold,
   },
   stack: { gap: spacing.lg },
-  passage: { gap: spacing.sm },
-  verse: { lineHeight: 32 },
+  passage: {
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  verseRow: { flexDirection: 'row', gap: spacing.sm + 2 },
+  verseNumber: { minWidth: 18, textAlign: 'right' },
+  verseText: { flex: 1 },
   kept: { color: colors.accent.goldText, textDecorationLine: 'underline' },
   suggested: { textDecorationLine: 'underline', textDecorationStyle: 'dotted' },
   reading: {

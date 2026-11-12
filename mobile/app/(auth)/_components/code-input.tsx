@@ -110,7 +110,7 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: colors.border.default,
-    backgroundColor: colors.surface.raised,
+    backgroundColor: colors.surface.sunken,
   },
   boxFilled: {
     borderColor: colors.text.primary,

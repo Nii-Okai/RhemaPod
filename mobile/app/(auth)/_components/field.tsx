@@ -117,7 +117,8 @@ const useStyles = createThemedStyles((colors) => ({
     minHeight: 54,
     borderWidth: 1.5,
     borderColor: colors.border.default,
-    backgroundColor: colors.surface.raised,
+    // Sunken, so it reads as a well inside the raised auth card (as before Daybreak).
+    backgroundColor: colors.surface.sunken,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     color: colors.text.primary,

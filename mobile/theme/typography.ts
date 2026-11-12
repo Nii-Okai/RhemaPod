@@ -21,7 +21,7 @@ export const fontFamily = {
   mono: 'IBMPlexMono_400Regular',
 } as const;
 
-export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact';
+export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact' | 'scripture';
 export type UiVariant =
   | 'bodyLarge'
   | 'body'
@@ -50,6 +50,9 @@ export const displayScale: Record<DisplayVariant, TypeStyle> = {
   section: { fontFamily: fontFamily.display, fontSize: 24, lineHeightRatio: 1.15 },
   row: { fontFamily: fontFamily.display, fontSize: 20, lineHeightRatio: 1.1 },
   compact: { fontFamily: fontFamily.display, fontSize: 17, lineHeightRatio: 1.2 },
+  /** A passage read slowly (Daily Rhema's Hear step). Open leading so Fraunces' tall
+      ascenders never touch the line above (Nii, 2026-11-12: "not well formatted"). */
+  scripture: { fontFamily: fontFamily.display, fontSize: 19, lineHeightRatio: 1.6 },
 };
 
 /** UI scale (Plus Jakarta Sans). `label`/`button`/`badge`/`avatarInitials` carry weight via family. */

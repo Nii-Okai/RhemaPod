@@ -13,7 +13,12 @@ import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
 import { OrDivider } from './_components/or-divider';
 import { SocialSignInButton } from './_components/social-sign-in-button';
-import { retryWindowText, socialAuthErrorCopy, type SocialAuthErrorCopy, type SocialProvider } from './_components/socialAuthErrorCopy';
+import {
+  retryWindowText,
+  socialAuthErrorCopy,
+  type SocialAuthErrorCopy,
+  type SocialProvider,
+} from './_components/socialAuthErrorCopy';
 
 type ErrorKind = null | 'credentials' | 'rate' | 'generic';
 
@@ -91,7 +96,13 @@ export default function SignInScreen() {
     try {
       const result = await performAppleSignIn();
       if (result === null) return; // user tapped Apple's own Cancel — silent no-op
-      await signInWithApple(result.identityToken, result.rawNonce, result.authorizationCode, result.givenName, result.familyName);
+      await signInWithApple(
+        result.identityToken,
+        result.rawNonce,
+        result.authorizationCode,
+        result.givenName,
+        result.familyName,
+      );
     } catch (err) {
       setSocialError(socialAuthErrorCopy(err, 'apple'));
     } finally {
@@ -128,16 +139,12 @@ export default function SignInScreen() {
   return (
     <AuthScreen
       heading="Welcome back"
+      headingVariant="display.title"
       subhead="Pick up right where you left off."
+      subheadVariant="ui.body"
+      centerHeader
       footer={
         <>
-          <PrimaryButton
-            label={submitting ? 'Signing in…' : 'Sign in'}
-            onPress={onSubmit}
-            loading={submitting}
-            disabled={socialSubmitting !== null}
-            fullWidth
-          />
           <View style={styles.footerRow}>
             <AppText variant="ui.body" tone="secondary">
               New here?
@@ -184,12 +191,12 @@ export default function SignInScreen() {
           textContentType="password"
           returnKeyType="done"
           onSubmitEditing={onSubmit}
-          labelAccessory={
-            <Link href="/(auth)/forgot-password" asChild>
-              <LinkButton label="Forgot?" accessibilityLabel="Forgot password?" />
-            </Link>
-          }
         />
+        <View style={styles.forgotRow}>
+          <Link href="/(auth)/forgot-password" asChild>
+            <LinkButton label="Forgot password?" />
+          </Link>
+        </View>
       </View>
 
       {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
@@ -209,6 +216,13 @@ export default function SignInScreen() {
         </InlineAlert>
       ) : null}
 
+      <PrimaryButton
+        label={submitting ? 'Signing in…' : 'Sign in'}
+        onPress={onSubmit}
+        loading={submitting}
+        disabled={socialSubmitting !== null}
+        fullWidth
+      />
     </AuthScreen>
   );
 }
@@ -216,6 +230,12 @@ export default function SignInScreen() {
 const useStyles = createThemedStyles(() => ({
   fieldGroup: {
     gap: spacing.lg,
+  },
+  // Under the password field, on the right (as before Daybreak).
+  forgotRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: -spacing.sm,
   },
   socialStack: {
     gap: spacing.md,
