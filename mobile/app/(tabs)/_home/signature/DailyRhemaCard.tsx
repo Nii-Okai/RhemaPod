@@ -129,6 +129,10 @@ export function DailyRhemaCard() {
 
 const SUN = 86;
 const GLOW = 40;
+// How see-through each part of the glass sun is. Kept low so it sits back in the card
+// (Nii, 2026-11-12: "the sun looks too bright"). Set as stop/stroke opacity, never as an
+// rgba alpha, which the first build showed does not come through on device.
+const sunGlassOpacity = { core: 0.3, edge: 0.12, rim: 0.38, glow: 0.1 };
 
 /**
  * The glass sun (Nii, 2026-11-12, canvas D7 option A): see-through gold, brighter at its
@@ -144,12 +148,16 @@ function GlassSun() {
       <Svg width={size} height={size}>
         <Defs>
           <RadialGradient id="rhemaSunGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset={String(SUN / 2 / c)} stopColor={colors.feature.sunGlow} />
-            <Stop offset="1" stopColor={colors.feature.sunGlow} stopOpacity={0} />
+            <Stop
+              offset={String(SUN / 2 / c)}
+              stopColor={colors.feature.sunGlassGold}
+              stopOpacity={sunGlassOpacity.glow}
+            />
+            <Stop offset="1" stopColor={colors.feature.sunGlassGold} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="rhemaSunCore" cx="40%" cy="38%" r="60%">
-            <Stop offset="0" stopColor={colors.feature.sunGlassCore} />
-            <Stop offset="0.72" stopColor={colors.feature.sunGlassEdge} />
+            <Stop offset="0" stopColor={colors.feature.sunGlassLight} stopOpacity={sunGlassOpacity.core} />
+            <Stop offset="1" stopColor={colors.feature.sunGlassGold} stopOpacity={sunGlassOpacity.edge} />
           </RadialGradient>
         </Defs>
         <Circle cx={c} cy={c} r={c} fill="url(#rhemaSunGlow)" />
@@ -158,7 +166,8 @@ function GlassSun() {
           cy={c}
           r={SUN / 2 - 0.75}
           fill="url(#rhemaSunCore)"
-          stroke={colors.feature.sunGlassRim}
+          stroke={colors.feature.sunGlassLight}
+          strokeOpacity={sunGlassOpacity.rim}
           strokeWidth={1.5}
         />
       </Svg>
