@@ -43,7 +43,7 @@ export function AuthScreen({
 }: {
   /** Small uppercase line over the heading ("One more step"). */
   eyebrow?: string;
-  /** A pill over the heading instead of an eyebrow ("Free, always"). */
+  /** A pill over the heading instead of an eyebrow. */
   badge?: string;
   heading: string;
   headingVariant?: AppTextVariant;
