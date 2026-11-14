@@ -16,7 +16,7 @@ import { PlaylistCover } from '../../../(tabs)/_library/signature/PlaylistCover'
 import { PlaylistCoverPicker } from '../PlaylistCoverPicker';
 import { PlaylistDetailsSheet } from '../PlaylistDetailsSheet';
 import { PlaylistOptionsSheet } from '../PlaylistOptionsSheet';
-import { playlistQueueParams, shuffled } from '../playlistQueue';
+import { shuffled, startPlaylistQueue } from '../playlistQueue';
 import { useMakePlaylistPublic } from '../useMakePlaylistPublic';
 import { usePlaylistPreview } from '../usePlaylistPreview';
 import { SignatureAddToPlaylistSheet } from './SignatureAddToPlaylistSheet';
@@ -141,11 +141,12 @@ export function SignaturePlaylistDetailScreen() {
     setAddingRecommendedId(sermonId);
     addItem.mutate(sermonId, { onSettled: () => setAddingRecommendedId(null) });
   };
-  const startQueue = (order: string[]) => {
-    const params = playlistQueueParams(playlist.id, order);
-    if (params) router.push({ pathname: '/player/[id]', params });
+  // Play, Shuffle and a tapped row all play the playlist through from that item, through
+  // the app-wide queue, so it keeps going after the player closes.
+  const startQueue = (order: typeof playlist.items, startIndex = 0) => {
+    const id = startPlaylistQueue(playlist, order, startIndex);
+    if (id) router.push({ pathname: '/player/[id]', params: { id } });
   };
-  const ids = () => playlist.items.map((item) => item.sermon.id);
 
   return (
     <View style={styles.screen}>
@@ -218,7 +219,7 @@ export function SignaturePlaylistDetailScreen() {
             // A plain Pressable: PressableScale styles its inner view, so `flex: 1` never
             // reached the row and the pill collapsed to a circle (Nii's phone test).
             <Pressable
-              onPress={() => startQueue(ids())}
+              onPress={() => startQueue(playlist.items)}
               accessibilityRole="button"
               accessibilityLabel="Play this playlist"
               style={({ pressed }) => [styles.playPill, pressed && styles.pressed]}
@@ -231,7 +232,7 @@ export function SignaturePlaylistDetailScreen() {
           ) : (
             <View style={styles.grow} />
           )}
-          <Action icon="shuffle" label="Shuffle" onPress={() => startQueue(shuffled(ids()))} disabled={!hasItems} />
+          <Action icon="shuffle" label="Shuffle" onPress={() => startQueue(shuffled(playlist.items))} disabled={!hasItems} />
           <Action icon="share-outline" label="Share" onPress={share} disabled={shareDisabled} />
           {isOwner ? <Action icon="pencil" label="Edit" onPress={() => setDetailsOpen(true)} /> : null}
         </View>
@@ -265,7 +266,7 @@ export function SignaturePlaylistDetailScreen() {
                   <SignaturePlaylistItemRow
                     item={item}
                     position={index + 1}
-                    onPress={() => router.push({ pathname: '/player/[id]', params: { id: item.sermon.id } })}
+                    onPress={() => startQueue(playlist.items, index)}
                     onRemove={isOwner ? () => removeItem.mutate(item.id) : undefined}
                     isPreviewPlaying={preview.activeSermonId === item.sermon.id}
                     isPreviewLoading={preview.isLoading(item.sermon.id)}

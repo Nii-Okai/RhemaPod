@@ -71,7 +71,7 @@ export function ResumeCard({ item, onPress }: { item: ContinueWatchingItem; onPr
 export function ReleaseCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
   return (
     <View style={[styles.column, { width: 240 }]}>
-      <ArtTile thumbnailUrl={sermon.thumbnail_url} onPress={onPress} accessibilityLabel={sermon.title} width={240} aspectRatio={16 / 9}>
+      <ArtTile thumbnailUrl={sermon.thumbnail_url} queueSermon={sermon} onPress={onPress} accessibilityLabel={sermon.title} width={240} aspectRatio={16 / 9}>
         {isNewRelease(sermon.publish_at) ? (
           <View style={styles.newChip} pointerEvents="none">
             <AppText variant="ui.badge" style={styles.newChipText}>
@@ -89,7 +89,7 @@ export function ReleaseCard({ sermon, onPress }: { sermon: SermonListItem; onPre
 export function PickCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
   return (
     <ArtTile
-      thumbnailUrl={sermon.thumbnail_url}
+      thumbnailUrl={sermon.thumbnail_url} queueSermon={sermon}
       onPress={onPress}
       accessibilityLabel={`${sermon.title}, Prophet's Pick`}
       aspectRatio={16 / 9}
@@ -129,7 +129,7 @@ export function SeriesTile({ series, onPress }: { series: SeriesPublic; onPress:
 export function CatalogCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
   return (
     <View style={[styles.column, { width: 150 }]}>
-      <ArtTile thumbnailUrl={sermon.thumbnail_url} onPress={onPress} accessibilityLabel={sermon.title} width={150} aspectRatio={1} />
+      <ArtTile thumbnailUrl={sermon.thumbnail_url} queueSermon={sermon} onPress={onPress} accessibilityLabel={sermon.title} width={150} aspectRatio={1} />
       <Caption title={sermon.title} />
     </View>
   );
@@ -137,7 +137,7 @@ export function CatalogCard({ sermon, onPress }: { sermon: SermonListItem; onPre
 
 /** Recommended for you: a tall image-only poster. */
 export function PosterCard({ sermon, onPress }: { sermon: SermonListItem; onPress: () => void }) {
-  return <ArtTile thumbnailUrl={sermon.thumbnail_url} onPress={onPress} accessibilityLabel={sermon.title} width={130} aspectRatio={130 / 190} />;
+  return <ArtTile thumbnailUrl={sermon.thumbnail_url} queueSermon={sermon} onPress={onPress} accessibilityLabel={sermon.title} width={130} aspectRatio={130 / 190} />;
 }
 
 const NUMERAL_SIZE = 96;
@@ -166,7 +166,7 @@ export function TrendingCard({ rank, sermon, onPress }: { rank: number; sermon: 
         </Svg>
       </View>
       <ArtTile
-        thumbnailUrl={sermon.thumbnail_url}
+        thumbnailUrl={sermon.thumbnail_url} queueSermon={sermon}
         onPress={onPress}
         accessibilityLabel={`Number ${rank} trending, ${sermon.title}`}
         width={120}

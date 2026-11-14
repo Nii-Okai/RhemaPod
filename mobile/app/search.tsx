@@ -241,6 +241,7 @@ export default function SearchScreen() {
                         accessibilityLabel={meta ? `${sermon.title}, ${meta}` : sermon.title}
                         divider={i < sermons.length - 1}
                         onPress={() => goToSermon(sermon.id)}
+                        queueSermon={sermon}
                       />
                     );
                   })}

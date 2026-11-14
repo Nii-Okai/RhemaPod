@@ -14,6 +14,10 @@ import { queryKeys } from '../../../lib/query/queryClient';
 import { __enterFullscreen, __exitFullscreen, __lastMockPlayer } from '../../../__mocks__/expo-video';
 import { useIsOnline } from '../../../lib/hooks/useIsOnline';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
+import { NowPlayingProvider } from '../../../lib/playback/NowPlaying';
+import { addToQueue, queueItemFromSermon, queueStore, toggleRepeat } from '../../../lib/playback/queue';
+import { startPlaylistQueue } from '../../playlist/_detail/playlistQueue';
+import { AsyncStorage as MockKvStore } from 'expo-sqlite/kv-store';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
@@ -91,6 +95,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
 }));
 
 const mockedGet = api.get as jest.Mock;
+const mockedKvGetItem = MockKvStore.getItem as jest.Mock;
 const mockedUsePlatformOS = usePlatformOS as jest.Mock;
 
 const baseDetail = {
@@ -204,6 +209,9 @@ beforeEach(() => {
   mockSetParams.mockClear();
   mockDownload.mockClear();
   mockParams = { id: 'sermon-1' };
+  queueStore.reset();
+  mockedKvGetItem.mockReset();
+  mockedKvGetItem.mockResolvedValue(null);
   mockedUseIsOnline.mockReturnValue(true);
   __enterFullscreen.mockClear();
   __exitFullscreen.mockClear();
@@ -572,90 +580,163 @@ describe('PlayerScreen — replay', () => {
   });
 });
 
-describe('PlayerScreen — playlist queue', () => {
+/** A playlist of `ids` started from `index`, the way the playlist page's Play starts it. */
+function seedPlaylistQueue(ids: string[], index = 0, { repeat = false } = {}) {
+  const items = ids.map((id) => playlistItem(id));
+  startPlaylistQueue({ id: 'p1', name: 'Driving' }, items as never, index);
+  if (repeat) queueStore.update(toggleRepeat);
+  return items;
+}
+
+function renderInApp() {
+  const client = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={client}>
+      <NowPlayingProvider>
+        <PlayerScreen />
+      </NowPlayingProvider>
+    </QueryClientProvider>,
+  );
+}
+
+async function playToEnd() {
+  const player = __lastMockPlayer!;
+  await act(async () => {
+    player.__simulateReady(1862);
+  });
+  await waitFor(() => expect(player.play).toHaveBeenCalled());
+  await act(async () => {
+    player.__simulatePlayToEnd();
+  });
+  return player;
+}
+
+describe('PlayerScreen — queue', () => {
   it('advances to the next sermon in the queue on playToEnd, staying on this screen (setParams, not replace)', async () => {
-    mockParams = { id: 'sermon-1', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '0' };
-    mockReads();
-    const { findByTestId, queryByLabelText } = renderPlayer();
+    const items = seedPlaylistQueue(['sermon-1', 'sermon-2', 'sermon-3']);
+    mockParams = { id: 'sermon-1' };
+    mockReads({ playlist: playlist({ items }) });
+    const { findByTestId, queryByLabelText } = renderInApp();
     await findByTestId('video-view');
-    const player = __lastMockPlayer!;
-    await act(async () => {
-      player.__simulateReady(1862);
-    });
-    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+    await playToEnd();
 
-    await act(async () => {
-      player.__simulatePlayToEnd();
-    });
-
-    expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '1' });
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', startAt: '' }));
+    expect(queueStore.get().index).toBe(1);
     expect(mockReplace).not.toHaveBeenCalled();
     // Moved on by itself — never pins the single-sermon Replay control.
     expect(queryByLabelText('Replay')).toBeNull();
   });
 
   it('falls back to the ordinary Replay control at the end of the queue', async () => {
-    mockParams = { id: 'sermon-3', queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '2' };
-    mockReads();
-    const { findByTestId, getByLabelText } = renderPlayer();
+    const items = seedPlaylistQueue(['sermon-1', 'sermon-2', 'sermon-3'], 2);
+    mockParams = { id: 'sermon-3' };
+    mockReads({ detail: { ...baseDetail, id: 'sermon-3' }, playlist: playlist({ items }) });
+    const { findByTestId, getByLabelText } = renderInApp();
     await findByTestId('video-view');
-    const player = __lastMockPlayer!;
-    await act(async () => {
-      player.__simulateReady(1862);
-    });
-    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
-
-    await act(async () => {
-      player.__simulatePlayToEnd();
-    });
+    await playToEnd();
 
     expect(mockSetParams).not.toHaveBeenCalled();
     expect(getByLabelText('Replay')).toBeTruthy();
   });
 
   it('wraps to the first item instead of stopping, when repeat is on', async () => {
-    mockParams = {
-      id: 'sermon-3',
-      queue: 'sermon-1,sermon-2,sermon-3',
-      queueIndex: '2',
-      playlistId: 'p1',
-      repeat: '1',
-    };
-    mockReads({ playlist: playlist({ items: [playlistItem('sermon-1'), playlistItem('sermon-2'), playlistItem('sermon-3')] }) });
-    const { findByTestId } = renderPlayer();
+    const items = seedPlaylistQueue(['sermon-1', 'sermon-2', 'sermon-3'], 2, { repeat: true });
+    mockParams = { id: 'sermon-3' };
+    mockReads({ detail: { ...baseDetail, id: 'sermon-3' }, playlist: playlist({ items }) });
+    const { findByTestId } = renderInApp();
     await findByTestId('video-view');
-    const player = __lastMockPlayer!;
-    await act(async () => {
-      player.__simulateReady(1862);
-    });
-    await waitFor(() => expect(player.play).toHaveBeenCalledTimes(1));
+    await playToEnd();
 
-    await act(async () => {
-      player.__simulatePlayToEnd();
-    });
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-1', startAt: '' }));
+  });
 
-    expect(mockSetParams).toHaveBeenCalledWith({
-      id: 'sermon-1',
-      queue: 'sermon-1,sermon-2,sermon-3',
-      queueIndex: '0',
-      playlistId: 'p1',
-      repeat: '1',
+  it('opening a sermon from elsewhere makes it the queue, keeping what the listener queued', async () => {
+    // Something from a playlist is playing, with one sermon the listener queued after it.
+    seedPlaylistQueue(['sermon-5', 'sermon-6']);
+    queueStore.update((state) => addToQueue(state, queueItemFromSermon(playlistItem('sermon-9').sermon as never)));
+    mockParams = { id: 'sermon-1' };
+    mockReads();
+    const { findByTestId } = renderInApp();
+    await findByTestId('video-view');
+    await waitFor(() => expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1', 'sermon-9']));
+    expect(queueStore.get().index).toBe(0);
+    expect(queueStore.get().source).toBeNull();
+  });
+});
+
+describe('PlayerScreen — autoplay next in series', () => {
+  const inSeries = { ...baseDetail, series_id: 'se1', series_title: 'Storms', episode_number: 1 };
+  const episode = (id: string, extra: Record<string, unknown> = {}) => ({
+    ...inSeries,
+    id,
+    title: `Episode ${id}`,
+    ...extra,
+  });
+
+  function readsWithEpisodes(episodes: unknown[]) {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(inSeries);
+      if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(null);
+      if (path === '/sermons/{sermon_id}/stream') return Promise.resolve(baseStream);
+      if (path === '/sermons/{sermon_id}/comments') return Promise.resolve({ items: [], total: 0, limit: 25, offset: 0 });
+      if (path === '/auth/me') return Promise.resolve(profile);
+      if (path === '/series/{series_id}/episodes') return Promise.resolve(episodes);
+      throw new Error(`unexpected path: ${path}`);
     });
+  }
+
+  it('plays the next playable episode when the toggle is on, passing over a locked one', async () => {
+    readsWithEpisodes([episode('sermon-1'), episode('sermon-2', { locked: true }), episode('sermon-3')]);
+    mockParams = { id: 'sermon-1' };
+    const screen = renderInApp();
+    const { findByTestId, findByText } = screen;
+    await findByTestId('video-view');
+    // The queue names it before it plays.
+    fireEvent.press(await screen.findByLabelText('Show queue'));
+    expect(await findByText('Autoplay is on. Next in the series: Episode sermon-3')).toBeTruthy();
+
+    await playToEnd();
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-3', startAt: '' }));
+    expect(queueStore.get().items.map((item) => [item.sermonId, item.origin])).toEqual([
+      ['sermon-1', 'context'],
+      ['sermon-3', 'autoplay'],
+    ]);
+  });
+
+  it('stops at the end when "Autoplay next in series" is off', async () => {
+    mockedKvGetItem.mockResolvedValue(JSON.stringify({ autoplayNextInSeries: false }));
+    readsWithEpisodes([episode('sermon-1'), episode('sermon-2')]);
+    mockParams = { id: 'sermon-1' };
+    const { findByTestId, getByLabelText } = renderInApp();
+    await findByTestId('video-view');
+    await playToEnd();
+    // Give autoplay every chance to have fired.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockSetParams).not.toHaveBeenCalled();
+    expect(getByLabelText('Replay')).toBeTruthy();
+    expect(mockedGet).not.toHaveBeenCalledWith('/series/{series_id}/episodes', expect.anything());
+  });
+
+  it('stops after the last episode', async () => {
+    readsWithEpisodes([episode('sermon-0'), episode('sermon-1')]);
+    mockParams = { id: 'sermon-1' };
+    const { findByTestId } = renderInApp();
+    await findByTestId('video-view');
+    await playToEnd();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockSetParams).not.toHaveBeenCalled();
   });
 });
 
 describe('PlayerScreen — queue list', () => {
-  function renderWithQueue(overrides: Partial<Record<string, string>> = {}) {
-    mockParams = {
-      id: 'sermon-1',
-      queue: 'sermon-1,sermon-2',
-      queueIndex: '0',
-      playlistId: 'p1',
-      ...overrides,
-    };
-    mockReads({
-      playlist: playlist({ items: [playlistItem('sermon-1'), playlistItem('sermon-2')] }),
-    });
+  function renderWithQueue(ids = ['sermon-1', 'sermon-2']) {
+    const items = seedPlaylistQueue(ids);
+    mockParams = { id: 'sermon-1' };
+    mockReads({ playlist: playlist({ items }) });
     return renderPlayer();
   }
 
@@ -678,36 +759,56 @@ describe('PlayerScreen — queue list', () => {
 
     fireEvent.press(await findByLabelText('Play Title sermon-2'));
 
-    expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', queue: 'sermon-1,sermon-2', queueIndex: '1', playlistId: 'p1' });
+    expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-2', startAt: '' });
+    expect(queueStore.get().index).toBe(1);
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('toggling repeat updates the route param without a remount (setParams, not replace)', async () => {
+  it('toggles repeat on the queue without moving playback', async () => {
     const { findByLabelText } = renderWithQueue();
 
     fireEvent.press(await findByLabelText('Repeat this queue'));
 
-    expect(mockSetParams).toHaveBeenCalledWith({ repeat: '1' });
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(queueStore.get().repeat).toBe(true);
+    expect(await findByLabelText('Turn off repeat')).toBeTruthy();
+    expect(mockSetParams).not.toHaveBeenCalled();
   });
 
   it('shuffle reorders only the not-yet-played tail, leaving the current item in place', async () => {
-    const { findByLabelText } = renderWithQueue({ queue: 'sermon-1,sermon-2,sermon-3', queueIndex: '0' });
+    const { findByLabelText } = renderWithQueue(['sermon-1', 'sermon-2', 'sermon-3']);
 
     fireEvent.press(await findByLabelText('Shuffle the rest of this queue'));
 
-    expect(mockSetParams).toHaveBeenCalledTimes(1);
-    const [{ queue: newQueue }] = mockSetParams.mock.calls[0];
-    expect(newQueue.startsWith('sermon-1,')).toBe(true);
-    expect(newQueue.split(',').sort()).toEqual(['sermon-1', 'sermon-2', 'sermon-3']);
+    const order = queueStore.get().items.map((item) => item.sermonId);
+    expect(order[0]).toBe('sermon-1');
+    expect([...order].sort()).toEqual(['sermon-1', 'sermon-2', 'sermon-3']);
+    expect(mockSetParams).not.toHaveBeenCalled();
   });
 
-  it('a queue row\'s "..." menu downloads, removes from the playlist, or shares that item', async () => {
-    const { findByLabelText, getByLabelText } = renderWithQueue();
+  it('clears everything after the current item', async () => {
+    const { findByLabelText, findByText } = renderWithQueue(['sermon-1', 'sermon-2', 'sermon-3']);
+
+    fireEvent.press(await findByLabelText('Clear up next'));
+
+    expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1']);
+    expect(await findByText(/Nothing else queued/)).toBeTruthy();
+  });
+
+  it('a queue row\'s "..." menu plays it next, removes it, downloads, removes from the playlist, or shares', async () => {
+    const { findByLabelText, getByLabelText, queryByLabelText } = renderWithQueue(['sermon-1', 'sermon-2', 'sermon-3']);
+
+    fireEvent.press(await findByLabelText('More options for Title sermon-3'));
+    fireEvent.press(getByLabelText('Play next'));
+    expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1', 'sermon-3', 'sermon-2']);
+
+    // Already next: no "Play next" for it.
+    fireEvent.press(await findByLabelText('More options for Title sermon-3'));
+    expect(queryByLabelText('Play next')).toBeNull();
+    fireEvent.press(getByLabelText('Remove from queue'));
+    expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1', 'sermon-2']);
 
     fireEvent.press(await findByLabelText('More options for Title sermon-2'));
     fireEvent.press(getByLabelText('Download'));
-
     expect(mockDownload).toHaveBeenCalledWith('sermon-2', 'Title sermon-2', 'audio', expect.any(String), 'Teaching');
 
     fireEvent.press(await findByLabelText('More options for Title sermon-2'));
@@ -718,6 +819,7 @@ describe('PlayerScreen — queue list', () => {
         params: { path: { playlist_id: 'p1', item_id: 'item-sermon-2' } },
       }),
     );
+    expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1']);
   });
 });
 

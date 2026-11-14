@@ -7,6 +7,7 @@ import Share from 'react-native-share';
 import { ApiError } from '../../../lib/api/errors';
 import { api } from '../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
+import { queueStore } from '../../../lib/playback/queue';
 
 jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn(), delete: jest.fn() },
@@ -161,7 +162,10 @@ function mockPlaylistGet(playlistDetail: ReturnType<typeof detail>, recommended:
   );
 }
 
+const queuedIds = () => queueStore.get().items.map((item) => item.sermonId);
+
 beforeEach(() => {
+  queueStore.reset();
   mockedGet.mockReset();
   mockedPost.mockReset();
   mockedPatch.mockReset();
@@ -210,8 +214,11 @@ describe('Signature playlist detail', () => {
     expect(getByText('FAITH')).toBeTruthy();
     expect(getByText('DIVINE PATTERNS · EPISODE 2')).toBeTruthy();
 
+    // A tapped row plays the playlist through from that row.
     fireEvent.press(getByText('Second'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-2' } });
+    expect(queuedIds()).toEqual(['sermon-1', 'sermon-2']);
+    expect(queueStore.get().index).toBe(1);
   });
 
   it('Play queues every item in order; Shuffle queues all of them', async () => {
@@ -219,14 +226,15 @@ describe('Signature playlist detail', () => {
     const { findByLabelText, getByLabelText } = renderScreen();
 
     fireEvent.press(await findByLabelText('Play this playlist'));
-    expect(mockPush).toHaveBeenLastCalledWith({
-      pathname: '/player/[id]',
-      params: { id: 'sermon-1', playlistId: 'p1', queue: 'sermon-1,sermon-2', queueIndex: '0' },
-    });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
+    expect(queuedIds()).toEqual(['sermon-1', 'sermon-2']);
+    expect(queueStore.get().source).toEqual({ kind: 'playlist', id: 'p1', name: expect.any(String) });
+    expect(queueStore.get().items.map((item) => item.playlistItemId)).toEqual(['item-1', 'item-2']);
 
     fireEvent.press(getByLabelText('Shuffle'));
     const call = mockPush.mock.calls[1][0];
-    expect(call.params.queue.split(',').sort()).toEqual(['sermon-1', 'sermon-2']);
+    expect(call.params.id).toBe(queuedIds()[0]);
+    expect([...queuedIds()].sort()).toEqual(['sermon-1', 'sermon-2']);
   });
 
   it('removes an item by its playlist-item id', async () => {

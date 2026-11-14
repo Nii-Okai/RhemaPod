@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { createThemedStyles, useTheme } from '../theme/ThemeContext';
+import type { SermonLike } from '../lib/playback/queue';
+import { useQueueGesture } from '../lib/playback/useQueueGesture';
 import { spacing } from '../theme/spacing';
 import { FittedArt } from './FittedArt';
 import { PlatformIcon } from './PlatformIcon';
@@ -24,6 +26,8 @@ export interface MediaRowProps {
   divider?: boolean;
   artSize?: number;
   testID?: string;
+  /** A sermon row: a long press offers Play next / Add to queue. */
+  queueSermon?: SermonLike | null;
 }
 
 /**
@@ -43,13 +47,16 @@ export function MediaRow({
   divider = true,
   artSize = 56,
   testID,
+  queueSermon,
 }: MediaRowProps) {
   const styles = useStyles();
   const { colors } = useTheme();
+  const queueGesture = useQueueGesture(queueSermon);
   return (
     <Pressable
       testID={testID}
       onPress={onPress}
+      {...queueGesture}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel ?? (meta ? `${title}, ${meta}` : title)}

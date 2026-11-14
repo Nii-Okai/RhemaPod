@@ -1,28 +1,35 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { AppText, EqualizerBars, FittedArt, IconButton, PlatformIcon, Sheet } from '../../../components';
+import { AppText, EqualizerBars, FittedArt, IconButton, PlatformIcon, Sheet, type AppIconName } from '../../../components';
 import { darkColors as onArt } from '../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
-import { metaLineFor } from '../../playlist/_detail/sermonMeta';
-import type { PlaylistItemPublic } from '../../../lib/query/hooks/usePlaylists';
+import type { QueueItem } from '../../../lib/playback/queue';
 
 export interface QueueListProps {
-  playlistName: string;
-  ownerName: string | null;
-  isPublic: boolean;
-  /** Already in queue order (the order `[id].tsx`'s Play/Shuffle queued, not necessarily
-   * this playlist's own saved item order — see `PlayerScreen`'s own doc comment). */
-  items: PlaylistItemPublic[];
+  /** The playlist's or series' name, or "Up next". */
+  title: string;
+  /** A playlist's owner, with a lock when it's private. */
+  ownerName?: string | null;
+  isPublic?: boolean;
+  /** The whole queue, played items included, in play order. */
+  items: QueueItem[];
   currentIndex: number;
   repeatEnabled: boolean;
   onToggleRepeat: () => void;
   onShuffleRemaining: () => void;
-  onSelectItem: (sermonId: string, index: number) => void;
-  onRemove: (itemId: string) => void;
-  onDownload: (item: PlaylistItemPublic) => void;
-  onShare: (item: PlaylistItemPublic) => void;
+  onClearUpcoming: () => void;
+  onSelectItem: (index: number) => void;
+  /** Moves a queued item to play straight after the current one. */
+  onPlayNext: (key: string) => void;
+  onRemoveFromQueue: (key: string) => void;
+  /** Only while a playlist is playing, for its own rows. */
+  onRemoveFromPlaylist?: (item: QueueItem) => void;
+  onDownload: (item: QueueItem) => void;
+  onShare: (item: QueueItem) => void;
+  /** The episode autoplay will play once the queue runs out, when it's on. */
+  autoplayNextTitle?: string | null;
   /** Whether the current item is actually playing — its visualiser moves only then. */
   isPlaying?: boolean;
 }
@@ -30,58 +37,59 @@ export interface QueueListProps {
 const THUMBNAIL_SIZE = 44;
 
 /**
- * Replaces the comments panel when the Player was opened from a playlist's own Play/
- * Shuffle button (Isaac's ask, session 2026-10-11: "Do not open player page with
- * comments, rather open another page with all playlist items"). Sits in the exact spot
- * `CommentsPanel` otherwise fills, below the video/transport controls, which are
- * unchanged — this only swaps what's underneath them.
+ * The queue panel, under the player's title block (Queue / Comments switch). It lists the
+ * whole queue in play order with the current item marked; tapping a row plays it. It was
+ * first built for playlists only (Isaac's ask, session 2026-10-11) and since Nii's review
+ * (2026-11-14) shows the app-wide queue, wherever playback started.
  *
- * Repeat (loop back to item 1 once the queue's own last item ends) and Shuffle
- * (re-shuffle whatever hasn't played yet, in place, leaving already-played items alone)
- * are real, wired into `PlayerScreen`'s own `queue`/`queueIndex`/`repeat` route params —
- * not the reference screenshot's static icon row. Tapping a row jumps playback to it
- * directly (`router.replace`, same mechanism auto-advance already uses — a different
- * sermon needs a fresh player instance, not just new props on the existing one).
- *
- * The per-row "..." menu is trimmed to what this app can actually back (Isaac's call
- * when asked): Download and Share (both existing actions elsewhere in the app) and
- * Remove from playlist (the same action the playlist page's own swipe-to-delete
- * already does). The reference's "Play next in queue" (no queue-priority-vs-playlist-
- * order concept exists) and "Save video to playlist" (these items are already in this
- * exact playlist) are left out — a menu row that does nothing is worse than one that
- * isn't there (`ActionButton`'s own Set Reminders/Rate precedent, invoked repeatedly
- * this session).
+ * Header: Repeat (loop back to the first item once the last one ends), Shuffle (the items
+ * not played yet, in place) and Clear (everything after the current item). Each row's "..."
+ * menu offers Play next and Remove from queue, plus Remove from playlist for a playing
+ * playlist's own rows, Download and Share. When nothing is left and autoplay is on, the
+ * foot of the list names the episode that comes next in the series.
  */
 export function QueueList({
-  playlistName,
+  title,
   ownerName,
-  isPublic,
+  isPublic = true,
   items,
   currentIndex,
   isPlaying = false,
   repeatEnabled,
   onToggleRepeat,
   onShuffleRemaining,
+  onClearUpcoming,
   onSelectItem,
-  onRemove,
+  onPlayNext,
+  onRemoveFromQueue,
+  onRemoveFromPlaylist,
   onDownload,
   onShare,
+  autoplayNextTitle,
 }: QueueListProps) {
   const { colors } = useTheme();
   const styles = useStyles();
-  const [actionsFor, setActionsFor] = useState<PlaylistItemPublic | null>(null);
+  const [actionsFor, setActionsFor] = useState<{ item: QueueItem; index: number } | null>(null);
+  const upcomingCount = Math.max(0, items.length - currentIndex - 1);
+
+  const act = (run: () => void) => () => {
+    run();
+    setActionsFor(null);
+  };
 
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <View style={styles.titleRow}>
-            <AppText variant="ui.bodyLarge" numberOfLines={1}>
-              {playlistName}
+            <AppText variant="ui.bodyLarge" numberOfLines={1} style={styles.titleText}>
+              {title}
             </AppText>
-            <AppText variant="ui.body" tone="tertiary">
-              {`${Math.min(currentIndex + 1, items.length)}/${items.length}`}
-            </AppText>
+            {items.length > 1 ? (
+              <AppText variant="ui.body" tone="tertiary">
+                {`${Math.min(currentIndex + 1, items.length)}/${items.length}`}
+              </AppText>
+            ) : null}
           </View>
           {ownerName ? (
             <View style={styles.ownerRow}>
@@ -100,30 +108,34 @@ export function QueueList({
             onPress={onToggleRepeat}
             accessibilityRole="button"
             accessibilityLabel={repeatEnabled ? 'Turn off repeat' : 'Repeat this queue'}
+            accessibilityState={{ selected: repeatEnabled }}
             hitSlop={spacing.sm}
             style={styles.headerIconButton}
           >
             <PlatformIcon name="repeat" size={20} color={repeatEnabled ? colors.accent.gold : colors.text.primary} />
           </Pressable>
           <IconButton icon="shuffle" accessibilityLabel="Shuffle the rest of this queue" onPress={onShuffleRemaining} size={20} />
+          {upcomingCount > 0 ? (
+            <IconButton icon="trash-outline" accessibilityLabel="Clear up next" onPress={onClearUpcoming} size={20} />
+          ) : null}
         </View>
       </View>
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {items.map((item, index) => {
           const isCurrent = index === currentIndex;
-          const metaLine = metaLineFor(item.sermon);
+          const metaLine = item.origin === 'user' ? ['Queued', item.meta].filter(Boolean).join(' · ') : item.origin === 'autoplay' ? ['Autoplay', item.meta].filter(Boolean).join(' · ') : item.meta;
           return (
             <Pressable
-              key={item.id}
-              onPress={() => onSelectItem(item.sermon.id, index)}
+              key={item.key}
+              onPress={() => onSelectItem(index)}
               accessibilityRole="button"
-              accessibilityLabel={isCurrent ? `${item.sermon.title}, now playing` : `Play ${item.sermon.title}`}
+              accessibilityLabel={isCurrent ? `${item.title}, now playing` : `Play ${item.title}`}
               style={({ pressed }) => [styles.row, isCurrent && styles.rowCurrent, pressed && styles.rowPressed]}
             >
               <View style={styles.thumbnail}>
-                {item.sermon.thumbnail_url ? (
-                  <FittedArt uri={item.sermon.thumbnail_url} />
+                {item.artworkUrl ? (
+                  <FittedArt uri={item.artworkUrl} />
                 ) : isCurrent ? null : (
                   <PlatformIcon name="musical-notes-outline" size={18} color={colors.text.tertiary} />
                 )}
@@ -135,7 +147,7 @@ export function QueueList({
               </View>
               <View style={styles.rowText}>
                 <AppText variant="ui.bodyLarge" numberOfLines={1} tone={isCurrent ? 'gold' : 'primary'}>
-                  {item.sermon.title}
+                  {item.title}
                 </AppText>
                 {metaLine ? (
                   <AppText variant="ui.body" tone="secondary" numberOfLines={1}>
@@ -143,55 +155,61 @@ export function QueueList({
                   </AppText>
                 ) : null}
               </View>
-              <IconButton icon="ellipsis-horizontal" accessibilityLabel={`More options for ${item.sermon.title}`} onPress={() => setActionsFor(item)} />
+              <IconButton icon="ellipsis-horizontal" accessibilityLabel={`More options for ${item.title}`} onPress={() => setActionsFor({ item, index })} />
             </Pressable>
           );
         })}
+        {upcomingCount === 0 ? (
+          <View style={styles.footer} testID="queue-footer">
+            <AppText variant="ui.body" tone="tertiary">
+              {repeatEnabled && items.length > 1
+                ? 'Repeat is on: the queue starts again from the top.'
+                : autoplayNextTitle
+                  ? `Autoplay is on. Next in the series: ${autoplayNextTitle}`
+                  : 'Nothing else queued. Long-press any sermon to play it next or add it to the queue.'}
+            </AppText>
+          </View>
+        ) : null}
       </ScrollView>
 
       <Sheet visible={actionsFor !== null} onClose={() => setActionsFor(null)}>
         {actionsFor ? (
           <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Download"
-              onPress={() => {
-                onDownload(actionsFor);
-                setActionsFor(null);
-              }}
-              style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
-            >
-              <PlatformIcon name="download-outline" size={20} color={colors.text.primary} />
-              <AppText variant="ui.bodyLarge">Download</AppText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Remove from playlist"
-              onPress={() => {
-                onRemove(actionsFor.id);
-                setActionsFor(null);
-              }}
-              style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
-            >
-              <PlatformIcon name="remove-circle-outline" size={20} color={colors.text.primary} />
-              <AppText variant="ui.bodyLarge">Remove from playlist</AppText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Share"
-              onPress={() => {
-                onShare(actionsFor);
-                setActionsFor(null);
-              }}
-              style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
-            >
-              <PlatformIcon name="share-outline" size={20} color={colors.text.primary} />
-              <AppText variant="ui.bodyLarge">Share</AppText>
-            </Pressable>
+            {actionsFor.index !== currentIndex ? (
+              <>
+                {actionsFor.index !== currentIndex + 1 ? (
+                  <ActionRow icon="play-skip-forward-outline" label="Play next" onPress={act(() => onPlayNext(actionsFor.item.key))} />
+                ) : null}
+                <ActionRow icon="remove-circle-outline" label="Remove from queue" onPress={act(() => onRemoveFromQueue(actionsFor.item.key))} />
+              </>
+            ) : null}
+            {onRemoveFromPlaylist && actionsFor.item.playlistItemId ? (
+              <ActionRow icon="trash-outline" label="Remove from playlist" onPress={act(() => onRemoveFromPlaylist(actionsFor.item))} />
+            ) : null}
+            {actionsFor.item.mediaType ? (
+              <ActionRow icon="download-outline" label="Download" onPress={act(() => onDownload(actionsFor.item))} />
+            ) : null}
+            <ActionRow icon="share-outline" label="Share" onPress={act(() => onShare(actionsFor.item))} />
           </>
         ) : null}
       </Sheet>
     </View>
+  );
+}
+
+function ActionRow({ icon, label, onPress }: { icon: AppIconName; label: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  const styles = useStyles();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
+    >
+      <PlatformIcon name={icon} size={20} color={colors.text.primary} />
+      <AppText variant="ui.bodyLarge">{label}</AppText>
+    </Pressable>
   );
 }
 
@@ -220,6 +238,9 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: spacing.xs,
+  },
+  titleText: {
+    flexShrink: 1,
   },
   ownerRow: {
     flexDirection: 'row',
@@ -275,6 +296,9 @@ const useStyles = createThemedStyles((colors) => ({
   rowText: {
     flex: 1,
     gap: 2,
+  },
+  footer: {
+    paddingVertical: spacing.md,
   },
   actionRow: {
     flexDirection: 'row',

@@ -6,6 +6,7 @@ import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import type { SeriesEpisode } from '../../../lib/query/hooks/useSeries';
 import type { EpisodeProgress } from './episodeProgress';
+import { useQueueGesture } from '../../../lib/playback/useQueueGesture';
 
 export interface SignatureEpisodeRowProps {
   episode: SeriesEpisode;
@@ -34,6 +35,7 @@ export function SignatureEpisodeRow({ episode, progress, current, last = false, 
   const number = episode.episode_number ?? position;
   const label = [`Episode ${number}`, episode.title, progress.meta.toLowerCase()].filter(Boolean).join(', ');
   const done = progress.state === 'done';
+  const queueGesture = useQueueGesture(episode);
 
   return (
     <View style={styles.row}>
@@ -51,6 +53,7 @@ export function SignatureEpisodeRow({ episode, progress, current, last = false, 
       </View>
       <Pressable
         onPress={onPress}
+        {...queueGesture}
         accessibilityRole="button"
         accessibilityLabel={label}
         style={({ pressed }) => [styles.pressable, current && styles.card, pressed && styles.pressed]}

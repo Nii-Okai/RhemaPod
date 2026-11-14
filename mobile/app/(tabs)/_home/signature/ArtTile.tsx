@@ -2,6 +2,8 @@ import React from 'react';
 import type { ViewStyle } from 'react-native';
 import { FittedArt, PressableScale } from '../../../../components';
 import { createThemedStyles } from '../../../../theme/ThemeContext';
+import type { SermonLike } from '../../../../lib/playback/queue';
+import { useQueueGesture } from '../../../../lib/playback/useQueueGesture';
 import { LEAF_SM } from './leaf';
 
 export interface ArtTileProps {
@@ -15,6 +17,8 @@ export interface ArtTileProps {
   shape?: ViewStyle;
   /** Drawn over the art (progress bar, chip, play button). */
   children?: React.ReactNode;
+  /** A sermon card: a long press offers Play next / Add to queue. */
+  queueSermon?: SermonLike | null;
 }
 
 /**
@@ -31,11 +35,14 @@ export function ArtTile({
   aspectRatio,
   shape = LEAF_SM,
   children,
+  queueSermon,
 }: ArtTileProps) {
   const styles = useStyles();
+  const queueGesture = useQueueGesture(queueSermon);
   return (
     <PressableScale
       onPress={onPress}
+      {...queueGesture}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       style={[styles.tile, shape, width !== undefined ? { width } : styles.fill, { aspectRatio }]}

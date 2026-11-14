@@ -18,8 +18,24 @@ import { isPlayable } from '../sermon/_detail/isPlayable';
 import { useDownloads } from '../../lib/downloads/useDownloads';
 import { useLocalPlayback } from '../../lib/downloads/useLocalPlayback';
 import { useCachedSource } from '../../lib/mediaCache/useCachedSource';
-import { usePlaylist, useRemovePlaylistItem, type PlaylistItemPublic } from '../../lib/query/hooks/usePlaylists';
-import { shuffled } from '../playlist/_detail/playlistQueue';
+import { usePlaylist, useRemovePlaylistItem } from '../../lib/query/hooks/usePlaylists';
+import { useSeriesEpisodes } from '../../lib/query/hooks/useSeries';
+import {
+  clearUpcoming,
+  moveToNext,
+  nextEpisodeAfter,
+  nextIndex,
+  queueItemFromSermon,
+  queueStore,
+  removeItem,
+  removeSermon,
+  shuffleUpcoming,
+  skipTo,
+  syncToSermon,
+  toggleRepeat,
+  usePlaybackQueue,
+  type QueueItem,
+} from '../../lib/playback/queue';
 import { shareContent } from '../../lib/share/shareContent';
 import { VideoSurface } from './_player/VideoSurface';
 import { SleepTimerSheet } from './_player/SleepTimerSheet';
@@ -72,92 +88,51 @@ import { LEAF } from '../(tabs)/_home/signature/leaf';
  * the remaining space. The whole screen sits in a `KeyboardAvoidingView` so the pinned
  * composer rides above the keyboard.
  *
- * **Playlist queue** (Isaac's ask, session 2026-10-10 — "play items in their playlist"):
- * opened with `queue`/`queueIndex`/`playlistId` route params (`[id].tsx`'s own Play/
- * Shuffle), this screen auto-advances to the next sermon on `playToEnd` instead of
- * sitting on a Replay control — `router.replace`, not `push`, so playing through a long
- * playlist doesn't stack a screen per item. Opened any other way (a detail page's play
- * button, a notification), those params are absent and playback behaves exactly as
- * before: it just stops at the end.
+ * **Queue** (Nii's review, 2026-11-14 — it used to work only inside a playlist): the
+ * queue is app-wide now (`lib/playback/queue.ts`), not this screen's route params. Opening
+ * a sermon from anywhere makes it the current item; a playlist's Play/Shuffle starts the
+ * whole playlist; "Play next"/"Add to queue" on any row add to it. `NowPlayingProvider`
+ * moves the queue on when a sermon ends, and at the end of the queue plays the next
+ * episode in the series when "Autoplay next in series" is on (You tab). While this screen
+ * is open it moves on through `router.setParams({ id })` (registered as the provider's
+ * navigator), so the next sermon plays on this same screen with no navigation transition
+ * (Isaac's ask, 2026-10-11). `PlayerContent` is `key={sermonId}`-ed so IT still remounts
+ * on the new id (`useSharedPlayer`'s source and `useProgressFlush`'s resume baseline are
+ * mount-time-only state); once the screen is closed the provider loads the next sermon
+ * into the shared player itself, so the queue keeps going from the mini player.
  *
- * **Queue list, not comments** (Isaac's ask, session 2026-10-11: "Do not open player
- * page with comments, rather open another page with all playlist items"): when opened
- * with a `playlistId`, `QueueList` takes the comments panel's exact spot below the
- * video/transport controls — those are unchanged, only what's underneath them differs.
- * `repeat` is a fourth route param (`'1'`/absent), toggled via `router.setParams`.
- *
- * Tapping a queue row, and auto-advancing on `playToEnd`, both move to a different
- * sermon via `router.setParams` too, not `router.replace` (Isaac's own follow-up, same
- * session: "do not open a new screen, stay on the same screen to play next item") — `id`
- * is just another param on this one mounted route, same as `queue`/`queueIndex`, so
- * updating it in place re-renders `PlayerScreen` with the new sermon id and no
- * navigation transition at all. `PlayerContent` below is `key={sermonId}`-ed
- * specifically so IT still remounts when the id changes (`useVideoPlayer`'s source and
- * `useProgressFlush`'s resume baseline are both genuinely mount-time-only state — see
- * `PlayerContent`'s own doc comment), without that inner remount reading as the user
- * having left the screen.
+ * **Queue / Comments**: the panel under the title shows the queue (`QueueList`) or the
+ * comments, with a switch at the foot. A playlist opens on its queue (Isaac's ask,
+ * 2026-10-11: "open another page with all playlist items"); a single sermon opens on its
+ * comments, as before.
  */
 export default function PlayerScreen() {
   const styles = useStyles();
-  const { id: sermonId, queue, queueIndex, playlistId, repeat, startAt } = useLocalSearchParams<{
+  const { id: sermonId, startAt } = useLocalSearchParams<{
     id: string;
-    queue?: string;
-    queueIndex?: string;
-    playlistId?: string;
-    repeat?: string;
     /** Whole seconds to start from instead of the saved resume point — a devotional's
-        "sermon moment" (plan-daily-devotional M5). Ignored inside a queue. */
+        "sermon moment" (plan-daily-devotional M5). Cleared when the queue moves on. */
     startAt?: string;
   }>();
   const router = useRouter();
-  // Playing through a playlist (`[id].tsx`'s own Play/Shuffle, Isaac's ask, session
-  // 2026-10-10) — `queue` is the whole ordered sermon-id list, `queueIndex` this
-  // sermon's own position in it. `null` for every other way into this screen (a
-  // sermon/series detail page's own play button, a notification deep link, ...), which
-  // all still just play the one sermon and stop, same as always.
-  const queueIds = queue ? queue.split(',') : null;
-  const currentQueueIndex = queueIndex ? Number(queueIndex) : 0;
-  const repeatEnabled = repeat === '1';
+  const nowPlaying = useNowPlaying();
+  const queue = usePlaybackQueue();
+  const source = queue.source;
+  const playlistId = source?.kind === 'playlist' ? source.id : undefined;
 
-  const buildQueueParams = (targetId: string, index: number) => {
-    const params: Record<string, string> = { id: targetId, queue: queue!, queueIndex: String(index) };
-    if (playlistId) params.playlistId = playlistId;
-    if (repeat) params.repeat = repeat;
-    return params;
-  };
+  // The queue moves to another sermon by changing this screen's own `id` param, so the
+  // next one plays right here (see the doc comment above).
+  const moveTo = (targetId: string) => router.setParams({ id: targetId, startAt: '' });
+  useEffect(() => nowPlaying?.registerNavigator(moveTo), [nowPlaying?.registerNavigator]);
 
-  // Repeat wraps to the queue's own first item once the last one ends, instead of
-  // just stopping (Isaac's ask, same session as the queue list itself — "make them
-  // real" when asked whether repeat/shuffle should actually do anything).
-  const nextInQueue = queueIds
-    ? currentQueueIndex + 1 < queueIds.length
-      ? { id: queueIds[currentQueueIndex + 1]!, index: currentQueueIndex + 1 }
-      : repeatEnabled && queueIds.length > 0
-        ? { id: queueIds[0]!, index: 0 }
-        : null
-    : null;
-  // `setParams`, not `replace` — a jump within the same queue should stay on this
-  // screen, no navigation transition (Isaac's ask, session 2026-10-11: "do not open a
-  // new screen, stay on the same screen to play next item"). `id` is just another
-  // param on this same mounted route (same as `queue`/`queueIndex`/`repeat`), so
-  // updating it in place re-renders `PlayerScreen` with the new sermon id — no push,
-  // no replace, no back-stack entry. `PlayerContent` below is keyed on `sermonId`
-  // specifically so it still remounts *internally* when that id changes (a fresh
-  // `useVideoPlayer` source and freshly seeded `useProgressFlush` baseline — both are
-  // genuinely mount-time-only state, see `PlayerContent`'s own doc comment), without
-  // that remount being a *navigation* the user perceives as leaving the screen.
-  const advanceToNext = nextInQueue ? () => router.setParams(buildQueueParams(nextInQueue.id, nextInQueue.index)) : null;
-
-  const selectQueueItem = (targetId: string, index: number) => router.setParams(buildQueueParams(targetId, index));
-
-  // No remount — the currently-playing sermon doesn't change, only what happens later.
-  const toggleRepeat = () => router.setParams({ repeat: repeatEnabled ? '0' : '1' });
-
-  const shuffleRemaining = () => {
-    if (!queueIds) return;
-    const played = queueIds.slice(0, currentQueueIndex + 1);
-    const remaining = shuffled(queueIds.slice(currentQueueIndex + 1));
-    router.setParams({ queue: [...played, ...remaining].join(',') });
+  const selectQueueItem = (index: number) => {
+    if (nowPlaying) {
+      nowPlaying.skipToIndex(index);
+      return;
+    }
+    queueStore.update((state) => skipTo(state, index));
+    const item = queueStore.get().items[index];
+    if (item) moveTo(item.sermonId);
   };
 
   const goBack = () => router.back();
@@ -174,40 +149,12 @@ export default function PlayerScreen() {
   const downloadRecord = downloads.find(sermonId);
   const isDownloaded = downloadRecord?.state === 'ready';
 
-  const queueDisplayItems: PlaylistItemPublic[] = queueIds
-    ? (queueIds
-        .map((sid) => playlistQuery.data?.items.find((item) => item.sermon.id === sid))
-        .filter(Boolean) as PlaylistItemPublic[])
-    : [];
-
-  const downloadQueueItem = (item: PlaylistItemPublic) => {
-    void downloads.download(item.sermon.id, item.sermon.title, item.sermon.media_type ?? 'audio', item.sermon.thumbnail_url, item.sermon.category_name);
+  const downloadQueueItem = (item: QueueItem) => {
+    void downloads.download(item.sermonId, item.title, item.mediaType ?? 'audio', item.artworkUrl, item.category);
   };
-  const shareQueueItem = (item: PlaylistItemPublic) => {
-    void shareContent({
-      title: item.sermon.title,
-      description: item.sermon.description,
-      deepLinkPath: `sermon/${item.sermon.id}`,
-    });
+  const shareQueueItem = (item: QueueItem) => {
+    void shareContent({ title: item.title, description: null, deepLinkPath: `sermon/${item.sermonId}` });
   };
-
-  const queueContext: QueueListProps | null =
-    playlistId && playlistQuery.data
-      ? {
-          playlistName: playlistQuery.data.name,
-          ownerName: playlistQuery.data.owner_name,
-          isPublic: playlistQuery.data.is_public,
-          items: queueDisplayItems,
-          currentIndex: currentQueueIndex,
-          repeatEnabled,
-          onToggleRepeat: toggleRepeat,
-          onShuffleRemaining: shuffleRemaining,
-          onSelectItem: selectQueueItem,
-          onRemove: (itemId) => removeFromPlaylist.mutate(itemId),
-          onDownload: downloadQueueItem,
-          onShare: shareQueueItem,
-        }
-      : null;
 
   const detailQuery = useSermonDetail(sermonId);
   const detail = detailQuery.data;
@@ -217,6 +164,45 @@ export default function PlayerScreen() {
   const streamQuery = useStream(sermonId, { enabled: Boolean(detail) && playable && !isDownloaded });
   const localPlayback = useLocalPlayback(sermonId, Boolean(detail) && playable && isDownloaded);
   const preferences = usePlaybackPreferences();
+
+  // This sermon is the queue's current item from here on: opened from anywhere else it
+  // plays now (keeping what the listener queued); reached through the queue, nothing moves.
+  useEffect(() => {
+    if (detail && playable) queueStore.update((state) => syncToSermon(state, queueItemFromSermon(detail)));
+  }, [detail?.id, playable]);
+
+  // What autoplay will pick when the queue runs out, shown at the foot of the queue.
+  const current = queue.items[queue.index];
+  const hasNext = nextIndex(queue) !== null;
+  const autoplayOn = preferences.preferences.autoplayNextInSeries;
+  const autoplaySeriesId = !hasNext && autoplayOn && current?.sermonId === sermonId ? (current.seriesId ?? '') : '';
+  const seriesEpisodes = useSeriesEpisodes(autoplaySeriesId);
+  const autoplayNext = autoplaySeriesId && seriesEpisodes.data ? nextEpisodeAfter(seriesEpisodes.data, sermonId) : null;
+
+  const queueContext: QueueListProps = {
+    title: source?.name ?? 'Up next',
+    ownerName: playlistQuery.data?.owner_name ?? null,
+    isPublic: playlistQuery.data?.is_public ?? true,
+    items: queue.items,
+    currentIndex: queue.index,
+    repeatEnabled: queue.repeat,
+    onToggleRepeat: () => queueStore.update(toggleRepeat),
+    onShuffleRemaining: () => queueStore.update((state) => shuffleUpcoming(state)),
+    onClearUpcoming: () => queueStore.update(clearUpcoming),
+    onSelectItem: selectQueueItem,
+    onPlayNext: (key) => queueStore.update((state) => moveToNext(state, key)),
+    onRemoveFromQueue: (key) => queueStore.update((state) => removeItem(state, key)),
+    onRemoveFromPlaylist: playlistId
+      ? (item) => {
+          if (!item.playlistItemId) return;
+          removeFromPlaylist.mutate(item.playlistItemId);
+          queueStore.update((state) => removeSermon(state, item.sermonId));
+        }
+      : undefined,
+    onDownload: downloadQueueItem,
+    onShare: shareQueueItem,
+    autoplayNextTitle: autoplayNext?.title ?? null,
+  };
 
   // The variant `useStream` would otherwise hand straight to the player, before the media
   // cache (S4) ever gets a say — computed unconditionally alongside the other hooks above
@@ -249,13 +235,7 @@ export default function PlayerScreen() {
     downloads.isLoading ||
     preferences.isLoading ||
     (playable && progressQuery.isLoading) ||
-    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading || cacheSource.isLoading)) ||
-    // Blocks on the playlist read too, when there is one — `PlayerContent` renders
-    // `QueueList` only once `queueContext` is non-null (`playlistQuery.data` present),
-    // otherwise it falls back to the comments panel; without this, that fallback would
-    // flash on screen for the instant before the (usually cache-warm, since the user
-    // just came from the playlist page) playlist read resolves.
-    (Boolean(playlistId) && playlistQuery.isLoading);
+    (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading || cacheSource.isLoading));
 
   // A sermon that can't play here (locked, or its media isn't ready) belongs on its own
   // detail page — every list in the app now opens the player directly (one transition,
@@ -320,7 +300,7 @@ export default function PlayerScreen() {
     );
   }
 
-  const momentStart = !queue && startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
+  const momentStart = startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
   const initialPositionSeconds =
     momentStart ?? (progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0);
 
@@ -353,8 +333,9 @@ export default function PlayerScreen() {
         onChangeDefaultSpeed={preferences.setDefaultSpeed}
         captionPreference={preferences.preferences.captionLanguage}
         onChangeCaptionPreference={preferences.setCaptionLanguage}
-        onPlayToEnd={advanceToNext}
+        hasNext={hasNext}
         queueContext={queueContext}
+        opensOnQueue={source?.kind === 'playlist'}
         onExit={cacheSource.reportExit}
       />
     </KeyboardAvoidingView>
@@ -421,13 +402,12 @@ interface PlayerContentProps {
   /** Remembered subtitle choice ('off', 'en' or 'fr'), seeded once at mount like `defaultSpeed`. */
   captionPreference: CaptionPreference;
   onChangeCaptionPreference: (language: CaptionPreference) => Promise<void>;
-  /** Advances to the next sermon in a playlist queue — `null` when this sermon wasn't
-   * opened as part of one, or is the queue's last item and repeat is off (see
-   * `PlayerScreen`'s own doc comment on `queue`/`queueIndex`/`repeat`). */
-  onPlayToEnd: (() => void) | null;
-  /** Renders `QueueList` in place of `CommentsPanel` when present — see `PlayerScreen`'s
-   * own doc comment on "Queue list, not comments". */
-  queueContext: QueueListProps | null;
+  /** Something plays after this sermon, so its end moves on (`NowPlayingProvider`) rather
+   * than pinning the Replay control. */
+  hasNext: boolean;
+  queueContext: QueueListProps;
+  /** Open on the queue rather than the comments (a playlist was started). */
+  opensOnQueue: boolean;
   /** Media-cache exit hook (plan S4, P1): called once, on unmount, with the final
    * position/duration — this component remounts (`key={sermonId}`) on every sermon
    * change and unmounts on screen exit, so its own unmount is exactly P1's "leaving a
@@ -454,8 +434,9 @@ function PlayerContent({
   onChangeDefaultSpeed,
   captionPreference,
   onChangeCaptionPreference,
-  onPlayToEnd,
+  hasNext,
   queueContext,
+  opensOnQueue,
   onExit,
 }: PlayerContentProps) {
   const nowPlaying = useNowPlaying();
@@ -601,12 +582,12 @@ function PlayerContent({
   };
 
   // The sermon ended: pin the overlay with a Replay control until playback resumes —
-  // unless there's a next item queued up (a playlist's Play/Shuffle), in which case
-  // this screen moves on by itself instead of waiting on a Replay tap nobody asked for.
+  // unless something is queued after it, in which case the queue moves on by itself
+  // (`NowPlayingProvider`) instead of waiting on a Replay tap nobody asked for. When only
+  // autoplay might follow, Replay shows until the next episode loads in its place.
   const [isEnded, setIsEnded] = useState(false);
   useEventListener(player, 'playToEnd', () => {
-    if (onPlayToEnd) onPlayToEnd();
-    else setIsEnded(true);
+    if (!hasNext) setIsEnded(true);
   });
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
     if (playing) setIsEnded(false);
@@ -714,6 +695,7 @@ function PlayerContent({
       sermonId={sermonId}
       detail={detail}
       queueContext={queueContext}
+      opensOnQueue={opensOnQueue}
       isPlaying={isPlaying}
       video={video}
       listen={listen}
@@ -727,7 +709,8 @@ function PlayerContent({
 interface SignatureLayoutProps {
   sermonId: string;
   detail: SermonDetail;
-  queueContext: QueueListProps | null;
+  queueContext: QueueListProps;
+  opensOnQueue: boolean;
   isPlaying: boolean;
   video: React.ReactNode;
   listen: React.ReactNode;
@@ -739,15 +722,16 @@ interface SignatureLayoutProps {
 /**
  * Signature player layout: every playback control (scrub, speed, sleep timer, full screen)
  * still on its overlay (Nii, 2026-10-22: "all player controls must be kept on player"), then
- * the title block with Like / My List / Download / Share and the comments card. A playlist
- * still opens on its queue, with a Queue / Comments switch at the bottom. The title block and
- * that switch fold away while the keyboard is up so the comment composer keeps its room.
- * Playback itself is `PlayerContent`'s, unchanged.
+ * the title block with Like / My List / Download / Share, then the queue or the comments
+ * with a Queue / Comments switch at the bottom. A playlist opens on its queue, anything else
+ * on its comments. The title block and that switch fold away while the keyboard is up so the
+ * comment composer keeps its room. Playback itself is `PlayerContent`'s, unchanged.
  */
 function SignatureLayout({
   sermonId,
   detail,
   queueContext,
+  opensOnQueue,
   isPlaying,
   video,
   listen,
@@ -758,8 +742,8 @@ function SignatureLayout({
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
-  const [pane, setPane] = useState<PlayerPane>('queue');
-  const showQueue = Boolean(queueContext) && pane === 'queue';
+  const [pane, setPane] = useState<PlayerPane>(opensOnQueue ? 'queue' : 'comments');
+  const showQueue = pane === 'queue';
 
   return (
     <>
@@ -768,15 +752,13 @@ function SignatureLayout({
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
-          <QueueList {...queueContext!} isPlaying={isPlaying} />
+          <QueueList {...queueContext} isPlaying={isPlaying} />
         </View>
       ) : (
         <CommentsPanel sermonId={sermonId} variant="signature" />
       )}
-      {keyboardVisible ? null : queueContext ? (
+      {keyboardVisible ? null : (
         <PaneSwitch pane={showQueue ? 'queue' : 'comments'} onSelectPane={setPane} bottomInset={insets.bottom} />
-      ) : (
-        <View style={{ height: spacing.md + insets.bottom }} />
       )}
       {sleepSheet}
     </>
