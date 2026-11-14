@@ -34,6 +34,7 @@ from app.api.subscriptions import router as subscriptions_router
 from app.api.verses import router as verses_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, correlation_id, get_logger
+from app.core.observability import capture_exception, init_observability
 from app.core.middleware import (
     BodySizeLimitMiddleware,
     CorrelationIdMiddleware,
@@ -56,6 +57,8 @@ from app.services.retention_scheduler import (
 
 settings = get_settings()
 log = get_logger("app")
+# Before the app is built, so Sentry's FastAPI integration hooks every request.
+init_observability(settings)
 
 API_PREFIX = "/api/v1"
 
@@ -204,6 +207,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         path=request.url.path,
         error=type(exc).__name__,
     )
+    # This handler turns the error into a clean 500, so report it explicitly.
+    capture_exception(exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

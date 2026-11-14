@@ -82,6 +82,15 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # --- Error reporting (Sentry) ---
+    # Blank = off. The DSN only allows sending events, but keep it in the host's
+    # env settings rather than the repo all the same.
+    sentry_dsn: str | None = None
+    # Usually the deployed commit SHA, so errors are grouped by release.
+    sentry_release: str | None = None
+    # Share of requests traced for performance (0.0 to 1.0).
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+
     # In production, inject via a secrets manager rather than .env
     secret_key: str = Field(min_length=32)
 

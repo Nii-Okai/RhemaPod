@@ -111,7 +111,19 @@
         }
       ],
       "expo-apple-authentication",
-      "./plugins/withMinPodsDeploymentTarget"
+      "./plugins/withMinPodsDeploymentTarget",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://sentry.io/"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C99A33"
+        }
+      ]
     ],
     "scheme": "rhemapod",
     "extra": {
