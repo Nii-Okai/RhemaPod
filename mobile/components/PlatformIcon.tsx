@@ -32,6 +32,9 @@ const ICONS = {
   pause: { ios: 'pause', android: 'pause' },
   'play-back-outline': { ios: 'play-back-outline', android: 'fast-rewind' },
   'play-forward-outline': { ios: 'play-forward-outline', android: 'fast-forward' },
+  // The queue: Play next, the mini player's Next, Add to queue.
+  'play-skip-forward': { ios: 'play-skip-forward', android: 'skip-next' },
+  'play-skip-forward-outline': { ios: 'play-skip-forward-outline', android: 'skip-next' },
   refresh: { ios: 'refresh', android: 'refresh' },
   reload: { ios: 'reload', android: 'refresh' },
   'arrow-down': { ios: 'arrow-down', android: 'arrow-downward' },

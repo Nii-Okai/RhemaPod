@@ -1,26 +1,45 @@
-import { playlistQueueParams, shuffled } from '../playlistQueue';
+import { queueStore } from '../../../../lib/playback/queue';
+import { shuffled, startPlaylistQueue } from '../playlistQueue';
 
-describe('playlistQueueParams', () => {
-  it('returns null for an empty playlist — nothing to play', () => {
-    expect(playlistQueueParams('p1', [])).toBeNull();
+const row = (id: string) =>
+  ({
+    id: `item-${id}`,
+    position: 0,
+    added_at: '2026-10-10T00:00:00Z',
+    sermon: {
+      id,
+      title: `Title ${id}`,
+      locked: false,
+      media_type: 'audio',
+      speaker_name: 'Ada',
+      thumbnail_url: null,
+      series_id: null,
+      series_title: null,
+      episode_number: null,
+      category_name: 'Faith',
+    },
+  }) as never;
+
+beforeEach(() => queueStore.reset());
+
+describe('startPlaylistQueue', () => {
+  it('returns null for an empty playlist and leaves the queue alone', () => {
+    expect(startPlaylistQueue({ id: 'p1', name: 'Driving' }, [])).toBeNull();
+    expect(queueStore.get().items).toEqual([]);
   });
 
-  it('joins ids into one comma-separated queue, starting at index 0 by default', () => {
-    expect(playlistQueueParams('p1', ['a', 'b', 'c'])).toEqual({
-      id: 'a',
-      playlistId: 'p1',
-      queue: 'a,b,c',
-      queueIndex: '0',
-    });
+  it('queues every row from the start, named after the playlist', () => {
+    expect(startPlaylistQueue({ id: 'p1', name: 'Driving' }, [row('a'), row('b'), row('c')])).toBe('a');
+    const state = queueStore.get();
+    expect(state.items.map((item) => item.sermonId)).toEqual(['a', 'b', 'c']);
+    expect(state.items.map((item) => item.playlistItemId)).toEqual(['item-a', 'item-b', 'item-c']);
+    expect(state.index).toBe(0);
+    expect(state.source).toEqual({ kind: 'playlist', id: 'p1', name: 'Driving' });
   });
 
-  it('honors a non-zero start index', () => {
-    expect(playlistQueueParams('p1', ['a', 'b', 'c'], 2)).toEqual({
-      id: 'c',
-      playlistId: 'p1',
-      queue: 'a,b,c',
-      queueIndex: '2',
-    });
+  it('honours a start row', () => {
+    expect(startPlaylistQueue({ id: 'p1', name: 'Driving' }, [row('a'), row('b'), row('c')], 2)).toBe('c');
+    expect(queueStore.get().index).toBe(2);
   });
 });
 

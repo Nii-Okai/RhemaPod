@@ -8,6 +8,7 @@ import { spacing } from '../../../../theme/spacing';
 import { fontFamily } from '../../../../theme/typography';
 import type { PlaylistItemPublic } from '../../../../lib/query/hooks/usePlaylists';
 import { metaLineFor } from '../sermonMeta';
+import { useQueueGesture } from '../../../../lib/playback/useQueueGesture';
 import type { AddableSermon } from '../SermonAddRow';
 
 // Daybreak (canvas E2/E4): square art with 14pt corners.
@@ -60,10 +61,12 @@ export function SignaturePlaylistItemRow({
   const sermon = item.sermon;
   // Category or series/episode only — no speaker or duration (Isaac's ask, 2026-10-10).
   const meta = metaLineFor(sermon);
+  const queueGesture = useQueueGesture(sermon);
 
   const content = (
     <Pressable
       onPress={onPress}
+      {...queueGesture}
       accessibilityRole="button"
       accessibilityLabel={`Play ${sermon.title}`}
       style={({ pressed }) => [styles.row, styles.itemRow, pressed && styles.pressed]}

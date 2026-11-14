@@ -3,6 +3,7 @@ import { Image, View } from 'react-native';
 import { AppText } from '../Text';
 import { FadeTitle } from '../FadeTitle';
 import { PressableScale } from '../PressableScale';
+import { useQueueGesture } from '../../lib/playback/useQueueGesture';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
 import { spacing } from '../../theme/spacing';
@@ -56,11 +57,13 @@ export function SermonCard({
 }: SermonCardProps) {
   const styles = useStyles();
   const meta = metaLabel(sermon);
+  const queueGesture = useQueueGesture(sermon);
   const titleWidth = width - spacing.md * 2;
 
   return (
     <PressableScale
       onPress={onPress}
+      {...queueGesture}
       accessibilityRole="button"
       accessibilityLabel={`${sermon.title}, ${meta}`}
       style={[styles.card, { width }, highlighted && styles.cardHighlighted]}

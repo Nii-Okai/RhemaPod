@@ -150,6 +150,7 @@ export default function SpeakerDrillDownScreen() {
                   trailing={isNew ? <RowPill label="New" tone="sun" /> : undefined}
                   divider={i < sermons.length - 1}
                   onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
+                  queueSermon={sermon}
                 />
               );
             })}

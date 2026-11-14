@@ -10,6 +10,8 @@ import { darkColors, lightColors } from '../../../../theme/colors';
 import { loadThemePreference } from '../../../../lib/settings/themePreference';
 // See the classic player test for why this is imported by its relative path.
 import { __lastMockPlayer } from '../../../../__mocks__/expo-video';
+import { queueStore } from '../../../../lib/playback/queue';
+import { startPlaylistQueue } from '../../../playlist/_detail/playlistQueue';
 
 jest.mock('../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() },
@@ -144,6 +146,7 @@ function mockReads(overrides: { detail?: unknown } = {}) {
     if (path === '/auth/me') return Promise.resolve(profile);
     if (path === '/playlists') return Promise.resolve([]);
     if (path === '/playlists/{playlist_id}') return Promise.resolve(queuePlaylist);
+    if (path === '/series/{series_id}/episodes') return Promise.resolve([]);
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -166,6 +169,7 @@ beforeEach(() => {
   mockSetParams.mockClear();
   mockDownload.mockClear();
   mockParams = { id: 'sermon-1' };
+  queueStore.reset();
   mockedLoadTheme.mockResolvedValue('dark');
   mockReads();
 });
@@ -233,14 +237,14 @@ describe('Signature player', () => {
   it('shows the comments card with its count and the latest comment', async () => {
     const screen = renderPlayer();
     expect(await screen.findByText('Watching this one a second time. Powerful word.')).toBeTruthy();
-    expect(screen.getByText('Comments')).toBeTruthy();
+    expect(screen.getAllByText('Comments').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('1 comment')).toBeTruthy();
-    // Queue and Comments only switch panels when there's a queue.
-    expect(screen.queryByLabelText('Show queue')).toBeNull();
+    // A single sermon opens on its comments; the queue is a tap away.
+    expect(screen.getByLabelText('Show queue')).toBeTruthy();
   });
 
   it('opens a playlist on its queue, and the toolbar switches to comments and back', async () => {
-    mockParams = { id: 'sermon-1', queue: 'sermon-1,sermon-2', queueIndex: '0', playlistId: 'p1' };
+    startPlaylistQueue(queuePlaylist, queuePlaylist.items as never);
     const screen = renderPlayer();
     expect(await screen.findByText('Title sermon-2')).toBeTruthy();
     expect(screen.queryByLabelText('1 comment')).toBeNull();
