@@ -1,6 +1,7 @@
 /* global __DEV__ */
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import { updateContext } from '../updates/otaUpdates';
 
 /**
  * Crash and performance reporting.
@@ -11,7 +12,8 @@ import Constants from 'expo-constants';
  *
  * What is sent: crashes, unhandled JS errors, errors caught by the root error
  * screen, and a sample of performance traces (app start, screen loads), tagged with
- * the account id only.
+ * the account id only, and with which over-the-air update was running (update id,
+ * channel, runtime version), so a crash can be traced to the fix that caused it.
  *
  * What is never sent (`scrubEvent` / `scrubBreadcrumb` below):
  * - default PII (IP address, cookies) and any user field but the id;
@@ -73,6 +75,7 @@ export function initObservability(): void {
     tracesSampleRate: 0.2,
     enableAutoSessionTracking: true,
     integrations: [navigationIntegration],
+    initialScope: { tags: updateContext() },
   });
 }
 

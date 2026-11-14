@@ -3,6 +3,14 @@
     "name": "RhemaPod",
     "slug": "rhemapod-mobile",
     "version": "0.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/94c017d2-4c66-4c78-bb13-ee0f60f0543f",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

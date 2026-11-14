@@ -90,6 +90,16 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // Release tooling run with Node from the command line (e.g. `npm run update`).
+    files: ["scripts/**/*.js"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     // `__mocks__/**` (Jest manual mocks, not test files themselves) needs the same
     // `jest` global as `__tests__/**` whenever a mock uses `jest.fn()` — first real
     // caller: `__mocks__/expo-video.tsx` (W4.2). The pre-existing `@expo/vector-icons`
