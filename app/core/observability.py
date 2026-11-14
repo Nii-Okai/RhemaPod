@@ -6,7 +6,8 @@ Data minimisation (what Sentry never receives):
 - request bodies (``max_request_body_size="never"``), cookies, auth headers and
   client IPs (``send_default_pii=False``);
 - local variable values in stack frames (``include_local_variables=False``), so a
-  password, token or email held in a variable can't ride along with a traceback;
+  password, token or email held in a variable can't ride along with a traceback,
+  and the source lines around each frame (``include_source_context=False``);
 - query strings on any URL, in the event and in breadcrumbs, so signed media URLs
   and one-time tokens never leave the server;
 - anything in the SDK's default denylist (password, secret, token, ...), scrubbed
@@ -73,6 +74,9 @@ def init_observability(settings: Settings) -> bool:
         send_default_pii=False,
         max_request_body_size="never",
         include_local_variables=False,
+        # Frames keep file, line and function, but not the surrounding lines of
+        # source, so no code leaves the server inside an event.
+        include_source_context=False,
         traces_sample_rate=settings.sentry_traces_sample_rate,
         before_send=_before_send,
         before_send_transaction=_before_send,

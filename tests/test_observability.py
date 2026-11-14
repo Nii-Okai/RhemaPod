@@ -63,6 +63,7 @@ def test_init_minimises_what_is_sent():
     kwargs = init.call_args.kwargs
     assert kwargs["max_request_body_size"] == "never"
     assert kwargs["include_local_variables"] is False
+    assert kwargs["include_source_context"] is False
     assert kwargs["before_breadcrumb"] is observability._before_breadcrumb
 
 

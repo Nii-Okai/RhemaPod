@@ -115,7 +115,9 @@
       [
         "@sentry/react-native",
         {
-          "url": "https://sentry.io/"
+          "url": "https://sentry.io/",
+          "organization": "wedid-systems",
+          "project": "rhemapod-mobile"
         }
       ],
       [
