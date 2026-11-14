@@ -10,8 +10,15 @@ import Constants from 'expo-constants';
  * sending events), which is why it can live in a public env var.
  *
  * What is sent: crashes, unhandled JS errors, errors caught by the root error
- * screen, and a sample of performance traces (app start, screen loads). What is not:
- * no request bodies, no default PII (IP, cookies), and no session replay.
+ * screen, and a sample of performance traces (app start, screen loads), tagged with
+ * the account id only.
+ *
+ * What is never sent (`scrubEvent` / `scrubBreadcrumb` below):
+ * - default PII (IP address, cookies) and any user field but the id;
+ * - request bodies and headers, and query strings on any URL, so the signed playback
+ *   and download URLs and the auth tokens never leave the phone;
+ * - console output as breadcrumbs (debug logging can contain anything);
+ * - session replay, screenshots and view hierarchy (all off).
  */
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
@@ -20,6 +27,32 @@ export const navigationIntegration = Sentry.reactNavigationIntegration({
 });
 
 let started = false;
+
+function stripQuery(url: unknown): unknown {
+  return typeof url === 'string' ? url.split(/[?#]/, 1)[0] : url;
+}
+
+/** Exported for tests. */
+export function scrubEvent<T extends Sentry.Event>(event: T): T {
+  if (event.request) {
+    delete event.request.data;
+    delete event.request.cookies;
+    delete event.request.headers;
+    delete event.request.query_string;
+    event.request.url = stripQuery(event.request.url) as string | undefined;
+  }
+  if (event.user) event.user = event.user.id ? { id: event.user.id } : undefined;
+  return event;
+}
+
+/** Exported for tests. */
+export function scrubBreadcrumb(crumb: Sentry.Breadcrumb): Sentry.Breadcrumb | null {
+  if (crumb.category === 'console') return null;
+  if (crumb.data && 'url' in crumb.data) crumb.data = { ...crumb.data, url: stripQuery(crumb.data.url) };
+  if (crumb.data && 'to' in crumb.data) crumb.data = { ...crumb.data, to: stripQuery(crumb.data.to) };
+  if (crumb.data && 'from' in crumb.data) crumb.data = { ...crumb.data, from: stripQuery(crumb.data.from) };
+  return crumb;
+}
 
 export function initObservability(): void {
   if (started || !dsn) return;
@@ -30,6 +63,11 @@ export function initObservability(): void {
     release: Constants.expoConfig?.version,
     enabled: !__DEV__,
     sendDefaultPii: false,
+    attachScreenshot: false,
+    attachViewHierarchy: false,
+    beforeSend: (event) => scrubEvent(event),
+    beforeSendTransaction: (event) => scrubEvent(event),
+    beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb),
     // A fifth of sessions is plenty to see start-up and screen-load times without
     // spending the quota; raise it while chasing a specific slowdown.
     tracesSampleRate: 0.2,
