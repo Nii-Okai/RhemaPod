@@ -1,4 +1,4 @@
-/* global __DEV__, console */
+/* global __DEV__ */
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 

@@ -13,8 +13,8 @@ const mockNotifications = jest.requireMock('expo-notifications') as Record<strin
 jest.mock('expo-device', () => ({ isDevice: true }));
 jest.mock('expo-constants', () => ({ expoConfig: { extra: { eas: { projectId: 'proj-1' } } } }));
 
-const mockPut = jest.fn(async (..._args: unknown[]) => ({}));
-const mockPost = jest.fn(async (..._args: unknown[]) => undefined);
+const mockPut = jest.fn<Promise<unknown>, unknown[]>(async () => ({}));
+const mockPost = jest.fn<Promise<unknown>, unknown[]>(async () => undefined);
 jest.mock('../../api/typedClient', () => ({
   api: { put: (...a: unknown[]) => mockPut(...a), post: (...a: unknown[]) => mockPost(...a) },
 }));
