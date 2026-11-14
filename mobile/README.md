@@ -32,7 +32,7 @@ npm run dev
 JavaScript and asset fixes go out over the air with EAS Update:
 `npm run update -- --channel staging --message "..."`. Native changes still need a new
 build and a bump of `expo.version` in `app.json`. Channels, staged rollouts and
-rollback: `../docs/ota-updates.md`.
+rollback: `docs/ota-updates.md`.
 
 ## Route structure
 

@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 import * as Updates from 'expo-updates';
 
 /**
- * Over-the-air updates (EAS Update). See `docs/ota-updates.md` for how fixes are
+ * Over-the-air updates (EAS Update). See `mobile/docs/ota-updates.md` for how fixes are
  * published, staged and rolled back.
  *
  * The native side (`app.json` `updates`) checks for an update on every cold start and

@@ -30,7 +30,7 @@
  * After publishing, if SENTRY_AUTH_TOKEN is set in your shell (never commit it),
  * the update's source maps are uploaded so crash stack traces are readable.
  *
- * See docs/ota-updates.md for staging, rollouts and rollback.
+ * See mobile/docs/ota-updates.md for staging, rollouts and rollback.
  */
 const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
