@@ -254,6 +254,17 @@ class Settings(BaseSettings):
     # it off and run `python -m app.scripts.sweep_captions` instead.
     captions_scheduler_enabled: bool = False
 
+    # --- Push notifications (Expo push service) ---
+    # Off = pushes are logged, not sent (dev, tests, any env without the go-ahead).
+    push_notifications_enabled: bool = False
+    # Optional: only needed if "enhanced push security" is turned on for the
+    # Expo project. Server-side only.
+    expo_push_access_token: str | None = None
+    # Runs the "new sermon" push loop inside the API process (same pattern as
+    # CAPTIONS_SCHEDULER_ENABLED); otherwise run `python -m app.scripts.send_pushes`
+    # every minute or two from a scheduler.
+    push_scheduler_enabled: bool = False
+
     # --- Cold-tier archive: AWS S3 Deep Archive (plan L2, §A.2.1) ---
     # A genuine cross-vendor move, not a same-account storage-class change:
     # copy R2 -> AWS, verify, then (once ARCHIVE_DELETE_SOURCE is on) delete

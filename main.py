@@ -26,6 +26,7 @@ from app.api.devotionals import settings_router as devotional_settings_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
 from app.api.playlists import router as playlists_router
+from app.api.push import router as push_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
@@ -50,6 +51,7 @@ from app.services.captions_scheduler import (
     start_captions_scheduler,
     stop_captions_scheduler,
 )
+from app.services.push_scheduler import start_push_scheduler, stop_push_scheduler
 from app.services.retention_scheduler import (
     start_retention_scheduler,
     stop_retention_scheduler,
@@ -89,11 +91,16 @@ async def lifespan(app: FastAPI):
     captions_task = None
     if settings.captions_scheduler_enabled:
         captions_task = start_captions_scheduler(session_factory=PrimarySession)
+    push_task = None
+    if settings.push_scheduler_enabled:
+        push_task = start_push_scheduler(session_factory=PrimarySession)
     try:
         yield
     finally:
         logger.info("shutdown")
         try:
+            if push_task is not None:
+                await stop_push_scheduler(push_task)
             if captions_task is not None:
                 await stop_captions_scheduler(captions_task)
             if retention_task is not None:
@@ -246,6 +253,7 @@ for _router in (
     verses_router,
     devotionals_router,
     devotional_approvals_router,
+    push_router,
 ):
     app.include_router(_router, prefix=API_PREFIX)
 
