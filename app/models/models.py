@@ -326,6 +326,13 @@ class Sermon(Base):
     publish_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # When the "new sermon" push went out (push_service). Null = not yet sent;
+    # the push loop picks up visible sermons with this unset, so a scheduled
+    # `publish_at` notifies when the sermon actually appears, not when it was
+    # approved. The migration stamps every sermon already published.
+    push_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1679,3 +1686,40 @@ class DevotionalApprovalLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class PushDevice(Base):
+    """One phone that can receive push notifications for a signed-in account.
+
+    Keyed by its Expo push token, which identifies an app install. A token that
+    signs in to another account moves to that account (the row is re-pointed),
+    so a shared phone never gets the previous person's notifications. Rows go
+    when the account is deleted (CASCADE), when the app unregisters on sign-out,
+    and when Expo reports the token is no longer registered.
+    """
+
+    __tablename__ = "push_devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token: Mapped[str] = mapped_column(String(255), nullable=False)
+    platform: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Per-device opt-in for "new sermon" pushes (the app's notification settings).
+    new_sermons: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("token", name="uq_push_devices_token"),)

@@ -2001,6 +2001,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/push-devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Register Push Device
+         * @description Register (or refresh) this install's push token and its preferences.
+         *     The app calls this on every sign-in and whenever the settings change.
+         */
+        put: operations["register_push_device_api_v1_me_push_devices_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/push-devices/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unregister Push Device
+         * @description Stop pushing to this install (the app calls this when signing out).
+         *     A POST with a body rather than DELETE with the token in the path, so the
+         *     token never lands in access logs.
+         */
+        post: operations["unregister_push_device_api_v1_me_push_devices_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/recommended": {
         parameters: {
             query?: never;
@@ -5189,6 +5232,35 @@ export interface components {
             /** Notified Subscriber Count */
             notified_subscriber_count: number;
             status: components["schemas"]["SermonStatus"];
+        };
+        /** PushDevicePublic */
+        PushDevicePublic: {
+            /** New Sermons */
+            new_sermons: boolean;
+            /** Platform */
+            platform: string;
+            /** Token */
+            token: string;
+        };
+        /** PushDeviceRegister */
+        PushDeviceRegister: {
+            /**
+             * New Sermons
+             * @default true
+             */
+            new_sermons: boolean;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "ios" | "android";
+            /** Token */
+            token: string;
+        };
+        /** PushDeviceUnregister */
+        PushDeviceUnregister: {
+            /** Token */
+            token: string;
         };
         /** ReadingConfirm */
         ReadingConfirm: {
@@ -9825,6 +9897,70 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProgressPublic"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_push_device_api_v1_me_push_devices_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushDeviceRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushDevicePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unregister_push_device_api_v1_me_push_devices_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushDeviceUnregister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

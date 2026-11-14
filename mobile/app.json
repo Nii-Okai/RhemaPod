@@ -111,7 +111,21 @@
         }
       ],
       "expo-apple-authentication",
-      "./plugins/withMinPodsDeploymentTarget"
+      "./plugins/withMinPodsDeploymentTarget",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://sentry.io/",
+          "organization": "wedid-systems",
+          "project": "rhemapod-mobile"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C99A33"
+        }
+      ]
     ],
     "scheme": "rhemapod",
     "extra": {

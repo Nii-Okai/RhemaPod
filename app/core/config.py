@@ -82,6 +82,15 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # --- Error reporting (Sentry) ---
+    # Blank = off. The DSN only allows sending events, but keep it in the host's
+    # env settings rather than the repo all the same.
+    sentry_dsn: str | None = None
+    # Usually the deployed commit SHA, so errors are grouped by release.
+    sentry_release: str | None = None
+    # Share of requests traced for performance (0.0 to 1.0).
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+
     # In production, inject via a secrets manager rather than .env
     secret_key: str = Field(min_length=32)
 
@@ -244,6 +253,17 @@ class Settings(BaseSettings):
     # RETENTION_SCHEDULER_ENABLED; deployed envs with a real scheduler leave
     # it off and run `python -m app.scripts.sweep_captions` instead.
     captions_scheduler_enabled: bool = False
+
+    # --- Push notifications (Expo push service) ---
+    # Off = pushes are logged, not sent (dev, tests, any env without the go-ahead).
+    push_notifications_enabled: bool = False
+    # Optional: only needed if "enhanced push security" is turned on for the
+    # Expo project. Server-side only.
+    expo_push_access_token: str | None = None
+    # Runs the "new sermon" push loop inside the API process (same pattern as
+    # CAPTIONS_SCHEDULER_ENABLED); otherwise run `python -m app.scripts.send_pushes`
+    # every minute or two from a scheduler.
+    push_scheduler_enabled: bool = False
 
     # --- Cold-tier archive: AWS S3 Deep Archive (plan L2, §A.2.1) ---
     # A genuine cross-vendor move, not a same-account storage-class change:

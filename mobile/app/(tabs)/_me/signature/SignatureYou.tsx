@@ -24,9 +24,26 @@ import { ProfileDetailsSheet } from '../ProfileDetailsSheet';
 import { ThemeSwitch } from './ThemeSwitch';
 import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 import { formatCacheSize, useMediaCacheUsage } from '../../../../lib/mediaCache/useMediaCacheUsage';
+import {
+  useNotificationPreferences,
+  type ToggleOutcome,
+} from '../../../../lib/notifications/useNotificationPreferences';
 
 const PLAYBACK_SAVE_ERROR = "Couldn't save your playback settings. Try again.";
 const AVATAR_SIZE = 64;
+
+function notificationMessage(outcome: ToggleOutcome): string | null {
+  switch (outcome) {
+    case 'denied':
+      return 'Notifications are turned off for RhemaPod in your phone’s settings.';
+    case 'unavailable':
+      return 'Notifications need a real phone, not a simulator.';
+    case 'failed':
+      return "Couldn't save your notification settings. Try again.";
+    default:
+      return null;
+  }
+}
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   const styles = useStyles();
@@ -147,6 +164,9 @@ export function SignatureYouScreen() {
   const { preferences, isSaving, setAutoplayNextInSeries } = usePlaybackPreferences();
   const { wifiOnly, isSavingWifiOnly, setWifiOnly } = useDownloads();
   const playCache = useMediaCacheUsage();
+  const notifications = useNotificationPreferences();
+  const [notificationOutcome, setNotificationOutcome] = React.useState<ToggleOutcome>('ok');
+  const notificationError = notificationMessage(notificationOutcome);
   const [playbackError, setPlaybackError] = React.useState<string | null>(null);
   const [appearanceError, setAppearanceError] = React.useState<string | null>(null);
 
@@ -309,6 +329,46 @@ export function SignatureYouScreen() {
         {playbackError ? (
           <AppText variant="ui.badge" style={styles.errorText} accessibilityLiveRegion="polite">
             {playbackError}
+          </AppText>
+        ) : null}
+      </Group>
+
+      <Group label="Notifications">
+        <Panel>
+          <ToggleRow
+            label="New sermons"
+            detail="When a new message is published"
+            value={notifications.preferences.newSermons}
+            onValueChange={(enabled) => {
+              void notifications.setNewSermons(enabled).then(setNotificationOutcome);
+            }}
+            disabled={notifications.isSaving}
+            accessibilityLabel="Notify me about new sermons"
+          />
+          <ToggleRow
+            label="Daily Rhema reminder"
+            detail="Each morning at 7:00"
+            value={notifications.preferences.dailyRhema}
+            onValueChange={(enabled) => {
+              void notifications.setDailyRhema(enabled).then(setNotificationOutcome);
+            }}
+            disabled={notifications.isSaving}
+            accessibilityLabel="Daily Rhema reminder each morning"
+          />
+          {notificationOutcome === 'denied' ? (
+            <LinkRow
+              icon="notifications-outline"
+              label="Open Settings"
+              detail="Allow notifications, then turn these on again"
+              onPress={() => {
+                void Linking.openSettings();
+              }}
+            />
+          ) : null}
+        </Panel>
+        {notificationError ? (
+          <AppText variant="ui.badge" style={styles.errorText} accessibilityLiveRegion="polite">
+            {notificationError}
           </AppText>
         ) : null}
       </Group>

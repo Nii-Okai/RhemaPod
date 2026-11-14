@@ -331,6 +331,20 @@ async def sign_in_with_identity(
             )
         )
     ).scalar_one_or_none()
+    if other is not None and other.provider_subject == identity.subject:
+        # Not a different account: a concurrent sign-in with this same
+        # provider subject linked it between our identity lookup above and
+        # this check (two taps, or a retry racing the first request). Resolve
+        # to the account it linked, exactly like the IntegrityError path below.
+        resolved = await _load_by_identity(db, identity)
+        if resolved is not None:
+            log.info(
+                "oauth_sign_in_resolved_after_race",
+                provider=identity.provider.value,
+                user_id=str(resolved.id),
+            )
+            return resolved, False
+        raise OAuthError(_RACE_LOST_MESSAGE, 409)
     if other is not None:
         raise OAuthError(
             f"This account is already linked to a different {provider_name} account",
