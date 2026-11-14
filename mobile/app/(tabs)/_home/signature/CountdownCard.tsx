@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../../components/Artwork';
 import { AppText } from '../../../../components';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { spacing } from '../../../../theme/spacing';
@@ -58,11 +59,11 @@ export function CountdownCard({ sermon, onReleased }: CountdownCardProps) {
       accessibilityLabel={`Next message, ${releaseLabel(target)}: ${sermon.title}. ${spoken}`}
     >
       <View style={styles.art}>
-        <Image
+        <Artwork
           testID="countdown-art"
-          source={sermon.thumbnail_url ? { uri: sermon.thumbnail_url } : require('../../../../assets/onboarding-1.jpg')}
+          uri={sermon.thumbnail_url}
+          fallback={require('../../../../assets/onboarding-1.jpg')}
           style={StyleSheet.absoluteFill}
-          resizeMode="cover"
         />
         <ArtScrim height="35%" />
       </View>

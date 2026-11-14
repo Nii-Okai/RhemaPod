@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import * as ImagePicker from 'expo-image-picker';
 import { AppText, LinkButton, PlatformIcon, Sheet } from '../../../components';
 import { darkColors as onArt } from '../../../theme/colors';
@@ -96,7 +97,7 @@ export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160, cover }:
         {cover ? (
           cover
         ) : coverUrl ? (
-          <Image source={{ uri: coverUrl }} style={[styles.cover, { width: size, height: size }]} />
+          <Artwork uri={coverUrl} style={[styles.cover, { width: size, height: size }]} />
         ) : (
           <View style={[styles.coverFallback, { width: size, height: size }]}>
             <PlatformIcon name="musical-note" size={size * 0.3} color={colors.text.tertiary} />

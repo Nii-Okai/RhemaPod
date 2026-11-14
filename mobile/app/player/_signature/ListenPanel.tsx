@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, View, useWindowDimensions } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import { AppText, PlatformIcon } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
@@ -94,7 +95,7 @@ export function ListenPanel({
     <View testID="listen-panel" style={styles.panel}>
       <View style={[styles.art, { width: artSize, height: artSize }]}>
         {artworkUrl ? (
-          <Image source={{ uri: artworkUrl }} style={styles.artImage} accessible={false} />
+          <Artwork uri={artworkUrl} style={styles.artImage} accessible={false} />
         ) : (
           <PlatformIcon name="volume-high-outline" size={56} color={colors.feature.sun} />
         )}

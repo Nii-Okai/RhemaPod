@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, CircleButton, PlatformIcon, QueryState } from '../../components';
 import { SermonCard } from '../../components/sermon/SermonCard';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
-import { useSearchResults } from '../../lib/query/hooks/useSearch';
+import { useSearchResultsInfinite } from '../../lib/query/hooks/useSearch';
+import type { SermonListItem } from '../../lib/query/hooks/useSermons';
+import { useFetchAllPages } from '../../lib/hooks/useFetchAllPages';
 import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 const GRID_COLUMNS = 2;
 const GRID_GAP = spacing.md;
 const GRID_PADDING = spacing.lg + 4;
+const ROW_GAP = spacing.lg + 2;
 
 /**
  * Category drill-down list — reached by tapping a category card on Browse.
@@ -34,6 +38,11 @@ const GRID_PADDING = spacing.lg + 4;
  * large, its sermon count, Play all (starts the first sermon) and a Newest/Oldest order
  * switch; the round back button sits on the wash.
  *
+ * The grid is a two-column `FlashList` that pages through the whole topic 50 at a time
+ * as you scroll (it used to stop at the first 20 while the header counted them all), so
+ * long topics stay smooth: cards off screen are recycled rather than all kept mounted.
+ * "Oldest" pages in the rest first, because `/search` only sorts newest first.
+ *
  * Earlier: custom back-chevron + centered-title header (Isaac's ask, same session: "same
  * navigation style as all series page") — same layout `series.tsx`'s own phone header
  * uses, in place of the native Stack header (`app/_layout.tsx` disables it for this
@@ -46,92 +55,123 @@ export default function CategoryDrillDownScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const results = useSearchResults({ category_id: id });
+  const results = useSearchResultsInfinite({ category_id: id });
   const pullToRefresh = usePullToRefresh([results]);
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   const [oldestFirst, setOldestFirst] = useState(false);
-  const all = results.data?.results ?? [];
-  const sermons = oldestFirst ? [...all].reverse() : all;
-  const total = results.data?.total ?? all.length;
+  useFetchAllPages(results, oldestFirst);
+  const all = results.data?.pages.flatMap((page) => page.results) ?? [];
+  // Oldest first needs every page before it can reverse; until then the footer spins.
+  const sermons = oldestFirst ? (results.hasNextPage ? [] : [...all].reverse()) : all;
+  const total = results.data?.pages[0]?.total ?? all.length;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = results;
+
+  const renderItem: ListRenderItem<SermonListItem> = useCallback(
+    ({ item, index }) => (
+      // FlashList gives each column half the width; pin the card to the outer edge of its
+      // half so the two cards sit GRID_PADDING from the screen edges and GRID_GAP apart.
+      <View style={[styles.cell, index % GRID_COLUMNS === 0 ? styles.cellStart : styles.cellEnd]}>
+        <SermonCard
+          sermon={item}
+          width={cardWidth}
+          showMeta={false}
+          onPress={() => router.push({ pathname: '/player/[id]', params: { id: item.id } })}
+        />
+      </View>
+    ),
+    [styles, cardWidth, router],
+  );
+
+  const header = (
+    <>
+      {/* The topic's blue wash (canvas B5): back, eyebrow, the name large, a count,
+          and Play all / sort order. */}
+      <View style={[styles.hero, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
+        <View style={styles.orbBig} pointerEvents="none" />
+        <View style={styles.orbSun} pointerEvents="none" />
+        <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+        <View style={styles.heroText}>
+          <AppText variant="ui.badge" style={styles.eyebrow}>
+            TOPIC
+          </AppText>
+          <AppText variant="display.hero" accessibilityRole="header" numberOfLines={2} style={styles.title}>
+            {name || 'Category'}
+          </AppText>
+          {results.data ? (
+            <AppText variant="ui.label" style={styles.count}>
+              {total === 1 ? '1 sermon' : `${total} sermons`}
+            </AppText>
+          ) : null}
+        </View>
+        {sermons.length > 0 ? (
+          <View style={styles.actions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermons[0].id } })}
+              style={({ pressed }) => [styles.playAll, pressed && styles.pressed]}
+            >
+              <PlatformIcon name="play" size={18} color={colors.primaryButton.text} />
+              <AppText variant="ui.button" tone="inverse">
+                Play all
+              </AppText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={oldestFirst ? 'Showing oldest first. Show newest first.' : 'Showing newest first. Show oldest first.'}
+              onPress={() => setOldestFirst((v) => !v)}
+              style={({ pressed }) => [styles.sort, pressed && styles.pressed]}
+            >
+              <PlatformIcon name="swap-vertical" size={18} color={colors.text.primary} />
+              <AppText variant="ui.button">{oldestFirst ? 'Oldest' : 'Newest'}</AppText>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.bodyTop} />
+    </>
+  );
 
   return (
     <View style={styles.screen}>
-      <ScrollView
-        style={styles.scroll}
+      <FlashList
+        data={sermons}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        numColumns={GRID_COLUMNS}
+        // Card art is 16:9 plus a one-line title block and the row gap.
+        estimatedItemSize={Math.round((cardWidth * 9) / 16) + 52 + ROW_GAP}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          <View style={styles.state}>
+            <QueryState
+              isLoading={results.isLoading || (oldestFirst && all.length > 0)}
+              isError={results.isError}
+              error={results.error}
+              isEmpty={!results.isLoading && !results.isError && all.length === 0}
+              emptyTitle="No sermons yet"
+              emptyDescription={name ? `Nothing published under “${name}” yet.` : undefined}
+              onRetry={() => results.refetch()}
+              loadingLabel="Loading sermons"
+            >
+              {null}
+            </QueryState>
+          </View>
+        }
+        ListFooterComponent={
+          isFetchingNextPage && sermons.length > 0 ? (
+            <ActivityIndicator style={styles.footerSpinner} color={colors.accent.gold} accessibilityLabel="Loading more sermons" />
+          ) : null
+        }
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+        }}
+        onEndReachedThreshold={0.6}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
-      >
-        {/* The topic's blue wash (canvas B5): back, eyebrow, the name large, a count,
-            and Play all / sort order. */}
-        <View style={[styles.hero, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-          <View style={styles.orbBig} pointerEvents="none" />
-          <View style={styles.orbSun} pointerEvents="none" />
-          <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
-          <View style={styles.heroText}>
-            <AppText variant="ui.badge" style={styles.eyebrow}>
-              TOPIC
-            </AppText>
-            <AppText variant="display.hero" accessibilityRole="header" numberOfLines={2} style={styles.title}>
-              {name || 'Category'}
-            </AppText>
-            {results.data ? (
-              <AppText variant="ui.label" style={styles.count}>
-                {total === 1 ? '1 sermon' : `${total} sermons`}
-              </AppText>
-            ) : null}
-          </View>
-          {sermons.length > 0 ? (
-            <View style={styles.actions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermons[0].id } })}
-                style={({ pressed }) => [styles.playAll, pressed && styles.pressed]}
-              >
-                <PlatformIcon name="play" size={18} color={colors.primaryButton.text} />
-                <AppText variant="ui.button" tone="inverse">
-                  Play all
-                </AppText>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={oldestFirst ? 'Showing oldest first. Show newest first.' : 'Showing newest first. Show oldest first.'}
-                onPress={() => setOldestFirst((v) => !v)}
-                style={({ pressed }) => [styles.sort, pressed && styles.pressed]}
-              >
-                <PlatformIcon name="swap-vertical" size={18} color={colors.text.primary} />
-                <AppText variant="ui.button">{oldestFirst ? 'Oldest' : 'Newest'}</AppText>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.body}>
-          <QueryState
-            isLoading={results.isLoading}
-            isError={results.isError}
-            error={results.error}
-            isEmpty={!results.isLoading && !results.isError && all.length === 0}
-            emptyTitle="No sermons yet"
-            emptyDescription={name ? `Nothing published under “${name}” yet.` : undefined}
-            onRetry={() => results.refetch()}
-            loadingLabel="Loading sermons"
-          >
-            <View style={styles.grid}>
-              {sermons.map((sermon) => (
-                <SermonCard
-                  key={sermon.id}
-                  sermon={sermon}
-                  width={cardWidth}
-                  showMeta={false}
-                  onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
-                />
-              ))}
-            </View>
-          </QueryState>
-        </View>
-      </ScrollView>
+      />
     </View>
   );
 }
@@ -140,9 +180,6 @@ const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
-  },
-  scroll: {
-    flex: 1,
   },
   content: {
     paddingBottom: spacing.xxl * 2,
@@ -215,14 +252,24 @@ const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.85,
   },
-  body: {
-    padding: GRID_PADDING,
-    paddingTop: spacing.xl,
+  bodyTop: {
+    height: spacing.xl,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GRID_GAP,
-    rowGap: spacing.lg + 2,
+  state: {
+    paddingHorizontal: GRID_PADDING,
+  },
+  cell: {
+    paddingBottom: ROW_GAP,
+  },
+  cellStart: {
+    paddingLeft: GRID_PADDING,
+    alignItems: 'flex-start',
+  },
+  cellEnd: {
+    paddingRight: GRID_PADDING,
+    alignItems: 'flex-end',
+  },
+  footerSpinner: {
+    paddingVertical: spacing.lg,
   },
 }));

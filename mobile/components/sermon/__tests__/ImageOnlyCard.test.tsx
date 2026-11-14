@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { ImageOnlyCard } from '../ImageOnlyCard';
 import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
 
@@ -29,7 +29,7 @@ describe('ImageOnlyCard', () => {
     );
 
     expect(queryByText('Anchored in the Storm')).toBeNull();
-    expect(UNSAFE_getByType(Image).props.source).toEqual({ uri: 'https://cdn.example.com/anchored.jpg' });
+    expect(UNSAFE_getByType(Image).props.source).toMatchObject({ uri: 'https://cdn.example.com/anchored.jpg' });
 
     fireEvent.press(getByLabelText('Anchored in the Storm'));
     expect(onPress).toHaveBeenCalledTimes(1);
@@ -60,9 +60,9 @@ describe('ImageOnlyCard', () => {
     expect(flat.aspectRatio).toBeCloseTo(3 / 4);
   });
 
-  it('uses resizeMode="cover" so the card is always filled edge-to-edge with no empty space', () => {
+  it('uses contentFit="cover" so the card is always filled edge-to-edge with no empty space', () => {
     const { UNSAFE_getByType } = render(<ImageOnlyCard sermon={sermon} onPress={jest.fn()} />);
 
-    expect(UNSAFE_getByType(Image).props.resizeMode).toBe('cover');
+    expect(UNSAFE_getByType(Image).props.contentFit).toBe('cover');
   });
 });

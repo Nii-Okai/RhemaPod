@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { Animated, Image } from 'react-native';
+import { Animated } from 'react-native';
+import { Image } from 'expo-image';
 import { SermonCard } from '../SermonCard';
 import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
 

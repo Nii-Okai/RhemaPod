@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SignatureAddToPlaylistSheet as AddToPlaylistSheet } from '../signature/SignatureAddToPlaylistSheet';
@@ -181,9 +181,9 @@ describe('SignatureAddToPlaylistSheet — same behaviour as the classic sheet', 
     await findByText('Another Talk');
 
     const images = UNSAFE_getAllByType(Image);
-    expect(images.map((image) => image.props.source)).toEqual([
-      { uri: 'file:///downloads/dl-1.thumb' },
-      { uri: 'https://cdn.example.com/signed/other.jpg' },
+    expect(images.map((image) => image.props.source.uri)).toEqual([
+      'file:///downloads/dl-1.thumb',
+      'https://cdn.example.com/signed/other.jpg',
     ]);
   });
 

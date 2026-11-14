@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Artwork } from '../Artwork';
 import { useEvent } from 'expo';
 import type { VideoPlayer } from 'expo-video';
 import { useRouter } from 'expo-router';
@@ -59,7 +60,7 @@ function MiniPlayerCard({
         style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       >
         {session.artworkUrl ? (
-          <Image source={{ uri: session.artworkUrl }} style={styles.art} accessible={false} />
+          <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
         ) : (
           <View style={[styles.art, styles.artBlank]}>
             <PlatformIcon name={session.mediaType === 'video' ? 'play' : 'volume-high-outline'} size={18} color={colors.feature.sun} />

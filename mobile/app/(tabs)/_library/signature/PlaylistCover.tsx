@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { Artwork } from '../../../../components/Artwork';
 import { AppText } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { Flame } from '../../_home/signature/Flame';
@@ -29,7 +30,7 @@ export function PlaylistCover({ name, coverUrl, size, shape, color }: PlaylistCo
   return (
     <View style={[styles.box, shape, { width: size, height: size }, swatch && { backgroundColor: swatch.bg }]}>
       {coverUrl ? (
-        <Image source={{ uri: coverUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Artwork uri={coverUrl} style={StyleSheet.absoluteFill} />
       ) : (
         <View style={styles.fallback} accessible={false} importantForAccessibility="no-hide-descendants">
           <AppText

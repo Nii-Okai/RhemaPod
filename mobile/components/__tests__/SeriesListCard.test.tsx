@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { SeriesListCard } from '../SeriesListCard';
 import type { SeriesPublic } from '../../lib/query/hooks/useSeries';
 
@@ -23,7 +23,7 @@ describe('SeriesListCard', () => {
       <SeriesListCard series={series} onPress={onPress} />,
     );
 
-    expect(UNSAFE_getByType(Image).props.source).toEqual({ uri: 'https://cdn.example.com/new-beginnings.jpg' });
+    expect(UNSAFE_getByType(Image).props.source).toMatchObject({ uri: 'https://cdn.example.com/new-beginnings.jpg' });
     expect(getByText('New Beginnings')).toBeTruthy();
     expect(getByText('4 episodes')).toBeTruthy();
 

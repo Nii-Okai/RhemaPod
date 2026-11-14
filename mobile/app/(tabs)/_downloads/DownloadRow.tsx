@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import { AppText, CircularProgress, ConfirmDialog, PlatformIcon } from '../../../components';
 import { darkColors as onArt } from '../../../theme/colors';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
@@ -105,7 +106,7 @@ export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRow
       >
         <View style={styles.artWrap}>
           {download.thumbnailPath ?? download.thumbnailUrl ? (
-            <Image source={{ uri: download.thumbnailPath ?? download.thumbnailUrl ?? undefined }} style={styles.thumbnail} resizeMode="cover" />
+            <Artwork uri={download.thumbnailPath ?? download.thumbnailUrl ?? undefined} style={styles.thumbnail} />
           ) : (
             <View style={styles.thumbnailFallback}>
               <PlatformIcon

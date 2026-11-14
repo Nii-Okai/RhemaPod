@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, CircleButton, IconButton, PlatformIcon, QueryState, StaggerItem } from '../../../components';
@@ -24,9 +25,9 @@ function PosterArt({ uri, title, onOpen }: { uri: string; title: string; onOpen:
   const styles = useStyles();
   return (
     <Pressable onPress={onOpen} accessibilityRole="imagebutton" accessibilityLabel={`View poster: ${title}`} style={styles.art}>
-      <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={24} />
+      <Artwork uri={uri} style={StyleSheet.absoluteFill} blurRadius={24} accessible={false} />
       <View style={styles.artDim} pointerEvents="none" />
-      <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+      <Artwork uri={uri} style={StyleSheet.absoluteFill} contentFit="contain" />
     </Pressable>
   );
 }
@@ -162,10 +163,10 @@ function PosterViewer({ announcement, onClose }: { announcement: AnnouncementLis
           <IconButton icon="close" accessibilityLabel="Close poster" onPress={onClose} />
         </View>
         {announcement?.image_url ? (
-          <Image
-            source={{ uri: announcement.image_url }}
+          <Artwork
+            uri={announcement.image_url}
             style={styles.viewerImage}
-            resizeMode="contain"
+            contentFit="contain"
             accessibilityLabel={`Poster: ${announcement.title}`}
           />
         ) : null}
