@@ -12,6 +12,7 @@ import { AnimatedSplash } from '../components/splash/AnimatedSplash';
 import { NowPlayingProvider, useNowPlaying } from '../lib/playback/NowPlaying';
 import { StackMiniPlayer } from '../components/navigation/StackMiniPlayer';
 import { AppErrorScreen } from '../components/AppErrorScreen';
+import { NotificationBridge } from '../lib/notifications/NotificationBridge';
 import { useCurrentUser } from '../lib/query/hooks/useProfile';
 import {
   initObservability,
@@ -209,6 +210,8 @@ function RootNavigator() {
       </Stack>
       {/* The mini player over pushed screens; the tabs draw their own above the dock. */}
       <StackMiniPlayer />
+      {/* Push registration on sign-in, and opening whatever a tapped notification points at. */}
+      <NotificationBridge />
     </>
   );
 }

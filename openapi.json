@@ -5584,6 +5584,73 @@
         "title": "PublishResponse",
         "type": "object"
       },
+      "PushDevicePublic": {
+        "properties": {
+          "new_sermons": {
+            "title": "New Sermons",
+            "type": "boolean"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "platform",
+          "new_sermons"
+        ],
+        "title": "PushDevicePublic",
+        "type": "object"
+      },
+      "PushDeviceRegister": {
+        "properties": {
+          "new_sermons": {
+            "default": true,
+            "title": "New Sermons",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "ios",
+              "android"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 255,
+            "pattern": "^(ExponentPushToken|ExpoPushToken)\\[[A-Za-z0-9_-]{10,200}\\]$",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "title": "PushDeviceRegister",
+        "type": "object"
+      },
+      "PushDeviceUnregister": {
+        "properties": {
+          "token": {
+            "maxLength": 255,
+            "pattern": "^(ExponentPushToken|ExpoPushToken)\\[[A-Za-z0-9_-]{10,200}\\]$",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "PushDeviceUnregister",
+        "type": "object"
+      },
       "ReadingConfirm": {
         "properties": {
           "duration_s": {
@@ -14559,6 +14626,93 @@
         "summary": "Watch History",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/me/push-devices": {
+      "put": {
+        "description": "Register (or refresh) this install's push token and its preferences.\nThe app calls this on every sign-in and whenever the settings change.",
+        "operationId": "register_push_device_api_v1_me_push_devices_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushDeviceRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushDevicePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Push Device",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/push-devices/remove": {
+      "post": {
+        "description": "Stop pushing to this install (the app calls this when signing out).\nA POST with a body rather than DELETE with the token in the path, so the\ntoken never lands in access logs.",
+        "operationId": "unregister_push_device_api_v1_me_push_devices_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushDeviceUnregister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unregister Push Device",
+        "tags": [
+          "notifications"
         ]
       }
     },
