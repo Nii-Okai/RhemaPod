@@ -70,3 +70,7 @@ docker-compose.override.yaml
 # Sentry CLI / build-plugin credentials (auth tokens) never belong in the repo.
 .sentryclirc
 sentry.properties
+
+# Firebase config for Android push: supplied by EAS as a secret file variable.
+google-services.json
+GoogleService-Info.plist
