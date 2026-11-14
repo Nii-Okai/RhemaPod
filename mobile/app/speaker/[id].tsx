@@ -1,12 +1,14 @@
-import React from 'react';
-import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import React, { useCallback } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, Share, StyleSheet, View } from 'react-native';
+import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, CircleButton, MediaRow, PlatformIcon, QueryState, RowPill } from '../../components';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { formatPublishedDate } from '../../lib/format/publishedDate';
 import { spacing } from '../../theme/spacing';
-import { useSearchResults } from '../../lib/query/hooks/useSearch';
+import { useSearchResultsInfinite } from '../../lib/query/hooks/useSearch';
+import type { SermonListItem } from '../../lib/query/hooks/useSermons';
 import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
 
 /** A sermon published in the last two weeks wears a "New" pill. */
@@ -44,7 +46,8 @@ function sermonCountLabel(count: number): string {
  * `name`/`bio`/`sermonCount` travel in via nav params — Browse's and Search's own
  * speaker lists already have the full `SpeakerPublic` in hand, so this avoids a second
  * fetch just to re-read three fields. The sermon list itself comes from `/search`
- * filtered on `speaker_id`, same as before.
+ * filtered on `speaker_id`, paged 50 at a time into a `FlashList` as you scroll (it used
+ * to stop at the first 20).
  */
 export default function SpeakerDrillDownScreen() {
   const styles = useStyles();
@@ -57,12 +60,87 @@ export default function SpeakerDrillDownScreen() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const results = useSearchResults({ speaker_id: id });
+  const results = useSearchResultsInfinite({ speaker_id: id });
   const pullToRefresh = usePullToRefresh([results]);
   const displayName = name || 'Speaker';
   const count = sermonCount ? Number(sermonCount) : null;
-  const sermons = results.data?.results ?? [];
-  const now = Date.now();
+  const sermons = results.data?.pages.flatMap((page) => page.results) ?? [];
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = results;
+  const lastIndex = sermons.length - 1;
+
+  const renderItem: ListRenderItem<SermonListItem> = useCallback(
+    ({ item: sermon, index: i }) => {
+      const now = Date.now();
+      const published = sermon.publish_at ? Date.parse(sermon.publish_at) : NaN;
+      const isNew = Number.isFinite(published) && now - published < NEW_FOR_MS && now >= published;
+      const meta = [
+        sermon.publish_at ? formatPublishedDate(sermon.publish_at) : null,
+        sermon.duration_seconds ? `${Math.round(sermon.duration_seconds / 60)} min` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      return (
+        <View style={styles.row}>
+          <MediaRow
+            title={sermon.title}
+            meta={meta}
+            thumbnailUrl={sermon.thumbnail_url}
+            artSize={60}
+            trailing={isNew ? <RowPill label="New" tone="sun" /> : undefined}
+            divider={i < lastIndex}
+            onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
+            queueSermon={sermon}
+          />
+        </View>
+      );
+    },
+    [styles, lastIndex, router],
+  );
+
+  const profile = (
+    <>
+      {/* Centred profile (canvas B6): initials on a navy disc in a warm ring. */}
+      <View style={styles.profile}>
+        <View style={styles.ring}>
+          <View style={styles.disc}>
+            <AppText variant="display.hero" tone="inverse">
+              {initialsOf(displayName)}
+            </AppText>
+          </View>
+        </View>
+        <AppText variant="display.title" accessibilityRole="header" style={styles.centered}>
+          {displayName}
+        </AppText>
+        {count !== null ? (
+          <AppText variant="ui.badge" tone="tertiary">
+            {sermonCountLabel(count)}
+          </AppText>
+        ) : null}
+        <AppText variant="ui.body" tone={bio ? 'secondary' : 'tertiary'} style={[styles.centered, styles.bio]}>
+          {bio || NO_BIO_FALLBACK}
+        </AppText>
+        {sermons.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermons[0].id } })}
+            style={({ pressed }) => [styles.playLatest, pressed && styles.pressed]}
+          >
+            <PlatformIcon name="play" size={18} color={colors.primaryButton.text} />
+            <AppText variant="ui.button" tone="inverse">
+              Play latest
+            </AppText>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.tabRow}>
+        <View style={styles.tabOn}>
+          <AppText variant="ui.bodyBold">Sermons</AppText>
+        </View>
+      </View>
+      <View style={styles.listTop} />
+    </>
+  );
 
   return (
     <View style={styles.screen}>
@@ -74,89 +152,41 @@ export default function SpeakerDrillDownScreen() {
           onPress={() => void Share.share({ message: `${displayName} on RhemaPod` })}
         />
       </View>
-      <ScrollView
-        style={styles.scroll}
+      <FlashList
+        data={sermons}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        estimatedItemSize={76}
+        ListHeaderComponent={profile}
+        ListEmptyComponent={
+          <View style={styles.list}>
+            <QueryState
+              isLoading={results.isLoading}
+              isError={results.isError}
+              error={results.error}
+              isEmpty={!results.isLoading && !results.isError && sermons.length === 0}
+              emptyTitle="No sermons yet"
+              emptyDescription={name ? `Nothing published by ${name} yet.` : undefined}
+              onRetry={() => results.refetch()}
+              loadingLabel="Loading sermons"
+            >
+              {null}
+            </QueryState>
+          </View>
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator style={styles.footerSpinner} color={colors.accent.gold} accessibilityLabel="Loading more sermons" />
+          ) : null
+        }
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+        }}
+        onEndReachedThreshold={0.6}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
-      >
-        {/* Centred profile (canvas B6): initials on a navy disc in a warm ring. */}
-        <View style={styles.profile}>
-          <View style={styles.ring}>
-            <View style={styles.disc}>
-              <AppText variant="display.hero" tone="inverse">
-                {initialsOf(displayName)}
-              </AppText>
-            </View>
-          </View>
-          <AppText variant="display.title" accessibilityRole="header" style={styles.centered}>
-            {displayName}
-          </AppText>
-          {count !== null ? (
-            <AppText variant="ui.badge" tone="tertiary">
-              {sermonCountLabel(count)}
-            </AppText>
-          ) : null}
-          <AppText variant="ui.body" tone={bio ? 'secondary' : 'tertiary'} style={[styles.centered, styles.bio]}>
-            {bio || NO_BIO_FALLBACK}
-          </AppText>
-          {sermons.length > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermons[0].id } })}
-              style={({ pressed }) => [styles.playLatest, pressed && styles.pressed]}
-            >
-              <PlatformIcon name="play" size={18} color={colors.primaryButton.text} />
-              <AppText variant="ui.button" tone="inverse">
-                Play latest
-              </AppText>
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.tabRow}>
-          <View style={styles.tabOn}>
-            <AppText variant="ui.bodyBold">Sermons</AppText>
-          </View>
-        </View>
-
-        <View style={styles.list}>
-          <QueryState
-            isLoading={results.isLoading}
-            isError={results.isError}
-            error={results.error}
-            isEmpty={!results.isLoading && !results.isError && sermons.length === 0}
-            emptyTitle="No sermons yet"
-            emptyDescription={name ? `Nothing published by ${name} yet.` : undefined}
-            onRetry={() => results.refetch()}
-            loadingLabel="Loading sermons"
-          >
-            {sermons.map((sermon, i) => {
-              const published = sermon.publish_at ? Date.parse(sermon.publish_at) : NaN;
-              const isNew = Number.isFinite(published) && now - published < NEW_FOR_MS && now >= published;
-              const meta = [
-                sermon.publish_at ? formatPublishedDate(sermon.publish_at) : null,
-                sermon.duration_seconds ? `${Math.round(sermon.duration_seconds / 60)} min` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ');
-              return (
-                <MediaRow
-                  key={sermon.id}
-                  title={sermon.title}
-                  meta={meta}
-                  thumbnailUrl={sermon.thumbnail_url}
-                  artSize={60}
-                  trailing={isNew ? <RowPill label="New" tone="sun" /> : undefined}
-                  divider={i < sermons.length - 1}
-                  onPress={() => router.push({ pathname: '/player/[id]', params: { id: sermon.id } })}
-                  queueSermon={sermon}
-                />
-              );
-            })}
-          </QueryState>
-        </View>
-      </ScrollView>
+      />
     </View>
   );
 }
@@ -179,9 +209,6 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg + 4,
-  },
-  scroll: {
-    flex: 1,
   },
   content: {
     paddingBottom: spacing.xxl * 2,
@@ -241,5 +268,14 @@ const useStyles = createThemedStyles((colors) => ({
   list: {
     paddingHorizontal: spacing.lg + 4,
     paddingTop: spacing.sm,
+  },
+  listTop: {
+    height: spacing.sm,
+  },
+  row: {
+    paddingHorizontal: spacing.lg + 4,
+  },
+  footerSpinner: {
+    paddingVertical: spacing.lg,
   },
 }));

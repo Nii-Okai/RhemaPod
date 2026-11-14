@@ -184,7 +184,7 @@ describe('SignatureHomeScreen', () => {
       },
     });
     const art = await screen.findByTestId('countdown-art');
-    expect(art.props.source).toEqual({ uri: 'https://cdn.example/u1.jpg' });
+    expect(art.props.source).toMatchObject({ uri: 'https://cdn.example/u1.jpg' });
   });
 
   it('falls back to the congregation photo when the scheduled sermon has no art', async () => {

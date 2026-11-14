@@ -76,7 +76,7 @@ describe('CategoryDrillDownScreen', () => {
 
     expect(mockedGet).toHaveBeenCalledWith(
       '/search',
-      expect.objectContaining({ params: { query: { category_id: 'c1' } } }),
+      expect.objectContaining({ params: { query: { category_id: 'c1', limit: 50, offset: 0 } } }),
     );
 
     fireEvent.press(getByText('Anchored in the Storm'));
@@ -105,5 +105,30 @@ describe('CategoryDrillDownScreen', () => {
 
     fireEvent.press(getByText('Retry'));
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2));
+  });
+
+  it('pages through the whole topic, not just the first page the header counts', async () => {
+    const page = (offset: number, count: number, total: number) => ({
+      query: '',
+      total,
+      limit: 50,
+      offset,
+      results: Array.from({ length: count }, (_, i) => ({ ...sermon, id: `s${offset + i}`, title: `Sermon ${offset + i}` })),
+    });
+    mockedGet.mockImplementation((_path: string, { params }: { params: { query: { offset: number } } }) =>
+      Promise.resolve(params.query.offset === 0 ? page(0, 50, 52) : page(50, 2, 52)),
+    );
+
+    const { findByText, getByText } = renderScreen();
+    await findByText('52 sermons');
+    // Oldest first has to see every page before it can reverse them.
+    fireEvent.press(getByText('Newest'));
+    await findByText('Sermon 51');
+    expect(mockedGet).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ params: { query: { category_id: 'c1', limit: 50, offset: 50 } } }),
+    );
+    fireEvent.press(getByText('Play all'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 's51' } });
   });
 });

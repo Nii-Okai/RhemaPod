@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import { Artwork } from '../Artwork';
 import { PressableScale } from '../PressableScale';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { radius } from '../../theme/radius';
@@ -51,7 +52,7 @@ export function ImageOnlyCard({
       style={[styles.card, { width }]}
     >
       {sermon.thumbnail_url ? (
-        <Image source={{ uri: sermon.thumbnail_url }} style={[styles.art, { aspectRatio }]} resizeMode="cover" />
+        <Artwork uri={sermon.thumbnail_url} style={[styles.art, { aspectRatio }]} />
       ) : (
         <View style={[styles.artFallback, { aspectRatio }]} />
       )}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import { Artwork } from '../Artwork';
 import { AppText } from '../Text';
 import { FadeTitle } from '../FadeTitle';
 import { PressableScale } from '../PressableScale';
@@ -69,7 +70,7 @@ export function SermonCard({
       style={[styles.card, { width }, highlighted && styles.cardHighlighted]}
     >
       {sermon.thumbnail_url ? (
-        <Image source={{ uri: sermon.thumbnail_url }} style={styles.art} resizeMode="cover" />
+        <Artwork uri={sermon.thumbnail_url} style={styles.art} />
       ) : (
         <View style={styles.artFallback} />
       )}

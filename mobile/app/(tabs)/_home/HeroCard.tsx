@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import { AppText, PlatformIcon, PressableScale } from '../../../components';
 import { darkColors as onArt } from '../../../theme/colors';
 import { createThemedStyles } from '../../../theme/ThemeContext';
@@ -65,7 +66,7 @@ export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
     >
       <View style={styles.artWrap}>
         {sermon.thumbnail_url ? (
-          <Image source={{ uri: sermon.thumbnail_url }} style={styles.art} resizeMode="cover" />
+          <Artwork uri={sermon.thumbnail_url} style={styles.art} />
         ) : (
           <View style={styles.artFallback} />
         )}

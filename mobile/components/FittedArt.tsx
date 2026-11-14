@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Image, StyleSheet, View, type ImageLoadEventData, type LayoutChangeEvent, type NativeSyntheticEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import type { ImageLoadEventData } from 'expo-image';
+import { Artwork, artworkCacheKey } from './Artwork';
 import { darkColors as onArt } from '../theme/colors';
 
 /** Within this much of the frame's own shape, the art just fills it (a sliver of crop). */
@@ -35,18 +37,22 @@ export interface FittedArtProps {
  */
 export function FittedArt({ uri, testID }: FittedArtProps) {
   const [frameRatio, setFrameRatio] = useState<number | null>(null);
-  const [artRatio, setArtRatio] = useState<number | null>(() => knownRatios.get(uri) ?? null);
+  // Keyed by the art itself, so a row recycled by a list onto different art never keeps
+  // the previous piece's shape for a frame.
+  const artKey = artworkCacheKey(uri);
+  const [loaded, setLoaded] = useState<{ key: string; ratio: number } | null>(null);
+  const artRatio = loaded?.key === artKey ? loaded.ratio : (knownRatios.get(artKey) ?? null);
   const fit = artFitFor(artRatio, frameRatio);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     if (width > 0 && height > 0) setFrameRatio(width / height);
   };
-  const onLoad = (e: NativeSyntheticEvent<ImageLoadEventData>) => {
-    const { width, height } = e.nativeEvent.source ?? {};
+  const onLoad = (e: ImageLoadEventData) => {
+    const { width, height } = e.source ?? {};
     if (width && height) {
-      knownRatios.set(uri, width / height);
-      setArtRatio(width / height);
+      knownRatios.set(artKey, width / height);
+      setLoaded({ key: artKey, ratio: width / height });
     }
   };
 
@@ -54,15 +60,15 @@ export function FittedArt({ uri, testID }: FittedArtProps) {
     <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="none">
       {fit === 'fit' && artRatio !== null ? (
         <>
-          <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={BACKDROP_BLUR} />
+          <Artwork uri={uri} style={StyleSheet.absoluteFill} blurRadius={BACKDROP_BLUR} accessible={false} />
           <View style={styles.dim} />
         </>
       ) : null}
-      <Image
+      <Artwork
         testID={testID}
-        source={{ uri }}
+        uri={uri}
         style={StyleSheet.absoluteFill}
-        resizeMode={fit === 'fill' ? 'cover' : 'contain'}
+        contentFit={fit === 'fill' ? 'cover' : 'contain'}
         onLoad={onLoad}
         accessible={false}
       />

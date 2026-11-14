@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Artwork } from './Artwork';
 import { useTheme } from '../theme/ThemeContext';
 import { AppText } from './Text';
 
@@ -41,8 +42,8 @@ export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
   const { colors } = useTheme();
   if (imageUri) {
     return (
-      <Image
-        source={{ uri: imageUri }}
+      <Artwork
+        uri={imageUri}
         accessible
         accessibilityLabel={name}
         style={[styles.base, { width: size, height: size, borderRadius: size / 2 }]}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Artwork } from './Artwork';
 import { AppText } from './Text';
 import { Card } from './Card';
 import { createThemedStyles } from '../theme/ThemeContext';
@@ -32,7 +33,7 @@ export function SeriesListCard({ series, onPress }: SeriesListCardProps) {
     >
       <Card padded={false}>
         {series.thumbnail_url ? (
-          <Image source={{ uri: series.thumbnail_url }} style={styles.art} resizeMode="cover" />
+          <Artwork uri={series.thumbnail_url} style={styles.art} />
         ) : (
           <View style={styles.artFallback} />
         )}

@@ -70,7 +70,7 @@ describe('SpeakerDrillDownScreen', () => {
     expect(getByText('Lead pastor')).toBeTruthy();
     expect(mockedGet).toHaveBeenCalledWith(
       '/search',
-      expect.objectContaining({ params: { query: { speaker_id: 's1' } } }),
+      expect.objectContaining({ params: { query: { speaker_id: 's1', limit: 50, offset: 0 } } }),
     );
 
     fireEvent.press(getByText('Anchored in the Storm'));

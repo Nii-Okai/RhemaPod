@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Artwork } from '../../../components/Artwork';
 import { AppText, PlatformIcon } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
@@ -79,7 +80,7 @@ export function SermonAddRow({
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       {sermon.thumbnail_url ? (
-        <Image source={{ uri: sermon.thumbnail_url }} style={styles.thumbnail} resizeMode="cover" />
+        <Artwork uri={sermon.thumbnail_url} style={styles.thumbnail} />
       ) : (
         <View style={styles.thumbnailFallback}>
           <PlatformIcon name="musical-notes-outline" size={18} color={colors.text.tertiary} />

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, CircleButton, FittedArt, QueryState, RowPill } from '../../components';
@@ -26,7 +27,12 @@ import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
  * The back header only renders on phone. On tablet the persistent rail is itself the way
  * back to Home (this is one of the rail's own destinations, not something pushed on top
  * of it) — a back arrow there would be redundant chrome next to chrome that never moves.
+ *
+ * The cards are a `FlashList`, so a long catalogue scrolls without keeping every card
+ * (and its artwork) mounted at once.
  */
+const LIST_GAP = spacing.md + 2;
+
 export default function SeriesScreen() {
   const styles = useStyles();
   const router = useRouter();
@@ -48,60 +54,70 @@ export default function SeriesScreen() {
   const inProgress = all.filter((item) => onEpisode.has(item.id));
   const shown = filter === 'progress' ? inProgress : all;
 
-  return (
-    <View style={styles.screen}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl {...pullToRefresh} />}
-      >
-        <View style={styles.titles}>
-          {/* Back sits on the title's row (Nii, 2026-11-11). */}
-          <View style={styles.backRow}>
-            {isTablet ? null : (
-              <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
-            )}
-            <AppText variant="display.hero" accessibilityRole="header">
-              Series
-            </AppText>
-          </View>
-          <AppText variant="ui.body" tone="secondary">
-            Teaching that builds week by week. Start one and we'll keep your place.
+  const header = (
+    <View style={styles.headerBlock}>
+      <View style={styles.titles}>
+        {/* Back sits on the title's row (Nii, 2026-11-11). */}
+        <View style={styles.backRow}>
+          {isTablet ? null : (
+            <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+          )}
+          <AppText variant="display.hero" accessibilityRole="header">
+            Series
           </AppText>
         </View>
+        <AppText variant="ui.body" tone="secondary">
+          Teaching that builds week by week. Start one and we'll keep your place.
+        </AppText>
+      </View>
 
-        {all.length > 0 ? (
-          <View style={styles.chips}>
-            <Chip label={`All · ${all.length}`} on={filter === 'all'} onPress={() => setFilter('all')} />
-            {inProgress.length > 0 ? (
-              <Chip label={`In progress · ${inProgress.length}`} on={filter === 'progress'} onPress={() => setFilter('progress')} />
-            ) : null}
-          </View>
-        ) : null}
+      {all.length > 0 ? (
+        <View style={styles.chips}>
+          <Chip label={`All · ${all.length}`} on={filter === 'all'} onPress={() => setFilter('all')} />
+          {inProgress.length > 0 ? (
+            <Chip label={`In progress · ${inProgress.length}`} on={filter === 'progress'} onPress={() => setFilter('progress')} />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 
-        <QueryState
-          isLoading={series.isLoading}
-          isError={series.isError}
-          error={series.error}
-          isEmpty={!series.isLoading && !series.isError && all.length === 0}
-          emptyTitle="No series yet"
-          emptyDescription="Check back once the catalogue has series."
-          onRetry={() => series.refetch()}
-          loadingLabel="Loading series"
-        >
-          <View style={styles.list}>
-            {shown.map((item) => (
-              <SeriesRowCard
-                key={item.id}
-                series={item}
-                onEpisode={onEpisode.get(item.id) ?? null}
-                onPress={() => router.push({ pathname: '/series/[id]', params: { id: item.id } })}
-              />
-            ))}
+  return (
+    <View style={styles.screen}>
+      <FlashList
+        data={shown}
+        // Progress comes from a separate query; re-render the cards when it lands.
+        extraData={onEpisode}
+        keyExtractor={(item) => item.id}
+        estimatedItemSize={146 + LIST_GAP}
+        renderItem={({ item }) => (
+          <View style={styles.cell}>
+            <SeriesRowCard
+              series={item}
+              onEpisode={onEpisode.get(item.id) ?? null}
+              onPress={() => router.push({ pathname: '/series/[id]', params: { id: item.id } })}
+            />
           </View>
-        </QueryState>
-      </ScrollView>
+        )}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          <QueryState
+            isLoading={series.isLoading}
+            isError={series.isError}
+            error={series.error}
+            isEmpty={!series.isLoading && !series.isError && all.length === 0}
+            emptyTitle="No series yet"
+            emptyDescription="Check back once the catalogue has series."
+            onRetry={() => series.refetch()}
+            loadingLabel="Loading series"
+          >
+            {null}
+          </QueryState>
+        }
+        contentContainerStyle={{ ...styles.content, paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pullToRefresh} />}
+      />
     </View>
   );
 }
@@ -174,13 +190,13 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     backgroundColor: colors.surface.app,
   },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingHorizontal: spacing.lg + 4,
     paddingBottom: spacing.xxl * 2,
+  },
+  headerBlock: {
     gap: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   backRow: {
     flexDirection: 'row',
@@ -215,8 +231,8 @@ const useStyles = createThemedStyles((colors) => ({
   chipTextOn: {
     color: colors.surface.app,
   },
-  list: {
-    gap: spacing.md + 2,
+  cell: {
+    paddingBottom: LIST_GAP,
   },
   card: {
     flexDirection: 'row',

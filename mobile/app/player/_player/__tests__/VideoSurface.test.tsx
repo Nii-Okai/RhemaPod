@@ -70,6 +70,6 @@ describe("VideoSurface — audio artwork (Isaac's report: plain dark screen for 
       <Harness overrides={{ isAudio: true, artworkUrl: 'https://cdn.example/art.jpg' }} />,
     );
     const image = getByTestId('player-artwork');
-    expect(image.props.source).toEqual({ uri: 'https://cdn.example/art.jpg' });
+    expect(image.props.source).toMatchObject({ uri: 'https://cdn.example/art.jpg' });
   });
 });
