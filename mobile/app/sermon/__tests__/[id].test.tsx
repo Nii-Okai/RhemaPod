@@ -286,8 +286,12 @@ describe('SermonDetailScreen — header', () => {
 
   it('renders a disabled cast control rather than a fake working one', async () => {
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
+    // Same as the Close test above: the loading state draws its own header, which the
+    // loaded screen replaces. Wait for the loaded sermon so the Cast control found is the
+    // one that stays mounted, not one about to unmount.
+    await findByText('Anchored in the Storm');
     const cast = await findByLabelText('Cast');
     expect(cast.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
   });

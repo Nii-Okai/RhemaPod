@@ -286,6 +286,14 @@ export async function signInWithApple(
 export async function signOut(): Promise<void> {
   const at = accessToken;
   const rt = refreshTokenCache;
+  // Stop pushes to this phone for the account that is leaving (needs the token, so it
+  // runs before the session is torn down; bounded and never throws).
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy, like googleSignIn below: keeps the native notifications module out of session's import graph
+    await (require('../notifications/push') as typeof import('../notifications/push')).teardownNotificationsForSignOut();
+  } catch (err) {
+    if (__DEV__) console.warn('[session] notification teardown failed', err);
+  }
   // Best-effort per-device revoke — never all-devices (auth.py's logout is
   // per-session by sid; see plan §A.3 #4). Local session is torn down either
   // way, so a network failure here must not block sign-out.
@@ -315,6 +323,13 @@ export async function signOut(): Promise<void> {
  * the account is gone either way.
  */
 export async function finishAccountDeletion(): Promise<void> {
+  try {
+    // The server already dropped this account's push devices; this clears the local reminder.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see signOut
+    await (require('../notifications/push') as typeof import('../notifications/push')).teardownNotificationsForSignOut();
+  } catch (err) {
+    if (__DEV__) console.warn('[session] notification teardown failed', err);
+  }
   try {
     await clearSession();
   } catch (err) {
