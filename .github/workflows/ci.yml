@@ -1,0 +1,67 @@
+name: CI
+
+# Runs every check the repo already has, on every pull request and on pushes to
+# the long-lived branches, so a change that breaks playback, the admin portal or
+# the API cannot merge unnoticed.
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    name: Mobile (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run verify
+
+  admin-portal:
+    name: Admin portal (build, typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: admin_portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin_portal/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run verify
+
+  backend:
+    name: API (pytest, incl. Postgres via Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install
+      - run: uv sync --frozen
+      # GitHub's Ubuntu runners have Docker, so the Postgres-backed suites run
+      # here too (they skip/error locally without Docker).
+      - run: uv run pytest -q
