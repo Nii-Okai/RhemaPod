@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useNavigationContainerRef } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,6 +11,21 @@ import { useAppFonts } from '../theme/fonts';
 import { AnimatedSplash } from '../components/splash/AnimatedSplash';
 import { NowPlayingProvider, useNowPlaying } from '../lib/playback/NowPlaying';
 import { StackMiniPlayer } from '../components/navigation/StackMiniPlayer';
+import { AppErrorScreen } from '../components/AppErrorScreen';
+import { NotificationBridge } from '../lib/notifications/NotificationBridge';
+import { useCurrentUser } from '../lib/query/hooks/useProfile';
+import {
+  initObservability,
+  navigationIntegration,
+  setObservabilityUser,
+  wrapRoot,
+} from '../lib/observability/sentry';
+
+// Crash reporting starts before anything renders, so a crash during launch is caught too.
+initObservability();
+
+/** A render error anywhere in the app shows a recovery screen instead of crashing. */
+export { AppErrorScreen as ErrorBoundary };
 
 // The native splash stays up until the animated one has painted over it (see `Launch`).
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -195,6 +210,8 @@ function RootNavigator() {
       </Stack>
       {/* The mini player over pushed screens; the tabs draw their own above the dock. */}
       <StackMiniPlayer />
+      {/* Push registration on sign-in, and opening whatever a tapped notification points at. */}
+      <NotificationBridge />
     </>
   );
 }
@@ -209,6 +226,23 @@ function StopPlaybackOnSignOut() {
   useEffect(() => {
     if (status === 'signedOut') stop?.();
   }, [status, stop]);
+  return null;
+}
+
+/** Tags crash reports with the signed-in account's id (never email or name). */
+function ObservabilityUser() {
+  const { status } = useAuth();
+  useEffect(() => {
+    if (status === 'signedOut') setObservabilityUser(null);
+  }, [status]);
+  return status === 'signedIn' ? <SignedInObservabilityUser /> : null;
+}
+
+function SignedInObservabilityUser() {
+  const userId = useCurrentUser().data?.id ?? null;
+  useEffect(() => {
+    if (userId) setObservabilityUser(userId);
+  }, [userId]);
   return null;
 }
 
@@ -235,7 +269,13 @@ function Launch() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
+  // Screen-load timings in crash and performance reports follow the router.
+  const navigationRef = useNavigationContainerRef();
+  useEffect(() => {
+    if (navigationRef) navigationIntegration.registerNavigationContainer(navigationRef);
+  }, [navigationRef]);
+
   return (
     <SafeAreaProvider>
       <QueryProvider>
@@ -244,6 +284,7 @@ export default function RootLayout() {
             {/* One app-wide player, so a sermon keeps playing in the mini player. */}
             <NowPlayingProvider>
               <StopPlaybackOnSignOut />
+              <ObservabilityUser />
               <Launch />
             </NowPlayingProvider>
           </ThemeProvider>
@@ -252,3 +293,5 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+export default wrapRoot(RootLayout);

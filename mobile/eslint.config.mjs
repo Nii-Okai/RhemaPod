@@ -81,7 +81,8 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["**/*.config.{js,mjs,ts}"],
+    // Expo config plugins run in Node at prebuild time, as CommonJS.
+    files: ["**/*.config.{js,mjs,ts}", "plugins/**/*.js"],
     languageOptions: {
       globals: {
         ...globals.node,

@@ -26,6 +26,7 @@ from app.api.devotionals import settings_router as devotional_settings_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
 from app.api.playlists import router as playlists_router
+from app.api.push import router as push_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
@@ -34,6 +35,7 @@ from app.api.subscriptions import router as subscriptions_router
 from app.api.verses import router as verses_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, correlation_id, get_logger
+from app.core.observability import capture_exception, init_observability
 from app.core.middleware import (
     BodySizeLimitMiddleware,
     CorrelationIdMiddleware,
@@ -49,6 +51,7 @@ from app.services.captions_scheduler import (
     start_captions_scheduler,
     stop_captions_scheduler,
 )
+from app.services.push_scheduler import start_push_scheduler, stop_push_scheduler
 from app.services.retention_scheduler import (
     start_retention_scheduler,
     stop_retention_scheduler,
@@ -56,6 +59,8 @@ from app.services.retention_scheduler import (
 
 settings = get_settings()
 log = get_logger("app")
+# Before the app is built, so Sentry's FastAPI integration hooks every request.
+init_observability(settings)
 
 API_PREFIX = "/api/v1"
 
@@ -86,11 +91,16 @@ async def lifespan(app: FastAPI):
     captions_task = None
     if settings.captions_scheduler_enabled:
         captions_task = start_captions_scheduler(session_factory=PrimarySession)
+    push_task = None
+    if settings.push_scheduler_enabled:
+        push_task = start_push_scheduler(session_factory=PrimarySession)
     try:
         yield
     finally:
         logger.info("shutdown")
         try:
+            if push_task is not None:
+                await stop_push_scheduler(push_task)
             if captions_task is not None:
                 await stop_captions_scheduler(captions_task)
             if retention_task is not None:
@@ -204,6 +214,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         path=request.url.path,
         error=type(exc).__name__,
     )
+    # This handler turns the error into a clean 500, so report it explicitly.
+    capture_exception(exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -241,6 +253,7 @@ for _router in (
     verses_router,
     devotionals_router,
     devotional_approvals_router,
+    push_router,
 ):
     app.include_router(_router, prefix=API_PREFIX)
 
