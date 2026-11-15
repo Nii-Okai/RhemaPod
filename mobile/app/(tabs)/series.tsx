@@ -3,7 +3,15 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, CircleButton, FittedArt, QueryState, RowPill } from '../../components';
+import {
+  AppText,
+  CircleButton,
+  FittedArt,
+  FrostedStatusBar,
+  QueryState,
+  RowPill,
+  useBottomChromeInset,
+} from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSeriesList, type SeriesPublic } from '../../lib/query/hooks/useSeries';
@@ -40,6 +48,7 @@ export default function SeriesScreen() {
   const continueWatching = useContinueWatching();
   const pullToRefresh = usePullToRefresh([series]);
   const insets = useSafeAreaInsets();
+  const bottomChrome = useBottomChromeInset();
   const isTablet = useDeviceClass() === 'tablet';
   const [filter, setFilter] = useState<'all' | 'progress'>('all');
 
@@ -114,10 +123,17 @@ export default function SeriesScreen() {
             {null}
           </QueryState>
         }
-        contentContainerStyle={{ ...styles.content, paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }}
+        contentContainerStyle={{
+          ...styles.content,
+          paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm,
+          paddingBottom: spacing.xxl * 2 + bottomChrome,
+        }}
+        scrollIndicatorInsets={{ bottom: bottomChrome }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...pullToRefresh} />}
       />
+      {/* The page blurs out under the clock as it scrolls; the dock is frosted too. */}
+      <FrostedStatusBar height={insets.top} />
     </View>
   );
 }
