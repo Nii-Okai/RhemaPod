@@ -31,14 +31,30 @@ beforeEach(() => {
 });
 
 describe('useNotificationPreferences', () => {
-  it('starts with both off', async () => {
+  it('starts with new sermons on and the reminder off once notifications are allowed', async () => {
     const { result } = renderHook(() => useNotificationPreferences());
-    await waitFor(() => expect(mockPush.hasNotificationPermission).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.preferences.newSermons).toBe(true));
     expect(result.current.preferences).toEqual({
-      newSermons: false,
+      newSermons: true,
       dailyRhema: false,
       dailyRhemaTime: { hour: 7, minute: 0 },
     });
+  });
+
+  it('shows new sermons off by default while notifications are not allowed', async () => {
+    mockPush.hasNotificationPermission.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useNotificationPreferences());
+    expect(result.current.preferences.newSermons).toBe(false);
+    await waitFor(() => expect(mockPush.hasNotificationPermission).toHaveBeenCalled());
+    expect(result.current.preferences.newSermons).toBe(false);
+  });
+
+  it('keeps new sermons off for a listener who turned it off', async () => {
+    const kv = jest.requireMock('expo-sqlite/kv-store').AsyncStorage;
+    await kv.setItem('rhemapod-notification-preferences', JSON.stringify({ newSermons: false, dailyRhema: true }));
+    const { result } = renderHook(() => useNotificationPreferences());
+    await waitFor(() => expect(result.current.preferences.dailyRhema).toBe(true));
+    expect(result.current.preferences.newSermons).toBe(false);
   });
 
   it('turning new sermons on asks permission, saves and registers', async () => {

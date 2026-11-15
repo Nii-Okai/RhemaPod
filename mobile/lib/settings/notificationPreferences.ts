@@ -28,8 +28,13 @@ export interface ReminderTime {
 /** 07:00, the fixed time before listeners could choose; saved settings without a time get it. */
 export const DEFAULT_DAILY_RHEMA_TIME: ReminderTime = { hour: 7, minute: 0 };
 
+/**
+ * New-sermon pushes are on by default (Isaac, 2026-11-15): on Android 12 and older there is
+ * no permission prompt, so an opt-in default meant most listeners never got them. Nothing
+ * is sent without OS permission, and turning it off is kept.
+ */
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  newSermons: false,
+  newSermons: true,
   dailyRhema: false,
   dailyRhemaTime: DEFAULT_DAILY_RHEMA_TIME,
 };
@@ -58,7 +63,7 @@ export function parseNotificationPreferences(raw: string | null): NotificationPr
   try {
     const parsed = JSON.parse(raw) as Partial<NotificationPreferences>;
     return {
-      newSermons: typeof parsed.newSermons === 'boolean' ? parsed.newSermons : false,
+      newSermons: typeof parsed.newSermons === 'boolean' ? parsed.newSermons : DEFAULT_NOTIFICATION_PREFERENCES.newSermons,
       dailyRhema: typeof parsed.dailyRhema === 'boolean' ? parsed.dailyRhema : false,
       dailyRhemaTime: parseReminderTime(parsed.dailyRhemaTime),
     };

@@ -30,8 +30,13 @@ export interface UseNotificationPreferencesResult {
  * first time (so the system prompt appears right after a tap that explains it); if the
  * listener declines, the toggle stays off and the caller can point them to Settings.
  */
+function switchesOff(dailyRhemaTime: ReminderTime): NotificationPreferences {
+  return { newSermons: false, dailyRhema: false, dailyRhemaTime: { ...dailyRhemaTime } };
+}
+
 export function useNotificationPreferences(): UseNotificationPreferencesResult {
-  const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  // Off until we know the OS allows notifications, so a switch never shows on when nothing can arrive.
+  const [preferences, setPreferences] = useState<NotificationPreferences>(() => switchesOff(DEFAULT_NOTIFICATION_PREFERENCES.dailyRhemaTime));
   const [isSaving, setIsSaving] = useState(false);
   const mounted = useRef(true);
   // A tap that lands before the saved settings have loaded wins over them.
@@ -43,7 +48,7 @@ export function useNotificationPreferences(): UseNotificationPreferencesResult {
       const [stored, allowed] = await Promise.all([loadNotificationPreferences(), hasNotificationPermission()]);
       if (!mounted.current || touched.current) return;
       // Without OS permission both toggles show off, but the chosen time is kept.
-      setPreferences(allowed ? stored : { ...DEFAULT_NOTIFICATION_PREFERENCES, dailyRhemaTime: stored.dailyRhemaTime });
+      setPreferences(allowed ? stored : switchesOff(stored.dailyRhemaTime));
     })().catch(() => undefined);
     return () => {
       mounted.current = false;

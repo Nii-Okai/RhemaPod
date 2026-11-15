@@ -11,6 +11,12 @@ describe('parseNotificationPreferences', () => {
     });
   });
 
+  it('treats new sermons as on when nothing was saved for it, and keeps an explicit off', () => {
+    expect(parseNotificationPreferences(null).newSermons).toBe(true);
+    expect(parseNotificationPreferences(JSON.stringify({ dailyRhema: true })).newSermons).toBe(true);
+    expect(parseNotificationPreferences(JSON.stringify({ newSermons: false })).newSermons).toBe(false);
+  });
+
   it('keeps a saved time', () => {
     const parsed = parseNotificationPreferences(JSON.stringify({ dailyRhema: true, dailyRhemaTime: { hour: 21, minute: 30 } }));
     expect(parsed.dailyRhemaTime).toEqual({ hour: 21, minute: 30 });
