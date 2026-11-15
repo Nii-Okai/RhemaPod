@@ -272,9 +272,17 @@ describe('Signature player', () => {
     const screen = renderPlayer();
     await screen.findByText('Prophet Prince Manasseh Atsu · Prophetic');
     await waitFor(() =>
-      expect(StyleSheet.flatten(screen.getByTestId('signature-player-header').props.style).backgroundColor).toBe(
-        palette.surface.app,
-      ),
+      expect(StyleSheet.flatten(screen.getByTestId('player-screen').props.style).backgroundColor).toBe(palette.surface.app),
     );
+    // The header is clear, over the art-tinted backdrop.
+    expect(StyleSheet.flatten(screen.getByTestId('signature-player-header').props.style).backgroundColor).toBe('transparent');
+  });
+
+  it('tints the background with the sermon art', async () => {
+    const screen = renderPlayer();
+    await screen.findByText('Prophet Prince Manasseh Atsu · Prophetic');
+    const art = screen.getByTestId('player-backdrop-art');
+    expect(art.props.source).toEqual(expect.objectContaining({ uri: detail.thumbnail_url }));
+    expect(art.props.blurRadius).toBeGreaterThan(0);
   });
 });

@@ -20,6 +20,7 @@ import { spacing } from '../../theme/spacing';
 import { useNowPlaying, type NowPlayingSession } from '../../lib/playback/nowPlayingContext';
 import { setMiniPlayerTop, useMiniPlayerTop } from '../../lib/playback/miniPlayerPosition';
 import { currentItem, nextIndex, usePlaybackQueue } from '../../lib/playback/queue';
+import { launchPlayerHeroFrom } from '../../lib/playback/playerHero';
 import { PlatformIcon } from '../PlatformIcon';
 import { AppText } from '../Text';
 
@@ -38,6 +39,8 @@ const DOCK_SNAP = 56;
 const THROW = 160;
 // Past either end the card follows the finger at this fraction, then springs back.
 const RUBBER_BAND = 0.3;
+
+const ART_RADIUS = 12;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -261,10 +264,17 @@ function MiniPlayerCard({
   const queued = currentItem(queue)?.sermonId === session.sermonId ? nextIndex(queue) : null;
   const fraction = player.duration > 0 ? Math.min(1, Math.max(0, currentTime / player.duration)) : 0;
 
+  // The art grows out of the card into the full player (`lib/playback/playerHero.ts`).
+  const artRef = useRef<View>(null);
+  const openPlayer = () =>
+    launchPlayerHeroFrom(artRef.current, { sermonId: session.sermonId, uri: session.artworkUrl, radius: ART_RADIUS }, () =>
+      router.push({ pathname: '/player/[id]', params: { id: session.sermonId } }),
+    );
+
   return (
     <View testID="mini-player" style={[styles.wrap, floating && styles.wrapFloating, layered && styles.wrapLayered]}>
       <Pressable
-        onPress={() => router.push({ pathname: '/player/[id]', params: { id: session.sermonId } })}
+        onPress={openPlayer}
         accessibilityRole="button"
         accessibilityLabel={`Now playing: ${session.title}. Open the player.`}
         accessibilityActions={accessibilityActions}
@@ -272,7 +282,9 @@ function MiniPlayerCard({
         style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       >
         {session.artworkUrl ? (
-          <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
+          <View ref={artRef} collapsable={false}>
+            <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
+          </View>
         ) : (
           <View style={[styles.art, styles.artBlank]}>
             <PlatformIcon name={session.mediaType === 'video' ? 'play' : 'volume-high-outline'} size={18} color={colors.feature.sun} />
@@ -363,7 +375,7 @@ const useStyles = createThemedStyles((colors) => ({
   art: {
     width: 46,
     height: 46,
-    borderRadius: 12,
+    borderRadius: ART_RADIUS,
   },
   artBlank: {
     backgroundColor: colors.feature.bg,

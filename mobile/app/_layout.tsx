@@ -11,6 +11,8 @@ import { useAppFonts } from '../theme/fonts';
 import { AnimatedSplash } from '../components/splash/AnimatedSplash';
 import { NowPlayingProvider, useNowPlaying } from '../lib/playback/NowPlaying';
 import { StackMiniPlayer } from '../components/navigation/StackMiniPlayer';
+import { PlayerHeroOverlay } from '../components/navigation/PlayerHeroOverlay';
+import { useReduceMotion } from '../lib/playback/playerHero';
 import { AppErrorScreen } from '../components/AppErrorScreen';
 import { NotificationBridge } from '../lib/notifications/NotificationBridge';
 import { useCurrentUser } from '../lib/query/hooks/useProfile';
@@ -34,6 +36,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 function RootNavigator() {
   useAuthGuard();
   const { scheme, colors } = useTheme();
+  const reduceMotion = useReduceMotion();
 
   return (
     <>
@@ -145,13 +148,16 @@ function RootNavigator() {
         {/* The player rises from the bottom (its header closes with a chevron-down) and can
             be pulled down to dismiss. Every sermon tap in the app lands here directly, so
             this is the only transition between picking a sermon and hearing it (Nii's ask,
-            2026-10-23: previously sermon detail slid up, then replaced itself with this). */}
+            2026-10-23: previously sermon detail slid up, then replaced itself with this).
+            Opened from the mini player, its art also flies up into place over the slide
+            (`PlayerHeroOverlay`, below). Under Reduce Motion the player fades in instead of
+            sliding, and nothing flies. */}
         <Stack.Screen
           name="player/[id]"
           options={{
             headerShown: false,
             gestureDirection: 'vertical',
-            animation: 'slide_from_bottom',
+            animation: reduceMotion ? 'fade' : 'slide_from_bottom',
           }}
         />
         {/* W4.4 — series detail, another top-level stack route (plan L15):
@@ -211,6 +217,8 @@ function RootNavigator() {
       </Stack>
       {/* The mini player over pushed screens; the tabs draw their own above the dock. */}
       <StackMiniPlayer />
+      {/* The art flying from the mini player into the full player, above every screen. */}
+      <PlayerHeroOverlay />
       {/* Push registration on sign-in, and opening whatever a tapped notification points at. */}
       <NotificationBridge />
     </>
