@@ -13,25 +13,23 @@ export interface CircularProgressProps {
   strokeWidth?: number;
   trackColor?: string;
   fillColor?: string;
-  /** Continuous rotation layered on top of the fill (Isaac's ask, session 2026-10-09 — the
-   * static fill "works but looks too standard"): the ring both fills AND spins while this
-   * is true, closer to the Netflix reference he pointed at, rather than sitting still as
-   * the stroke advances. Off by default — a caller with no active transfer to show has no
+  /** Continuous rotation layered on top of the fill: the ring both fills AND spins while
+   * this is true, rather than sitting still as the stroke advances. Off by default — a caller with no active transfer to show has no
    * reason for a spinning ring. */
   spinning?: boolean;
   children?: React.ReactNode;
 }
 
 /**
- * A YouTube-style circular progress ring (Isaac's ask, session 2026-10-08: download
- * buttons want real per-item progress feedback, not a generic spinner) — a static track
+ * A circular progress ring (real per-item download progress, not a generic spinner) — a
+ * static track
  * circle plus a fill circle whose `strokeDashoffset` is driven by `progress`, rotated -90°
  * so it starts at 12 o'clock and fills clockwise. `children` renders centered inside the
  * ring (an icon, typically) via absolute positioning over the SVG, not as part of it — SVG
  * children don't participate in RN's own layout system, so a plain overlay `View` is the
  * simpler way to center arbitrary RN content inside a fixed-size circle.
  *
- * Two polish passes added session 2026-10-09: the fill tweens toward each new `progress`
+ * The fill tweens toward each new `progress`
  * value (`Animated.timing`, ~650ms) instead of snapping — the caller polls on an interval,
  * so without this the ring visibly steps rather than flows; and the whole ring (both
  * circles — the track is rotationally symmetric, so rotating it along for the ride is

@@ -23,14 +23,12 @@ const ROW_GAP = spacing.lg + 2;
  * Browse card that links to it), so this reuses `/search` as a filtered
  * browse (`category_id`, no `q` — the endpoint's own documented mode).
  *
- * Renders a 2-column grid of `SermonCard` (Isaac's ask, session 2026-10-02: "follow the
- * same style as all series page") rather than the text-row `SermonResultRow` the Search
- * tab uses — `SermonCard` is the card used elsewhere for "same visual language as
+ * Renders a 2-column grid of `SermonCard` (the all-series page's card style) — `SermonCard` is the card used elsewhere for "same visual language as
  * SeriesCard" (its own doc comment), which is the actual card look the all-series page's
  * own `SeriesListCard` shares. Grid width is computed from `useWindowDimensions()`, same
  * convention `RelatedSermons`' own grid mode and Browse's categories grid use — RN's
  * `gap` doesn't subtract itself out of a percentage width. `showMeta={false}` drops each
- * card's speaker-name line (Isaac's follow-up ask, same session) — the accessibility
+ * card's speaker-name line — the accessibility
  * label still carries it, same convention `SermonCard`'s own `showMeta` doc comment
  * describes for New Releases.
  *
@@ -39,15 +37,11 @@ const ROW_GAP = spacing.lg + 2;
  * switch; the round back button sits on the wash.
  *
  * The grid is a two-column `FlashList` that pages through the whole topic 50 at a time
- * as you scroll (it used to stop at the first 20 while the header counted them all), so
- * long topics stay smooth: cards off screen are recycled rather than all kept mounted.
+ * as you scroll, so long topics stay smooth: cards off screen are recycled rather than all kept mounted.
  * "Oldest" pages in the rest first, because `/search` only sorts newest first.
  *
- * Earlier: custom back-chevron + centered-title header (Isaac's ask, same session: "same
- * navigation style as all series page") — same layout `series.tsx`'s own phone header
- * uses, in place of the native Stack header (`app/_layout.tsx` disables it for this
- * route) which would otherwise show "< Browse" next to the chevron on iOS rather than a
- * bare chevron.
+ * The native Stack header is disabled for this route (`app/_layout.tsx`); on iOS it would
+ * show "< Browse" next to the chevron rather than a bare chevron.
  */
 export default function CategoryDrillDownScreen() {
   const styles = useStyles();

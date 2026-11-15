@@ -165,7 +165,7 @@ describe('useDownloads', () => {
     expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, failureReason: null });
   });
 
-  it('retry()\'s optimistic queued placeholder carries the existing thumbnailPath forward, not just thumbnailUrl/category (session 2026-10-15 thumbnail fix: setOptimisticQueued must not blank out a local thumbnail copy a prior successful download already recorded)', async () => {
+  it('retry()\'s optimistic queued placeholder carries the existing thumbnailPath forward, not just thumbnailUrl/category (setOptimisticQueued must not blank out a local thumbnail copy a prior successful download already recorded)', async () => {
     const manager = makeFakeManager([
       record('sermon-1', {
         state: 'failed',

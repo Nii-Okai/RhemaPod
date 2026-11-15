@@ -19,8 +19,7 @@ const OPTIONS: { mode: LibrarySortMode; label: string }[] = [
   { mode: 'creator', label: 'Creator' },
 ];
 
-/** "Sort by" (Isaac's screenshots). Four options, same labels as the
- * reference — see `librarySort.ts`'s own doc comment for what each one
+/** "Sort by". Four options — see `librarySort.ts`'s own doc comment for what each one
  * actually means for a playlist vs. a download, since the two content
  * types don't share the same fields. */
 export function LibrarySortSheet({ visible, onClose, value, onChange }: LibrarySortSheetProps) {

@@ -66,7 +66,7 @@ export default function SeriesScreen() {
   const header = (
     <View style={styles.headerBlock}>
       <View style={styles.titles}>
-        {/* Back sits on the title's row (Nii, 2026-11-11). */}
+        {/* Back sits on the title's row. */}
         <View style={styles.backRow}>
           {isTablet ? null : (
             <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />

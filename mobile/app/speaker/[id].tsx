@@ -27,27 +27,18 @@ function sermonCountLabel(count: number): string {
  * speaker's sermons as rows with their date and length, recent ones marked New.
  *
  * Speaker drill-down — reached by tapping a speaker row on Browse or from a Search
- * result. Custom back-chevron + centered-title header, native Stack header disabled
- * (Isaac's ask, session 2026-10-11: "use preestablish navigation style") — this screen
- * had been left on the Stack's own default native header this whole time
- * (`app/_layout.tsx` carried no `options` for this route at all); now the same
- * bare-chevron pattern `category/[id].tsx`/`series.tsx`'s own phone header established.
+ * result. Custom back-chevron + centered-title header, native Stack header disabled —
+ * the same bare-chevron pattern as `category/[id].tsx`/`series.tsx`'s phone header.
  *
- * Reorganized (same ask: "organise it better") around a real info header — an `Avatar`
- * initials chip (no speaker-photo field exists on `SpeakerPublic`, same fallback this
- * app already uses everywhere else a person has no photo on file), name, sermon count,
- * and bio — instead of bare stacked text with nothing to anchor it. Sermons render as a
- * `SermonCard` grid now, not the old text-only `SermonResultRow` (deleted — this was its
- * one remaining call site) — `category/[id].tsx`'s own established grid, so the app's
- * two "drill down from Browse" screens read as siblings instead of two different eras
- * of design. `showMeta={false}` on each card for the same reason `category/[id].tsx`
+ * Built around an info header — an `Avatar` initials chip (no speaker-photo field exists
+ * on `SpeakerPublic`, same fallback this app uses everywhere else a person has no photo
+ * on file), name, sermon count, and bio. `showMeta={false}` on each card for the same reason `category/[id].tsx`
  * uses it: the meta line would just repeat this speaker's own name on every card.
  *
  * `name`/`bio`/`sermonCount` travel in via nav params — Browse's and Search's own
  * speaker lists already have the full `SpeakerPublic` in hand, so this avoids a second
  * fetch just to re-read three fields. The sermon list itself comes from `/search`
- * filtered on `speaker_id`, paged 50 at a time into a `FlashList` as you scroll (it used
- * to stop at the first 20).
+ * filtered on `speaker_id`, paged 50 at a time into a `FlashList` as you scroll.
  */
 export default function SpeakerDrillDownScreen() {
   const styles = useStyles();

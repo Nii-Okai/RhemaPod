@@ -24,17 +24,14 @@ export interface EpisodeDownloadButtonProps {
 }
 
 /**
- * Compact, icon-only download control at the far end of an `EpisodeRow` (Isaac's ask,
- * session 2026-09-30: "a download button at the far end of every item"). Same
+ * Compact, icon-only download control at the far end of an `EpisodeRow`. Same
  * `useDownloads()` state machine series detail's own `DownloadPillButton` already uses
  * (queued/downloading/ready/failed) — a third skin on identical logic, not a third
  * download pipeline. Sits outside `EpisodeRow`'s own navigating `Pressable` (a sibling,
  * not a nested touch target) so tapping Download never also opens the episode.
  *
- * Downloading renders a real, YouTube-style circular progress ring (Isaac's ask, session
- * 2026-10-08 — "change the download button on the right to show a spinning animation with
- * progress and when done change the button to a completed status users will easily
- * identify"), not a generic indeterminate spinner: `CircularProgress` fills clockwise as
+ * Downloading renders a real circular progress ring, then a clear completed state, not a
+ * generic indeterminate spinner: `CircularProgress` fills clockwise as
  * `record.progress` advances, so a series bulk-download (the pill above firing every
  * episode's own `download()` at once) visibly shows each row progressing independently.
  */

@@ -2,17 +2,15 @@ import * as SQLite from 'expo-sqlite';
 import type { DownloadFailureReason, DownloadMediaType, DownloadRecord, DownloadState } from './types';
 
 /**
- * Download-state tracking, `expo-sqlite`, own dedicated database file — per the
- * architect's writeup (status.md 2026-09-26T12:08:20Z §4) and the GATE M9 crossing:
- * "expo-sqlite for download-state tracking in its own dedicated db file (not the
- * TanStack query-cache kv-store)". `lib/query/persister.ts` opens `expo-sqlite/kv-store`
+ * Download-state tracking, `expo-sqlite`, own dedicated database file (GATE M9, status.md
+ * §4: "expo-sqlite for download-state tracking in its own dedicated db file (not the
+ * TanStack query-cache kv-store)"). `lib/query/persister.ts` opens `expo-sqlite/kv-store`
  * (a different underlying database file, managed entirely by that package) for the
  * query cache; clearing that cache must never touch a row here, and deleting a download
  * must never touch the query cache. This module reads/writes only its own file.
  *
  * Download state is genuinely relational (list by state, sum bytes, find stale
- * `downloading` rows at startup) — the architect's writeup explicitly rejected a KV blob
- * for this reason, so this uses `expo-sqlite`'s statement API directly rather than the
+ * `downloading` rows at startup) — a KV blob doesn't fit, so this uses `expo-sqlite`'s statement API directly rather than the
  * `AsyncStorage`-shaped `kv-store` wrapper `persister.ts`/`playbackPreferences.ts` use
  * for genuinely key-value data.
  */
@@ -74,8 +72,8 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
           updated_at INTEGER NOT NULL
         );
       `);
-      // Migration (Isaac's ask, session 2026-10-08: video downloads). An install that
-      // already has this table predates `media_type` — `CREATE TABLE IF NOT EXISTS`
+      // Migration: `media_type` (video downloads). An install that already has this table
+      // predates `media_type` — `CREATE TABLE IF NOT EXISTS`
       // above is a no-op against it, so the column is added here instead, guarded by a
       // `PRAGMA table_info` check: SQLite's `ALTER TABLE ADD COLUMN` errors if the
       // column already exists, and this runs on every app start. Every existing row
@@ -85,8 +83,7 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       if (!columns.some((c) => c.name === 'media_type')) {
         await db.execAsync("ALTER TABLE downloads ADD COLUMN media_type TEXT NOT NULL DEFAULT 'audio';");
       }
-      // Migration (Isaac's ask, session 2026-10-09: Downloads list redesign — a real
-      // thumbnail and the sermon's category replacing the generic "Downloaded" text). Both
+      // Migration: `thumbnail_url` and `category` (shown on the Downloads list). Both
       // nullable with no default: an install that predates this never had a thumbnail/
       // category to backfill, and `null` is already the correct "show the fallback art,
       // omit the category" rendering for those rows, not a value worth guessing.
@@ -96,16 +93,15 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       if (!columns.some((c) => c.name === 'category')) {
         await db.execAsync('ALTER TABLE downloads ADD COLUMN category TEXT;');
       }
-      // Migration (Isaac's ask, session 2026-10-15: fix for the 6h-expiring presigned
-      // `thumbnail_url` going blank/403 on a sermon that's been `ready` for a while).
-      // Nullable with no default, same reasoning as `thumbnail_url`/`category` above — an
-      // install that predates this fix just keeps showing the old (eventually-expiring)
-      // `thumbnailUrl` for its existing rows until re-downloaded; nothing here backfills
-      // them retroactively.
+      // Migration: the local thumbnail copy (the presigned `thumbnail_url` expires after 6h
+      // and goes blank/403 on a sermon that's been `ready` for a while). Nullable with no
+      // default, same reasoning as `thumbnail_url`/`category` above — rows from before
+      // this column keep showing their (eventually-expiring) `thumbnailUrl` until
+      // re-downloaded; nothing here backfills them.
       if (!columns.some((c) => c.name === 'thumbnail_path')) {
         await db.execAsync('ALTER TABLE downloads ADD COLUMN thumbnail_path TEXT;');
       }
-      // Migration (offline playback fix, session 2026-10-22): the sermon's own
+      // Migration: the sermon's own
       // `SermonDetail` JSON, saved once the download is ready, so the player can open a
       // downloaded sermon with no network. Nullable: rows that predate this are filled in
       // by `downloadManager.backfillDetailSnapshots` the next time the app is online.
@@ -216,12 +212,12 @@ export async function markFailed(
   );
 }
 
-/** Session 2026-10-15 fix — records where the locally-fetched thumbnail copy landed (or
+/** Records where the locally-fetched thumbnail copy landed (or
  * clears it back to `null` on cleanup after a failed fetch), independent of `markReady`/
  * `markFailed` since the thumbnail fetch happens as a best-effort step after the media
  * download has already settled. Returns whether a row was actually updated (`changes >
- * 0`) — `downloadManager.ts`'s `fetchThumbnailBestEffort` needs this to detect the
- * reviewer-gilfoyle-found race where `deleteDownload` removes the row while the thumbnail
+ * 0`) — `downloadManager.ts`'s `fetchThumbnailBestEffort` needs this to detect the race
+ * where `deleteDownload` removes the row while the thumbnail
  * fetch is still in flight: a `false` here means the row is gone and the just-written file
  * is now orphaned, not tracked by anything, and must be deleted rather than left behind. */
 export async function setThumbnailPath(sermonId: string, path: string | null): Promise<boolean> {

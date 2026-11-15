@@ -10,9 +10,8 @@ export interface AvatarProps {
   /** Stable id to hash into the rotating palette — falls back to `name`. */
   seed?: string;
   size?: number;
-  /** A real profile picture (session 2026-10-09) — renders instead of the initials
-   * chip when present. `null`/`undefined` keeps the original initials-only
-   * behavior; every existing call site is unaffected by this addition. */
+  /** A real profile picture — renders instead of the initials chip when present.
+   * `null`/`undefined` shows the initials. */
   imageUri?: string | null;
 }
 
@@ -55,9 +54,9 @@ export function Avatar({ name, seed, size = 40, imageUri }: AvatarProps) {
   // `ui.avatarInitials`' own 14px is tuned for this component's usual 38-40px size (every
   // call site but one) — at a genuinely small size (`playlist/[id].tsx`'s 22px owner
   // avatar), a fixed 14px two-letter string leaves almost no margin before the circle's
-  // own curve, reading as "touching the edge" (Isaac's ask, session 2026-10-10) rather
-  // than comfortably centered. Scaling down (never up) keeps every existing 38-40px
-  // avatar pixel-identical while giving a small one real breathing room.
+  // own curve, reading as "touching the edge" rather than comfortably centered. Scaling
+  // down (never up) leaves the usual 38-40px avatar as is while giving a small one real
+  // breathing room.
   const fontSize = Math.min(14, Math.round(size * 0.4));
 
   return (

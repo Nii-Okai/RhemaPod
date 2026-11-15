@@ -39,7 +39,7 @@ describe('SpeakerListRow', () => {
 
     expect(getByText('Pastor Ada Nwosu')).toBeTruthy();
     expect(getByText('Lead pastor at Grace Chapel since 2014')).toBeTruthy();
-    // Visible count dropped (Isaac's ask, session 2026-10-02) — still reaches VoiceOver.
+    // Count is not shown visibly but still reaches VoiceOver.
     expect(queryByText('61')).toBeNull();
     expect(mockAvatarProps[0]).toEqual(expect.objectContaining({ seed: 'speaker-1' }));
 

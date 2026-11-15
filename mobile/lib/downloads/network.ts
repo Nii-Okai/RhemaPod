@@ -21,10 +21,9 @@ export async function canStartDownload(wifiOnlyEnabled: boolean): Promise<boolea
 /**
  * The composed Wi-Fi gate (reads the user's own preference, then checks it) — lives here,
  * not in `downloadManager.ts`, specifically so `lib/mediaCache/fill.ts` can import it
- * without a module-graph edge back into the Downloads manager (that edge was a real
+ * without a module-graph edge back into the Downloads manager (that edge would be a
  * circular import: `downloadManager -> mediaCache/dropSermon -> mediaCache/fill ->
- * downloadManager`, flagged at S8/S9 review). `downloadManager.ts` now imports this same
- * function instead of defining its own copy.
+ * downloadManager`). `downloadManager.ts` imports this same function.
  */
 export async function realCanStartDownload(): Promise<boolean> {
   const prefs = await loadDownloadPreferences();

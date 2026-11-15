@@ -13,8 +13,7 @@ const MAX_DELAY_MS = 320;
 const DURATION_MS = 220;
 
 /**
- * Per-card fade + rise-in for Home's shelves (Isaac's ask, session 2026-09-30: "make it
- * more alive"). Runs once per mount, not per re-render — a shelf's cards key off
+ * Per-card fade + rise-in for Home's shelves. Runs once per mount, not per re-render — a shelf's cards key off
  * `item.id`, which stays stable across an ordinary refetch of the same data, so React
  * never remounts (and never re-plays this animation for) a card that was already on
  * screen. Only a shelf whose item *set* actually changed (the daily shuffle landing on a

@@ -4,8 +4,8 @@ import { focusManager, onlineManager } from '@tanstack/react-query';
 
 /**
  * TanStack Query only knows about connectivity and focus through browser events, which
- * React Native never fires — so before this, `refetchOnReconnect` did nothing and nothing
- * refreshed when the app came back to the foreground. This feeds it the two native
+ * React Native never fires — so on its own `refetchOnReconnect` does nothing and nothing
+ * refreshes when the app comes back to the foreground. This feeds it the two native
  * signals instead: `expo-network` for online/offline (same reading as `useIsOnline`:
  * `isInternetReachable === false` counts as offline) and `AppState` for focus.
  *

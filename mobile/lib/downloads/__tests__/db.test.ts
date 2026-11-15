@@ -97,7 +97,7 @@ function makeFakeDatabase() {
           row.updated_at = params.$now as number;
         }
         // Unlike every other branch here, `setThumbnailPath`'s own `changes > 0` return
-        // value is load-bearing (the reviewer-gilfoyle-found orphan-file race fix in
+        // value is load-bearing (the orphan-file race fix in
         // `downloadManager.ts`), so this is the one statement in this fake whose `changes`
         // count must genuinely reflect whether a row existed, not just always report 1.
         return { changes: row ? 1 : 0, lastInsertRowId: 0 };

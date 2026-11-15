@@ -54,8 +54,7 @@ function joinMeta(parts: (string | null | undefined)[]): string {
 }
 
 /**
- * Discover (formerly Browse). Signature redesign (Nii's approved mockup, 2026-10-21),
- * reworked for the Daybreak redesign (2026-11, canvas B3): "What do you need today?"
+ * Discover (the Browse tab). Daybreak design (canvas B3): "What do you need today?"
  * category tiles with their sermon counts, a "Series to start" shelf, then the speakers.
  *
  * Search lives on the page instead of behind a pushed `/search` screen, and it is never

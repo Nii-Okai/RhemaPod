@@ -175,8 +175,8 @@ describe('SearchScreen — populated (suggestions + grouped results)', () => {
     });
 
     await findByText('Anchored in the Storm');
-    // Duration/speaker dropped from the visible row (Isaac's ask, session 2026-10-02 —
-    // flat list matching the reference) but still reach VoiceOver.
+    // Duration/speaker dropped from the visible row (a flat list
+    // matching the reference) but still reach VoiceOver.
     expect(getByLabelText('Anchored in the Storm, 42:18 · Ada Nwosu')).toBeTruthy();
     // The query itself is filtered out of its own suggestion list.
     expect(getByText(/storms of life/)).toBeTruthy();

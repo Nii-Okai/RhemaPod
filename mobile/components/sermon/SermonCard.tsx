@@ -22,8 +22,8 @@ export interface SermonCardProps {
       always carries it regardless, same as `ImageOnlyCard`'s own title-in-label
       convention for a sighted-rendering-only omission. */
   showMeta?: boolean;
-  /** A thin gold ring around the card — Prophet's Catalog only (Isaac's ask, session
-      2026-09-30: give the shelf's name a visual meaning, not just a text label). The
+  /** A thin gold ring around the card — Prophet's Catalog only (gives the shelf's name a
+      visual meaning, not just a text label). The
       gold accent is deliberately rare elsewhere in this app (`theme/colors.ts`'s own
       "do not collapse these into a single gold value" note), so this stays an opt-in
       prop rather than a `SermonCard` default. */
@@ -40,13 +40,11 @@ function metaLabel(sermon: SermonListItem): string {
 
 /**
  * A plain `SermonListItem` rail card — Home's "New Releases"/"Prophet's Catalog" shelves
- * (Isaac's ask, session 2026-09-30), and the series-detail "Related" rail's second
- * concrete consumer (session 2026-10-01), which is why this moved out of Home's own
- * `_home/` folder into `components/sermon/` alongside `SermonResultRow`. Same visual
+ * and the category/speaker grids. Same visual
  * language as `ContinueWatchingCard`/`SeriesCard` (16:9 `resizeMode="cover"` art,
  * bold+fade title, mono meta line below) rather than the titleless `ImageOnlyCard` used
- * by Recommended/Trending — those two are algorithmic discovery shelves Isaac explicitly
- * wanted image-only; these are editorial/curated lists where the title carries real
+ * by Recommended/Trending — those two are algorithmic discovery shelves kept image-only;
+ * these are editorial/curated lists where the title carries real
  * information (which sermon this is, not just "something new").
  */
 export function SermonCard({

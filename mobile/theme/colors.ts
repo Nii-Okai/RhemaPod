@@ -1,6 +1,6 @@
 /**
  * Color design tokens — two palettes with one shape: `darkColors` (the original design)
- * and `lightColors` (the light-mode design review, Isaac's artifact 2026-10-21).
+ * and `lightColors` (the light-mode design review).
  *
  * Dark source: docs/design_mobile_app/mobile-design-spec.md §1.1 — values pulled from the
  * original design-canvas export's raw hex declarations, not approximated.
@@ -121,16 +121,15 @@ export const avatarPalette = [status.slate.bg, status.sage.bg, chip.circle] as c
 /**
  * Drop shadow for a light surface raised over photographic art — `surface.app`'s own rgb
  * at opacity (not generic black), so it reads as "shadow into this screen's own
- * background" rather than an unrelated color. First use: onboarding's bottom card
- * (Isaac's ask, 2026-10-16: "the bottom parts looks too flat").
+ * background" rather than an unrelated color (e.g. onboarding's bottom card, which
+ * reads too flat without it).
  */
 export const shadow = {
   card: 'rgba(13, 17, 26, 0.45)',
 } as const;
 
 /**
- * Daybreak redesign (2026-11, Nii's approved canvas). Navy and gold stay the brand; these
- * are the new surfaces the redesign adds, one group per surface so a later tweak to one
+ * Daybreak design. Navy and gold stay the brand; these are the surfaces Daybreak adds, one group per surface so a later tweak to one
  * can't leak into another.
  */
 /** The animated launch screen (`components/splash/AnimatedSplash.tsx`). */
@@ -185,11 +184,11 @@ export const feature = {
   border: border.card,
   orb: surface.nav,
   sun: '#D9A947',
-  // Daily Rhema's "glass sun" (Nii, 2026-11-12, canvas D7 option A): a see-through gold
+  // Daily Rhema's "glass sun" (canvas D7 option A): a see-through gold
   // disc with a rim and a soft glow, over a big circle a touch lighter than `orb` so it
   // reads through the sun. The sun's colours are solid; how see-through each part is
   // lives in `sunGlassOpacity`, because SVG gradient stops drop an rgba alpha on device
-  // (the first build rendered near-solid gold, Nii 2026-11-12: "too bright").
+  // (the sun would render near-solid gold).
   orbSoft: '#1C2538',
   orbEdge: 'rgba(224, 180, 92, 0.10)',
   sunGlassLight: '#F0C878',
@@ -277,8 +276,8 @@ export type ColorTokens = Widen<typeof darkColors>;
  *
  * - surface: raised and nav are both pure white (nothing is lighter than white), so
  *   elevation comes from border + shadow; only `sunken` steps, and it steps DOWN.
- * - text.tertiary: #6E6858, one step darker than the review's #716B5A, which measured
- *   4.31:1 on `surface.sunken` (below AA). Now ≥4.5:1 on app, raised and sunken.
+ * - text.tertiary: #6E6858, one step darker than the review's #716B5A, which measures
+ *   4.31:1 on `surface.sunken` (below AA); this one is ≥4.5:1 on app, raised and sunken.
  * - accent: the gold ramp flips DIRECTION, not hue — `goldText` is the darkest shade on a
  *   light field and hover darkens further. `gold` is deepened so the progress fill clears
  *   3:1 on the light track.
@@ -287,7 +286,7 @@ export type ColorTokens = Widen<typeof darkColors>;
  * - fade: same alpha stops, base rgb swapped to the light card (`surface.raised`, white).
  * - primaryButton: Daybreak's navy pill (gold in dark). Where a primary pill sits ON art
  *   (the hero "Watch" pill, the onboarding card) it uses the dark palette's pill in both
- *   themes instead (Isaac's decision, 2026-10-21).
+ *   themes instead.
  * - shadow.card: a warm near-black at low opacity; a shadow in the surface's own (near
  *   white) colour wouldn't read as a shadow.
  */

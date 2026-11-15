@@ -33,7 +33,7 @@ describe('usePlaylistPreview — back-navigation crash', () => {
     const { unmount } = renderHook(() => usePlaylistPreview(), { wrapper });
     const player = __lastMockPlayer!;
 
-    // Simulates the real crash (Isaac's report, session 2026-10-11): on some
+    // Simulates a real crash: on some
     // unmounts, `useVideoPlayer`'s own native object is already gone by the time
     // this hook's `useFocusEffect` cleanup tries to call a method on it.
     player.pause = jest.fn(() => {

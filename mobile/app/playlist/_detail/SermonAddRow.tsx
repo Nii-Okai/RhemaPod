@@ -9,7 +9,7 @@ import { metaLineFor } from './sermonMeta';
 
 /** Only the fields this row actually reads — a real `SermonListItem` satisfies
  * this structurally, but so does a mapped `DownloadRecord` (`AddToPlaylistSheet`'s
- * own Downloaded tab, Isaac's ask, session 2026-10-10), without needing to fake
+ * own Downloaded tab), without needing to fake
  * the rest of `SermonListItem`'s shape (speaker/tier/locked/...) for content
  * that was never fetched from the catalog in the first place. */
 export interface AddableSermon {
@@ -28,8 +28,7 @@ export interface SermonAddRowProps {
    * is filtered out of that list rather than shown with a checkmark), so
    * this defaults to `false`. */
   alreadyAdded?: boolean;
-  /** This sermon is on-device (`AddToPlaylistSheet`'s Sermons/Episodes tabs,
-   * Isaac's ask, session 2026-10-10) — a small sage checkmark next to the
+  /** This sermon is on-device (`AddToPlaylistSheet`'s Sermons/Episodes tabs) — a small sage checkmark next to the
    * meta line, the same cue `DownloadRow`/`DownloadGridTile` already use for
    * "downloaded," distinct from `alreadyAdded`'s trailing-circle "already in
    * this playlist" (a sermon can be both, neither, or just one). */
@@ -37,8 +36,7 @@ export interface SermonAddRowProps {
   isAdding?: boolean;
   onAdd: () => void;
   /** Tapping the checkmark when `alreadyAdded` removes the item instead of
-   * being a dead end (Isaac's ask, session 2026-10-10: "users should be able
-   * to click on the checked icon to uncheck/remove item"). Optional — the
+   * being a dead end. Optional — the
    * Recommended section never renders a row in the `alreadyAdded` state in
    * the first place (filtered out once added), so it has nothing to pass. */
   onRemove?: () => void;
@@ -48,16 +46,13 @@ const THUMBNAIL_SIZE = 44;
 const BUTTON_SIZE = 32;
 
 /** One sermon row with a trailing add affordance — shared by `AddToPlaylistSheet`'s
- * search results and `[id].tsx`'s own "Recommended sermons" list (Isaac's ask, session
- * 2026-10-10), same row shape both places rather than two near-identical copies.
+ * search results and `[id].tsx`'s own "Recommended sermons" list, same row shape both places rather than two near-identical copies.
  *
- * The add button is a thin-outline circle (not filled) — a filled gold chip (the first
- * version of this row) read as "too fancy" (Isaac's follow-up, same session); the
+ * The add button is a thin-outline circle (not filled, which reads as too loud); the
  * already-added state fills in `colors.status.sage` instead, the same green `DownloadRow`
  * already uses for its own "ready" checkmark, not a new color invented for this one spot.
  *
- * No inline preview on this thumbnail — tried once (session 2026-10-10), reverted the
- * next session (Isaac's own call): preview is a playlist-item affordance
+ * No inline preview on this thumbnail: preview is a playlist-item affordance
  * (`PlaylistItemRow`'s own thumbnail) only, not a discovery/search-row one.
  */
 export function SermonAddRow({

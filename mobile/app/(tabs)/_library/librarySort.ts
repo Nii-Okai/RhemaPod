@@ -1,10 +1,8 @@
 import type { DownloadRecord } from '../../../lib/downloads/types';
 import type { PlaylistPublic } from '../../../lib/query/hooks/usePlaylists';
 
-/** A playlist and a download interleaved into one list (Isaac's ask, session
- * 2026-10-10: "remove section titles" + "playlist and download items should
- * look similar") — there's no section boundary between them any more, so
- * every list/grid in `library.tsx` works off this one discriminated union
+/** A playlist and a download interleaved into one list with no section boundary
+ * between them, so every list/grid in `library.tsx` works off this one discriminated union
  * instead of two separate arrays. `key` is the stable React key (prefixed by
  * kind, since a playlist id and a sermon id are different id spaces that
  * could theoretically collide). */
@@ -59,8 +57,7 @@ function creatorOf(item: LibraryItem): string {
   return item.kind === 'playlist' ? (item.playlist.owner_name ?? '') : '';
 }
 
-/** Sorts a combined playlist+download list in place of what used to be two
- * separately-sorted arrays — see this file's own top doc comment for why a
+/** Sorts a combined playlist+download list — see this file's own top doc comment for why a
  * genuinely interleaved order (not "all playlists, then all downloads")
  * is the point. */
 export function sortLibraryItems(items: LibraryItem[], mode: LibrarySortMode): LibraryItem[] {

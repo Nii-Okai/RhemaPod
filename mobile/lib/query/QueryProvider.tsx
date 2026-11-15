@@ -6,10 +6,8 @@ import { installQueryLifecycle } from './lifecycle';
 import { queryClient, queryKeys } from './queryClient';
 
 /**
- * Bump to discard every previously persisted cache on next launch. Bumped for the
- * sermon-comments release: the Notes endpoints and their cached `['notes', ...]` entries
- * are gone, and a restored cache must not carry them (or any shape written before the
- * comments keys existed) into the new build.
+ * Bump to discard every previously persisted cache on next launch, whenever a release
+ * removes or reshapes cached queries a restored cache must not carry into the new build.
  */
 export const PERSIST_BUSTER = 'sermon-comments-1';
 
@@ -19,7 +17,7 @@ export const PERSIST_BUSTER = 'sermon-comments-1';
  * restore could show a comment the viewer has since blocked or that has since been hidden,
  * and the player shows "Comments unavailable offline" rather than serving old threads.
  *
- * `stream` is excluded for the same shape of reason, found at S8/S9 review (B1/D11/D2):
+ * `stream` is excluded for the same shape of reason:
  * a restored `/stream` response can be up to `MAX_AGE_MS` (24h) old, while its signed URL
  * expires in ~6h, so a cold-started reopen could otherwise show entitlement as confirmed
  * from a response that's actually stale or already expired. The media cache's "every hit

@@ -216,8 +216,8 @@ export function SignaturePlaylistDetailScreen() {
 
         <View style={styles.actions}>
           {hasItems ? (
-            // A plain Pressable: PressableScale styles its inner view, so `flex: 1` never
-            // reached the row and the pill collapsed to a circle (Nii's phone test).
+            // A plain Pressable: PressableScale styles its inner view, so `flex: 1` would
+            // never reach the row and the pill would collapse to a circle.
             <Pressable
               onPress={() => startQueue(playlist.items)}
               accessibilityRole="button"

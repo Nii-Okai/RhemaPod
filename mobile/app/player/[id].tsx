@@ -70,8 +70,7 @@ import { haptics } from '../../lib/haptics';
  * `staysActiveInBackground`, both platforms), buffering state, the comments panel
  * (plan sermon-comments S13), and progress flush per L16.
  *
- * **Offline playback** (Isaac's ask, session 2026-10-08 — the sole playback surface for a
- * downloaded sermon now, replacing the Downloads tab's old standalone mini-player): when
+ * **Offline playback** (the only playback surface for a downloaded sermon): when
  * `useDownloads().find(sermonId)` is `ready`, this screen never calls `useStream` at all —
  * `useLocalPlayback` resolves a local `file://` path instead (audio's path-A decrypted
  * copy, or video's own persisted file directly) and that becomes the player's `variant`,
@@ -80,35 +79,30 @@ import { haptics } from '../../lib/haptics';
  *
  * **Scope boundary:** the design spec's Player composition also names a "download" and
  * "share-clip" action pinned alongside transport controls. Share-clip is cut whole (plan
- * L5). Download's own pill lived here too for a while (session 2026-10-08) but is gone
- * again (Isaac's ask, session 2026-10-09 — it duplicated sermon/series detail's own
- * pill directly above the comments panel with nothing distinguishing the two); starting
- * a download is sermon/series detail's job exclusively now, this screen only plays back
- * whatever's already downloaded (`useLocalPlayback`, above).
+ * L5). The classic layout has no Download pill (sermon/series detail start downloads);
+ * the Signature layout's title block has one (`NowPlayingDetails`).
  *
- * Layout (design spec comments-and-player §1, revised 2026-10-09 — no controls outside the
- * player): header, video with every control (scrub, time, speed, sleep, fullscreen, plus
+ * Layout (design spec comments-and-player §1 — no controls outside the player): header, video with every control (scrub, time, speed, sleep, fullscreen, plus
  * play/pause/skip) folded into its own tap-to-toggle overlay, then the comments panel in
  * the remaining space. The whole screen sits in a `KeyboardAvoidingView` so the pinned
  * composer rides above the keyboard.
  *
- * **Queue** (Nii's review, 2026-11-14 — it used to work only inside a playlist): the
- * queue is app-wide now (`lib/playback/queue.ts`), not this screen's route params. Opening
+ * **Queue**: the queue is app-wide (`lib/playback/queue.ts`), not this screen's route
+ * params. Opening
  * a sermon from anywhere makes it the current item; a playlist's Play/Shuffle starts the
  * whole playlist; "Play next"/"Add to queue" on any row add to it. `NowPlayingProvider`
  * moves the queue on when a sermon ends, and at the end of the queue plays the next
  * episode in the series when "Autoplay next in series" is on (You tab). While this screen
  * is open it moves on through `router.setParams({ id })` (registered as the provider's
- * navigator), so the next sermon plays on this same screen with no navigation transition
- * (Isaac's ask, 2026-10-11). `PlayerContent` is `key={sermonId}`-ed so IT still remounts
+ * navigator), so the next sermon plays on this same screen with no navigation
+ * transition. `PlayerContent` is `key={sermonId}`-ed so IT still remounts
  * on the new id (`useSharedPlayer`'s source and `useProgressFlush`'s resume baseline are
  * mount-time-only state); once the screen is closed the provider loads the next sermon
  * into the shared player itself, so the queue keeps going from the mini player.
  *
  * **Queue / Comments**: the panel under the title shows the queue (`QueueList`) or the
- * comments, with a switch at the foot. A playlist opens on its queue (Isaac's ask,
- * 2026-10-11: "open another page with all playlist items"); a single sermon opens on its
- * comments, as before.
+ * comments, with a switch at the foot. A playlist opens on its queue; a single sermon
+ * opens on its comments.
  */
 export default function PlayerScreen() {
   const styles = useStyles();
@@ -153,9 +147,7 @@ export default function PlayerScreen() {
   const playlistQuery = usePlaylist(playlistId);
   const removeFromPlaylist = useRemovePlaylistItem(playlistId ?? '');
 
-  // A `ready` download plays from its own local file instead of streaming (Isaac's ask,
-  // session 2026-10-08: "watch or listen offline later" means an actual playback path,
-  // not just a file sitting on disk) — `useStream`'s signed-URL fetch is skipped
+  // A `ready` download plays from its own local file instead of streaming — `useStream`'s signed-URL fetch is skipped
   // entirely when one exists, so this screen makes no network call at all for a sermon
   // the user already downloaded.
   const downloads = useDownloads();
@@ -224,7 +216,7 @@ export default function PlayerScreen() {
   const streamedVariant = !isDownloaded && streamQuery.data ? selectPlaybackVariant(streamQuery.data.variants) : null;
   const streamExpiresAt =
     streamQuery.data && streamQuery.dataUpdatedAt ? streamQuery.dataUpdatedAt + streamQuery.data.expires_in * 1000 : null;
-  // S8/S9 review (finding B1/D11/D2): a cache hit may only ever happen once THIS mount has
+  // A cache hit may only ever happen once THIS mount has
   // its own confirmed, successful `/stream` — not merely "some data exists" (which could be
   // stale-but-cached, restored from disk, or never refreshed because the device is
   // offline and the query sits paused). `useStream` sets `staleTime: 0` /
@@ -251,8 +243,8 @@ export default function PlayerScreen() {
     (playable && (isDownloaded ? localPlayback.isPreparing : streamQuery.isLoading || cacheSource.isLoading));
 
   // A sermon that can't play here (locked, or its media isn't ready) belongs on its own
-  // detail page — every list in the app now opens the player directly (one transition,
-  // Nii's ask 2026-10-23), so this is the one place that sends those few elsewhere.
+  // detail page — every list in the app opens the player directly (one transition), so
+  // this is the one place that sends those few elsewhere.
   const redirectToDetail = Boolean(detail) && !playable;
   useEffect(() => {
     if (redirectToDetail) router.replace({ pathname: '/sermon/[id]', params: { id: sermonId } });
@@ -272,12 +264,10 @@ export default function PlayerScreen() {
             auth-screen.tsx` already established: `android:windowSoftInputMode="adjustResize"`
             (AndroidManifest.xml) already shrinks the whole window when the keyboard opens, so
             the composer (flex:1 below the fixed-aspect-ratio video surface) naturally ends up
-            in the smaller space without any JS-driven resize. `behavior="height"` (fixed
-            2026-10-16, Isaac's report: the keyboard covered the comment input on Android) had
-            this screen double-handling the resize — the OS's own `adjustResize` shrink *and*
-            `KeyboardAvoidingView`'s own height adjustment stacked on top of it, measured off
-            `Keyboard`'s event frame rather than the window the OS had already resized, which
-            is what actually left the composer covered rather than pushed clear.
+            in the smaller space without any JS-driven resize. `behavior="height"` would
+            double-handle the resize — the OS's `adjustResize` shrink *and*
+            `KeyboardAvoidingView`'s height adjustment, measured off `Keyboard`'s event frame
+            rather than the already-resized window — and leave the composer covered.
             One shell for every state (loading, error, playing), so the backdrop and header
             stay put while the body under them changes. */}
         <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -328,8 +318,8 @@ export default function PlayerScreen() {
       // `useProgressFlush`'s resume baseline exactly once, at first render).
       <PlayerContent
         // Forces a fresh mount (new `useVideoPlayer`/`useProgressFlush` seed) when the
-        // queue moves to a different sermon, since `PlayerScreen` itself no longer
-        // navigates to do that (see `selectQueueItem`/`advanceToNext`'s own comment).
+        // queue moves to a different sermon, since `PlayerScreen` itself doesn't
+        // navigate to do that (see `selectQueueItem`/`advanceToNext`'s own comment).
         key={sermonId}
         sermonId={sermonId}
         detail={detail}
@@ -755,7 +745,7 @@ interface SignatureLayoutProps {
 
 /**
  * Signature player layout: every playback control (scrub, speed, sleep timer, full screen)
- * still on its overlay (Nii, 2026-10-22: "all player controls must be kept on player"), then
+ * on the video's overlay, then
  * the title block with Like / My List / Download / Share, then the queue or the comments
  * with a Queue / Comments switch at the bottom. A playlist opens on its queue, anything else
  * on its comments. The title block and that switch fold away while the keyboard is up so the

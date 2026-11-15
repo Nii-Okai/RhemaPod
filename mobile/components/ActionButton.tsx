@@ -13,21 +13,16 @@ export interface ActionButtonProps {
   accessibilityLabel: string;
   onPress: () => void;
   selected?: boolean;
-  /** A notification-style count badge pinned to the icon's top-right corner (Isaac's ask,
-   * session 2026-10-09 — Like's own counter, not a second label line). Renders nothing
+  /** A notification-style count badge pinned to the icon's top-right corner (Like's own
+   * counter, not a second label line). Renders nothing
    * at `0`/`undefined`: a bare icon with no count reads as "unliked", not "0 likes". */
   badgeCount?: number;
 }
 
 /**
- * Icon-over-label action button — series detail's action row (Isaac's ask, session
- * 2026-09-30, Netflix's title-page "Set Reminders / My List / Rate / Share" row);
- * promoted here once sermon detail became its second consumer (session 2026-10-01,
- * which also added a third action, Like, alongside My List and Share; series detail
- * later added a fourth, Download — see `app/series/[id].tsx`'s own call site for what
- * it does). My List was a client-only toggle at first (Isaac's own call at the time:
- * "will be used for adding to playlist later") — it's real now (session 2026-10-11),
- * via `useAddToDefaultLibrary` (`usePlaylists.ts`'s own doc comment on the "default
+ * Icon-over-label action button — the action row on sermon detail (My List, Like, Share)
+ * and series detail (plus Download — see `app/series/[id].tsx`'s own call site). My List
+ * goes through `useAddToDefaultLibrary` (`usePlaylists.ts`'s own doc comment on the "default
  * playlist" convention): sermon detail adds the one sermon, series detail adds every
  * episode. Like is a real backend toggle too (`liked_by_me`/`like_count`, its own
  * endpoint); Share is React Native's own `Share` API; Download queues real downloads
@@ -36,24 +31,17 @@ export interface ActionButtonProps {
  * scheduling or rating feature anywhere in this codebase (mobile or backend) to wire
  * either to, and a button that does nothing is worse than one that isn't there.
  *
- * Icon size (28) matched to Isaac's own Netflix reference screenshot, session
- * 2026-10-01; the row itself (each screen's own `actionRow` style, not this
- * component's) is left-aligned with fixed gaps for 3 items, `space-between` once
- * Download made it 4 — see series detail's own `actionRow` style for why. Label
- * started on `ui.body` (regular, 14), was trimmed to a plain smaller size (12, still
- * regular weight), then — Isaac's follow-up, same session, "reduce it further and bold
- * it" — moved to the dedicated `ui.actionLabel` variant (bold, 11): per `Text.tsx`'s own
- * rule ("never override `fontFamily` at a call site — add a new variant instead"), a
- * bold weight needs a real variant, not a style-prop override. "Bold icon text" meant
- * the literal label text specifically (Isaac's own clarification, same session) — the
- * icon glyphs themselves (`add`/`checkmark`, `heart`/`heart-outline`, `share-outline`,
- * `download-outline`) are unchanged; a same-session detour through solid `share`/
- * `download` glyphs was reverted.
+ * Icon size 28. The row itself (each screen's own `actionRow` style, not this
+ * component's) is left-aligned with fixed gaps for 3 items, `space-between` for 4 — see
+ * series detail's own `actionRow` style for why. The label uses the dedicated
+ * `ui.actionLabel` variant (bold, 11): per `Text.tsx`'s own rule ("never override
+ * `fontFamily` at a call site — add a new variant instead"), a bold weight needs a real
+ * variant, not a style-prop override. Only the label is bold; the icon glyphs are the
+ * outline set (`add`/`checkmark`, `heart`/`heart-outline`, `share-outline`,
+ * `download-outline`).
  *
- * `badgeCount` (session 2026-10-09, Like's own real counter): a small gold
- * notification-style badge pinned to the icon's own top-right corner, not a second
- * label line — Isaac's explicit call after an initial "Like\n{N}" two-line label read
- * as "old fashioned". Pops in (`PopIn`) on mount, re-keyed per count so a plain
+ * `badgeCount` (Like's counter): a small gold notification-style badge pinned to the
+ * icon's own top-right corner, not a second label line. Pops in (`PopIn`) on mount, re-keyed per count so a plain
  * increment re-pops it too, not just its first 0 -> 1 appearance. Hidden entirely at
  * `0`/`undefined` — a bare heart with no badge reads as "unliked", not "0 likes".
  */
@@ -152,7 +140,7 @@ const useStyles = createThemedStyles((colors) => ({
     color: colors.surface.app,
   },
   // `textAlign: 'center'` only matters for a two-line label (Download's own
-  // "Download\n{N} Episodes", series detail, session 2026-10-01) — harmless no-op for
+  // "Download\n{N} Episodes", series detail) — harmless no-op for
   // every single-line label.
   label: {
     textAlign: 'center',

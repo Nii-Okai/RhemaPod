@@ -16,13 +16,11 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * RPA1 — chunked AES-256-GCM file encryption, `javax.crypto` only (no OpenSSL, no
- * third-party crypto). Plan W4.5 / GATE M9 (see `status.md`, architect entry
- * 2026-09-26T12:08:20Z, locked by Isaac's GATE M9 crossing 2026-09-27T20:05:00Z).
+ * third-party crypto). Plan W4.5 / GATE M9 (see `status.md`, "RPA1 chunked AES-256-GCM").
  *
  * Mirrors `ios/RpaCryptoModule.swift` line-for-line and both mirror the spec encoded
  * in `mobile/lib/crypto/rpa1Format.ts` / `mobile/lib/crypto/testSupport/rpa1ReferenceCodec.ts`
- * (Jest-executable there; this file is NOT executable in this sandbox — no Gradle/Kotlin
- * toolchain available, see the mobile-developer status entry for the exact gap). If you
+ * (Jest-executable there; this file is only exercised by a real Android build). If you
  * change the byte layout here, change it in all three places and re-run `rpa1.test.ts`.
  *
  * Streams file-to-file via plain sequential `FileInputStream`/`FileOutputStream`, one
@@ -389,8 +387,8 @@ object RpaCrypto {
    * Android has no per-file backup-exclusion API equivalent to iOS's
    * `NSURLIsExcludedFromBackupKey` — backup scope on Android is manifest-level
    * (`android:allowBackup`/`fullBackupContent`), not something a file can opt out of at
-   * runtime. Always returns `false` (never throws for this reason) — the architect's
-   * writeup already covers why this is acceptable: Android 10+ app-private storage is
+   * runtime. Always returns `false` (never throws for this reason) — the RPA1 writeup
+   * covers why this is acceptable: Android 10+ app-private storage is
    * FBE-encrypted regardless, so this call is advisory-only on iOS and a documented no-op
    * here, not a required mitigation on this platform.
    */

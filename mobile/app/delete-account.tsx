@@ -174,7 +174,7 @@ export default function DeleteAccountScreen() {
         disabled={submitting}
         onPress={() => (step === 'confirm' ? setStep('notice') : router.back())}
       />
-      {/* Back sits on the title's row (Nii, 2026-11-11), with the step over the title. */}
+      {/* Back sits on the title's row, with the step over the title. */}
       <View style={styles.headerTitles}>
         {showSteps ? (
           <AppText variant="ui.badge" tone="tertiary" style={styles.eyebrow}>

@@ -316,15 +316,15 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
     await deps.deleteFile(deps.paths.thumbnailFilePath(sermonId));
   }
 
-  /** Session 2026-10-15 fix for the 6h-expiring presigned `thumbnail_url` going blank/403
-   * on a sermon that's sat `ready` for a while — fetches a local, permanent copy once the
+  /** The presigned `thumbnail_url` expires after 6h and goes blank/403 on a sermon that's
+   * sat `ready` for a while, so this fetches a local, permanent copy once the
    * media download itself has already settled. Best-effort only (same convention as
    * `excludeFromBackup`/`onDownloadReady` above) — a failure here just means the UI keeps
    * showing the original, eventually-expiring `thumbnailUrl` instead of a local copy. Must
    * never fail the download itself. Deletes any stale file at the destination first (never
    * resumes/appends onto a prior attempt, same reasoning as the tmp-file deletes above).
    *
-   * Reviewer-gilfoyle-found race (session 2026-10-15 fix): nothing gates `deleteDownload`
+   * Race with delete: nothing gates `deleteDownload`
    * on download state, so it can run concurrently with this function's own network-I/O
    * await. If the row is deleted while the thumbnail fetch is still in flight,
    * `deleteDownload`'s own `deleteFile(thumbnailFilePath)` no-ops (the file doesn't exist
@@ -404,7 +404,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
   }
 
   /**
-   * Video's own, simpler path (Isaac's ask, session 2026-10-08): no encrypt pass, no RPA1
+   * Video's own, simpler path: no encrypt pass, no RPA1
    * header, no install key — a plain fetch straight into a tmp file, then an atomic rename
    * into its final `videoFilePath` once the transfer completes in full. The file that lands
    * there has only the OS's own file protection, by design (see `types.ts`'s own doc
@@ -637,8 +637,8 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
    * marked `failed`/`interrupted` with a Retry-able reason, never left silently
    * "downloading" forever or, worse, treated as `ready`. A `queued` row never started a
    * transfer (it is waiting for Wi-Fi, or for its turn), so it is left queued for
-   * `resumeQueuedDownloads` rather than failed — failing it turned every "waiting for
-   * Wi-Fi" download into an "interrupted" error on the next launch. Also unconditionally clears the
+   * `resumeQueuedDownloads` rather than failed (otherwise every "waiting for Wi-Fi"
+   * download would show as "interrupted" on the next launch). Also unconditionally clears the
    * entire playback-temp directory — every file there is a single-session artifact by
    * construction (see `paths.playbackTempFilePath`), so a crash during a previous offline
    * playback session can otherwise leave a plaintext file behind indefinitely.
@@ -662,7 +662,7 @@ export function createDownloadManager(overrides: Partial<DownloadManagerDeps> = 
 
   /**
    * For audio: decrypts a `ready` download to a fresh, randomly-named temp plaintext file
-   * for playback (path A, per the architect's writeup) and returns its `file://` path.
+   * for playback (path A, per the RPA1 writeup) and returns its `file://` path.
    * Every failure mode — not ready yet, key loss, a corrupt/tampered file — rejects with a
    * typed `PlaybackUnavailableError` and leaves the download row pointing at "needs a
    * re-download", never returns a path to anything that isn't fully verified plaintext.

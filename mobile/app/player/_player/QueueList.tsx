@@ -38,9 +38,8 @@ const THUMBNAIL_SIZE = 44;
 
 /**
  * The queue panel, under the player's title block (Queue / Comments switch). It lists the
- * whole queue in play order with the current item marked; tapping a row plays it. It was
- * first built for playlists only (Isaac's ask, session 2026-10-11) and since Nii's review
- * (2026-11-14) shows the app-wide queue, wherever playback started.
+ * whole app-wide queue in play order, wherever playback started, with the current item
+ * marked; tapping a row plays it.
  *
  * Header: Repeat (loop back to the first item once the last one ends), Shuffle (the items
  * not played yet, in place) and Clear (everything after the current item). Each row's "..."

@@ -9,8 +9,7 @@ import { PlatformIcon, type AppIconName } from './PlatformIcon';
 export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'children'> {
   label: string;
   loading?: boolean;
-  /** Leading glyph — series detail's Play CTA (Isaac's ask, session 2026-09-30,
-      Netflix's own Play button) is this prop's first user. */
+  /** Leading glyph — e.g. series detail's Play CTA. */
   icon?: AppIconName;
   /** Stretches to fill its container instead of sizing to the label — series detail's
       Play button (same ask) is this prop's first user; every existing call site keeps

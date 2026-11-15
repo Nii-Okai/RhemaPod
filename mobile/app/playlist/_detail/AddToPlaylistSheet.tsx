@@ -18,9 +18,7 @@ export interface AddToPlaylistSheetProps {
   playlistId: string;
   /** Sermon id -> that playlist item's own id, for everything already in this playlist
    * (`[id].tsx`'s own `playlist.items`) — shown with a sage checkmark instead of a "+",
-   * and tapping that checkmark removes the item (Isaac's ask, session 2026-10-10: "users
-   * should be able to click on the checked icon to uncheck/remove item"), via `onRemove`
-   * below. A plain `Set<string>` of sermon ids isn't enough for that — removing a
+   * and tapping that checkmark removes the item via `onRemove` below. A plain `Set<string>` of sermon ids isn't enough for that — removing a
    * playlist item needs the item's own id, not the sermon's (`DELETE .../items/{item_id}`). */
   existingItemIdBySermonId: Map<string, string>;
   onRemove: (itemId: string) => void;
@@ -35,9 +33,7 @@ const TABS: { key: SheetTab; label: string }[] = [
 ];
 
 /**
- * "Add to Playlist" (Isaac's screenshots). Rebuilt session 2026-10-10 from a
- * single flat search list into the reference's own tabbed version:
- * Sermons / Episodes / Downloaded, each a real browsable default list (not
+ * "Add to Playlist", tabbed: Sermons / Episodes / Downloaded, each a real browsable default list (not
  * gated behind typing a query first), with the search field narrowing
  * whichever tab is active.
  *
@@ -46,17 +42,15 @@ const TABS: { key: SheetTab; label: string }[] = [
  * [id].tsx` makes), split client-side on `series_id` — a series episode
  * already IS a sermon (`Sermon.series_id`), there's no second endpoint or
  * content type behind the two tabs, just a filter over one result set. That
- * shared read pages through every matching result via `useSearchResultsInfinite`
- * (Isaac's report, same session: "not all episodes are showing" — the plain
- * hook's implicit 20-result cap was shared across both tabs, so whichever one
- * sorted past it came up short; there's no server-side "episodes only" filter
- * to split the fetch on instead, so paging to completion is the real fix).
+ * shared read pages through every matching result via `useSearchResultsInfinite`:
+ * a single 20-result page would be shared across both tabs, so whichever one
+ * sorts past it comes up short, and there's no server-side "episodes only"
+ * filter to split the fetch on instead.
  * Downloaded reuses `useDownloads()` directly — full title/thumbnail already
  * sit on-device, no fetch needed, filtered by title substring client-side
  * like every other local list in this app does its own search.
  *
- * The reference's fourth pill, "Recently played", is left out (Isaac's own
- * call when asked how to source it): this app has no endpoint returning
+ * There's no "Recently played" tab: this app has no endpoint returning
  * full playback history with title/thumbnail — `/me/history` is ids and
  * progress numbers only — and reusing `/me/continue-watching` under a
  * "Recently played" label would silently exclude anything already finished,

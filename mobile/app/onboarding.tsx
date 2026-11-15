@@ -28,15 +28,14 @@ const KEN_BURNS_DURATION_MS = 7000;
 const KEN_BURNS_MAX_SCALE = 1.06;
 
 /**
- * First-launch onboarding (Isaac's mockups: a 3-slide swipeable carousel shown only the
- * very first time the app is opened — before sign-in, before any account is known).
+ * First-launch onboarding: a 3-slide swipeable carousel shown only the very first time
+ * the app is opened — before sign-in, before any account is known.
  * Gated by `app/index.tsx` via `lib/settings/onboardingSeen.ts`; reached directly, with
  * nothing rendered before it.
  *
  * "Configurable out of code": every slide's image/headline/body comes from
  * `lib/onboarding/slides.ts` — this screen just maps over that array. Changing the
- * copy or swapping in real photography later (replacing the current Isaac-provided
- * placeholder images) is a one-line edit to that data file, never a change here.
+ * copy or swapping the photography is a one-line edit to that data file, never a change here.
  *
  * Swipeable mechanism mirrors `(tabs)/_home/HeroCarousel.tsx` (the app's own proven
  * pattern, reused rather than a new carousel dependency): `onLayout` for page
@@ -55,28 +54,19 @@ const KEN_BURNS_MAX_SCALE = 1.06;
  * and land on sign-in — onboarding is pre-auth, so it never routes straight into
  * `(tabs)` even if a session technically exists already.
  *
- * EXPERIMENTAL (Isaac's ask, 2026-10-16: "put some effects on the onboarding images to
- * make it alive") — may be reverted. A slow, continuous "Ken Burns" zoom on every slide's
+ * A slow, continuous "Ken Burns" zoom on every slide's
  * image (shared loop, RN core `Animated`, same API this app already uses in
  * `StaggerItem`/`CircularProgress`/etc. — no new dependency), applied identically to all
  * three since only the current page is ever visible through the paging `ScrollView`
  * anyway. Deliberately ambient, not a transition: it runs continuously and isn't tied to
- * swiping or which slide is active — Isaac's explicit follow-up ask, same session: "do not
- * add transition effects" (an earlier pass here also had a scroll-tied image parallax and
- * a per-slide fade+rise-in on the text card, both removed for that reason).
+ * swiping or which slide is active (no scroll-tied parallax or per-slide fade-ins).
  * Each slide clips with `overflow: 'hidden'` so the zoom never visibly escapes its page.
  * With Reduce Motion on, the zoom doesn't run and the photos hold still.
  *
- * Daybreak redesign (canvas A2): the photo now fills the top half with rounded lower
+ * Daybreak design (canvas A2): the photo fills the top half with rounded lower
  * corners, the wordmark and Skip on it; the copy, pill dots and a full-width Continue
  * sit on the page's own ground below, so this screen follows the theme. Only the
  * wordmark, Skip and the scrim on the photo are pinned to the dark palette (`onArt`).
- *
- * Earlier (Nii's ask, 2026-10-23 — the copy vanished in light mode because the old
- * light card used the dark palette's pill colour as its fill while `AppText`'s theme-aware
- * `inverse` tone flipped to near-white): the photo now fills the whole page and the copy
- * sits on a dark gradient at its foot. Everything here is drawn from the dark palette
- * (`onArt`) on purpose — it is all on photography, so it looks the same in both themes.
  */
 export default function OnboardingScreen() {
   const styles = useStyles();

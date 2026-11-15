@@ -9,8 +9,7 @@ export interface PopInProps {
 }
 
 /**
- * Completion payoff (Isaac's ask, session 2026-10-09 — the download ring-to-checkmark
- * swap "works but looks too standard"): a small overshoot scale-and-fade-in, so the
+ * Completion payoff (e.g. the download ring-to-checkmark swap): a small overshoot scale-and-fade-in, so the
  * checkmark arrives with a bit of life instead of just appearing. Runs once on mount —
  * callers rely on React unmounting the previous state's element (a different component
  * type at the same JSX position, e.g. the ring `Pressable` vs this `IconButton`) to

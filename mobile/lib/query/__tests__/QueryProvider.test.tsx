@@ -27,7 +27,7 @@ describe('QueryProvider persistence', () => {
     expect(shouldPersistQuery(queryFor(queryKeys.me.blocks()))).toBe(false);
   });
 
-  it('never writes /stream responses to disk (S8/S9 review, B1/D11/D2 — a restored stale entitlement confirmation must not be possible)', () => {
+  it('never writes /stream responses to disk (a restored stale entitlement confirmation must not be possible)', () => {
     expect(shouldPersistQuery(queryFor(queryKeys.stream.detail('s1')))).toBe(false);
   });
 

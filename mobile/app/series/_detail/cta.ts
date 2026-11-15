@@ -16,8 +16,8 @@ export interface SeriesDetailCta {
 }
 
 /**
- * Series-detail's Play/Resume CTA (Isaac's ask, session 2026-09-30 — Netflix's title-page
- * Play button, which always targets a specific episode, never the series itself) — the
+ * Series-detail's Play/Resume CTA, which always targets a specific episode, never the
+ * series itself — the
  * sermon-detail screen's own `resolveCta` (`app/sermon/_detail/cta.ts`) picks Fresh vs.
  * Resume for one known sermon; this picks *which episode* first, off the same
  * `/me/history` read the episode rows already use (`buildHistoryMap`), no extra call:

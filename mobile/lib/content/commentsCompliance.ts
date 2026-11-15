@@ -2,17 +2,14 @@
  * The two pieces of public-facing compliance content the comments feature needs and the
  * app cannot invent: the contact address App Store guideline 1.2 requires for user-
  * generated content (plan input I1) and the comment guidelines / terms text a viewer
- * accepts before their first post (plan input I2). Both are supplied by Isaac.
+ * accepts before their first post (plan input I2). Both come from the church.
  *
  * They live in this one module so replacing them is a single-file change.
  * `isComplianceContentPending` lets a caller show or hide a surface that would
  * otherwise ship a placeholder.
  *
- * I2 (comment guidelines) shipped 2026-10-08. I1 (contact email) shipped 2026-10-16 —
- * Isaac supplied `contact@rhemapod.com`.
- *
- * Since plan-admin-settings S18 both are editable by staff and served by
- * `GET /settings/public` (`useChurchContent()`); these constants are now the FALLBACK,
+ * Both are editable by staff and served by `GET /settings/public`
+ * (`useChurchContent()`); these constants are the FALLBACK,
  * used offline, on error and on first launch. Do not delete them: App Store guideline
  * 1.2 needs the contact address available without a network. These equal
  * `app/content/comment_guidelines.txt`; a backend test pins them.

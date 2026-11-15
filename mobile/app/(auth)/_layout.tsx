@@ -6,8 +6,8 @@ export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
-        // Each auth screen draws its own round back button (Daybreak A4 to A6); the native
-        // header doubled it up on sign up (Nii's phone test, 2026-11-11).
+        // Each auth screen draws its own round back button (Daybreak A4 to A6), so the
+        // native header would double it up.
         headerShown: false,
         headerShadowVisible: false,
         headerTintColor: colors.text.primary,

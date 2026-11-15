@@ -5,10 +5,8 @@ export interface SermonMetaFields {
 }
 
 /** "Series Title · Episode N" for a series episode, the category alone for a standalone
- * sermon, or `null` for neither. Shared by `SermonAddRow` and `PlaylistItemRow` (Isaac's
- * ask, session 2026-10-10: playlist items should show "category|episode/sermon" instead
- * of speaker + duration — the exact same category-or-episode line `SermonAddRow` already
- * computes, promoted here once a second row type needed it). */
+ * sermon, or `null` for neither. Shared by `SermonAddRow` and `PlaylistItemRow`, which
+ * show this line instead of speaker + duration. */
 export function metaLineFor(sermon: SermonMetaFields): string | null {
   if (sermon.series_title) {
     return sermon.episode_number != null ? `${sermon.series_title} · Episode ${sermon.episode_number}` : sermon.series_title;

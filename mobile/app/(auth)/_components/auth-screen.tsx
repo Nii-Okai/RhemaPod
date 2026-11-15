@@ -11,8 +11,7 @@ import { LEAF } from '../../(tabs)/_home/signature/leaf';
 /**
  * The shared shell for sign in, create account, forgot password and verify email.
  *
- * Laid out and ordered as before the Daybreak redesign (Nii, 2026-11-12: "maintain the
- * layout and ordering from the previous design"), in Daybreak's colours and type:
+ * Daybreak's colours and type, in this layout and order:
  *
  *  - the brand row on top: the mark in a gold ring beside the RhemaPod wordmark, centred.
  *    Screens you can leave put a round back button on the left of that row;
@@ -22,9 +21,8 @@ import { LEAF } from '../../(tabs)/_home/signature/leaf';
  *  - `footer` below the card on the bare page (the "New here? / Already have an
  *    account?" switch line), so the card holds only the task at hand.
  *
- * Anchored near the top rather than vertically centred (Isaac, 2026-10-16: a short form
- * read as floating low when centred). Sign in opts into `centerVertically` (Isaac,
- * 2026-11-12: "center the sign in page").
+ * Anchored near the top rather than vertically centred (a short form reads as floating
+ * low when centred). Sign in opts into `centerVertically`.
  */
 export function AuthScreen({
   eyebrow,

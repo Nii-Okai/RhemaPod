@@ -13,8 +13,8 @@ export interface SocialSignInButtonProps extends Omit<PressableProps, 'style' | 
 }
 
 /**
- * "Continue with Google/Apple": Daybreak's 54pt outlined pill (canvas A3). Originally the bordered-surface look (Isaac's ask, session
- * 2026-10-15), not a filled gold pill (reserved for the primary "Sign in" action, see
+ * "Continue with Google/Apple": Daybreak's 54pt outlined pill (canvas A3). A bordered
+ * surface, not a filled gold pill (reserved for the primary "Sign in" action, see
  * `Button.tsx`'s own doc comment) and not the bare gold text link (`LinkButton`).
  * Mirrors the admin portal's `secondary` button variant's intent (bordered, surface
  * background, ink text — `admin_portal/components/ui/button.tsx`) since `LinkButton`'s

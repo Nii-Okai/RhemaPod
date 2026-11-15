@@ -22,19 +22,17 @@ const DEFAULT_ASPECT_RATIO = 16 / 9;
 
 /**
  * Image-only sermon card — no title/meta text under the art at all, unlike
- * `SermonCard`. Originally Home's "Recommended for you"/"Trending" shelves; the
- * series-detail "Related" rail became its second concrete consumer (Isaac's ask,
- * session 2026-10-01: drop the title and duration there too), which is why this moved
- * out of Home's own `_home/` folder into `components/sermon/` alongside `SermonCard`.
+ * `SermonCard`. Used by Home's "Recommended for you"/"Trending" shelves and the
+ * "Related" rail.
  * The sermon's title still becomes the control's `accessibilityLabel` even though
  * nothing is drawn on screen — VoiceOver/TalkBack users still need to know what they're
  * about to open; "no titles" is a sighted-rendering choice, not a reason to ship an
  * unlabeled button.
  *
  * `width`/`aspectRatio` are per-shelf, not per-sermon. `resizeMode="cover"` fills the box
- * edge-to-edge with no letterboxing (Isaac's call: source thumbnails are landscape,
- * Trending/Recommended's box is portrait 3:4, and a full card beats empty bars — cropping
- * some of the landscape edges is the accepted trade-off). RN centers the crop on both axes
+ * edge-to-edge with no letterboxing (source thumbnails are landscape, Trending/
+ * Recommended's box is portrait 3:4, and a full card beats empty bars — cropping some of
+ * the landscape edges is the accepted trade-off). RN centers the crop on both axes
  * by default, so the visible slice is always the middle of the image, not an arbitrary edge.
  */
 export function ImageOnlyCard({

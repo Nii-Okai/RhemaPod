@@ -1,9 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 /**
- * File-path conventions for offline downloads (plan W4.5). Three distinct directories,
- * matching the architect's writeup's own separation (status.md 2026-09-26T12:08:20Z §2,
- * §4):
+ * File-path conventions for offline downloads (plan W4.5). Three distinct directories
+ * (status.md, RPA1 writeup §2, §4):
  *  - `downloadsDir` (`documentDirectory`, survives until explicitly deleted): the final
  *    RPA1-encrypted files. User data, not cache — the OS must never reclaim these under
  *    storage pressure without the app knowing, or a `ready` DB row would silently start
@@ -51,9 +50,8 @@ export function videoFilePath(sermonId: string): string {
   return `${downloadsDir()}${sermonId}.mp4`;
 }
 
-/** The local, permanent copy of the thumbnail image (session 2026-10-15 fix for the
- * 6h-expiring presigned `thumbnail_url` going blank/403 on a sermon that's sat `ready`
- * for a while — see `types.ts`'s own doc comment on `DownloadRecord.thumbnailPath`).
+/** The local, permanent copy of the thumbnail image (the presigned `thumbnail_url`
+ * expires after 6h — see `types.ts`'s own doc comment on `DownloadRecord.thumbnailPath`).
  * Lives in the same `downloadsDir` as the media file itself, not a separate directory —
  * same lifecycle (deleted alongside it in `deleteDownload`, survives offline the same
  * way), so it needs no startup-sweep reconciliation of its own beyond what the media file

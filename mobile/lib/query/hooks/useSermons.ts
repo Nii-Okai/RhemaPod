@@ -34,8 +34,7 @@ export function useSermonDetail(sermonId: string, options: { enabled?: boolean }
 }
 
 /**
- * `PUT`/`DELETE /catalog/sermons/{sermon_id}/like` (Isaac's ask, session 2026-10-09: a
- * real counter and backend behind the Like button). Both are idempotent on the server —
+ * `PUT`/`DELETE /catalog/sermons/{sermon_id}/like` (the Like button and its counter). Both are idempotent on the server —
  * this hook picks which one to call from the CURRENT `liked` state the caller already
  * has (the cached `SermonDetail`'s own `liked_by_me`), rather than guessing a toggle
  * direction itself. The response is the new authoritative `{liked, like_count}`, written

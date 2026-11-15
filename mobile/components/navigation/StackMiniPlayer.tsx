@@ -10,8 +10,8 @@ const HIDDEN = new Set(['(tabs)', '(auth)', 'onboarding', 'index', 'player', 'de
 
 /**
  * The mini player over pushed screens (series, sermon, playlist, speaker, topic, search,
- * notifications and so on). The tab group draws its own above the dock; until now nothing
- * drew it once a screen was pushed over the tabs (Nii's phone test, 2026-11-11). It floats
+ * notifications and so on). The tab group draws its own above the dock; this one covers
+ * screens pushed over the tabs. It floats
  * at the foot of the screen, over the content, and can be dragged up from there; it keeps
  * the spot it was dragged to on the tabs too (`MiniPlayer`).
  */

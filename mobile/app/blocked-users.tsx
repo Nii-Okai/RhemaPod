@@ -13,10 +13,8 @@ import { useMyBlocks, useUnblock } from '../lib/query/hooks/useBlocks';
  * risk) and removes the row optimistically, restoring it if the request fails. Each row is
  * seeded by the author's display name — the DTO has no user id.
  *
- * Bare-chevron + centered-title header (Isaac's ask, session 2026-10-16: "use
- * preestablish navigation style") — same layout `category/[id]`/`speaker/[id]`/
- * `notifications` already use, in place of the native Stack header this screen fell
- * through to before (`app/_layout.tsx` disables it for this route for the same reason).
+ * Bare-chevron + centered-title header — same layout `category/[id]`/`speaker/[id]`/
+ * `notifications` use (`app/_layout.tsx` disables the native Stack header for this route).
  *
  * Daybreak (canvas F3): round back button, a "Blocked people" title with a line on what
  * blocking does, each person on a card with the date they were blocked and an outlined
@@ -40,7 +38,7 @@ export default function BlockedUsersScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-        {/* Back sits on the title's row (Nii, 2026-11-11). */}
+        {/* Back sits on the title's row. */}
         <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
         <AppText variant="display.hero" accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit style={styles.title}>
           Blocked people

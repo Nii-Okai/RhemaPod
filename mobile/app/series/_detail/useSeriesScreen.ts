@@ -33,14 +33,12 @@ export function useSeriesScreen(id: string) {
   );
   const cta = useMemo(() => resolveSeriesCta(episodes.data ?? [], historyMap), [episodes.data, historyMap]);
 
-  // Close (the X) dismisses the whole stack — "close all pages" (Isaac's ask, session
-  // 2026-10-01), however many Related/episode drill-down levels deep the user is —
+  // Close (the X) dismisses the whole stack, however many Related/episode drill-down levels deep the user is —
   // rather than going back just one level.
   const onCloseAll = () => router.dismissAll();
   // "No longer available" -> Go home: `/` re-resolves to home (or sign-in), same as a cold start.
   const goHome = () => router.replace('/');
-  // Episodes open the player directly — one transition from the tap to playback (Nii's
-  // ask, 2026-10-23). A locked or not-yet-ready episode is handed on to its detail page
+  // Episodes open the player directly — one transition from the tap to playback. A locked or not-yet-ready episode is handed on to its detail page
   // by the player itself.
   const goToEpisode = (sermonId: string) => router.push({ pathname: '/player/[id]', params: { id: sermonId } });
 
@@ -81,9 +79,8 @@ export function useSeriesScreen(id: string) {
   // download control in this app uses — `download()` is already a no-op for anything
   // not fresh/failed (`downloadManager.enqueueDownload`'s own doc comment), so calling
   // it for an already-downloading or already-ready episode is safe, not a duplicate.
-  // Downloads whichever rendition each episode actually has (Isaac's ask, session
-  // 2026-10-08: "download based on the media type available for each episode") — an
-  // episode with no rendition at all yet is skipped, not retried as a failure.
+  // Downloads whichever rendition each episode actually has — an episode with no
+  // rendition at all yet is skipped, not retried as a failure.
   const onDownloadAll = (episodeList: DownloadPillItem[]) => {
     episodeList.forEach((episode) => {
       void downloads.download(episode.sermonId, episode.title, episode.mediaType, episode.thumbnailUrl, episode.category);
@@ -108,8 +105,7 @@ export function useSeriesScreen(id: string) {
   // a rendition to exist (`downloadableEpisodes`'s own filter), so it targets every
   // episode rather than just the downloadable subset. "Already added" is only true once
   // every episode is in, not just some — a checkmark implying "fully done" when half
-  // the series is still missing would be misleading. Toggling off (Isaac's ask, session
-  // 2026-10-11: "allow user toggle") removes every episode, since by definition all of
+  // the series is still missing would be misleading. Toggling off removes every episode, since by definition all of
   // them are in whenever this reads true; toggling on only adds whichever are still
   // missing — `useAddToDefaultLibrary`'s own `toggleSermons` doesn't blindly re-add
   // ones already there.

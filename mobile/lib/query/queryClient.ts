@@ -65,8 +65,7 @@ export const queryKeys = {
     // ({pages, pageParams}) has a different shape than a plain `useQuery` one (a flat
     // `SearchResults`), so the two must never collide under the same key even when
     // called with identical params (`AddToPlaylistSheet`'s own paginated Sermons/
-    // Episodes tabs, Isaac's ask, session 2026-10-10 — "not all episodes are showing,"
-    // the 20-result-cap root cause).
+    // Episodes tabs).
     resultsInfinite: (params: object = {}) => [...queryKeys.search.all, 'results-infinite', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
@@ -149,7 +148,7 @@ export const queryKeys = {
     all: ['comments'] as const,
     forSermon: (sermonId: string) => [...queryKeys.comments.all, 'sermon', sermonId] as const,
   },
-  // The Library tab's playlists (Isaac's ask, session 2026-10-10) — mirrors the
+  // The Library tab's playlists — mirrors the
   // `sermons`/`series` shape; `list()` takes no params (GET /playlists is always
   // "all of the caller's own playlists", there's no filter to key on).
   playlists: {

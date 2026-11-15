@@ -4,13 +4,10 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 
 /**
- * Apple Sign-In (client side, session 2026-10-15) — only ever offered on iOS (App Store
- * guideline 4.8 is an iOS-only rule, and the native module doesn't work on Android
- * either). Isaac hasn't enrolled in the paid Apple Developer Program yet, so the native
- * call will likely fail with no "Sign In with Apple" capability provisioned on a real
- * device right now; that failure is handled the same plain way as any other sign-in
- * failure, no special-casing, so this starts working with zero code changes once he
- * enrolls.
+ * Apple Sign-In (client side) — only ever offered on iOS (App Store guideline 4.8 is an
+ * iOS-only rule, and the native module doesn't work on Android either). A failure of the
+ * native call (e.g. no "Sign In with Apple" capability provisioned) is handled the same
+ * plain way as any other sign-in failure, no special-casing.
  */
 
 export interface AppleSignInResult {
@@ -80,7 +77,7 @@ export async function performAppleSignIn(): Promise<AppleSignInResult | null> {
 }
 
 /**
- * Whether the Apple Sign-In button should render at all (Isaac's decision #3): a cheap
+ * Whether the Apple Sign-In button should render at all: a cheap
  * `Platform.OS === 'ios'` gate first, before even calling anything Apple-specific, then
  * the module's own `isAvailableAsync()` check. Defaults to `false` (not shown) until
  * that resolves, rather than flashing the button then hiding it.

@@ -51,7 +51,7 @@ export const displayScale: Record<DisplayVariant, TypeStyle> = {
   row: { fontFamily: fontFamily.display, fontSize: 20, lineHeightRatio: 1.1 },
   compact: { fontFamily: fontFamily.display, fontSize: 17, lineHeightRatio: 1.2 },
   /** A passage read slowly (Daily Rhema's Hear step). Open leading so Fraunces' tall
-      ascenders never touch the line above (Nii, 2026-11-12: "not well formatted"). */
+      ascenders never touch the line above. */
   scripture: { fontFamily: fontFamily.display, fontSize: 19, lineHeightRatio: 1.6 },
 };
 
@@ -66,15 +66,13 @@ export const uiScale: Record<UiVariant, TypeStyle> = {
   label: { fontFamily: fontFamily.uiSemiBold, fontSize: 13, lineHeightRatio: 1.2 },
   button: { fontFamily: fontFamily.uiSemiBold, fontSize: 14, lineHeightRatio: 1.2 },
   badge: { fontFamily: fontFamily.uiSemiBold, fontSize: 12, lineHeightRatio: 1.2 },
-  // `lineHeightRatio: 1` (exactly matching fontSize) was the one variant in this whole
-  // scale tighter than 1.2 — Isaac's ask, session 2026-10-10: "the owner's initials is
-  // not centered in the circle". A bold font's line box at `lineHeightRatio: 1` is
+  // Not `lineHeightRatio: 1` (exactly matching fontSize): a bold font's line box at `lineHeightRatio: 1` is
   // tighter than its natural ascent+descent, so the glyph renders visually shifted
   // within `Avatar`'s flex-centered circle rather than truly centered; every sibling
   // variant already uses 1.2+ for exactly this reason.
   avatarInitials: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1.2 },
   /** Small bold label under an icon — `ActionButton`'s own label (My List/Like/Share/
-      Download), Isaac's ask, session 2026-10-01: smaller than `body`, bold rather than
+      Download): smaller than `body`, bold rather than
       `label`'s semibold. */
   actionLabel: { fontFamily: fontFamily.uiBold, fontSize: 11, lineHeightRatio: 1.2 },
 };

@@ -5,11 +5,9 @@ import { AsyncStorage as SQLiteAsyncStorage } from 'expo-sqlite/kv-store';
  * per-user-key convention as `commentsNotice.ts`'s own one-time-notice flag) — there is
  * no server-side read/unread concept for new releases.
  *
- * Per-item, not one "last seen" timestamp (Isaac's ask, session 2026-10-11: "the
- * counter should respect read and unread items" — a single batch timestamp marked
- * everything on the list as seen the instant the screen opened, whether or not any
- * specific item was actually looked at; this tracks which sermons were individually
- * opened instead). Capped at `MAX_STORED_IDS`, trimming the oldest entries first — New
+ * Per-item, not one "last seen" timestamp (which would mark everything on the list as
+ * seen the instant the screen opened): this tracks which sermons were individually
+ * opened. Capped at `MAX_STORED_IDS`, trimming the oldest entries first — New
  * Releases is itself a small, server-capped shelf, so the live set of ids worth
  * remembering never grows large; this is just a hard ceiling against unbounded growth.
  */

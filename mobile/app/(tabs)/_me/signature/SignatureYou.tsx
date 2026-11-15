@@ -147,9 +147,8 @@ function LinkRow({
 }
 
 /**
- * You, Signature redesign (Nii's approved mockup "RhemaPod — Signature", 2026-10-21),
- * behind `SIGNATURE_YOU_ENABLED`. Every setting the classic `me.tsx` has, nothing new
- * (Nii: "keep every existing setting"), regrouped as the mockup draws it:
+ * You, Signature design, behind `SIGNATURE_YOU_ENABLED`. Every setting the classic
+ * `me.tsx` has, nothing new, grouped as:
  *
  *  - a profile card: the tappable photo (gold ring), name, email, how the name shows on
  *    comments, and Edit profile;

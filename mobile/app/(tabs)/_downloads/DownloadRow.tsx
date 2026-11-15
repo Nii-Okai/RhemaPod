@@ -16,9 +16,8 @@ export interface DownloadRowProps {
   onDelete: (sermonId: string) => void;
 }
 
-// A square thumbnail at `LIST_THUMBNAIL_SIZE`, matching `PlaylistCard` (Isaac's ask,
-// session 2026-10-10: "Playlist and download list items should match size") — was a
-// wider 16:9 rectangle before. Overlay chip/icon/ring sized down to fit the smaller
+// A square thumbnail at `LIST_THUMBNAIL_SIZE`, matching `PlaylistCard`, so playlist and
+// download rows read as one list. Overlay chip/icon/ring sized down to fit the smaller
 // square rather than scaled by a literal ratio, which would've made them too small to
 // read or tap comfortably.
 const OVERLAY_CHIP_SIZE = 28;
@@ -35,39 +34,34 @@ export function metaLineFor(download: DownloadRecord): string {
   if (download.state === 'failed') return download.failureMessage ?? 'Download failed.';
   if (download.state === 'downloading') return `Downloading… ${Math.round(download.progress * 100)}%`;
   if (download.state === 'queued') return 'Queued';
-  // ready — category replaces the old generic "Downloaded" label (Isaac's ask, session
-  // 2026-10-09), size stays alongside it; a sermon with no category on file just shows
+  // ready — the category, with the size alongside it; a sermon with no category on file just shows
   // the size alone rather than a fabricated one.
   const size = formatBytes(download.bytesTotal);
   const parts = [download.category, size].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : 'Downloaded';
 }
 
-/** One row per sermon in the Downloads list (redesigned, Isaac's ask, session 2026-10-09:
- * a real thumbnail with the state's action overlaid on it — play when ready, retry when
- * failed, the same `CircularProgress` ring every other download control in the app uses
- * while active — in place of the old generic title+"Downloaded"+right-side icon layout.
- * The thumbnail *is* the tap target for that state's primary action.
+/** One row per sermon in the Downloads list: a real thumbnail with the state's action
+ * overlaid on it — play when ready, retry when failed, the same `CircularProgress` ring
+ * every other download control in the app uses while active. The thumbnail *is* the tap
+ * target for that state's primary action.
  *
- * A small gold checkmark precedes the category text once the download is `ready` (Isaac's
- * ask, session 2026-10-10: "add a downloaded checked icon before category ... to show the
- * difference") — now that playlist and download rows are visually unified in one list with
- * no section header, this is the one thing that marks a row as a download rather than a
- * playlist. It's gated on `isReady` specifically, not just "is a download": a downloading/
+ * A small gold checkmark precedes the category text once the download is `ready` —
+ * playlist and download rows share one list with no section header, so this is the one
+ * thing that marks a row as a download rather than a playlist. It's gated on `isReady` specifically, not just "is a download": a downloading/
  * queued/failed row's meta line is a status message, not a category, so a checkmark there
  * would read as "this finished" when it hasn't.
  *
- * Long-press anywhere on the row opens a delete confirm (same session — replaces
- * `SwipeToDelete`, which doesn't fit this screen's now-interleaved list/grid as cleanly as
- * one consistent long-press gesture across every row and grid tile does). The whole row is
- * one `Pressable` rather than a separate thumbnail-Pressable-inside-a-row (the swipe
- * wrapper's old shape) specifically so long-press and short-press share one hit target.
+ * Long-press anywhere on the row opens a delete confirm: one consistent gesture across
+ * every row and grid tile of the interleaved list/grid, where a swipe doesn't fit. The
+ * whole row is one `Pressable` rather than a thumbnail-Pressable-inside-a-row so
+ * long-press and short-press share one hit target.
  * `onLongPress` fires regardless of download state — an in-progress download can still be
  * deleted (cancelled) this way, so only the *short*-press play/retry action is gated on
  * `isActive`, inside the handler itself rather than via the `Pressable`'s own `disabled`
  * (which would have silently blocked `onLongPress` too). VoiceOver/TalkBack reach delete
- * without the gesture at all, via the same `accessibilityActions` entry `SwipeToDelete`
- * used to expose — parity, not a downgrade, for screen-reader users.
+ * without the gesture at all, via an `accessibilityActions` entry (the same one
+ * `SwipeToDelete` exposes).
  */
 export function DownloadRow({ download, onPlay, onRetry, onDelete }: DownloadRowProps) {
   const { colors } = useTheme();

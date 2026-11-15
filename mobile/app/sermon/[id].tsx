@@ -24,10 +24,9 @@ const HERO_HEIGHT = 300;
 /**
  * Free sermon-detail screen (design spec §8, W4.0/W4.1). Binds only the fields §8.0 lists
  * from `GET /api/v1/catalog/sermons/{sermon_id}` (`SermonDetail`) — the public read, not
- * the staff-only `GET /api/v1/sermons/{sermon_id}` the original task brief named (§8.0's
- * own correction). Resume detection is the Conductor's decision (W4.1): call
- * `GET /sermons/{sermon_id}/progress` directly rather than the addendum's originally-bound
- * `/me/continue-watching` (bounded to the 10 most-recent plays) — see
+ * the staff-only `GET /api/v1/sermons/{sermon_id}` (§8.0). Resume detection calls
+ * `GET /sermons/{sermon_id}/progress` directly rather than `/me/continue-watching`
+ * (bounded to the 10 most-recent plays) — see
  * `useSermonProgress.ts`'s docstring.
  */
 export default function SermonDetailScreen() {
@@ -46,9 +45,7 @@ export default function SermonDetailScreen() {
   // no-media sermon has no Fresh/Resume distinction to make (§8.3).
   const progressQuery = useSermonProgress(id, { enabled: Boolean(detail) && playable });
 
-  // Signature player (Nii, 2026-10-22: "when a single or standalone sermon is selected, open
-  // player screen directly", then "when a single episode is selected open the player
-  // directly"): any playable sermon, a series episode included, skips this page and opens
+  // Signature player: any playable sermon, a series episode included, skips this page and opens
   // the player, which carries Like / My List / Download / Share itself. Handled here rather
   // than at every list that links to a sermon, so each of them (and a series page's episode
   // rows, which route through `sermon/related/[id]` to this same screen) is covered;
@@ -61,11 +58,10 @@ export default function SermonDetailScreen() {
   }, [opensPlayer, id]);
 
   const goBack = () => router.back();
-  // Close (the X) dismisses the whole stack — "close all pages" (Isaac's ask, session
-  // 2026-10-01), however many Related/episode drill-down levels deep the user is —
+  // Close (the X) dismisses the whole stack, however many Related/episode drill-down levels deep the user is —
   // rather than going back just one level the way the back chevron does.
   const onCloseAll = () => router.dismissAll();
-  // Drill-down entry (Isaac's ask, session 2026-10-01): a Related item pushed this
+  // Drill-down entry: a Related item pushed this
   // screen on top of another detail screen, rather than presenting it fresh — see
   // `CastCloseHeader`'s own `onBack` prop doc, and `app/sermon/related/[id].tsx` for the
   // matching transition-animation half of this (a second route, not a per-push option).
@@ -253,9 +249,8 @@ const useStyles = createThemedStyles((colors) => ({
   ctaSection: {
     gap: spacing.sm,
   },
-  // Left-aligned with fixed gaps, not edge-to-edge `space-between` — matches Isaac's
-  // own Netflix reference screenshot, session 2026-10-01. Gap widened past the token
-  // scale's own max (`spacing.xxl`) per Isaac's own follow-up ask, same session.
+  // Left-aligned with fixed gaps, not edge-to-edge `space-between`. The gap is deliberately
+  // wider than the token scale's own max (`spacing.xxl`).
   actionRow: {
     flexDirection: 'row',
     gap: spacing.xxl,
@@ -273,8 +268,7 @@ const useStyles = createThemedStyles((colors) => ({
   relatedHeader: {
     textTransform: 'uppercase',
   },
-  // Bold text + gold underline strip (Isaac's ask, session 2026-10-01, matching
-  // `DetailTabs`' own selected-tab treatment on series detail) — a static section
+  // Bold text + gold underline strip (matching `DetailTabs`' own selected-tab treatment on series detail) — a static section
   // header here, not a toggleable tab, so the underline always shows.
   relatedHeaderUnderline: {
     height: 3,

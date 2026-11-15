@@ -52,7 +52,7 @@ function Harness({ overrides = {} }: { overrides?: FixtureOverrides }) {
   return <VideoSurface {...props} />;
 }
 
-describe("VideoSurface — audio artwork (Isaac's report: plain dark screen for audio)", () => {
+describe("VideoSurface — audio artwork (not a plain dark screen for audio)", () => {
   it('renders no artwork image for a video sermon', () => {
     const { queryByTestId } = render(
       <Harness overrides={{ isAudio: false, artworkUrl: 'https://cdn.example/art.jpg' }} />,

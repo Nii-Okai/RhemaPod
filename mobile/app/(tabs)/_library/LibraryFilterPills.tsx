@@ -12,9 +12,7 @@ export interface LibraryFilterPillsProps {
   onChange: (value: LibraryFilter) => void;
 }
 
-/** "Playlists" / "Downloaded" filter pills (Isaac's screenshots — the
- * reference also shows "Artists", left out since this app has no artist-
- * library concept). Exclusive: selecting a pill filters the list to just
+/** "Playlists" / "Downloaded" filter pills. Exclusive: selecting a pill filters the list to just
  * that section; tapping the already-selected pill again clears the filter
  * back to showing both sections, same as Spotify's own behavior. */
 export function LibraryFilterPills({ value, onChange }: LibraryFilterPillsProps) {

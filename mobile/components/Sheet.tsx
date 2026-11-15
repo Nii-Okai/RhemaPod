@@ -10,19 +10,16 @@ export interface SheetProps {
   children: React.ReactNode;
   /** Fires once this sheet's native `Modal` has actually finished dismissing — iOS
    * only (RN's own `Modal.js`: "OnDismiss is implemented on iOS only"). A caller that
-   * needs to open a SECOND `Modal` right after this one closes (`PlaylistOptionsSheet`,
-   * Isaac's ask, session 2026-10-10) needs this, not just `onClose` — two native modals
+   * needs to open a SECOND `Modal` right after this one closes (`PlaylistOptionsSheet`)
+   * needs this, not just `onClose` — two native modals
    * presenting/dismissing in the same tick reliably hangs iOS, and only this event (not
    * a guessed delay) reliably tells you the first one is actually gone. */
   onDismiss?: () => void;
 }
 
 /**
- * Bottom-sheet chrome, originally shared by the report, terms and name sheets (design
- * spec §2.4), promoted here from `app/player/_comments/` once the Me page's own avatar
- * picker (session 2026-10-09) became a second, unrelated feature area needing the exact
- * same chrome — same promotion bar `IconButton`/`Toggle`'s own doc comments describe. A
- * slide-up `Modal`, a `surface.app` scrim at 0.6 (the `SleepTimerSheet` precedent, no rgba
+ * Bottom-sheet chrome (design spec §2.4), shared by the comment report, terms and name
+ * sheets, the avatar picker and others. A slide-up `Modal`, a `surface.app` scrim at 0.6 (the `SleepTimerSheet` precedent, no rgba
  * literal), a `surface.raised` body with `radius.xl` top corners, safe-area bottom padding,
  * and a scroll region so a tall sheet (large text sizes) never clips. Tapping the scrim or
  * the system back closes it.

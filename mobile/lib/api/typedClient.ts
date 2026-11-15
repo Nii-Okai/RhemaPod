@@ -96,8 +96,8 @@ type ResponseOf<Op extends Record<string, any>> = Readable<SuccessResponseJSON<O
 
 /**
  * `Path` (the exported verbs' type parameter, below) is already unprefixed
- * at the type level via `UnprefixedPaths` — so unlike an earlier draft of
- * this module, there is nothing left to strip here at runtime. `path` comes
+ * at the type level via `UnprefixedPaths`, so there is nothing to strip
+ * here at runtime. `path` comes
  * in exactly as the caller wrote it (e.g. `/catalog/sermons/{sermon_id}`)
  * and goes straight to `apiFetch`, which appends `/api/v1` itself via
  * `apiUrl()`.

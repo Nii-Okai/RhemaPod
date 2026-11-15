@@ -24,11 +24,10 @@ export interface FieldProps extends TextInputProps {
  * Daybreak redesign (canvas A3/A4): a 54pt white input with a 16pt corner, an optional
  * leading icon, and a blue border while focused (rose still wins when there's an error).
  *
- * `secureTextEntry` fields (Isaac's ask, session 2026-10-15: "add feature to
- * allow viewing password") get a show/hide eye toggle for free — the field
+ * `secureTextEntry` fields get a show/hide eye toggle for free — the field
  * manages its own reveal state internally, so every password field in the
  * app gets this without each screen wiring it separately. A field that isn't
- * `secureTextEntry` renders exactly as before, no toggle, no layout change.
+ * `secureTextEntry` has no toggle.
  */
 export const Field = React.forwardRef<TextInputInstance, FieldProps>(function Field(
   { label, error, icon, labelAccessory, style, secureTextEntry, onFocus, onBlur, ...rest },

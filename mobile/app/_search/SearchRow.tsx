@@ -7,7 +7,7 @@ import { spacing } from '../../theme/spacing';
 export interface SearchRowProps {
   label: string;
   /** Falls back to `label` — pass this when the visible text alone loses real
-      information a sighted row used to show (a sermon's duration/speaker, a series'
+      information a richer row would show (a sermon's duration/speaker, a series'
       episode count, a speaker's bio), same convention this whole slice uses elsewhere
       for a dropped-but-still-announced detail. */
   accessibilityLabel?: string;
@@ -15,13 +15,8 @@ export interface SearchRowProps {
 }
 
 /**
- * One plain text row with a hairline divider — the single row style Search now uses for
- * everything on the screen (Isaac's ask, session 2026-10-02 — Prime Video reference: a
- * flat list of titles, no thumbnails/avatars/icons), replacing `SuggestionRow`'s own
- * "↗ storm" treatment for live suggestions AND the richer `SermonResultRow`/
- * `SeriesListCard`/`SpeakerListRow` this screen's actual results used to render. Those
- * three keep their richer look everywhere else they're still used (category/speaker
- * drill-down, the all-series page, Browse) — only Search itself went flat.
+ * One plain text row with a hairline divider: a flat list of titles, no
+ * thumbnails/avatars/icons. Search uses it for live suggestions.
  */
 export function SearchRow({ label, accessibilityLabel, onPress }: SearchRowProps) {
   const styles = useStyles();

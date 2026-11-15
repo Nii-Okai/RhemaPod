@@ -28,10 +28,8 @@ export interface SwipeToDeleteProps {
 }
 
 /**
- * Swipe-left-to-reveal delete, built on core `PanResponder` + `Animated` (Isaac's ask,
- * session 2026-10-09: "the delete button is old fashioned, use something native,
- * creative and unique") — no `react-native-gesture-handler`/reanimated dependency added
- * for this: `PanResponder` already ships in React Native core and is the same primitive
+ * Swipe-left-to-reveal delete, built on core `PanResponder` + `Animated` — no
+ * `react-native-gesture-handler`/reanimated dependency: `PanResponder` already ships in React Native core and is the same primitive
  * every pre-Reanimated native-feeling swipeable list used, so this gets the native Mail/
  * Messages-style interaction without a new native module (and the rebuild it'd force).
  *

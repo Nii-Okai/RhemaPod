@@ -17,8 +17,8 @@ import { SignatureRelated } from './SignatureRelated';
 import { SignatureTabs } from './SignatureTabs';
 import { usePullToRefresh } from '../../../lib/hooks/usePullToRefresh';
 
-// Full-bleed cover, running up under the status bar (Nii's edit to the mockup: a bigger
-// top image than the classic page's inset 4:3 banner).
+// Full-bleed cover, running up under the status bar (bigger than the classic page's
+// inset 4:3 banner).
 const HERO_ASPECT = 3 / 4;
 const HERO_CORNER = 36;
 
@@ -28,12 +28,11 @@ const HERO_CORNER = 36;
  * Episodes / Related with "N of M finished" on the tab row and the episodes drawn as a
  * path of numbered nodes (green when finished, gold for the one you're on).
  *
- * Series detail in the Signature redesign (mockup "RhemaPod — Signature", series page),
- * behind `EXPO_PUBLIC_SIGNATURE_SERIES`. Same data and actions as the classic screen —
+ * Series detail in the Signature design, behind `EXPO_PUBLIC_SIGNATURE_SERIES`. Same data and actions as the classic screen —
  * both read `useSeriesScreen` — drawn as: a full-width cover, tier and meta, the title
  * and its speaker, a Resume/Play pill that names the part and the time left, a row of
  * flames for the episodes watched, Download all / My List / Like / Share, then the
- * Episodes and Related tabs. No comments block (Nii's edit). Every colour comes from the
+ * Episodes and Related tabs. No comments block. Every colour comes from the
  * active theme, so it draws in light and dark alike.
  */
 export function SignatureSeriesScreen() {

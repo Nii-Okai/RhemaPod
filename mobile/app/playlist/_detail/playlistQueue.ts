@@ -9,8 +9,8 @@ export function playlistQueueItem(item: PlaylistItemPublic): QueueItemInput {
 }
 
 /**
- * Starts the app-wide queue on a playlist (Isaac's ask, session 2026-10-10: Play/Shuffle at
- * the top of a playlist should play through it), from `startIndex` in `order` — the saved
+ * Starts the app-wide queue on a playlist (Play/Shuffle at the top of a playlist play
+ * through it), from `startIndex` in `order` — the saved
  * order, a shuffle of it, or the saved order from a tapped row. Returns the sermon to open
  * the player on, or null for an empty playlist.
  */

@@ -28,7 +28,7 @@ export async function markOnboardingSeen(): Promise<void> {
 }
 
 /**
- * Dev-only escape hatch (Isaac's ask, 2026-10-16) so onboarding can be replayed on a test
+ * Dev-only escape hatch so onboarding can be replayed on a test
  * device without uninstalling/reinstalling the app. Only ever called from a `__DEV__`-gated
  * call site — see `sign-in.tsx`'s own dev-only row.
  */

@@ -2,9 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, type HostInstance } from 'react-native';
 
 /**
- * The artwork "flight" into the full player (Nii, 2026-11-15: open the player the way the
- * big audio apps do, with the art growing out of the mini player rather than a plain
- * screen sliding up).
+ * The artwork "flight" into the full player: the art grows out of the mini player rather
+ * than a plain screen sliding up.
  *
  * The player route keeps its native slide-up and pull-down-to-close (both are
  * `react-native-screens`' own and hard-won, see `app/_layout.tsx`). On top of that, a layer

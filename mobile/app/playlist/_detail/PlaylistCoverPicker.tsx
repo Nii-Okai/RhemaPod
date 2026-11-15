@@ -31,11 +31,10 @@ function contentTypeFor(extension: string): string {
 
 /**
  * Playlist detail's cover art — tapping it opens a Camera/Photo Library sheet,
- * same shape `ProfileAvatarPicker` uses for the profile picture (session
- * 2026-10-09), square here instead of circular since a playlist cover is a
- * square tile everywhere it's shown (the Library tab's own `PlaylistCard`,
- * this header). No "Create cover art" collage generator (Isaac's call,
- * session 2026-10-10) — plain upload only, the same direct-to-storage
+ * same shape `ProfileAvatarPicker` uses for the profile picture, square here
+ * instead of circular since a playlist cover is a square tile everywhere it's
+ * shown (the Library tab's own `PlaylistCard`, this header). No collage
+ * generator — plain upload only, the same direct-to-storage
  * ticket -> PUT -> confirm pipeline every other image in this app uses.
  */
 export function PlaylistCoverPicker({ playlistId, coverUrl, size = 160, cover }: PlaylistCoverPickerProps) {

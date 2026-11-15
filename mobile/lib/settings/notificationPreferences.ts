@@ -29,8 +29,8 @@ export interface ReminderTime {
 export const DEFAULT_DAILY_RHEMA_TIME: ReminderTime = { hour: 7, minute: 0 };
 
 /**
- * New-sermon pushes are on by default (Isaac, 2026-11-15): on Android 12 and older there is
- * no permission prompt, so an opt-in default meant most listeners never got them. Nothing
+ * New-sermon pushes are on by default: on Android 12 and older there is no permission
+ * prompt, so with an opt-in default most listeners would never get them. Nothing
  * is sent without OS permission, and turning it off is kept.
  */
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {

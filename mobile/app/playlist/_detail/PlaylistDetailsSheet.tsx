@@ -22,8 +22,8 @@ const NAME_MAX = 100;
 const DESCRIPTION_MAX = 300;
 
 /**
- * "Name & details" (Isaac's screenshots: rename, description, Make private/
- * public, Delete playlist, all in one sheet) — the playlist-domain sibling of
+ * "Name & details" (rename, description, Make private/public, Delete playlist,
+ * all in one sheet) — the playlist-domain sibling of
  * `ProfileDetailsSheet`. Saves on close rather than per-keystroke: the name/
  * description fields are local state until "Save", `is_public` toggles
  * immediately since it's a single tap with no text to debounce.

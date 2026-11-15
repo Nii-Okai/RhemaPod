@@ -40,7 +40,7 @@ import {
 } from './shelfCards';
 import { useSeriesWalk } from './useSeriesWalk';
 
-/** The Series grid: one row of two (Nii's call, 2026-10-21); "See all" opens the full list. */
+/** The Series grid: one row of two; "See all" opens the full list. */
 const SERIES_COLUMNS = 2;
 const SERIES_GRID_MAX = 2;
 
@@ -125,8 +125,7 @@ function Shelf<T extends { id: string }>({
 }
 
 /**
- * Home, Signature redesign (Nii's approved mockup "RhemaPod — Signature", 2026-10-21),
- * reworked for the Daybreak redesign (2026-11, canvas B1/B2): a greeting header, then
+ * Home, Daybreak design (canvas B1/B2): a greeting header, then
  *
  *  verse of the day → Daily Rhema → keep listening → "New this week" hero → new releases →
  *  this week at church → next message countdown (only while one is scheduled) →

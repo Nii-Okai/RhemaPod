@@ -165,8 +165,7 @@ export function useReorderPlaylistItems(playlistId: string) {
   });
 }
 
-/** The hero's "+" button's destination (Isaac's ask, session 2026-10-11: "add sermon to
- * default library") — there's no backend-flagged "default playlist" concept, so this is
+/** The hero's "+" button's destination (the viewer's default library) — there's no backend-flagged "default playlist" concept, so this is
  * a client convention: a playlist named exactly this, auto-created the first time it's
  * needed. It's an ordinary playlist after that — visible, editable, deletable in Library
  * like any other — not a hidden special-cased entity. */
@@ -179,11 +178,8 @@ export const DEFAULT_LIBRARY_NAME = 'My List';
  * local storage — one fewer thing that can drift out of sync with the server.
  *
  * `toggleSermon` (Home's hero "+" and sermon detail's own "My List") adds when the
- * sermon isn't in yet, removes when it is — a genuine toggle (Isaac's ask, session
- * 2026-10-11: "allow user toggle"; it only added before, a press once already in did
- * nothing). `toggleSermons` (series detail — Isaac's ask, same session as the original
- * bulk add: every episode at once, the same bulk-operate-on-every-episode convention
- * this screen's own Download pill already established) removes every episode when all
+ * sermon isn't in yet, removes when it is. `toggleSermons` (series detail: every
+ * episode at once, the same convention as that screen's Download pill) removes every episode when all
  * are already in, otherwise adds only whichever ones are missing — not a blind re-add
  * of all of them, which would have duplicated the ones already there (this app allows a
  * sermon twice in an ordinary playlist, same as Spotify; "My List" shouldn't exploit

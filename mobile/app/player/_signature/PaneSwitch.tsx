@@ -15,7 +15,7 @@ export interface PaneSwitchProps {
 /**
  * Queue / Comments switch at the foot of the Signature player, shown only when it was
  * opened from a playlist — the one case with two panels to choose between. The queue is
- * still what opens first (Isaac's 2026-10-11 ask). Playback controls stay on the video.
+ * what opens first. Playback controls stay on the video.
  */
 export function PaneSwitch({ pane, onSelectPane, bottomInset }: PaneSwitchProps) {
   const styles = useStyles();

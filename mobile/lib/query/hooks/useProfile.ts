@@ -68,8 +68,8 @@ export interface ProfileDetailsInput {
 
 /**
  * `PATCH /auth/me/profile { first_name, last_name, gender }` — the Me page's own profile
- * editor (session 2026-10-09), independent of `useUpdateFullName` above (the comments
- * flow's single-field name prompt, untouched). A name change goes through the same
+ * editor, independent of `useUpdateFullName` above (the comments flow's single-field
+ * name prompt). A name change goes through the same
  * moderation/rate-limit `full_name` always has — the server recomputes and publicly
  * displays it as `full_name`, so this invalidates comment threads too, same reason
  * `useUpdateFullName` does. `firstName`/`lastName` must both be given together (the

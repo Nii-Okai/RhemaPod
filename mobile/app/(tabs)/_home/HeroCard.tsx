@@ -14,7 +14,7 @@ export interface HeroCardProps {
   sermon: SermonListItem;
   onPress: () => void;
   /** Extra top offset for the eyebrow chip, on top of its own `spacing.md` — clears
-      the overlaid, scroll-fading `HomeTopBar` (Isaac's ask, session 2026-09-30) when
+      the overlaid, scroll-fading `HomeTopBar` when
       the hero renders underneath it. Defaults to 0 for any other caller. */
   topInset?: number;
 }
@@ -25,12 +25,10 @@ export interface HeroCardProps {
  * client-side pin).
  *
  * Structurally split into an art region and a footer, not one continuous overlay surface.
- * Isaac's later reference (a church media app's own hero) overlays its title/meta directly
- * on the art too — but that art was custom-designed with a reserved, uncluttered gradient
- * area at the bottom specifically for that overlay. Our actual sermon thumbnails are flat
- * title-card graphics with baked-in text running edge-to-edge (verified against the real
- * "Understanding the Prophetic" thumbnail in testing) — there's no safe area to overlay free
- * text onto without covering something. So the only things that sit on the art are
+ * Heroes that overlay title/meta on the art rely on art designed with an uncluttered
+ * area for it. Our sermon thumbnails are flat title-card graphics with baked-in text
+ * running edge-to-edge — there's no safe area to overlay free text onto without
+ * covering something. So the only things that sit on the art are
  * self-contained, opaque-background controls that can survive any thumbnail: the eyebrow
  * chip, the play button, and — pulled up on a negative margin to straddle the art's bottom
  * edge — the Watch/My List row. That row reads as part of the hero rather than a
@@ -44,12 +42,9 @@ export interface HeroCardProps {
  * describing overlapping actions. Sighted users still get "tap anywhere to open," but the
  * accessible surface is the explicit controls, not the whole card.
  *
- * "My List" is a real playlist now (Isaac's ask, session 2026-10-11: "add sermon to
- * default library" — this was a local `useState` toggle before, doing nothing past a
- * remount; see `useAddToDefaultLibrary`'s own doc comment for the "default" convention).
- * Once added, the circle shows a checkmark — tapping it again removes the sermon
- * (Isaac's ask, session 2026-10-11: "allow user toggle"; it was a one-way add-only
- * button the one session prior).
+ * "My List" adds the sermon to the viewer's default playlist (see
+ * `useAddToDefaultLibrary`'s own doc comment for the "default" convention). Once added,
+ * the circle shows a checkmark — tapping it again removes the sermon.
  */
 export function HeroCard({ sermon, onPress, topInset = 0 }: HeroCardProps) {
   const styles = useStyles();
@@ -183,8 +178,8 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    // On the art, not on chrome: the light pill in both themes (Isaac's decision,
-    // light-mode review §4.2) — a theme-following dark pill would vanish on dark art.
+    // On the art, not on chrome: the light pill in both themes (light-mode review
+    // §4.2) — a theme-following dark pill would vanish on dark art.
     backgroundColor: onArt.primaryButton.bg,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,

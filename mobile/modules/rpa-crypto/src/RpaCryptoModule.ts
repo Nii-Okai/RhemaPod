@@ -28,8 +28,8 @@ declare class RpaCryptoNativeModule extends NativeModule<Record<string, never>> 
 
   /**
    * Best-effort: excludes the file at `uri` from iCloud/Finder (iOS) or equivalent (n/a on
-   * Android, where FBE already covers at-rest device storage — see the architect's
-   * writeup, status.md 2026-09-26T12:08:20Z, §1's "honest note on the premise"). Returns
+   * Android, where FBE already covers at-rest device storage — see status.md's RPA1
+   * writeup, §1). Returns
    * `true` on success, `false` if the platform/OS declined but didn't throw. Never throws
    * for "unsupported on this platform" — only for a genuine I/O error reading the file.
    */

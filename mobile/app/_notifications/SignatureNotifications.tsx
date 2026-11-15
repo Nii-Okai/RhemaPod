@@ -103,15 +103,11 @@ function Section({
 /**
  * Daybreak redesign (canvas B9): round back button and "Mark all read", the title with
  * a gold count of unread, then "New" as white cards with a gold dot for unread and
- * "Earlier" as plain rows. The featured release card is gone; the newest release simply
- * leads the New list.
+ * "Earlier" as plain rows. The newest release simply leads the New list.
  *
- * Notifications, Signature redesign (Nii's approved mockup "RhemaPod — Signature",
- * 2026-10-21), behind `SIGNATURE_NOTIFICATIONS_ENABLED`. Same data and read/unread
- * tracking as the classic screen — `useNewReleases()` with `useNotificationsBadge()` —
- * laid out as the newest release featured at the top, then "New" (the rest of its first
- * week) and "Earlier". A gold flame marks an unread row; opening a sermon marks it read,
- * and "Mark all read" clears everything listed.
+ * Behind `SIGNATURE_NOTIFICATIONS_ENABLED`. Same data and read/unread tracking as the
+ * classic screen — `useNewReleases()` with `useNotificationsBadge()`. Opening a sermon
+ * marks it read, and "Mark all read" clears everything listed.
  */
 export function SignatureNotificationsScreen() {
   const styles = useStyles();
@@ -138,7 +134,7 @@ export function SignatureNotificationsScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-        {/* Back sits on the title's row (Nii, 2026-11-11). */}
+        {/* Back sits on the title's row. */}
         <View style={styles.titleRow}>
           <CircleButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
           <AppText variant="display.hero" accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit style={styles.title}>

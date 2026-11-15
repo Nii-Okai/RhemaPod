@@ -5,10 +5,8 @@ import { useStream, selectAudioVariant } from '../../../lib/query/hooks/useStrea
 
 /**
  * One shared, lazily-created player behind every `PlaylistItemRow`'s inline
- * play/pause icon (Isaac's ask, session 2026-10-10: "play and pause video without
- * fully opening the player page" — scoped down, by Isaac's own choice when asked,
- * to a sound-only preview: no video surface is rendered anywhere in a 48px
- * thumbnail, and only one row previews at a time).
+ * play/pause icon: a sound-only preview without opening the player (no video
+ * surface in a 48px thumbnail), and only one row previews at a time.
  *
  * One player for the whole screen, not one per row — `useVideoPlayer` creates a
  * real native player instance, and a playlist can hold far more rows than should
@@ -42,22 +40,20 @@ export function usePlaylistPreview() {
     // stable instance for the hook's lifetime.
   }, [activeSermonId, stream.data, stream.isError]);
 
-  // The real bug (Isaac's report, session 2026-10-11: "pressing play is not playing
-  // audio") — an inline callback here is a NEW function identity on every render,
+  // Must be `useCallback`-stable: an inline callback here is a NEW function identity on
+  // every render,
   // and `useFocusEffect` treats that as "the effect changed," re-running it (cleanup,
   // then re-run) on every render of this hook's owner, not just on an actual focus/
   // blur transition. Since `toggle()` itself causes a re-render, that re-run's own
   // cleanup fired right after `activeSermonId` was set, immediately pausing and
-  // clearing it again before the sound ever had a chance to play. React Navigation's
-  // own docs call this out: the callback must be `useCallback`-stable, or this exact
-  // thing happens. `[player]` is a safe, never-changing dependency — one stable
+  // clearing it again before the sound ever had a chance to play (React Navigation's
+  // docs call this out). `[player]` is a safe, never-changing dependency — one stable
   // instance for this hook's whole lifetime (see the file's own doc comment).
   useFocusEffect(
     useCallback(() => {
       return () => {
-        // Back-navigation crash (Isaac's report, session 2026-10-11: "Render Error" —
-        // FunctionCallException / NativeSharedObjectNotFoundException at this exact
-        // line). On some unmounts, `useVideoPlayer`'s own native object has already
+        // Guards a back-navigation crash (FunctionCallException /
+        // NativeSharedObjectNotFoundException here). On some unmounts, `useVideoPlayer`'s own native object has already
         // been released by the time THIS cleanup runs — the two aren't guaranteed
         // orderable against each other — so calling a method on it throws. There's
         // nothing meaningful left to pause once the native object is already gone;

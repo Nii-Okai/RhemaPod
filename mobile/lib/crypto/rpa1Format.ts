@@ -1,8 +1,6 @@
 /**
- * RPA1 — the on-disk format for encrypted offline audio downloads (plan W4.5 / GATE M9).
- * Full spec ruling: `status.md`, architect entry 2026-09-26T12:08:20Z ("RPA1 chunked
- * AES-256-GCM"), locked by Isaac's GATE M9 crossing (2026-09-27T20:05:00Z) with no
- * changes from that writeup.
+ * RPA1 — the on-disk format for encrypted offline audio downloads (plan W4.5 / GATE M9):
+ * chunked AES-256-GCM. The full spec is in `status.md` ("RPA1 chunked AES-256-GCM").
  *
  * This module is the byte-layout half of the spec ONLY: header encode/decode, the AAD
  * a chunk is bound to, per-chunk nonce derivation, and the chunk-boundary/final-chunk
@@ -13,8 +11,8 @@
  * happen entirely inside the local native module (`modules/rpa-crypto`, CryptoKit on
  * iOS / `javax.crypto` on Android) — never in JS, and never over the RN bridge one
  * chunk at a time (that would mean either whole-file base64 round-trips or hundreds of
- * bridge crossings per file; the architect's writeup's whole reason for a *native*
- * module was file-to-file, constant-memory streaming). This file's byte-layout
+ * bridge crossings per file; the reason for a *native* module is file-to-file,
+ * constant-memory streaming). This file's byte-layout
  * functions exist so:
  *   (a) `lib/crypto/__tests__/rpa1ReferenceCodec.ts` (test-only, Node `crypto`-backed)
  *       can prove the *design* is watertight — round-trip correctness, corruption at
@@ -50,7 +48,7 @@ export const TAG_LEN = 16;
 /** Per-chunk on-disk overhead: nonce + tag, wrapping the (possibly zero-length) ciphertext. */
 export const CHUNK_OVERHEAD = NONCE_LEN + TAG_LEN; // 28
 
-/** Default plaintext chunk size — 256 KiB, per the architect's writeup. */
+/** Default plaintext chunk size — 256 KiB, per the RPA1 writeup. */
 export const DEFAULT_CHUNK_SIZE = 256 * 1024;
 
 export class RpaFormatError extends Error {
@@ -157,7 +155,7 @@ export function decodeHeader(buf: Uint8Array): RpaHeaderFields {
  * AAD for one chunk: binds the ciphertext to *this file's header* (so a chunk can
  * never be replayed against a different file's stream) plus its own position and
  * finality (so truncation, reordering and chunk-splicing all break authentication).
- * Mirrors Tink's streaming-AEAD construction, per the architect's writeup.
+ * Mirrors Tink's streaming-AEAD construction, per the RPA1 writeup.
  *
  * `headerHash` is the 32-byte SHA-256 of the file's own 34-byte header.
  */

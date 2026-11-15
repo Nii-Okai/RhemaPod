@@ -20,9 +20,8 @@ export interface ThemeSwitchProps {
 }
 
 /**
- * Appearance as one three-way switch — System / Light / Dark side by side (Nii's edit to
- * the Signature You mockup, 2026-10-21), replacing `AppearanceSection`'s three radio
- * rows. Same preference, same optimistic save and revert through `useTheme()`.
+ * Appearance as one three-way switch — System / Light / Dark side by side (the classic
+ * screen's `AppearanceSection` uses three radio rows). Same preference, same optimistic save and revert through `useTheme()`.
  */
 export function ThemeSwitch({ error = null, onError }: ThemeSwitchProps) {
   const { preference, setPreference } = useTheme();

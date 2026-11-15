@@ -9,8 +9,8 @@ import { useAcceptCommentsTerms } from '../../../lib/query/hooks/useProfile';
 import { Sheet } from '../../../components/Sheet';
 
 // The guidelines open with their own title line ("RhemaPod Comment Guidelines") followed
-// by a blank line, then the body — split once so the title can render bold (the sheet's
-// own "Comment guidelines" label header was removed as redundant with it). Staff edit the
+// by a blank line, then the body — split once so the title can render bold (the sheet has
+// no separate label header, which would repeat it). Staff edit the
 // text in the admin portal, whose hint says the first line is the title.
 export function splitTerms(text: string): { title: string; body: string } {
   const [title, ...bodyParts] = text.split('\n\n');
@@ -29,7 +29,7 @@ export interface TermsSheetProps {
 /**
  * The comment guidelines sheet (design spec §2.7) — a hard gate before the first post. The
  * text is the server's `comment_guidelines` (`GET /settings/public`), falling back to
- * `COMMENTS_TERMS_TEXT` (Isaac's input I2; see `lib/content/commentsCompliance.ts`) offline,
+ * `COMMENTS_TERMS_TEXT` (see `lib/content/commentsCompliance.ts`) offline,
  * on error or on first launch — never drafted here. The agree control is a checkbox row and "Agree and continue" stays
  * disabled until it is ticked. Reading to the end is deliberately not forced. "Not now"
  * closes without posting; the caller's draft is untouched.

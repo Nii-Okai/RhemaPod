@@ -38,9 +38,6 @@ type Filter = 'all' | 'sermons' | 'series' | 'speakers';
  * N, Series · N, Speakers · N) narrow the list. Under All a matching series leads as the
  * "Top result" card, then each group is listed under a small heading with art, the query
  * marked in the title, and a meta line. Suggestions stay plain text rows above.
- *
- * This brings back the headings and thumbnails that an earlier flat-list pass took out
- * (Isaac, 2026-10-02), because the Daybreak mockup Nii approved has them.
  */
 export default function SearchScreen() {
   const styles = useStyles();
@@ -60,9 +57,8 @@ export default function SearchScreen() {
   const totalMatches = sermons.length + series.length + speakers.length;
 
   // Dropped once it's the query itself, or once a flat row for it already renders below
-  // in a result group (Isaac's ask, session 2026-10-02 — the suggest endpoint can return
-  // a phrase that's also an exact sermon/series/speaker title, which read as an outright
-  // duplicate once suggestions and results became visually identical flat rows).
+  // in a result group (the suggest endpoint can return a phrase that's also an exact
+  // sermon/series/speaker title, which would read as a duplicate).
   const resultTitles = new Set<string>([
     ...sermons.map((sermon) => sermon.title.toLowerCase()),
     ...series.map((item) => item.title.toLowerCase()),
@@ -110,8 +106,8 @@ export default function SearchScreen() {
           placeholder="Sermons, series, speakers"
           accessibilityLabel="Search"
           style={styles.field}
-          // Isaac's ask, session 2026-10-02: the field is ready to type into the
-          // instant the screen opens, no extra tap to focus it first.
+          // The field is ready to type into the instant the screen opens, no extra
+          // tap to focus it first.
           autoFocus
         />
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={spacing.sm} style={styles.cancel}>
@@ -177,7 +173,7 @@ export default function SearchScreen() {
               isError={results.isError}
               error={results.error}
               // Suggestions count as "something to show": without this guard a query with
-              // live suggestions but zero matches showed both at once (Isaac's report).
+              // live suggestions but zero matches would show both at once.
               isEmpty={!results.isLoading && !results.isError && totalMatches === 0 && suggestions.length === 0}
               emptyTitle="No results match your search."
               emptyDescription="Try a different title, speaker, or topic."

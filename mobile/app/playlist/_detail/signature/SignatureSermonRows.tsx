@@ -59,7 +59,7 @@ export function SignaturePlaylistItemRow({
   const styles = useStyles();
   const { colors } = useTheme();
   const sermon = item.sermon;
-  // Category or series/episode only — no speaker or duration (Isaac's ask, 2026-10-10).
+  // Category or series/episode only — no speaker or duration.
   const meta = metaLineFor(sermon);
   const queueGesture = useQueueGesture(sermon);
 

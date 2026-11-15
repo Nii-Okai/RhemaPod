@@ -1,6 +1,5 @@
 /**
- * Offline downloads (plan W4.5, GATE M9; video added Isaac's ask, session 2026-10-08,
- * revisiting the GATE M9 "audio-only" lock). Shared types for the download-state store
+ * Offline downloads (plan W4.5, GATE M9), audio and video. Shared types for the download-state store
  * (`db.ts`), the orchestrator (`downloadManager.ts`) and the UI (`useDownloads.ts`,
  * `app/(tabs)/downloads.tsx`). No license keys, no server-side download bookkeeping —
  * every field below is client-only state.
@@ -9,8 +8,8 @@
 /** A sermon carries exactly one rendition (video or audio, never both) — this is which
  * one a given download record is for, and therefore which protection it gets at rest:
  * audio is JS-level encrypted (`rpa-crypto`, decrypted to a temp file only at playback
- * time); video is a plain file under the OS's own sandbox/file protection only (Isaac's
- * call — `expo-video` needs to read a format it recognizes directly, which a
+ * time); video is a plain file under the OS's own sandbox/file protection only
+ * (`expo-video` needs to read a format it recognizes directly, which a
  * custom-encrypted blob isn't). */
 export type DownloadMediaType = 'audio' | 'video';
 
@@ -46,19 +45,17 @@ export interface DownloadRecord {
   sermonId: string;
   /** Denormalized for the list screen so it never needs a second fetch to render a title while offline. */
   title: string;
-  /** Same reasoning as `title` — the Downloads tab's own thumbnail (session 2026-10-09
-   * redesign) reads this, not a second fetch. `null` for a sermon with no thumbnail, same
+  /** Same reasoning as `title` — the Downloads tab's own thumbnail reads this, not a second fetch. `null` for a sermon with no thumbnail, same
    * as `SermonListItem.thumbnail_url` upstream. */
   thumbnailUrl: string | null;
-  /** A local, permanent copy of the thumbnail image, fetched once alongside the media
-   * (session 2026-10-15 fix) — `thumbnailUrl` is a presigned S3 URL with a ~6h expiry that
+  /** A local, permanent copy of the thumbnail image, fetched once alongside the media —
+   * `thumbnailUrl` is a presigned S3 URL with a ~6h expiry that
    * is never re-signed once a download is `ready`, so render this first when set; `null`
    * until that fetch completes (or if it failed), in which case callers fall back to
-   * `thumbnailUrl` same as before this fix. */
+   * `thumbnailUrl`. */
   thumbnailPath: string | null;
   /** The sermon's `category_name` at the moment it was queued, denormalized the same way —
-   * replaces the Downloads list's old generic "Downloaded" label with the actual category
-   * (session 2026-10-09 redesign). `null` for an uncategorized sermon. */
+   * shown on the Downloads list. `null` for an uncategorized sermon. */
   category: string | null;
   mediaType: DownloadMediaType;
   state: DownloadState;

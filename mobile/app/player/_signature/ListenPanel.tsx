@@ -122,8 +122,7 @@ export function ListenPanel({
       </View>
 
       {/* Speed and Sleep sit at the ends of the transport row rather than on a row of
-          their own, so the comments under the title keep their room (Nii's phone test,
-          2026-11-11: Listen cut the comments off). */}
+          their own, so the comments under the title keep their room. */}
       <View style={styles.transport}>
         <Pressable
           accessibilityRole="button"

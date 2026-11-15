@@ -6,9 +6,7 @@
  * passes so a text search and a `category_id` browse never collide in the cache.
  *
  * `useSearchSuggest` is deliberately driven by an already-debounced `query` — see
- * `lib/hooks/useDebouncedValue.ts` and its call site in `app/search.tsx` (a top-level
- * stack route since Isaac's ask, session 2026-10-02 — Browse absorbed the dedicated
- * Search tab, pushing here instead of switching tabs) — never the raw per-keystroke
+ * `lib/hooks/useDebouncedValue.ts` and its call site in `app/search.tsx` — never the raw per-keystroke
  * input, or this would self-throttle against the per-user rate limiter (plan L14/W4.3).
  */
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -38,8 +36,7 @@ export const SEARCH_RESULTS_PAGE_SIZE = 50;
  * Paginated variant of `useSearchResults`, for a caller that needs every matching
  * sermon, not just the first page — `AddToPlaylistSheet`'s Sermons/Episodes tabs split
  * one shared browse read client-side by `series_id`, so a flat 20-result cap (the plain
- * hook's implicit default) starves whichever tab's items happen to sort past it (Isaac's
- * report, session 2026-10-10: "not all episodes are showing"). `/search` has no
+ * hook's implicit default) starves whichever tab's items happen to sort past it. `/search` has no
  * server-side "episodes only" filter to split on instead, so paging through the whole
  * result set is the only fix that doesn't just raise the cap and hit the same wall later.
  */

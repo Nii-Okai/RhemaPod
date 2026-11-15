@@ -4,8 +4,8 @@ import Foundation
 
 /**
  * RPA1 — chunked AES-256-GCM file encryption, implemented with CryptoKit only (no
- * OpenSSL, no third-party crypto). Plan W4.5 / GATE M9 (see `status.md`, architect
- * entry 2026-09-26T12:08:20Z, locked by Isaac's GATE M9 crossing 2026-09-27T20:05:00Z).
+ * OpenSSL, no third-party crypto). Plan W4.5 / GATE M9 (see `status.md`, "RPA1 chunked
+ * AES-256-GCM").
  *
  * This file mirrors, byte-for-byte, the algorithm documented and unit-tested in
  * `mobile/lib/crypto/rpa1Format.ts` and its Jest-run reference codec
@@ -17,9 +17,8 @@ import Foundation
  * Jest-executable in this project's CI.
  *
  * Streams file-to-file via `FileHandle`, one chunk (default 256 KiB plaintext) at a
- * time, so memory stays constant regardless of file size — the whole reason this is a
- * native module rather than a third-party JSI crypto library (see the architect's
- * writeup: RNQC requires New Architecture, which this app does not run).
+ * time, so memory stays constant regardless of file size — the reason this is a native
+ * module with file-to-file streaming rather than a JS-facing crypto library.
  */
 public class RpaCryptoModule: Module {
   public func definition() -> ModuleDefinition {
@@ -72,15 +71,13 @@ private enum RpaConst {
  * on (see `modules/rpa-crypto/index.ts`) — mirrors `android/.../RpaCryptoModule.kt`'s
  * `RpaException : CodedException(...)` exactly, and for the same reason.
  *
- * The previous shape here (`Error, CustomNSError`) was a real, must-fix bug caught by
- * `reviewer-gilfoyle`: `AsyncFunctionDefinition.swift`'s catch blocks only recognize
- * `catch let error as Exception` — a plain `CustomNSError` conformance falls through to
- * the generic `catch { callback(.failure(UnexpectedException(error))) }` branch instead,
- * so on a real iPhone every one of this module's throws (including
- * `E_RPA1_KEY_MISMATCH`) would have surfaced to JS as a generic, uncoded exception
- * instead of the specific `RpaErrorCode` `lib/downloads/downloadManager.ts` switches on
- * to degrade key-loss gracefully. `Exception` is a class (not a protocol) in this SDK
- * version, so the fix is to subclass it — `GenericException`'s own shape in
+ * Why a subclass and not `Error, CustomNSError`: `AsyncFunctionDefinition.swift`'s catch
+ * blocks only recognize `catch let error as Exception`. A plain `CustomNSError` conformance
+ * falls through to the generic `catch { callback(.failure(UnexpectedException(error))) }`
+ * branch, so every throw here (including `E_RPA1_KEY_MISMATCH`) would reach JS as a generic,
+ * uncoded exception instead of the specific `RpaErrorCode` `lib/downloads/downloadManager.ts`
+ * switches on to degrade key-loss gracefully. `Exception` is a class (not a protocol) in this SDK
+ * version, so we subclass it — `GenericException`'s own shape in
  * `node_modules/expo-modules-core/ios/Core/Exceptions/GenericException.swift` is the
  * confirmed-correct pattern this mirrors (including forwarding `file`/`line`/`function`
  * to `super.init`, so `Exception.origin` still points at this module's own throw site
@@ -418,7 +415,7 @@ enum RpaCrypto {
 
   /**
    * Excludes the file at `uri` from iCloud/iTunes/Finder backup (`NSURLIsExcludedFromBackupKey`),
-   * per the architect's writeup's mitigation for path A (decrypt-to-temp-file playback):
+   * per the RPA1 writeup's mitigation for path A (decrypt-to-temp-file playback):
    * a downloaded/decrypted file should never round-trip through a device backup. Returns
    * `false` (not a throw) if the resource value couldn't be set on an existing file —
    * missing/unreadable file paths still throw, since that is a genuine caller error.

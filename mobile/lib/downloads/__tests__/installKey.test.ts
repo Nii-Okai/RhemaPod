@@ -67,7 +67,7 @@ describe('getOrCreateInstallKey', () => {
   });
 
   /**
-   * Regression test for a real race `reviewer-gilfoyle` found: two concurrent
+   * Regression test for a race: two concurrent
    * first-ever-download calls (both seeing no key persisted yet) used to each generate
    * their own key and race on the `setItemAsync` write — whichever landed second silently
    * won, orphaning any file already encrypted under the first (now-unrecoverable) key.

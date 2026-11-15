@@ -1,10 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * The app-wide playback queue (Nii's review, 2026-11-14: "a queue that works everywhere
- * content plays"). Before this the queue lived in the player screen's route params and
- * only a playlist's Play/Shuffle could start one, so nothing queued outside a playlist and
- * nothing advanced once the player screen closed.
+ * The app-wide playback queue: it works everywhere content plays, and keeps advancing
+ * after the player screen closes.
  *
  * It is one ordered list with a cursor, the way the big streaming apps behave:
  *

@@ -8,7 +8,7 @@ jest.mock('../../../api/typedClient', () => ({ api: { get: jest.fn() } }));
 const mockedGet = api.get as jest.Mock;
 
 /**
- * S8/S9 review, finding B1/D11/D2: the media cache's "every hit re-validates
+ * The media cache's "every hit re-validates
  * entitlement" guarantee needs `/stream` to actually refetch on every mount, never
  * silently serve stale/cached data. Checked directly against the query's own resolved
  * options in the cache (not a live two-mount timing test — that style of test proved
@@ -18,7 +18,7 @@ const mockedGet = api.get as jest.Mock;
  * prove `useStream`'s per-query override actually wins over it, not just that both
  * happen to already agree.
  */
-describe('useStream (S8/S9 review, finding B1/D11/D2)', () => {
+describe('useStream', () => {
   it('overrides staleTime to 0 and refetchOnMount to "always", regardless of the client default', async () => {
     mockedGet.mockResolvedValue({ expires_in: 21600, sermon_id: 's1', variants: [] });
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: false } } });

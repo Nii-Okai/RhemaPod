@@ -20,11 +20,10 @@ const NAME_MAX = 100;
  * preview of the cover the playlist starts with, the name in Fraunces over a blue
  * underline, and a full-width Create at the foot.
  *
- * "Give your playlist a name" -> Create (Isaac's screenshots), a full-screen
- * modal registered with `presentation: 'modal'` in `_layout.tsx` — the
- * reference's own dark full-bleed takeover, not a bottom sheet. The
- * suggested default name counts the caller's existing playlists, same
- * "My Playlist #N" convention Spotify's own screenshot shows. On success,
+ * "Give your playlist a name" -> Create, a full-screen modal registered with
+ * `presentation: 'modal'` in `_layout.tsx`, not a bottom sheet. The
+ * suggested default name counts the caller's existing playlists
+ * ("My Playlist #N"). On success,
  * replaces this modal route with the new playlist's detail screen (`router.
  * replace`, not `push`) so backing out of the detail screen returns to
  * Library, not to this now-pointless create screen.

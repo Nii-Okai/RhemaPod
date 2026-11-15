@@ -9,8 +9,8 @@ import type { SermonListItem } from '../../../../lib/query/hooks/useSermons';
 jest.mock('@expo/vector-icons');
 
 // `HeroCard` (every card in the carousel) now reads `useAddToDefaultLibrary`, a
-// react-query hook, for its real +/checkmark state (Isaac's ask, session 2026-10-11:
-// "add sermon to default library") — every render here needs a provider under it now.
+// react-query hook, for its real +/checkmark state —
+// every render here needs a provider under it now.
 jest.mock('../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn() },
 }));
@@ -77,8 +77,7 @@ describe('HeroCarousel', () => {
     expect(getByLabelText('Featured sermons, 1 of 3')).toBeTruthy();
   });
 
-  // Regression (fixed 2026-10-16, Isaac's report — "hero grows in height, then snaps
-  // back"): before `onLayout` reports a real pixel width, the carousel renders nothing
+  // Regression (the hero grew in height, then snapped back): before `onLayout` reports a real pixel width, the carousel renders nothing
   // at all rather than a page sized off a `width: '100%'` guess.
   it('renders no pages until onLayout reports a real width', () => {
     const sermons = [makeSermon({ id: 's1' }), makeSermon({ id: 's2' })];

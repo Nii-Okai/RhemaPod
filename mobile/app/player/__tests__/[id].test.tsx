@@ -46,7 +46,7 @@ const mockedUseIsOnline = useIsOnline as jest.Mock;
 // `jest.fn()` so a test can drive this screen's own offline-vs-streamed routing
 // (`useDownloads().find(sermonId)` deciding whether to prefer the local file) rather than
 // only the harmless empty default other tests rely on — there's no download-starting UI
-// left on this screen itself (session 2026-10-09 — see the screen's own doc comment).
+// left on this screen itself (see the screen's own doc comment).
 jest.mock('../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
 // This screen calls `useLocalPlayback` unconditionally too (see its own doc comment on
 // the offline-vs-streamed split) — mocked to a harmless always-ready return so a test
@@ -879,7 +879,7 @@ describe('PlayerScreen — comments', () => {
 });
 
 
-describe('PlayerScreen — downloaded sermon with no connection (Nii, 2026-11-11)', () => {
+describe('PlayerScreen — downloaded sermon with no connection', () => {
   afterEach(() => {
     onlineManager.setOnline(true);
   });

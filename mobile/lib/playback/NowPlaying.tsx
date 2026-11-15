@@ -59,15 +59,12 @@ function sourceFor(input: SharedPlayerInput) {
 }
 
 /**
- * One app-wide player (Daybreak stage 3, Nii's choice 2026-11-11: "Real mini player").
+ * One app-wide player. The player screen borrows this provider's single `VideoPlayer`
+ * (`useSharedPlayer`) rather than making its own, so when the screen closes the sermon
+ * keeps playing, with the mini player above the dock to pause it, reopen it or close it.
+ * Background audio and the lock-screen controls come from the player's flags.
  *
- * Before this, every player screen made its own `useVideoPlayer`, so leaving the screen
- * stopped the sermon. Now the screen borrows this provider's single `VideoPlayer`
- * (`useSharedPlayer`), and when the screen closes the sermon keeps playing, with the mini
- * player above the dock to pause it, reopen it or close it. Background audio and the
- * lock-screen controls come from the same player flags as before.
- *
- * Progress is still saved the same way (`useProgressFlush`, plan L16): by the player
+ * Progress is saved through `useProgressFlush` (plan L16): by the player
  * screen while it is open, and by `DetachedProgress` below while only the mini player is.
  */
 export function NowPlayingProvider({ children }: { children: React.ReactNode }) {

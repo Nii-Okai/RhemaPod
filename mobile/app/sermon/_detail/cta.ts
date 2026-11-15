@@ -17,17 +17,14 @@ export interface SermonDetailCta {
 const NO_MEDIA_CAPTION = 'Video is still processing — check back soon.';
 
 /**
- * CTA label/state per design spec §8.4, using the Conductor's decision (W4.1) to resolve
- * Fresh-vs-Resume off `GET /sermons/{id}/progress` directly rather than the addendum's
- * originally-bound, bounded `/me/continue-watching` list (see `useSermonProgress.ts`'s
+ * CTA label/state per design spec §8.4, resolving Fresh-vs-Resume off
+ * `GET /sermons/{id}/progress` directly rather than the bounded `/me/continue-watching` list (see `useSermonProgress.ts`'s
  * docstring for why: continue-watching is capped at the endpoint's own `limit=10`).
  *
- * "Fresh" also covers a `completed: true` progress row — the addendum (§8.4) only ever
- * defines Fresh vs. Resume off the old bounded list, which by construction never returns
- * a completed sermon; a fully-watched sermon has nothing left to resume, so it collapses
- * to Fresh (full duration, Play/Listen) the same as "never played". This is a small,
- * necessary extrapolation of the addendum's own definition onto the new data source, not
- * a new product decision — flagged here, not silently assumed.
+ * "Fresh" also covers a `completed: true` progress row: a fully-watched sermon has nothing
+ * left to resume, so it shows as Fresh (full duration, Play/Listen) the same as "never
+ * played". (The addendum, §8.4, defines Fresh vs. Resume only for the continue-watching
+ * list, which never returns a completed sermon.)
  */
 export function resolveCta(detail: SermonDetail, progress: ProgressPublic | null): SermonDetailCta {
   if (!isPlayable(detail)) {

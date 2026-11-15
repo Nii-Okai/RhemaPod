@@ -36,8 +36,7 @@ export function networkError(): ApiError {
 /** The one user-facing message for any caught fetch error — an `ApiError`'s own
  * `message` (already server-provided or `networkError`'s copy) if it is one, else a
  * generic fallback. Shared by `QueryState`, Home's own shelves, and the Library tab's
- * "Continue watching" shelf — previously three separately hand-written copies of the
- * same two-line function. */
+ * "Continue watching" shelf. */
 export function userMessageFor(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   return 'Something went wrong. Try again.';

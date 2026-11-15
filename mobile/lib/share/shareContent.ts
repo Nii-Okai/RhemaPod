@@ -9,8 +9,8 @@ import { SHARE_BASE_URL } from '../api/config';
  *
  * The link is the https share link (ADR 0021): messengers make it tappable, it opens the
  * app when installed (Universal/App Links) and a static store page when not. No image is
- * attached — with a bare link, messengers render their own link card (Isaac's call at
- * plan-share-links SL0, reversing the 2026-10-09 "include image thumbnail" ask). The base
+ * attached — with a bare link, messengers render their own link card (plan-share-links
+ * SL0). The base
  * is `EXPO_PUBLIC_SHARE_BASE_URL`, read by `SHARE_BASE_URL` in `lib/api/config.ts`.
  */
 export interface ShareableContent {

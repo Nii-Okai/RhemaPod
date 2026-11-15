@@ -33,7 +33,7 @@ const OPTIONS: SecureStore.SecureStoreOptions = {
  * up the stack. Cleared in `finally` (success or failure) so a later, non-concurrent call
  * always re-reads SecureStore fresh rather than trusting a stale memoized value forever.
  *
- * Found by `reviewer-gilfoyle`: without this, two downloads started back-to-back on a
+ * Without this, two downloads started back-to-back on a
  * fresh install could each generate a different key, both call `setItemAsync` with the
  * same storage key, and whichever write lands second silently wins — orphaning the file
  * encrypted under the first (now-unrecoverable, since `getOrCreateInstallKey` never

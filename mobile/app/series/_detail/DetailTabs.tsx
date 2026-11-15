@@ -20,11 +20,9 @@ const TABS: { key: DetailTab; label: string }[] = [
 ];
 
 /**
- * Episodes/Related tab switcher (Isaac's ask, session 2026-09-30) — just these two.
- * Netflix's own reference also has "Collection" and "Trailers" tabs, but this app has
- * no data for either (no trailer renditions, no series-collection concept) — a tab
- * that opens onto nothing is worse than no tab, same call this screen's original build
- * already made for those two.
+ * Episodes/Related tab switcher — just these two. There are no "Collection" or
+ * "Trailers" tabs: this app has no data for either, and a tab that opens onto nothing
+ * is worse than no tab.
  */
 export function DetailTabs({ active, onChange }: DetailTabsProps) {
   const styles = useStyles();

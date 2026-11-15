@@ -15,9 +15,8 @@ export interface SeriesSpotlightCardProps {
 
 /**
  * The top of Home's Series section for a viewer with no "your walk" yet — nothing in
- * progress for `useSeriesWalk` to build one from (every brand-new account; Isaac's ask,
- * 2026-10-22: the section jumped straight to the plain two-column grid with no flame
- * treatment up top at all). Features one series (the caller's choice — `SignatureHome`
+ * progress for `useSeriesWalk` to build one from (every brand-new account), so the
+ * section still opens with the flame treatment rather than the plain grid. Features one series (the caller's choice — `SignatureHome`
  * picks the first the catalog API returns) with the same card shape and flame accent as
  * `SeriesWalkCard`, but honestly: no per-episode flame row, since there's no progress to
  * show yet. Opens the series, same destination `SeriesWalkCard`'s own tap does.

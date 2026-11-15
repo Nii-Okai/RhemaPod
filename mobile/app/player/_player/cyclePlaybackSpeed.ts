@@ -4,10 +4,8 @@ import { PLAYBACK_SPEEDS, type PlaybackSpeed } from '../../../lib/settings/playb
  * Cycles to the next speed in `lib/settings/playbackPreferences.ts`'s own
  * `PLAYBACK_SPEEDS` list ("the five speeds design spec 1d's transport control exposes
  * elsewhere in the app"), wrapping back to the first after the last. Reuses that list
- * rather than declaring a second one here — Profile & Settings' own default-speed
- * picker is gone (session 2026-10-09, this control is the only remaining way to change
- * playback speed), but `defaultSpeed`/`PLAYBACK_SPEEDS` themselves stay the shared
- * source of truth regardless.
+ * rather than declaring a second one here. This control is the only way to change
+ * playback speed; `defaultSpeed`/`PLAYBACK_SPEEDS` stay the shared source of truth.
  *
  * Defensive against an unrecognized current value (e.g. a future migration that widens
  * the list) by falling back to the first entry rather than throwing on `indexOf`

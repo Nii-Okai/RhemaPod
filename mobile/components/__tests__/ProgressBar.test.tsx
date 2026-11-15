@@ -23,8 +23,7 @@ describe('ProgressBar', () => {
   // (`animated`), the player's scrub/buffering bar stays instant (the default) — this is
   // the one place this component's own two consumers deliberately diverge. The two tests
   // below prove the actual mechanism, not just the final rendered value (which is
-  // identical either way and so can't tell the two code paths apart) — per
-  // reviewer-gilfoyle's should-fix, they spy on `Animated.timing` itself, stubbed to a
+  // identical either way and so can't tell the two code paths apart) — they spy on `Animated.timing` itself, stubbed to a
   // no-op `.start()` so no real animation timers are left running past the test (the same
   // failure mode the component's own `hasMounted` guard exists to avoid on mount).
   describe('the `animated` prop actually changes which code path updates the fill', () => {

@@ -59,7 +59,7 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
           accessibilityLabel="RhemaPod"
         />
         {/* Two lines at most, smallest display size: a long first name wraps rather than
-            being cut off (Nii's phone test, 2026-11-11). */}
+            being cut off. */}
         <AppText variant="display.row" accessibilityRole="header" numberOfLines={2}>
           {firstName ? `${greeting}, ${firstName}` : greeting}
         </AppText>

@@ -7,8 +7,8 @@ export type ProgressPublic = components['schemas']['ProgressPublic'];
 
 /**
  * `GET /api/v1/sermons/{sermon_id}/progress` — null when the sermon has never been
- * played. Conductor decision (W4.1, overriding the design spec §8.0/§8.8's originally
- * bound `/me/continue-watching` lookup): sermon-detail's Fresh-vs-Resume state calls this
+ * played. Sermon detail's (W4.1, in place of design spec §8.0/§8.8's
+ * `/me/continue-watching` lookup) Fresh-vs-Resume state calls this
  * endpoint directly, not the bounded continue-watching list (`limit=10`), because a
  * sermon resumed further back than the 10 most-recent plays would otherwise never show
  * a Resume CTA on its own detail screen even though a real position exists server-side.

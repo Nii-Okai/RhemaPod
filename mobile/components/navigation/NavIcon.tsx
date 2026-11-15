@@ -14,9 +14,8 @@ export interface NavIconProps {
 }
 
 /**
- * The "You" tab (Isaac's ask, session 2026-10-11: "Change 'Me' tab to 'You' and include
- * avatar") renders the caller's own `Avatar` here instead of a generic person glyph,
- * same as every reference app with a profile-picture tab (YouTube's own "You"). Every
+ * The "You" tab renders the caller's own `Avatar` here instead of a generic person glyph.
+ * Every
  * other route still gets the plain device-appropriate `PlatformIcon`. Shared by every
  * nav chrome that shows icons (`IconNavItem` on the tablet rail, and `FloatingDock`) so the avatar special-case exists in exactly one place.
  *

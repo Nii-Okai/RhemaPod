@@ -19,7 +19,7 @@ import {
 } from '../MiniPlayer';
 
 /**
- * The draggable mini player (Nii, 2026-11-15). The drag itself is core `PanResponder`;
+ * The draggable mini player. The drag itself is core `PanResponder`;
  * what is tested here is the behaviour around it: where a release comes to rest, that the
  * position is shared and remembered, that the tabs' band closes once the card is moved
  * away, and that the card's taps and the screen-reader alternative still work.

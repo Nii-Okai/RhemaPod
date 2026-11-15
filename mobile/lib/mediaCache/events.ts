@@ -6,7 +6,7 @@
  */
 
 /**
- * A closed union, not a `fill-skip:${string}` template literal (S9 review, N4): an open
+ * A closed union, not a `fill-skip:${string}` template literal: an open
  * template accepts any string a future caller writes, including a URL fragment pasted in
  * by mistake — defeating D12 ("never a URL, query string or token") silently at the type
  * level. Every reason actually in use is named explicitly instead.

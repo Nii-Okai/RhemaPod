@@ -5,8 +5,8 @@ import { darkColors as onArt } from '../../../../theme/colors';
 
 /**
  * Fade from clear to the dark panel colour along the bottom of a piece of art. A true
- * SVG gradient: stacked flat bands showed as visible stripes over light artwork on a
- * phone (Nii's test, 2026-10-21). Dark in both themes — it sits on the art.
+ * SVG gradient: stacked flat bands show as visible stripes over light artwork on a
+ * phone. Dark in both themes — it sits on the art.
  */
 export function ArtScrim({ height = '45%' }: { height?: DimensionValue }) {
   return (

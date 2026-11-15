@@ -21,8 +21,7 @@ export interface DownloadPillItem {
 
 export interface DownloadPillButtonProps {
   /** One item (sermon detail: the sermon itself) or several (series detail: every
-   * episode — Isaac's ask, session 2026-10-08: the series page's pill downloads the
-   * whole series, not just one episode). Items with no rendition yet are the caller's
+   * episode: the series page's pill downloads the whole series). Items with no rendition yet are the caller's
    * job to filter out before passing them in — this component has no opinion on
    * "nothing to download", it just renders nothing for an empty list. */
   items: DownloadPillItem[];
@@ -75,22 +74,17 @@ function aggregate(items: DownloadPillItem[], records: (DownloadRecord | undefin
 }
 
 /**
- * Full-width, dark-pill Download control (Isaac's ask, session 2026-09-30 — Netflix's
- * own title-page pair: a white Play pill directly above a gray Download pill, both the
- * same width). Promoted here, session 2026-10-01, once sermon detail adopted the same
- * pill skin in place of its own original `LinkButton`-based affordance — same
- * `useDownloads()` state machine underneath every mode, just one skin.
+ * Full-width, dark-pill Download control, sitting under the Play pill at the same width
+ * on sermon and series detail — the `useDownloads()` state machine underneath every mode.
  *
- * Generalized to a list of items (Isaac's ask, session 2026-10-08): sermon detail passes
- * one, series detail passes every episode — see `aggregate` above for how N items fold
+ * Takes a list of items: sermon detail passes one, series detail passes every episode — see `aggregate` above for how N items fold
  * into one pill's worth of state. A caller still owns its own gating (no rendition yet,
  * not playable, etc.) by passing an empty `items` array; this component renders nothing
  * for that case rather than guessing at a reason.
  *
- * Active state renders the same Netflix-style `CircularProgress` fill ring
- * `EpisodeDownloadButton` uses (Isaac's ask, session 2026-10-09 — a linear bar read as
- * too passive; the ring is the one piece of real-time feedback a user watches fill up to
- * the completed checkmark), not a separate progress affordance of its own.
+ * Active state renders the same `CircularProgress` fill ring `EpisodeDownloadButton` uses
+ * (the one piece of real-time feedback a user watches fill up to the completed
+ * checkmark), not a separate progress affordance of its own.
  */
 export function DownloadPillButton({ items, label = 'Download', compact = false }: DownloadPillButtonProps) {
   const { colors } = useTheme();

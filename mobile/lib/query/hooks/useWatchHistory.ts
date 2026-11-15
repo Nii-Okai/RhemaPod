@@ -18,10 +18,10 @@
  * returns every one of the caller's progress rows for sermons in that
  * series — the backend ignores `limit` once `series_id` is set, bounded
  * instead by its own much higher `SERIES_HISTORY_LIMIT` safety ceiling (see
- * `analytics_service.py`) — so a long-running series no longer misreads an
+ * `analytics_service.py`) — so a long-running series doesn't misread an
  * old watch as "new" once it exceeds the app-wide 100-row cap. The
  * series/episode screen (`app/series/[id].tsx`) always calls this scoped
- * form now.
+ * form.
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/typedClient';

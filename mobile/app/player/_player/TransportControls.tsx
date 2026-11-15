@@ -122,8 +122,7 @@ export interface PlayerBottomBarProps {
 }
 
 /**
- * The bottom row of the video's own controls overlay (design spec §1.3, revised
- * 2026-10-08): scrubbable seek, elapsed / total, speed pill, sleep moon, native-fullscreen
+ * The bottom row of the video's own controls overlay (design spec §1.3): scrubbable seek, elapsed / total, speed pill, sleep moon, native-fullscreen
  * toggle. Rendered by `VideoSurface` inside its tap-to-toggle overlay, anchored to the
  * video's bottom edge — there is no separate below-player bar. Row 2 wraps rather than
  * overflowing at large Dynamic Type.

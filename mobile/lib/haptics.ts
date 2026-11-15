@@ -1,8 +1,7 @@
 import * as Haptics from 'expo-haptics';
 
 /**
- * Light haptic feedback for the app's few key moments (Nii, 2026-11-15: the premium feel
- * of Apple Music or Spotify). Kept deliberately sparse: play/pause, starting a download,
+ * Light haptic feedback for the app's few key moments. Kept deliberately sparse: play/pause, starting a download,
  * liking or saving something, and picking up / setting down the mini player. Ordinary
  * navigation taps get none, so the ones that do stay meaningful.
  *

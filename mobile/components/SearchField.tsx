@@ -18,9 +18,8 @@ export interface SearchFieldProps
 export const SEARCH_FIELD_HEIGHT = 44;
 
 /**
- * The one search field the app draws (Search, Discover, Your library), so the three no
- * longer each look a little different (Nii, 2026-11-15: "tidy up the search bar, looks
- * out of place"). Shaped like the system search fields in Apple Music and Podcasts: a
+ * The one search field the app draws (Search, Discover, Your library), so the three look
+ * the same. Shaped like the system search fields in Apple Music and Podcasts: a
  * 44pt rounded rectangle on the raised card colour with a hairline edge, a quiet
  * tertiary glass and placeholder, body text in the app's UI face, and a clear button
  * once there is something to clear. Focus only tints the edge.

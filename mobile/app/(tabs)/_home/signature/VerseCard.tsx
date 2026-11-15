@@ -21,7 +21,7 @@ export function VerseCard() {
   if (!verse) return null;
 
   // Verses come in as entered in the admin portal, sometimes with hard line breaks and
-  // stray spaces mid-sentence (Nii's phone test, 2026-10-21). One flowing line reads right.
+  // stray spaces mid-sentence. One flowing line reads right.
   const text = verse.text.replace(/\s+/g, ' ').trim();
   const reference = `${verse.reference} · ${verse.translation.toUpperCase()}`;
 

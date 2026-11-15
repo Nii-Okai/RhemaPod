@@ -297,11 +297,10 @@ export function CommentsPanel({ sermonId, variant = 'classic' }: CommentsPanelPr
 
   return (
     <View style={panelStyle}>
-      {/* No `TouchableWithoutFeedback` wrapper here on purpose — it was tried (session
-          2026-10-08) to dismiss the keyboard on a background tap, but it installs its own
-          touch responder on this whole area, which wins the responder negotiation against
-          the FlatList below *before* the list's own scroll/pull-to-refresh gesture gets a
-          chance to claim the touch — it broke both. The FlatList's own
+      {/* No `TouchableWithoutFeedback` wrapper here on purpose: to dismiss the keyboard on
+          a background tap it would install its own touch responder on this whole area,
+          which wins the responder negotiation against the FlatList below *before* the
+          list's own scroll/pull-to-refresh gesture can claim the touch, breaking both. The FlatList's own
           `keyboardShouldPersistTaps="handled"` + `keyboardDismissMode="on-drag"` already
           dismiss the keyboard on a background tap or a scroll drag inside the list, which
           covers the real case (tapping away from an open keyboard while the thread is

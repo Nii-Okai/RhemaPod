@@ -263,7 +263,7 @@ describe('NowPlayingProvider — the queue without the player screen', () => {
   });
 });
 
-describe('StackMiniPlayer (Nii, 2026-11-11: the mini player was missing on pushed screens)', () => {
+describe('StackMiniPlayer (the mini player on pushed screens)', () => {
   function Stacked({ screen }: { screen: SharedPlayerInput | null }) {
     return (
       <QueryClientProvider client={client}>

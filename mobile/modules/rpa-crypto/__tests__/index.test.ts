@@ -106,7 +106,7 @@ describe('rpa-crypto JS wrapper', () => {
   });
 
   /**
-   * Regression test for a real bug `reviewer-gilfoyle` found (traced through
+   * Regression test (traced through
    * `node_modules/expo-modules-core/ios/Core/Functions/{Async,Concurrent}FunctionDefinition.swift`):
    * the iOS native module's private `RpaError` type did not actually subclass
    * `ExpoModulesCore.Exception` (it only conformed to `Error`/`CustomNSError`), and those

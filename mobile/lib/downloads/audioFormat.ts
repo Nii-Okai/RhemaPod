@@ -2,9 +2,8 @@
  * The file extension a decrypted audio download should carry, read from its first bytes.
  *
  * iOS's player (AVPlayer, under expo-video) picks a local file's decoder from its
- * extension and refuses one it doesn't recognise. The decrypted playback copy used to be
- * named `.pcm-tmp`, so every downloaded audio sermon failed to play on iPhone until the
- * download was removed and it streamed instead. The server accepts mp3, m4a/mp4, aac and
+ * extension and refuses one it doesn't recognise (a neutral extension such as `.pcm-tmp`
+ * makes every downloaded audio sermon fail to play on iPhone). The server accepts mp3, m4a/mp4, aac and
  * wav uploads and the download is those exact bytes, so the header says which it is.
  */
 export type AudioExtension = 'mp3' | 'm4a' | 'aac' | 'wav';

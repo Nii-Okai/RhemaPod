@@ -13,29 +13,23 @@ export interface RelatedSermonsProps {
   /** Sermon detail only: excludes the sermon itself from its own "related" rail. */
   excludeSermonId?: string;
   onPressSermon: (id: string) => void;
-  /** Sermon detail's own Related section (Isaac's ask, session 2026-10-01): a 2-column
-      grid instead of series detail's horizontal rail. Defaults to the original
-      horizontal rail — series detail passes nothing and keeps that layout. */
+  /** Sermon detail's own Related section: a 2-column grid instead of series detail's
+      horizontal rail (the default). */
   grid?: boolean;
 }
 
 const GRID_COLUMNS = 2;
-// Square (Isaac's follow-up ask, same session: "about half the size" of the original
-// 9:16 portrait card — 1:1 is close to that halving at this column width, and reads as
-// a deliberate square rather than an arbitrary in-between ratio).
+// Square: compact at this column width, and reads as a deliberate shape rather than an
+// arbitrary in-between ratio.
 const GRID_ASPECT_RATIO = 1;
-// Isaac's follow-up asks, same session: more breathing room than the original
-// near-touching gap (Netflix "More Like This" reference screenshot) — bumped once
-// already (xs to sm), then again here (sm to md).
+// Comfortable breathing room between cards.
 const GRID_GAP = spacing.md;
 const GRID_PADDING = spacing.md;
 
 /**
- * A "Related" rail of other sermons/episodes sharing a category (Isaac's ask, session
- * 2026-10-01 — series detail's "Related" tab originally showed whole other *series*;
- * corrected to standalone sermons and episodes instead, since a series card just routes
- * back into another title page rather than surfacing a specific thing to watch next).
- * Promoted here, same session, when sermon detail became its second consumer.
+ * A "Related" rail of other sermons/episodes sharing a category — sermons and episodes
+ * rather than whole series, since a series card just routes back into another title page
+ * rather than surfacing a specific thing to watch next. Used by series and sermon detail.
  *
  * Reuses `/search`'s filtered-browse mode (`useSearchResults({ category_id })` — the
  * same hook `app/category/[id].tsx` already drives its own list from) rather than a
@@ -47,8 +41,7 @@ const GRID_PADDING = spacing.md;
  * state rather than falling back to "everything else" — a list padded with sermons that
  * aren't actually related isn't more useful than admitting there's nothing to show.
  *
- * Renders `ImageOnlyCard` (Isaac's ask, session 2026-10-01: no title, no duration under
- * each related item) — the same no-text card Home's own Recommended/Trending shelves
+ * Renders `ImageOnlyCard` (no title or duration under each item) — the same no-text card Home's own Recommended/Trending shelves
  * use, not `SermonCard`. The sermon's title still reaches screen readers via the card's
  * own `accessibilityLabel`; only the sighted rendering loses the text, same reasoning
  * `ImageOnlyCard`'s own doc comment gives for those two shelves.
@@ -96,7 +89,7 @@ export function RelatedSermons({
       (excludeSeriesId ? sermon.series_id !== excludeSeriesId : true) &&
       (excludeSermonId ? sermon.id !== excludeSermonId : true),
   );
-  // One episode per series (Isaac's ask, session 2026-10-01) — otherwise a series with
+  // One episode per series — otherwise a series with
   // several episodes sharing this category could fill most of "Related" by itself.
   // Standalone sermons (`series_id === null`) are never deduped against each other.
   const seenSeriesIds = new Set<string>();

@@ -69,11 +69,11 @@ export function restingPosition(released: number, vy: number, highest: number): 
  * card reopens the full player, which picks up where the sermon is. A Next button joins
  * them while something is queued after it.
  *
- * Draggable (Nii, 2026-11-15): with `homeBottom` set, the card floats in a full-size layer
+ * Draggable: with `homeBottom` set, the card floats in a full-size layer
  * and can be dragged up or down anywhere between the status bar and its home spot, where
  * it stays (remembered across screens and launches, `miniPlayerPosition`). It follows the
  * finger, lifts slightly while held, carries on a little when flicked, and springs into
- * place; let go near home and it docks back. Taps and its buttons work as before; a touch
+ * place; let go near home and it docks back. Taps and its buttons still work; a touch
  * only becomes a drag once it moves vertically. VoiceOver/TalkBack get "Move to top" and
  * "Move back down" actions instead.
  *

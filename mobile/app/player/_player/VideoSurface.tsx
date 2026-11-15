@@ -28,8 +28,7 @@ export interface VideoSurfaceProps {
   isAudio: boolean;
   /** The sermon's thumbnail — same URL the lock-screen/Control-Center metadata already
    * uses (`detail.thumbnail_url`, `PlayerContent`'s own `artwork` metadata field).
-   * `null`/`undefined` falls back to the plain dark surface, same as before this prop
-   * existed. */
+   * `null`/`undefined` falls back to the plain dark surface. */
   artworkUrl?: string | null;
   overlay: ControlsOverlay;
   isFullscreen: boolean;
@@ -37,10 +36,9 @@ export interface VideoSurfaceProps {
   onTogglePlay: () => void;
   onReplay: () => void;
   onSeekBy: (seconds: number) => void;
-  /** The rest of what used to be the separate below-player bar (design spec revision,
-   * Isaac's ask session 2026-10-08: no buttons outside the player — scrub, time, speed,
-   * sleep timer and fullscreen all move onto the video surface itself, in the same
-   * tap-to-toggle, auto-hiding overlay as play/pause/skip). */
+  /** The bottom control row (no buttons outside the player — scrub, time, speed, sleep
+   * timer and fullscreen sit on the video surface itself, in the same tap-to-toggle,
+   * auto-hiding overlay as play/pause/skip). */
   currentTimeSeconds: number;
   durationSeconds: number | null;
   playbackSpeed: PlaybackSpeed;
@@ -61,7 +59,7 @@ export interface VideoSurfaceProps {
 }
 
 /**
- * The video area (design spec comments-and-player §1.2, revised 2026-10-08): a 16:9 surface
+ * The video area (design spec comments-and-player §1.2): a 16:9 surface
  * with a single tap-to-toggle overlay holding every control — a dimmer, rewind / play-pause /
  * forward centred over the video, and the scrub bar / time / speed / sleep timer / fullscreen
  * row anchored to its bottom edge. Nothing plays-related renders outside this surface. The
@@ -141,7 +139,7 @@ export function VideoSurface({
       {isAudio && artworkUrl ? (
         // Audio has no visible video frames — without this the surface is just the flat
         // dark `colors.surface.app` rectangle the whole time audio plays, with nothing to
-        // show playback is active (Isaac's report). Rendered *over* `VideoView` (which
+        // show playback is active. Rendered *over* `VideoView` (which
         // still mounts regardless — the player needs it to actually play the audio, and
         // the fullscreen control still targets it) rather than behind it: a native video
         // surface's own paint behavior for a track-less audio source isn't guaranteed

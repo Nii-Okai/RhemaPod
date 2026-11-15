@@ -10,13 +10,12 @@ const PRESSED_SCALE = 0.96;
 const SPRING_CONFIG = { useNativeDriver: true, speed: 20, bounciness: 6 };
 
 /**
- * Tactile press feedback for Home's shelf cards (Isaac's ask, session 2026-09-30: "make it
- * more alive") — a subtle spring scale-down on press instead of the flat `opacity: 0.7`
- * every card previously used. Scoped to compact shelf cards (`SeriesCard`,
+ * Tactile press feedback for Home's shelf cards — a subtle spring scale-down on press
+ * rather than a flat opacity change. Scoped to compact shelf cards (`SeriesCard`,
  * `ContinueWatchingCard`, `SermonCard`, `ImageOnlyCard`) and `HeroCard`'s two CTA pills, not
  * `HeroCard`'s own full-bleed "tap anywhere" layer — scaling a whole hero down 4% on a
- * background tap reads as the page flexing, not a button responding, so that one keeps its
- * original opacity feedback.
+ * background tap reads as the page flexing, not a button responding, so that one keeps
+ * opacity feedback.
  *
  * `useNativeDriver: true` runs the animation on the UI thread — no JS-thread jank risk from
  * animating a transform on every scroll frame's worth of cards.

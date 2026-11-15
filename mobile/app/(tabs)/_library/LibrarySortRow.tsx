@@ -14,12 +14,11 @@ export interface LibrarySortRowProps {
   onToggleLayout: () => void;
 }
 
-/** Sort control (left) + list/grid toggle (right) — Isaac's screenshots.
+/** Sort control (left) + list/grid toggle (right).
  * The toggle icon shows the layout a tap would switch *to* (a grid icon
- * while in list mode, a list icon while in grid mode), matching the
- * reference exactly. Tertiary tone throughout (text, icons) — a secondary
- * utility row sitting under the bolder filter pills, not a heading; the
- * reference's own "Recents" row reads as muted gray, not bright white. */
+ * while in list mode, a list icon while in grid mode). Tertiary tone
+ * throughout (text, icons) — a secondary utility row sitting under the
+ * bolder filter pills, not a heading. */
 export function LibrarySortRow({ sortMode, onSortPress, layout, onToggleLayout }: LibrarySortRowProps) {
   const { colors } = useTheme();
   return (

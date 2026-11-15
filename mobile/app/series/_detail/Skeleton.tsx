@@ -13,9 +13,8 @@ import { spacing } from '../../../theme/spacing';
 export function SeriesDetailSkeleton() {
   return (
     <View accessibilityRole="progressbar" accessibilityLabel="Loading series" style={styles.screen}>
-      {/* Matches the real hero's 4:3 ratio (Isaac's ask, session 2026-09-30: a bigger
-          banner) at a representative phone width — not measured live, just a closer
-          placeholder than the old 16:9-sized block was. */}
+      {/* Matches the real hero's 4:3 ratio at a representative phone width — not
+          measured live, just a close placeholder. */}
       <SkeletonBlock height={300} radiusToken="sm" />
       <View style={styles.body}>
         <SkeletonBlock height={26} width="70%" />

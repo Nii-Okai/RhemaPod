@@ -66,21 +66,21 @@ async function applyTokenPair(pair: TokenPair): Promise<void> {
     });
     await Promise.race([pendingWipe, joinTimeout]).finally(() => clearTimeout(joinTimeoutHandle));
   }
-  // S9 review (finding S1): a fresh sign-in re-opens media-cache fills that a prior
+  // A fresh sign-in re-opens media-cache fills that a prior
   // wipe closed (see `wipeMediaCacheBounded` below) — covers signIn(), register() and
   // every successful refreshAccessToken(). A lazy `require()`, not a static import, for
   // the same reason as the wipe below: this file carries no static dependency on the
   // cache's module graph. (A dynamic `import()` would be the ESM-native way to say this,
   // but this project's Jest config has no `--experimental-vm-modules`, so `import()`
-  // throws under test — confirmed empirically, not assumed. `require()` is plain
+  // throws under test. `require()` is plain
   // CommonJS, still lazy at call time, and fully supported here.)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see comment above
     (require('../mediaCache/fill') as typeof import('../mediaCache/fill')).allowFillsAfterSignIn();
   } catch (err) {
     // Best-effort, same as the wipe — a failure here just means the next fill attempt
-    // stays blocked until the following sign-in, never a crash. Gilfoyle re-check
-    // SHOULD-FIX: a dev-only breadcrumb, since this failing silently means a device
+    // stays blocked until the following sign-in, never a crash. A dev-only breadcrumb,
+    // since this failing silently means a device
     // could sign in "clean" while fills stay refused with zero signal anywhere.
     if (__DEV__) console.warn('[session] allowFillsAfterSignIn failed (fills stay blocked)', err);
   }
@@ -97,7 +97,7 @@ const DOWNLOADS_WIPE_TIMEOUT_MS = 3000;
 let pendingWipe: Promise<void> | null = null;
 
 /**
- * Bounded (S8/S9 review, finding S2): a hung SQLite/filesystem call inside the wipe must
+ * Bounded: a hung SQLite/filesystem call inside the wipe must
  * never block sign-out itself. The real wipe keeps running in the background even after
  * this race settles on the timeout side — `clearMediaCache`'s own internals already
  * swallow every failure, so there's nothing left to await or clean up here (beyond what
@@ -109,7 +109,7 @@ function wipeMediaCacheBounded(): Promise<void> {
     const { clearMediaCache } = require('../mediaCache/clearMediaCache') as typeof import('../mediaCache/clearMediaCache');
     await clearMediaCache();
   })().catch((err: unknown) => {
-    // Gilfoyle re-check SHOULD-FIX: this is the one failure mode that actually matters —
+    // This is the one failure mode that actually matters —
     // if `require()` itself throws (module load failure), the wipe never runs at all, not
     // degraded, just silently skipped, and `fillsBlocked` never gets set either. A dev-only
     // breadcrumb so that's visible somewhere rather than a device signing out "clean" while
@@ -159,7 +159,7 @@ async function clearSession(): Promise<void> {
   } finally {
     // Plan S7 (HUMAN_GATE G2): reached by voluntary signOut() and both forced sign-out
     // paths below — a disposable cache must never survive into a different signed-in
-    // user on the same device. In a `finally` (S8/S9 review, finding S2) so the wipe
+    // user on the same device. In a `finally` so the wipe
     // still runs even if clearing the persisted refresh token above throws.
     await wipeMediaCacheBounded();
     // Same reasoning, a different disposable store: a sermon downloaded for offline

@@ -20,8 +20,8 @@ export interface EqualizerBarsProps {
 }
 
 /**
- * The "now playing" audio-visualiser mark (Nii's ask, 2026-10-23: show it on the current
- * sermon while a playlist plays). Decorative bars, not a real spectrum — reading live
+ * The "now playing" audio-visualiser mark, shown on the current sermon while a playlist
+ * plays. Decorative bars, not a real spectrum — reading live
  * audio levels would need a native audio tap expo-video doesn't offer. Native-driver
  * `scaleY` from the bottom edge, so it costs nothing on the JS thread; still under
  * Reduce Motion.

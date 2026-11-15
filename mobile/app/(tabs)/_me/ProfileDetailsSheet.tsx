@@ -29,8 +29,7 @@ export interface ProfileDetailsSheetProps {
 }
 
 /**
- * Me page's own profile editor (Isaac's ask, session 2026-10-09: "Allow to update
- * firstname, lastname and gender") — a sibling of the comments flow's `NamePrompt`, not
+ * Me page's own profile editor (first name, last name and gender) — a sibling of the comments flow's `NamePrompt`, not
  * a replacement: that one still owns the single-field name prompt shown before a first
  * comment post. Saved together in one request (`useUpdateProfileDetails`) since they
  * share one sheet and one Save button; the server itself treats name and gender as

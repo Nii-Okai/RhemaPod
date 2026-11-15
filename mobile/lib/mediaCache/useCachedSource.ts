@@ -119,7 +119,7 @@ export function useCachedSource(
         return;
       }
 
-      // Gilfoyle (S8 finding 4): pinned *before* the existence check, not after — a fill
+      // Pinned *before* the existence check, not after — a fill
       // that commits (and evicts) in the window between finding this row and finishing
       // the check could otherwise remove this exact entry while it was still unprotected,
       // deleting the file out from under a lookup that was about to play it. Cleared again
@@ -174,7 +174,7 @@ export function useCachedSource(
   // in the same session starts streaming from the still-in-memory /stream response before
   // the fresh fetch lands and lets the cache in (`[id].tsx`'s `isStreamFreshThisMount`);
   // switching then — to a loading gate, the local file, or the refetch's new presigned URL
-  // — unmounted and restarted the player mid-play. The lookup still runs, so `reportExit`
+  // — would unmount and restart the player mid-play. The lookup still runs, so `reportExit`
   // knows whether a fill is needed; the cached copy is used from the next open.
   const committed = useRef<{ sermonId: string; url: string } | null>(null);
   if (committed.current && committed.current.sermonId !== sermonId) committed.current = null;

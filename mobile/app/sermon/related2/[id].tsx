@@ -1,8 +1,8 @@
 /**
- * A second copy of `sermon/related/[id]` (same screen, same `Stack.Screen` options) —
- * Isaac's follow-up ask, session 2026-10-01: tapping Related from *within* a Related
- * screen pushed `sermon/related/[id]` on top of itself (same route name twice in a
- * row), and the animation stopped showing from that second level on, even though
+ * A second copy of `sermon/related/[id]` (same screen, same `Stack.Screen` options).
+ * Tapping Related from *within* a Related screen would push `sermon/related/[id]` on top
+ * of itself (same route name twice in a row), and the push doesn't animate from that
+ * second level on, even though
  * `router.push` genuinely creates a new, distinct stack entry each time (expo-router's
  * own `linkTo` generates a unique `__EXPO_ROUTER_key` per push specifically so
  * `getId()`-based route matching never collapses two pushes of the same route —

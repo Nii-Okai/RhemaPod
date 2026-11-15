@@ -7,14 +7,10 @@ type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 type MaterialIconsName = React.ComponentProps<typeof MaterialIcons>['name'];
 
 /**
- * Every icon identity this app uses, iOS and Android side by side (Isaac's ask, session
- * 2026-10-09: "All icons used in the app should be device specific - iOS/Android").
- * Keyed on the Ionicons name the app already used everywhere pre-this-change — every
- * call site's icon *string* is unchanged, only the component rendering it (`Ionicons`
- * directly -> `PlatformIcon`) and, for the wrapper primitives (`IconButton`,
- * `ActionButton`, `PrimaryButton`/`Button`, `TransportControls`), the prop's declared
- * type (`ComponentProps<typeof Ionicons>['name']` -> `AppIconName` below). iOS renders
- * the original Ionicons glyph unchanged; Android renders a Material Icons equivalent —
+ * Every icon identity this app uses, iOS and Android side by side, so icons are
+ * device-specific. Keyed on the Ionicons name; the wrapper primitives (`IconButton`,
+ * `ActionButton`, `PrimaryButton`/`Button`, `TransportControls`) take an `AppIconName`
+ * (below). iOS renders the Ionicons glyph; Android renders a Material Icons equivalent —
  * this is the ONE place that pairing is decided, not scattered `Platform.OS` checks at
  * every call site. Every Android name here is verified against the installed
  * `MaterialIcons` glyph map (none fall back to `MaterialCommunityIcons` — the plain set
@@ -92,10 +88,8 @@ const ICONS = {
   contract: { ios: 'contract', android: 'fullscreen-exit' },
   expand: { ios: 'expand', android: 'fullscreen' },
   'tv-outline': { ios: 'tv-outline', android: 'tv' },
-  // Library tab (Isaac's ask, session 2026-10-10) — playlists + downloads. Icon
-  // switched to the "stacked cards" glyph Spotify/Apple Music both use for this exact
-  // meaning (Isaac's ask, session 2026-10-11: "use same used by apple music or
-  // spotify"), not the literal book-stack `library` glyph this used before — iOS's
+  // Library tab — playlists + downloads. The "stacked cards" glyph music apps use for
+  // this meaning, not the literal book-stack `library` glyph — iOS's
   // `albums`/`albums-outline` is the Ionicons equivalent, Android's `library-music` is
   // MaterialIcons' own purpose-built "your music library" glyph. Both Android entries
   // resolve to the one glyph (no outline/filled pair exists for it, same reasoning as

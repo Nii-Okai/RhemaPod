@@ -129,13 +129,13 @@ export function DailyRhemaCard() {
 
 const SUN = 86;
 const GLOW = 40;
-// How see-through each part of the glass sun is. Kept low so it sits back in the card
-// (Nii, 2026-11-12: "the sun looks too bright"). Set as stop/stroke opacity, never as an
-// rgba alpha, which the first build showed does not come through on device.
+// How see-through each part of the glass sun is. Kept low so it sits back in the card.
+// Set as stop/stroke opacity, never as an rgba alpha, which does not come through on
+// device.
 const sunGlassOpacity = { core: 0.3, edge: 0.12, rim: 0.38, glow: 0.1 };
 
 /**
- * The glass sun (Nii, 2026-11-12, canvas D7 option A): see-through gold, brighter at its
+ * The glass sun (canvas D7 option A): see-through gold, brighter at its
  * centre, with a gold rim and a soft glow, so the big circle behind it shows through
  * instead of a solid disc shouting over it.
  */

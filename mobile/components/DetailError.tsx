@@ -6,8 +6,7 @@ import { spacing } from '../theme/spacing';
 
 export interface DetailErrorProps {
   onRetry: () => void;
-  /** Defaults to sermon-detail's original copy, its first consumer — series detail
-      (its second, Isaac's ask, session 2026-09-30) passes its own. */
+  /** Defaults to sermon detail's copy; series detail passes its own. */
   message?: string;
 }
 

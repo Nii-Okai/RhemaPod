@@ -644,7 +644,7 @@ describe('downloadManager — wipeAllDownloads (per-viewer sign-out wipe)', () =
   });
 });
 
-describe('downloadManager — thumbnail fetch (session 2026-10-15 fix for the 6h presigned-URL expiry)', () => {
+describe('downloadManager — thumbnail fetch (the 6h presigned-URL expiry)', () => {
   it('does nothing when the sermon has no thumbnailUrl — no second downloadToFile call, no setThumbnailPath', async () => {
     const h = makeHarness();
 
@@ -725,7 +725,7 @@ describe('downloadManager — thumbnail fetch (session 2026-10-15 fix for the 6h
     expect(h.setThumbnailPath).toHaveBeenCalledWith('sermon-1', 'file:///downloads/sermon-1.thumb');
   });
 
-  it('reviewer-gilfoyle MUST-FIX regression: a download deleted while the thumbnail fetch is still in flight gets the orphaned file cleaned up, not left behind', async () => {
+  it('regression: a download deleted while the thumbnail fetch is still in flight gets the orphaned file cleaned up, not left behind', async () => {
     // Simulates deleteDownload winning the race against fetchThumbnailBestEffort's own
     // network-I/O await: by the time setThumbnailPath would run, the row is already gone,
     // so the fake (same as db.ts's real `changes > 0` check) reports `false`.

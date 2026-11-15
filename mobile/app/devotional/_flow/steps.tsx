@@ -192,7 +192,7 @@ export function HearStep({ dev, entry, update }: { dev: Devotional; entry: Journ
       </AppText>
       {/* Each verse is its own row with the number hanging in a narrow column, and every
           run inside the verse shares one type style, so the lines keep even, open
-          spacing (Nii, 2026-11-12: the passage looked cramped and clipped). */}
+          spacing instead of looking cramped and clipped. */}
       <View style={styles.passage}>
         {dev.passage.verses.map((v, vi) => (
           <View key={vi} style={styles.verseRow}>

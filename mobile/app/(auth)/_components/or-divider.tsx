@@ -6,8 +6,7 @@ import { spacing } from '../../../theme/spacing';
 
 /**
  * "or continue with" — sits between the email/password form's primary button and the
- * stacked social buttons (sign-in.tsx / register.tsx, Isaac's ask, session 2026-10-15:
- * "organise the page to look better").
+ * stacked social buttons (sign-in.tsx / register.tsx).
  */
 export function OrDivider({ label = 'or continue with' }: { label?: string }) {
   const styles = useStyles();

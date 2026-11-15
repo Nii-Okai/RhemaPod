@@ -2,11 +2,10 @@ import { Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 /**
- * Google Sign-In (client side, session 2026-10-15). Uses the library's free "Original"
- * API (not the Firebase-backed one) — the architect's call, not relitigated here.
- * `webClientId`/`iosClientId` come from `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` /
- * `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (`.env.example`), placeholders until Isaac supplies
- * the real Google Cloud Console OAuth client IDs — see `.env.example`'s own comment.
+ * Google Sign-In (client side). Uses the library's free "Original" API (not the
+ * Firebase-backed one). `webClientId`/`iosClientId` come from
+ * `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (the Google
+ * Cloud Console OAuth client IDs) — see `.env.example`'s own comment.
  */
 
 let configured = false;

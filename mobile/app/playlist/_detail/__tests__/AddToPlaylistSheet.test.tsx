@@ -154,7 +154,7 @@ describe('AddToPlaylistSheet — tabs', () => {
     expect(onRemove).toHaveBeenCalledWith('item-1');
   });
 
-  it('Downloaded tab renders the local thumbnailPath over the presigned thumbnailUrl when both are present, and falls back to thumbnailUrl when there is no local copy yet (session 2026-10-15 thumbnail fix)', async () => {
+  it('Downloaded tab renders the local thumbnailPath over the presigned thumbnailUrl when both are present, and falls back to thumbnailUrl when there is no local copy yet', async () => {
     mockedUseDownloads.mockReturnValue({
       downloads: [
         {

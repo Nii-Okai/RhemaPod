@@ -24,8 +24,8 @@ export interface FittedArtProps {
 }
 
 /**
- * Sermon/series artwork in a frame of any shape, never cropped (Nii's ask, 2026-10-23:
- * shelf covers were losing their titles to `cover` crops). Church art is designed as a
+ * Sermon/series artwork in a frame of any shape, never cropped (a `cover` crop cuts off
+ * the titles set in the art). Church art is designed as a
  * square poster with the title and speaker set in it, while the shelves draw landscape,
  * square and portrait frames. When the art's shape matches the frame (within 8%) it simply
  * fills it; otherwise the whole piece sits centred over a blurred, dimmed copy of itself

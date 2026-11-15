@@ -16,8 +16,7 @@ export interface NowPlayingDetailsProps {
 /**
  * The Signature player's title block: serif title, speaker · category, then Like, My List,
  * Download and Share as pills — the same actions (and the same hooks) as sermon detail.
- * Download is back on the player at Nii's ask (2026-10-21), as the detail page's own
- * `DownloadPillButton` in its compact skin; a finished download plays from the local file
+ * Download is the detail page's own `DownloadPillButton` in its compact skin; a finished download plays from the local file
  * the next time the player opens.
  */
 export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
@@ -37,8 +36,8 @@ export function NowPlayingDetails({ detail }: NowPlayingDetailsProps) {
   return (
     <View style={styles.block}>
       <View style={styles.titles}>
-        {/* A step smaller, at most two lines, with the speaker on one: the block felt
-            crowded at the full title size (Nii's phone test, 2026-11-12). */}
+        {/* A step smaller, at most two lines, with the speaker on one: the block reads
+            crowded at the full title size. */}
         <AppText variant="display.row" accessibilityRole="header" numberOfLines={2}>
           {detail.title}
         </AppText>
@@ -136,7 +135,7 @@ const useStyles = createThemedStyles((colors) => ({
   titles: {
     gap: spacing.xs,
   },
-  // One line, never wrapping (Nii, 2026-10-22): the pills shrink and their labels truncate
+  // One line, never wrapping: the pills shrink and their labels truncate
   // before anything drops to a second row, which only happens at large text sizes.
   pills: {
     flexDirection: 'row',

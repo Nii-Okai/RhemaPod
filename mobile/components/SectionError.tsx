@@ -17,9 +17,7 @@ export interface SectionErrorProps {
  * (Home's hero/continue-watching/series, the Library tab's own continue-watching
  * shelf) needs a *skeleton* loading state (`HeroSkeleton`/`ShelfSkeleton`), not
  * `QueryState`'s spinner, so this reuses only its error-branch visual/copy
- * convention, not the component itself. Promoted here from Home's own `_home/`
- * folder once the Library tab became a second consumer, same promotion bar
- * `Sheet`/`ConfirmDialog` already cleared this session.
+ * convention, not the component itself. Shared by Home and the Library tab.
  */
 export function SectionError({ message, onRetry }: SectionErrorProps) {
   const styles = useStyles();

@@ -28,18 +28,13 @@ export interface NavRoute {
 export const NAV_ROUTES: readonly NavRoute[] = [
   { key: 'home', href: '/(tabs)/home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
   { key: 'series', href: '/(tabs)/series', label: 'Series', icon: 'layers-outline', iconActive: 'layers' },
-  // Browse is also the sole search entry point (Isaac's ask, session 2026-10-02) — the
-  // dedicated Search tab was removed; `app/search.tsx` is now a top-level stack route
+  // Browse is also the search entry point: `app/search.tsx` is a top-level stack route
   // Browse pushes into, not a tab destination.
-  // Shown as "Discover" since the Daybreak redesign (2026-11); the route stays `browse`.
+  // Shown as "Discover"; the route stays `browse`.
   { key: 'browse', href: '/(tabs)/browse', label: 'Discover', icon: 'compass-outline', iconActive: 'compass' },
   {
-    // Session 2026-10-10 (Isaac's ask): the former `downloads` destination (P1:
-    // "Downloads" on iOS, Android, and tablet alike) is renamed/absorbed into
-    // `library` — the Library tab holds downloaded content as one of its two
-    // sections, the other being user-created playlists (Spotify's own "Your
-    // Library" as the reference). Same href slot, same tab-bar position, just a
-    // bigger screen behind it; no new tab was added (phone bar stays at 4 items).
+    // The Library tab holds downloaded content and user-created playlists (it covers
+    // what plan P1 called "Downloads"). The phone bar stays at 4 items.
     key: 'library',
     href: '/(tabs)/library',
     label: 'Library',
@@ -53,9 +48,7 @@ export const NAV_ROUTES: readonly NavRoute[] = [
     icon: 'megaphone-outline',
     iconActive: 'megaphone',
   },
-  // Label is "You", not "Me" (Isaac's ask, session 2026-10-11, YouTube's own "You" tab
-  // as the reference) — the route's own file/href stays `me` (an app-wide rename of the
-  // URL itself isn't what was asked for, just the visible label), and its icon shows
+  // Label is "You" — the route's own file/href stays `me`, and its icon shows
   // the caller's own avatar instead of this generic fallback glyph (`NavIcon`'s own
   // doc comment) whenever profile data has loaded.
   { key: 'me', href: '/(tabs)/me', label: 'You', icon: 'person-outline', iconActive: 'person' },
@@ -63,9 +56,8 @@ export const NAV_ROUTES: readonly NavRoute[] = [
 
 /**
  * The phone dock's four destinations (`FloatingDock`, the same on iOS and Android since
- * the Daybreak redesign; it adds the raised Today button between the two halves). A dedicated Search tab existed here
- * originally; removed (Isaac's ask, session 2026-10-02) once Browse absorbed its
- * query/suggest/results flow as a pushed, not tabbed, screen.
+ * the Daybreak redesign; it adds the raised Today button between the two halves). There
+ * is no Search tab: Browse pushes the search screen.
  */
 export const PHONE_NAV_KEYS: readonly NavRouteKey[] = ['home', 'browse', 'library', 'me'] as const;
 

@@ -10,15 +10,12 @@ import { seedOfflineDetails } from './offlineDetails';
  * sermon-detail/series-detail Download pills, and every `EpisodeDownloadButton` all use
  * this, not `downloadManager` directly.
  *
- * Backed by one shared store per `DownloadManager` instance (session 2026-10-09 fix),
- * not per-hook-instance `useState` — a single `useSyncExternalStore` subscription per
- * component, not an independent poll loop each. The earlier per-instance version meant a
- * series page's bulk "download all" pill (driven by its own `useDownloads()` call) could
- * enqueue every episode while each episode row's *own*, separate `useDownloads()`
- * instance never found out: that instance's local list was still empty at the moment the
- * pill fired, so its own "is anything active" check never saw a reason to start polling,
- * and the row's icon sat on "not downloaded" forever even after the file finished. Every
- * component sharing one store means one instance's `download()`/poll tick updates what
+ * Backed by one shared store per `DownloadManager` instance, not per-hook-instance
+ * `useState` — a single `useSyncExternalStore` subscription per component, not an
+ * independent poll loop each. With per-instance state, a series page's bulk "download
+ * all" pill could enqueue every episode while each episode row's own `useDownloads()`
+ * never started polling, leaving the row on "not downloaded" after the file finished.
+ * Every component sharing one store means one instance's `download()`/poll tick updates what
  * every other instance (and `find()`) sees on its next render, regardless of which one
  * actually started the transfer.
  *
@@ -147,11 +144,10 @@ function ensureStartupSweep(manager: DownloadManager, store: SharedStore): Promi
 
 /**
  * Writes a `queued` row into the shared snapshot immediately, ahead of the real
- * `enqueueDownload`/`retryDownload` call (Isaac's ask, session 2026-10-09 — pressing
- * Download showed nothing for the 3–4 seconds it took the real call to resolve, since
+ * `enqueueDownload`/`retryDownload` call, so pressing Download shows something at once:
  * `downloadManager`'s `enqueueDownload` doesn't return until the *entire* transfer
- * finishes, not just the queue insert — long enough that a user would tap it again
- * thinking the first press missed). The real manager call's own, much faster internal
+ * finishes, not just the queue insert, and a few seconds of nothing reads as a missed
+ * tap. The real manager call's own, much faster internal
  * `upsertQueued` write lands well within one 750ms poll tick, so the next refresh
  * (started immediately below via `ensurePolling`) overwrites this placeholder with real
  * data before it's ever stale enough to matter — this only needs to bridge that opening

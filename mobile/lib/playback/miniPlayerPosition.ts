@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { AsyncStorage as SQLiteAsyncStorage } from 'expo-sqlite/kv-store';
 
 /**
- * Where the listener has dragged the mini player (Nii, 2026-11-15: "allow mini player to
- * be dragged and repositioned on screen").
+ * Where the listener has dragged the mini player.
  *
  * One value shared by every mini player host (the tabs above the dock, and pushed screens
  * via `StackMiniPlayer`), so the card stays where it was put when a screen is pushed or

@@ -29,8 +29,7 @@ export function contentTypeFor(extension: string): string {
 }
 
 /**
- * Tap the Me page's own hero avatar to change it (Isaac's ask, session 2026-10-09:
- * "Allow to update profile picture") — an edit badge overlay signals it's interactive,
+ * Tap the Me page's own hero avatar to change it — an edit badge overlay signals it's interactive,
  * tapping opens a small `Sheet` offering Camera vs. Photo Library rather than
  * `expo-image-picker`'s own `launchCameraAsync`/`launchImageLibraryAsync` picked
  * blind, since a profile picture is about as likely to come from either source. Picking

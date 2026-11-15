@@ -17,9 +17,8 @@ function countLabel(count: number): string {
   return count === 1 ? '1 sermon' : `${count} sermons`;
 }
 
-/** Design spec 1i/2d: avatar chip (P6 hash), name, bio-or-fallback. The sermon count used
- *  to trail each row — dropped from the visible rendering (Isaac's ask, session
- *  2026-10-02) but still reaches VoiceOver via the accessibility label below. */
+/** Design spec 1i/2d: avatar chip (P6 hash), name, bio-or-fallback. The sermon count is
+ *  not drawn but reaches VoiceOver via the accessibility label below. */
 export function SpeakerListRow({ speaker, onPress }: SpeakerListRowProps) {
   const bio = speaker.bio ?? NO_BIO_FALLBACK;
 

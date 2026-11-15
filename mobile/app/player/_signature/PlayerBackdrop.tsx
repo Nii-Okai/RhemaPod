@@ -29,13 +29,13 @@ const BLUR = 20;
 const CROSSFADE_MS = 600;
 
 /**
- * The full player's background (Nii, 2026-11-15): the sermon's own art, heavily blurred,
+ * The full player's background: the sermon's own art, heavily blurred,
  * under a wash of the page colour, so every sermon's player takes on the colours of its
  * cover the way Apple Music's and Spotify's do. Works in both themes because the wash is
  * the theme's own page colour: a dark glow in the dark theme, a pale tint in the light one,
  * with text in its usual colours on top. Without art it is just the plain page.
  *
- * No new native code: `expo-image`'s blur and `react-native-svg`, both already in the app.
+ * Built from `expo-image`'s blur and `react-native-svg`, no extra native code.
  */
 export function PlayerBackdrop({ uri }: { uri?: string | null }) {
   const { colors } = useTheme();

@@ -17,7 +17,7 @@ export interface HeroCarouselProps {
   sermons: SermonListItem[];
   onPress: (id: string) => void;
   /** Forwarded to every `HeroCard` — clears the overlaid, scroll-fading `HomeTopBar`
-      (Isaac's ask, session 2026-09-30). See `HeroCard`'s own `topInset` doc comment. */
+      See `HeroCard`'s own `topInset` doc comment. */
   topInset?: number;
   /** Draws each page instead of the classic `HeroCard` — Signature Home's own hero card
       reuses this paging/auto-advance machinery rather than duplicating it. */
@@ -27,8 +27,8 @@ export interface HeroCarouselProps {
 const AUTO_ADVANCE_MS = 6000;
 
 /**
- * Home's hero (Isaac's ask, session 2026-09-30: 3 items instead of 1, auto-scrolling —
- * Prime Video/Disney+'s rotating-hero pattern). Backed by `useHeroSermons` (`GET
+ * Home's hero: up to 3 sermons, auto-scrolling (the rotating-hero pattern of streaming
+ * apps). Backed by `useHeroSermons` (`GET
  * .../sermons/hero`), which is already capped to one sermon per series, so this
  * component itself does no deduping — it just pages through whatever it's given.
  *
@@ -36,31 +36,22 @@ const AUTO_ADVANCE_MS = 6000;
  * inside Home's own padded content column, not the full screen width, and a
  * `Dimensions`-based width would page past the visible card.
  *
- * Nothing pages-related renders until that `onLayout` width actually lands (fixed
- * 2026-10-16, Isaac's report: the hero's art appeared to "grow, then snap back" between
- * a cold Home mount and a later revisit). The ScrollView/pages used to fall back to a
- * CSS `width: '100%'` for the one render before `onLayout` fired — percentage width on a
- * horizontal ScrollView's *paged* content is a known RN/Yoga gray area (the content
- * container's own main-axis size is itself intrinsic/shrink-to-fit, so a child's "100%"
- * of it is circular), and it resolved inconsistently between a cold mount and a later
- * remount (`(tabs)` has no persistent tab navigator under `Slot` — leaving and returning
- * to Home fully unmounts and remounts this component, and on a remount `useHeroSermons`
- * usually serves cached data synchronously, so that one-bad-frame render is far more
- * likely to actually paint than on a cold mount, where the hero sits behind a loading
- * skeleton for the whole first render anyway). `HeroCard`'s own art region uses a fixed
- * `aspectRatio`, so an indeterminate *width* is what was producing a differently-cropped
- * *height* — not a one-off glitch, a genuinely different pixel width computed each time.
- * The fix: render nothing inside `wrap` until `onLayout` reports a real pixel width, then
- * give every page that exact width — never a guess.
+ * Nothing pages-related renders until that `onLayout` width actually lands, and every
+ * page then gets that exact pixel width. A CSS `width: '100%'` fallback for the first
+ * render doesn't work: percentage width on a horizontal ScrollView's *paged* content is
+ * a known RN/Yoga gray area (the content container's main-axis size is itself
+ * shrink-to-fit, so a child's "100%" of it is circular) and resolves differently between
+ * mounts. Home remounts this component on every visit (`(tabs)` has no persistent tab
+ * navigator under `Slot`) and usually has cached data on a remount, so that first frame
+ * paints; with `HeroCard`'s fixed `aspectRatio`, a different width means a visibly
+ * different art height ("grow, then snap back").
  *
  * Every layer here (the outer wrap, the ScrollView, each page) carries the same dark
  * `colors.surface.app` background as the screen itself — `HeroCard`'s own rounded
- * corners (`radius.sm`, tightened from `radius.xl` session 2026-10-01 to match Isaac's
- * Netflix reference — every home card now shares this same subtle radius) otherwise
- * expose a sliver of whatever's *behind* the card at
- * each corner during a drag, and an unstyled `ScrollView` renders that as iOS's default
- * white, not transparent (Isaac's report, session 2026-09-30: "white line on the right
- * when scrolling").
+ * corners (`radius.sm`, the radius every home card shares) otherwise expose a sliver of
+ * whatever's *behind* the card at each corner during a drag, and an unstyled `ScrollView`
+ * renders that as iOS's default white, not transparent (a white line on the right while
+ * scrolling).
  *
  * Auto-advances every 6s, pausing while the user is actively dragging (`draggingRef`)
  * so it never fights a manual swipe — picks back up on the next tick afterward rather

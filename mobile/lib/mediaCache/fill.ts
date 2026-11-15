@@ -10,25 +10,22 @@ import type { CacheKey } from './key';
 
 /**
  * The media-cache fill engine (plan S3, D15, D16, P2, P4, P6). The network gate is
- * `isOnWifi` — Wi-Fi only, always, whatever the Downloads "Wi-Fi only" toggle says (Nii's
- * ask, 2026-10-23: don't spend data unnecessarily). Turning that toggle off is consent to
+ * `isOnWifi` — Wi-Fi only, always, whatever the Downloads "Wi-Fi only" toggle says (don't
+ * spend data unnecessarily). Turning that toggle off is consent to
  * spend mobile data on downloads the user starts; a cache fill is a whole-sermon transfer
  * nobody asked for, so it never rides on that consent. It lives in `lib/downloads/network.ts`, not
  * `downloadManager.ts`, specifically so this file never has a module-graph edge back into
- * the Downloads manager (S8/S9 review: that edge was a real circular import,
- * `downloadManager -> mediaCache/dropSermon -> mediaCache/fill -> downloadManager`, fixed
- * by moving the function instead of living with the cycle). The transfer itself is NOT
+ * the Downloads manager (that edge would be a circular import,
+ * `downloadManager -> mediaCache/dropSermon -> mediaCache/fill -> downloadManager`). The transfer itself is NOT
  * the same JS function as Downloads' `realDownloadToFile`: that function's contract (no
  * returned headers, no cancel handle) can't give P4 its declared `Content-Length` or D16
  * its cancellation, and changing that contract would be a behaviour change to Downloads,
- * which the plan forbids. `realTransfer` below is a parallel, equally small implementation
+ * which the plan rules out. `realTransfer` below is a parallel, equally small implementation
  * of the same `createDownloadResumable` pattern, scoped to what the fill engine
  * specifically needs.
  *
- * S3 implements only the free-space *floor* (an absolute reserve). The per-item
- * "50% of the computed quota" skip described alongside it needs `quota.ts`'s dynamic
- * formula (free + cache bytes), which doesn't exist until S5 — deliberately deferred,
- * not an oversight.
+ * Only the free-space *floor* (an absolute reserve) is enforced here; the plan's
+ * per-item "50% of the computed quota" skip is not implemented.
  */
 
 export type FillOutcome =
@@ -99,10 +96,9 @@ async function realDeleteFile(uri: string): Promise<void> {
 }
 
 /**
- * S9 review (finding S3): nothing ever created `rpa-media-cache/` — confirmed nothing in
- * this module called `makeDirectoryAsync` at all, so every fill either silently failed,
- * or (worse, if the native download call happens to create parent dirs on some platform)
- * could succeed into a directory a wipe had just deleted. Same check-then-create shape as
+ * Creates `rpa-media-cache/` before a fill writes into it: without it every fill either
+ * silently fails, or (if the native download call happens to create parent dirs on some
+ * platform) succeeds into a directory a wipe had just deleted. Same check-then-create shape as
  * Downloads' own `ensureDir` (`lib/downloads/paths.ts`), kept local rather than imported
  * from there to avoid yet another cross-module edge.
  */
@@ -140,7 +136,7 @@ interface InFlight {
   mediaRefId: string;
   cancel: () => void;
   cancelled: boolean;
-  /** Gilfoyle re-check MUST-FIX: set only by an explicit `cancelFill()` call for THIS
+  /** Set only by an explicit `cancelFill()` call for THIS
    * sermon (e.g. `dropSermonFromCache`'s "Downloads wins" path) — distinct from
    * `cancelled`, which a different key's fill taking the global in-flight slot also sets.
    * The post-insert guard needs this distinction: an unrelated different-key supersede
@@ -157,7 +153,7 @@ let fillsBlocked = false;
  * S7 calls this when wiping the cache (sign-out). Any fill already past the transfer
  * stage discards its result instead of committing a row the wipe didn't know about.
  *
- * S9 review (finding S1): the generation bump alone only protects a fill that was
+ * The generation bump alone only protects a fill that was
  * *already in flight* at wipe time — it does nothing to stop a *new* `requestFill` from
  * starting afterward with a presigned URL that's still valid for hours, recreating the
  * previous user's cache entry after sign-out. `fillsBlocked` closes that: every fill is
@@ -194,14 +190,14 @@ export function cancelFill(sermonId?: string): void {
 export async function requestFill(request: FillRequest, deps: FillDeps = defaultDeps()): Promise<FillOutcome> {
   const { sermonId, key, url, expiresAt } = request;
 
-  // S9 review (finding S1): refuse outright after a wipe until a fresh sign-in re-opens
+  // Refuse outright after a wipe until a fresh sign-in re-opens
   // this. Checked before anything else, including the supersede below.
   if (fillsBlocked) {
     emitCacheEvent('fill-skip:signed-out', { sermonId, mediaRefId: key.mediaRefId });
     return 'skipped-signed-out';
   }
 
-  // Gilfoyle (S8 MUST-FIX 1): a request for the SAME key as the one already in flight is
+  // A request for the SAME key as the one already in flight is
   // a no-op, not a supersede — two fills for one key would share `partPath`, so the older
   // one's `discard()` could delete the newer one's `.part`, or the newer transfer could
   // overwrite the file the older one is about to move. Only a *different* key supersedes.
@@ -250,8 +246,7 @@ export async function requestFill(request: FillRequest, deps: FillDeps = default
     return finish('skipped-disk-floor');
   }
 
-  // S9 review (finding S3): nothing created this directory before — confirmed, not
-  // assumed, via a repo-wide search. Idempotent (check-then-create), so a concurrent or
+  // Nothing else creates this directory. Idempotent (check-then-create), so a concurrent or
   // repeated call is harmless.
   await deps.fs.ensureDir(paths.mediaCacheDir());
 
@@ -271,10 +266,9 @@ export async function requestFill(request: FillRequest, deps: FillDeps = default
     return discard('discarded-error');
   }
 
-  // Gilfoyle (S8 MUST-FIX 1): `cancelled` was previously checked only once, right here —
-  // every await below (free-space, size-on-disk, rename, insert) was its own re-opened
-  // window where a cancel or a wipe landing mid-fill got silently ignored and the fill
-  // committed anyway. `isStale()` is re-checked before each one now.
+  // Every await below (free-space, size-on-disk, rename, insert) is its own window where
+  // a cancel or a wipe can land mid-fill, so `isStale()` is re-checked before each one,
+  // not just here.
   const isStale = (): boolean => self.cancelled || myGeneration !== generation;
   const staleOutcome = (): FillOutcome => (self.cancelled ? 'skipped-superseded' : 'discarded-error');
 
@@ -339,7 +333,7 @@ export async function requestFill(request: FillRequest, deps: FillDeps = default
     return discard('discarded-error', finalPath);
   }
 
-  // Gilfoyle (S8 MUST-FIX 2, refined at re-check): re-checked once more, after the insert
+  // Re-checked once more, after the insert
   // itself — a wipe landing exactly inside that await must not leave a row (or file) that
   // survived it. Deliberately `myGeneration !== generation || self.explicitlyCancelled`,
   // not the full `isStale()`: a *different* key's fill superseding this one in the
@@ -348,9 +342,9 @@ export async function requestFill(request: FillRequest, deps: FillDeps = default
   // to that other fill — but an explicit `cancelFill(sermonId)` for THIS exact sermon
   // (e.g. `dropSermonFromCache`'s "Downloads wins" path, S6) landing in this same window
   // must still undo the commit: Downloads just claimed this sermon, and a cache row/file
-  // surviving that would contradict S6's whole point. The re-check's first pass caught
-  // this correctly for cancellation-before-insert (`isStale()`, which does include
-  // `self.cancelled`); this is specifically the gap for cancellation-during-insert.
+  // surviving that would contradict S6's whole point. `isStale()` (which includes
+  // `self.cancelled`) covers cancellation before the insert; this covers cancellation
+  // during it.
   if (myGeneration !== generation || self.explicitlyCancelled) {
     await deps.manifestDeleteByKey(key.mediaRefId).catch(() => {});
     await deps.fs.deleteFile(finalPath).catch(() => {});

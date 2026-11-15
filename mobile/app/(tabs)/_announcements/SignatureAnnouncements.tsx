@@ -223,8 +223,7 @@ function Section({
  * title with a green live count, the pinned item as the navy card with a sun in its
  * corner and a gold Share button, the rest as white cards with a weekday-and-day tile.
  *
- * Announcements, Signature redesign (Nii's ask, 2026-10-22: "feel free to redesign
- * announcement screen"), behind `SIGNATURE_ANNOUNCEMENTS_ENABLED`. Same data as the
+ * Announcements, Signature design, behind `SIGNATURE_ANNOUNCEMENTS_ENABLED`. Same data as the
  * classic screen — `useAnnouncements()` with the defensive pinned-first re-sort, no
  * client-side date filtering — laid out as a Signature page: a large display title with a
  * live count, "Pinned" then "Latest" sections (labels only when both have items), and
@@ -256,7 +255,7 @@ export function SignatureAnnouncementsScreen() {
         onHeight={setHeaderHeight}
         style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}
       >
-        {/* Back sits on the title's row (Nii, 2026-11-11); the LIVE pill moves up beside
+        {/* Back sits on the title's row; the LIVE pill moves up beside
             the eyebrow to leave the title its width. */}
         <View style={styles.titleRow}>
           {isTablet ? null : (

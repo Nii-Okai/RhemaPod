@@ -44,12 +44,11 @@ function countLabel(count: number, one: string, many: string): string {
 }
 
 /**
- * Library, Signature redesign (Nii's ask, 2026-10-22: "feel free to redesign library
- * screens"), behind `SIGNATURE_LIBRARY_ENABLED`. Same data, sorting and actions as the
+ * Library, Signature design, behind `SIGNATURE_LIBRARY_ENABLED`. Same data, sorting and actions as the
  * classic tab — playlists and downloads interleaved through `librarySort.ts`, client-side
  * search, the sort sheet, list/grid, long-press delete — restyled in the Signature
  * language: a Newsreader title with a mono tally, Home's "Keep listening"
- * shelf, the You screen's segmented track for the filter (now with an explicit "All"
+ * shelf, the You screen's segmented track for the filter (with an explicit "All"
  * and per-filter counts), and leaf-cornered art with mono meta lines.
  */
 export function SignatureLibraryScreen() {
