@@ -1,0 +1,74 @@
+name: Azure infra check
+
+# Compiles the Bicep templates and parameter files and builds both container
+# images (without pushing), so a broken template or Dockerfile is caught in
+# review rather than during a deploy. Needs no Azure access.
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "scripts/container-start.sh"
+      - "admin_portal/**"
+      - "open_site/staticwebapp.config.json"
+      - ".github/workflows/deploy-azure.yml"
+      - ".github/workflows/infra-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bicep:
+    name: Bicep compiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Placeholders so the parameter files compile; real values come from
+      # deploy.sh at deploy time.
+      DEPLOYER_OBJECT_ID: 00000000-0000-0000-0000-000000000000
+      AZURE_ACR_NAME: rhemapodci
+      POSTGRES_ADMIN_PASSWORD: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - run: az bicep install
+      - name: Build templates
+        run: |
+          for f in infra/azure/*.bicep infra/azure/modules/*.bicep; do
+            echo "== $f"; az bicep build --file "$f" --stdout > /dev/null
+          done
+      - name: Build parameter files
+        run: |
+          for f in infra/azure/params/*.bicepparam; do
+            echo "== $f"; az bicep build-params --file "$f" --stdout > /dev/null
+          done
+      - name: Share site config is valid JSON
+        run: python3 -m json.tool open_site/staticwebapp.config.json > /dev/null
+      - name: Deploy script parses
+        run: bash -n infra/azure/deploy.sh && bash -n infra/azure/setup-github-oidc.sh
+
+  images:
+    name: Images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: API image
+        run: docker build -t rhemapod-api:ci .
+      - name: Admin portal image
+        run: docker build -t rhemapod-admin:ci admin_portal
+      - name: Admin portal image serves
+        run: |
+          docker run -d --name admin -p 3000:3000 \
+            -e API_BASE_URL=http://127.0.0.1:9 -e PORTAL_ORIGIN=http://localhost:3000 rhemapod-admin:ci
+          for _ in $(seq 1 20); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login || true)"
+            [ "$code" = 200 ] && { echo "admin portal up"; exit 0; }
+            sleep 2
+          done
+          docker logs admin; exit 1

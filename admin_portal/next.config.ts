@@ -26,6 +26,11 @@ const BASELINE_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // The Azure image (admin_portal/Dockerfile) sets NEXT_OUTPUT=standalone to
+  // ship only the traced server files. Everywhere else (`next start` on Render,
+  // local dev, CI) the build output stays as it was.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
+
   // Dev-only: lets the browser load `/_next/*` dev assets and hit BFF routes
   // when the page is opened from something other than `localhost` (127.0.0.1,
   // the LAN IP for a phone/tablet). Ignored in production builds.

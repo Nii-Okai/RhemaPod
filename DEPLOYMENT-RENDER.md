@@ -1,5 +1,7 @@
 # Deploying RhemaPod to Render (dev, free plans)
 
+> Moving to Azure: see `DEPLOYMENT-AZURE.md`. This setup keeps running until that guide's cutover (§9).
+
 A hosted copy of the **local dev stack**: same configuration, same R2 `-dev`
 buckets, same Resend key, Stream and archive on their stubs, all on Render's free
 plans. Production is a separate exercise (§9).
