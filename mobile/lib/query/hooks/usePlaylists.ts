@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from '../../api/typedClient';
 import { queryKeys } from '../queryClient';
+import { haptics } from '../../haptics';
 import type { components } from '../../api/schema';
 
 export type PlaylistPublic = components['schemas']['PlaylistPublic'];
@@ -256,11 +257,23 @@ export function useAddToDefaultLibrary() {
     },
   });
 
+  // A tick the moment My List is pressed, before the round trip: firmer when adding.
+  const toggleSermon: typeof toggleSermonMutation.mutate = (sermonId, options) => {
+    if (isInDefaultLibrary(sermonId)) haptics.toggleOff();
+    else haptics.toggleOn();
+    toggleSermonMutation.mutate(sermonId, options);
+  };
+  const toggleSermons: typeof toggleSermonsMutation.mutate = (sermonIds, options) => {
+    if (sermonIds.length > 0 && sermonIds.every((id) => isInDefaultLibrary(id))) haptics.toggleOff();
+    else haptics.toggleOn();
+    toggleSermonsMutation.mutate(sermonIds, options);
+  };
+
   return {
     isInDefaultLibrary,
-    toggleSermon: toggleSermonMutation.mutate,
+    toggleSermon,
     isToggling: toggleSermonMutation.isPending,
-    toggleSermons: toggleSermonsMutation.mutate,
+    toggleSermons,
     isTogglingAll: toggleSermonsMutation.isPending,
   };
 }

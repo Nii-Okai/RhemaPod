@@ -8,6 +8,7 @@ import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { useDownloads } from '../lib/downloads/useDownloads';
+import { haptics } from '../lib/haptics';
 import type { DownloadMediaType, DownloadRecord } from '../lib/downloads/types';
 
 export interface DownloadPillItem {
@@ -137,12 +138,14 @@ export function DownloadPillButton({ items, label = 'Download', compact = false 
   }
 
   const startAll = () => {
+    haptics.download();
     for (const item of items) {
       void downloads.download(item.sermonId, item.title, item.mediaType, item.thumbnailUrl, item.category);
     }
   };
 
   const retryFailed = () => {
+    haptics.download();
     for (let i = 0; i < items.length; i++) {
       const record = records[i];
       if (!record) {

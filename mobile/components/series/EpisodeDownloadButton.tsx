@@ -7,6 +7,7 @@ import { PlatformIcon } from '../PlatformIcon';
 import { useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useDownloads } from '../../lib/downloads/useDownloads';
+import { haptics } from '../../lib/haptics';
 import type { DownloadMediaType } from '../../lib/downloads/types';
 
 export interface EpisodeDownloadButtonProps {
@@ -56,6 +57,7 @@ export function EpisodeDownloadButton({
         icon="download-outline"
         accessibilityLabel={`Download ${episodeTitle}`}
         onPress={() => {
+          haptics.download();
           void downloads.download(episodeId, episodeTitle, mediaType, thumbnailUrl, category);
         }}
       />
@@ -106,6 +108,7 @@ export function EpisodeDownloadButton({
       icon="refresh"
       accessibilityLabel={`Retry download of ${episodeTitle}`}
       onPress={() => {
+        haptics.download();
         void downloads.retry(episodeId);
       }}
     />
