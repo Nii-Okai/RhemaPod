@@ -5,6 +5,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { api } from '../api/typedClient';
 import type { NotificationPreferences, ReminderTime } from '../settings/notificationPreferences';
+import { setAppIconBadge } from './appBadge';
 
 /**
  * Push and local notifications.
@@ -106,6 +107,7 @@ export async function syncPushRegistration(prefs: NotificationPreferences): Prom
  */
 export async function teardownNotificationsForSignOut(): Promise<void> {
   const work = (async () => {
+    await setAppIconBadge(0);
     try {
       await Notifications.cancelScheduledNotificationAsync(DAILY_RHEMA_REMINDER_ID);
     } catch {

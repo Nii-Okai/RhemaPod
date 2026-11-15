@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCurrentUser } from './useProfile';
 import { useNewReleases } from './useNewReleases';
 import { getReadNotificationIds, markNotificationRead, markNotificationsRead } from '../../settings/notificationsSeen';
+import { setAppIconBadge } from '../../notifications/appBadge';
 
 /**
  * Backs `HomeHeader`'s bell dot and the `/notifications` screen it opens (Isaac's
@@ -21,11 +22,14 @@ export function useNotificationsBadge() {
   const userId = user?.id;
 
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readsLoaded, setReadsLoaded] = useState(false);
   useEffect(() => {
     if (!userId) return;
     let active = true;
     getReadNotificationIds(userId).then((ids) => {
-      if (active) setReadIds(ids);
+      if (!active) return;
+      setReadIds(ids);
+      setReadsLoaded(true);
     });
     return () => {
       active = false;
@@ -53,6 +57,14 @@ export function useNotificationsBadge() {
   };
 
   const unseenCount = (newReleases.data ?? []).filter((sermon) => !readIds.has(sermon.id)).length;
+  const releasesLoaded = newReleases.data !== undefined;
+
+  // Keep the iPhone app-icon number equal to the bell's count. Waits until both the list
+  // and the read state have loaded, so it never flashes 0 or "everything" at launch.
+  useEffect(() => {
+    if (!userId || !readsLoaded || !releasesLoaded) return;
+    void setAppIconBadge(unseenCount);
+  }, [userId, readsLoaded, releasesLoaded, unseenCount]);
 
   return { unseenCount, isRead, markRead, markAllRead };
 }

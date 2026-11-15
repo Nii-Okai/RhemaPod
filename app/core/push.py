@@ -82,6 +82,10 @@ class ExpoPushSender:
                         "data": m.data,
                         "sound": "default",
                         "channelId": "default",
+                        # iOS only shows an app-icon number if the push carries one, and the
+                        # real unread count lives on the phone; the app replaces this 1 with
+                        # it when opened. Android ignores the field.
+                        "badge": 1,
                     }
                     for m in batch
                 ]
