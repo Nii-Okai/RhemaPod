@@ -21,6 +21,8 @@ import { usePlaylists } from '../../../../lib/query/hooks/usePlaylists';
 import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
 import { ProfileAvatarPicker } from '../ProfileAvatarPicker';
 import { ProfileDetailsSheet } from '../ProfileDetailsSheet';
+import { ReminderTimeSheet } from '../ReminderTimeSheet';
+import { formatReminderTime } from '../../../../lib/settings/notificationPreferences';
 import { ThemeSwitch } from './ThemeSwitch';
 import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 import { formatCacheSize, useMediaCacheUsage } from '../../../../lib/mediaCache/useMediaCacheUsage';
@@ -172,6 +174,8 @@ export function SignatureYouScreen() {
 
   const [detailsSheetOpen, setDetailsSheetOpen] = React.useState(false);
   const [guidelinesOpen, setGuidelinesOpen] = React.useState(false);
+  const [reminderTimeOpen, setReminderTimeOpen] = React.useState(false);
+  const reminderTime = formatReminderTime(notifications.preferences.dailyRhemaTime);
   const [profileUpdated, setProfileUpdated] = React.useState(false);
 
   const { journal } = useJournal();
@@ -343,14 +347,24 @@ export function SignatureYouScreen() {
           />
           <ToggleRow
             label="Daily Rhema reminder"
-            detail="Each morning at 7:00"
+            detail={`Every day at ${reminderTime}`}
             value={notifications.preferences.dailyRhema}
             onValueChange={(enabled) => {
               void notifications.setDailyRhema(enabled).then(setNotificationOutcome);
             }}
             disabled={notifications.isSaving}
-            accessibilityLabel="Daily Rhema reminder each morning"
+            accessibilityLabel={`Daily Rhema reminder every day at ${reminderTime}`}
           />
+          {/* Only while the reminder is on: an off reminder has no time to change. */}
+          {notifications.preferences.dailyRhema ? (
+            <LinkRow
+              icon="time-outline"
+              label="Reminder time"
+              detail={reminderTime}
+              accessibilityLabel={`Reminder time, ${reminderTime}. Change`}
+              onPress={() => setReminderTimeOpen(true)}
+            />
+          ) : null}
           {notificationOutcome === 'denied' ? (
             <LinkRow
               icon="notifications-outline"
@@ -454,6 +468,18 @@ export function SignatureYouScreen() {
         }}
       />
       <TermsSheet visible={guidelinesOpen} readOnly onClose={() => setGuidelinesOpen(false)} />
+      <ReminderTimeSheet
+        visible={reminderTimeOpen}
+        initialTime={notifications.preferences.dailyRhemaTime}
+        saving={notifications.isSaving}
+        onClose={() => setReminderTimeOpen(false)}
+        onSave={(time) => {
+          void notifications.setDailyRhemaTime(time).then((outcome) => {
+            setNotificationOutcome(outcome);
+            if (outcome === 'ok') setReminderTimeOpen(false);
+          });
+        }}
+      />
     </ScrollView>
   );
 }

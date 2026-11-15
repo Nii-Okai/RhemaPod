@@ -50,6 +50,14 @@ jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
 
+jest.mock('../../../../../lib/notifications/push', () => ({
+  hasNotificationPermission: jest.fn(async () => true),
+  requestNotificationPermission: jest.fn(async () => 'granted'),
+  setDailyRhemaReminder: jest.fn(async () => undefined),
+  syncPushRegistration: jest.fn(async () => undefined),
+}));
+const mockNotify = jest.requireMock('../../../../../lib/notifications/push') as Record<string, jest.Mock>;
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -162,6 +170,36 @@ describe('SignatureYouScreen', () => {
     expect(screen.getByText('Community guidelines')).toBeTruthy();
     expect(screen.getByText('Delete account')).toBeTruthy();
     expect(screen.getByText('Sign out')).toBeTruthy();
+  });
+
+  it('shows the Daily Rhema time and lets the listener change it', async () => {
+    await kv().setItem(
+      'rhemapod-notification-preferences',
+      JSON.stringify({ newSermons: false, dailyRhema: true, dailyRhemaTime: { hour: 21, minute: 30 } }),
+    );
+    mockNotify.setDailyRhemaReminder.mockClear();
+    const screen = renderYou();
+    await screen.findByText('Every day at 9:30 PM');
+
+    fireEvent.press(screen.getByLabelText('Reminder time, 9:30 PM. Change'));
+    fireEvent.press(await screen.findByLabelText('Hour later'));
+    fireEvent.press(screen.getByLabelText('Minute later'));
+    await act(async () => {
+      fireEvent.press(screen.getByText('Remind me at 10:35 PM'));
+    });
+
+    expect(mockNotify.setDailyRhemaReminder).toHaveBeenCalledWith(true, { hour: 22, minute: 35 });
+    await screen.findByText('Every day at 10:35 PM');
+  });
+
+  it('hides the time row while the reminder is off', async () => {
+    mockNotify.hasNotificationPermission.mockClear();
+    const screen = renderYou();
+    await screen.findByText('ada@example.com');
+    await waitFor(() => expect(mockNotify.hasNotificationPermission).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.getByText('Every day at 7:00 AM')).toBeTruthy();
+    expect(screen.queryByText('Reminder time')).toBeNull();
   });
 
   it('switches the theme three ways and saves the choice', async () => {

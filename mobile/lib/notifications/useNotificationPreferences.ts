@@ -4,6 +4,7 @@ import {
   loadNotificationPreferences,
   saveNotificationPreferences,
   type NotificationPreferences,
+  type ReminderTime,
 } from '../settings/notificationPreferences';
 import {
   hasNotificationPermission,
@@ -20,6 +21,8 @@ export interface UseNotificationPreferencesResult {
   isSaving: boolean;
   setNewSermons: (enabled: boolean) => Promise<ToggleOutcome>;
   setDailyRhema: (enabled: boolean) => Promise<ToggleOutcome>;
+  /** Moves the reminder to a new time; re-arms it straight away if it is on. */
+  setDailyRhemaTime: (time: ReminderTime) => Promise<ToggleOutcome>;
 }
 
 /**
@@ -39,7 +42,8 @@ export function useNotificationPreferences(): UseNotificationPreferencesResult {
     void (async () => {
       const [stored, allowed] = await Promise.all([loadNotificationPreferences(), hasNotificationPermission()]);
       if (!mounted.current || touched.current) return;
-      setPreferences(allowed ? stored : DEFAULT_NOTIFICATION_PREFERENCES);
+      // Without OS permission both toggles show off, but the chosen time is kept.
+      setPreferences(allowed ? stored : { ...DEFAULT_NOTIFICATION_PREFERENCES, dailyRhemaTime: stored.dailyRhemaTime });
     })().catch(() => undefined);
     return () => {
       mounted.current = false;
@@ -59,7 +63,9 @@ export function useNotificationPreferences(): UseNotificationPreferencesResult {
       setIsSaving(true);
       try {
         await saveNotificationPreferences(next);
-        if ('dailyRhema' in patch) await setDailyRhemaReminder(next.dailyRhema);
+        if ('dailyRhema' in patch || ('dailyRhemaTime' in patch && next.dailyRhema)) {
+          await setDailyRhemaReminder(next.dailyRhema, next.dailyRhemaTime);
+        }
         if ('newSermons' in patch) await syncPushRegistration(next);
         return 'ok';
       } catch {
@@ -75,5 +81,10 @@ export function useNotificationPreferences(): UseNotificationPreferencesResult {
   const setNewSermons = useCallback((enabled: boolean) => apply({ newSermons: enabled }, enabled), [apply]);
   const setDailyRhema = useCallback((enabled: boolean) => apply({ dailyRhema: enabled }, enabled), [apply]);
 
-  return { preferences, isSaving, setNewSermons, setDailyRhema };
+  const setDailyRhemaTime = useCallback(
+    (time: ReminderTime) => apply({ dailyRhemaTime: { hour: time.hour, minute: time.minute } }, false),
+    [apply],
+  );
+
+  return { preferences, isSaving, setNewSermons, setDailyRhema, setDailyRhemaTime };
 }

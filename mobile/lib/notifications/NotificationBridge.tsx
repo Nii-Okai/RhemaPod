@@ -32,7 +32,7 @@ export function NotificationBridge() {
       if (!(await hasNotificationPermission())) return;
       const prefs = await loadNotificationPreferences();
       await syncPushRegistration(prefs);
-      if (prefs.dailyRhema) await setDailyRhemaReminder(true);
+      if (prefs.dailyRhema) await setDailyRhemaReminder(true, prefs.dailyRhemaTime);
     })().catch(() => undefined);
   }, [status]);
 
