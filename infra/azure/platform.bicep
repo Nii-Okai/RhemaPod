@@ -196,6 +196,9 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
     tenantId: subscription().tenantId
     sku: { family: 'A', name: 'standard' }
     enableRbacAuthorization: true
+    // main.bicep reads the generated passwords from here with getSecret(),
+    // which Azure Resource Manager may only do when this is on.
+    enabledForTemplateDeployment: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 30
     enablePurgeProtection: platformName == 'prod' ? true : null
