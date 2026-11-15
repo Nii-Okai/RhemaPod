@@ -66,9 +66,17 @@ missing_secrets() {
   rm -f "$built"
 }
 
+# Creates the resource group only if it's missing. An existing group keeps its
+# region; the resources in it follow AZURE_LOCATION, which Azure allows.
+ensure_group() {
+  if [[ "$(az group exists -n "$1")" != true ]]; then
+    az group create -n "$1" -l "$AZURE_LOCATION" -o none
+  fi
+}
+
 deploy_shared() {
   local rg="$AZURE_ACR_RESOURCE_GROUP"
-  az group create -n "$rg" -l "$AZURE_LOCATION" -o none
+  ensure_group "$rg"
   az deployment group create -g "$rg" -n "shared-$(stamp)" \
     -f "$HERE/shared.bicep" -p acrName="$AZURE_ACR_NAME" \
     --query properties.outputs -o json
@@ -81,7 +89,7 @@ deploy_platform() {
     prod) params="$HERE/params/prod-platform.bicepparam" ;;
     *) die "platform must be nonprod or prod" ;;
   esac
-  az group create -n "$rg" -l "$AZURE_LOCATION" -o none
+  ensure_group "$rg"
   vault="$(az keyvault list -g "$rg" \
     --query "[?starts_with(name, 'kv-rp-$platform-') && !contains(name, '-app-')].name | [0]" -o tsv)"
 
