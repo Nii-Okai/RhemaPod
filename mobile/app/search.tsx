@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, FittedArt, MediaRow, PlatformIcon, QueryState, RowPill } from '../components';
-import { createThemedStyles, useTheme } from '../theme/ThemeContext';
+import { AppText, FittedArt, MediaRow, QueryState, RowPill, SearchField } from '../components';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { spacing } from '../theme/spacing';
 import { formatDuration } from '../lib/format/duration';
 import { useDebouncedValue } from '../lib/hooks/useDebouncedValue';
@@ -43,12 +43,10 @@ type Filter = 'all' | 'sermons' | 'series' | 'speakers';
  * (Isaac, 2026-10-02), because the Daybreak mockup Nii approved has them.
  */
 export default function SearchScreen() {
-  const { colors } = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rawQuery, setRawQuery] = useState('');
-  const [focused, setFocused] = useState(false);
   const debouncedQuery = useDebouncedValue(rawQuery, DEBOUNCE_MS);
   const trimmed = debouncedQuery.trim();
   const hasQuery = rawQuery.trim().length > 0;
@@ -106,31 +104,16 @@ export default function SearchScreen() {
           route with `animation: 'none'`, so the field reads as the same one the Home and
           Discover search buttons stand for. */}
       <View style={[styles.searchBarWrap, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
-        <View style={[styles.inputBox, focused && styles.inputBoxFocused]}>
-          <PlatformIcon name="search" size={20} color={colors.text.tertiary} />
-          <TextInput
-            value={rawQuery}
-            onChangeText={setRawQuery}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="Search sermons, series, speakers"
-            placeholderTextColor={colors.text.tertiary}
-            selectionColor={colors.iris.fill}
-            style={styles.input}
-            accessibilityLabel="Search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            // Isaac's ask, session 2026-10-02: the field is ready to type into the
-            // instant the screen opens, no extra tap to focus it first.
-            autoFocus
-          />
-          {hasQuery ? (
-            <Pressable onPress={() => setRawQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={spacing.sm}>
-              <PlatformIcon name="close-circle" size={18} color={colors.text.tertiary} />
-            </Pressable>
-          ) : null}
-        </View>
+        <SearchField
+          value={rawQuery}
+          onChangeText={setRawQuery}
+          placeholder="Sermons, series, speakers"
+          accessibilityLabel="Search"
+          style={styles.field}
+          // Isaac's ask, session 2026-10-02: the field is ready to type into the
+          // instant the screen opens, no extra tap to focus it first.
+          autoFocus
+        />
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={spacing.sm} style={styles.cancel}>
           <AppText variant="ui.bodyBold" tone="gold">
             Cancel
@@ -326,28 +309,10 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg + 4,
-  },
-  inputBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 2,
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.border.default,
-    backgroundColor: colors.surface.raised,
     paddingHorizontal: spacing.lg,
   },
-  inputBoxFocused: {
-    borderColor: colors.iris.fill,
-  },
-  input: {
+  field: {
     flex: 1,
-    color: colors.text.primary,
-    fontSize: 16,
-    paddingVertical: spacing.xs,
   },
   cancel: {
     paddingVertical: spacing.md,
@@ -357,7 +322,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   chips: {
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg + 4,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
   },
@@ -384,7 +349,7 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   resultsContent: {
-    paddingHorizontal: spacing.lg + 4,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xxl * 2,
     gap: spacing.xl,

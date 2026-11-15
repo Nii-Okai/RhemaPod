@@ -198,10 +198,6 @@ export function SignatureYouScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl {...pullToRefresh} />}
     >
-      <AppText variant="display.hero" accessibilityRole="header">
-        You
-      </AppText>
-
       <View style={styles.profileCard}>
         <View style={styles.profileOrb} pointerEvents="none" />
         {profileQuery.isLoading ? (

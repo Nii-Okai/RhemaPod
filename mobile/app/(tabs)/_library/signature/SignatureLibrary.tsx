@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, PlatformIcon, SectionError, ShelfSkeleton, StaggerItem } from '../../../../components';
+import { AppText, IconButton, PlatformIcon, SearchField, SectionError, ShelfSkeleton, StaggerItem } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
-import { fontFamily } from '../../../../theme/typography';
 import { userMessageFor } from '../../../../lib/api/errors';
 import { useDownloads } from '../../../../lib/downloads/useDownloads';
 import { useContinueWatching } from '../../../../lib/query/hooks/useContinueWatching';
@@ -213,18 +212,13 @@ export function SignatureLibraryScreen() {
           </AppText>
 
           {searchActive ? (
-            <View style={styles.searchBar}>
-              <PlatformIcon name="search" size={16} color={colors.text.tertiary} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search your library"
-                placeholderTextColor={colors.text.tertiary}
-                autoFocus
-                style={styles.searchInput}
-                accessibilityLabel="Search your library"
-              />
-            </View>
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search your library"
+              autoFocus
+              accessibilityLabel="Search your library"
+            />
           ) : null}
 
           <SegmentedControl<FilterKey>
@@ -368,24 +362,6 @@ const useStyles = createThemedStyles((colors) => ({
   shelf: {
     gap: spacing.md,
     paddingHorizontal: GUTTER,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 44,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.card,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: fontFamily.ui,
-    fontSize: 15,
-    color: colors.text.primary,
-    paddingVertical: spacing.sm,
   },
   sortRow: {
     flexDirection: 'row',
