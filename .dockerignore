@@ -80,3 +80,6 @@ admin_portal/
 # Was missing until 2026-09-28 — node_modules/ + ios/Pods/ alone routinely
 # pushed the build context past 1GB on every backend image build. ──
 mobile/
+
+# ── infrastructure as code (not runtime) ──
+infra/

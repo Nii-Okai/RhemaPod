@@ -1,0 +1,219 @@
+name: Deploy to Azure
+
+# Builds the API and admin portal images for a commit, runs the database
+# migrations once, then rolls the apps onto the new images
+# (DEPLOYMENT-AZURE.md §8).
+#
+#   push to dev  → dev
+#   push to uat  → test
+#   push to prod → production (waits for a required reviewer on the
+#                  `production` GitHub environment)
+#
+# Does nothing until the repository variable AZURE_DEPLOY_ENABLED is "true",
+# so merging this file changes nothing, and the Render deploys keep running
+# alongside until cutover.
+on:
+  push:
+    branches: [dev, uat, prod]
+    paths-ignore:
+      - "mobile/**"
+      - "docs/**"
+      - "plans/**"
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy the selected branch to"
+        type: choice
+        options: [dev, test, production]
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # GitHub → Azure sign-in without a stored password (OIDC)
+
+concurrency:
+  group: deploy-azure-${{ github.ref }}
+  cancel-in-progress: false # never interrupt a migration
+
+jobs:
+  resolve:
+    name: Pick environment
+    if: vars.AZURE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.pick.outputs.environment }}
+      env_name: ${{ steps.pick.outputs.env_name }}
+      resource_group: ${{ steps.pick.outputs.resource_group }}
+    steps:
+      - id: pick
+        env:
+          INPUT_ENV: ${{ inputs.environment }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ -n "$INPUT_ENV" ]; then
+            environment="$INPUT_ENV"
+          else
+            case "$BRANCH" in
+              dev) environment=dev ;;
+              uat) environment=test ;;
+              prod) environment=production ;;
+              *) echo "No environment for branch $BRANCH" >&2; exit 1 ;;
+            esac
+          fi
+          case "$environment" in
+            dev) env_name=dev; rg=rg-rhemapod-nonprod ;;
+            test) env_name=test; rg=rg-rhemapod-nonprod ;;
+            production) env_name=prod; rg=rg-rhemapod-prod ;;
+          esac
+          {
+            echo "environment=$environment"
+            echo "env_name=$env_name"
+            echo "resource_group=$rg"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy to ${{ needs.resolve.outputs.environment }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ needs.resolve.outputs.environment }}
+    env:
+      ENV_NAME: ${{ needs.resolve.outputs.env_name }}
+      RG: ${{ needs.resolve.outputs.resource_group }}
+      ACR: ${{ vars.AZURE_ACR_NAME }}
+      ACR_SUBSCRIPTION: ${{ vars.AZURE_ACR_SUBSCRIPTION_ID }}
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign in to the registry
+        run: az acr login --name "$ACR" --subscription "$ACR_SUBSCRIPTION"
+
+      - name: Build and push images (skipped if this commit is already built)
+        run: |
+          for image in rhemapod-api rhemapod-admin; do
+            if az acr manifest show-metadata --registry "$ACR" --subscription "$ACR_SUBSCRIPTION" \
+                 --name "$image:$TAG" -o none 2>/dev/null; then
+              echo "$image:$TAG already in $ACR"
+              continue
+            fi
+            context=.
+            [ "$image" = rhemapod-admin ] && context=admin_portal
+            docker build --pull -t "$ACR.azurecr.io/$image:$TAG" "$context"
+            docker push "$ACR.azurecr.io/$image:$TAG"
+          done
+
+      - name: Check the environment exists
+        id: exists
+        run: |
+          if az containerapp show -g "$RG" -n "rhemapod-$ENV_NAME-api" -o none 2>/dev/null; then
+            echo "apps=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apps=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Images pushed with tag $TAG. The $ENV_NAME apps don't exist yet: run infra/azure/deploy.sh app $ENV_NAME --image-tag $TAG (DEPLOYMENT-AZURE.md §5)."
+          fi
+
+      - name: Point the jobs at the new image
+        if: steps.exists.outputs.apps == 'true'
+        run: |
+          image="$ACR.azurecr.io/rhemapod-api:$TAG"
+          for job in $(az containerapp job list -g "$RG" \
+              --query "[?starts_with(name, 'rhemapod-$ENV_NAME-')].name" -o tsv); do
+            az containerapp job update -g "$RG" -n "$job" --image "$image" -o none
+            echo "updated $job"
+          done
+
+      - name: Run database migrations
+        if: steps.exists.outputs.apps == 'true'
+        run: |
+          job="rhemapod-$ENV_NAME-migrate"
+          execution="$(az containerapp job start -g "$RG" -n "$job" --query name -o tsv)"
+          echo "migration execution: $execution"
+          for _ in $(seq 1 120); do
+            status="$(az containerapp job execution show -g "$RG" -n "$job" \
+              --job-execution-name "$execution" --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded) echo "migrations applied"; exit 0 ;;
+              Failed|Stopped|Degraded)
+                echo "::error::Migration $execution ended $status. The apps were not updated. Logs: Azure portal → $job → Execution history."
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Migration $execution still running after 20 minutes"
+          exit 1
+
+      - name: Roll out the API
+        if: steps.exists.outputs.apps == 'true'
+        run: |
+          az containerapp update -g "$RG" -n "rhemapod-$ENV_NAME-api" \
+            --image "$ACR.azurecr.io/rhemapod-api:$TAG" \
+            --set-env-vars "SENTRY_RELEASE=$TAG" -o none
+
+      - name: Check the API is ready
+        if: steps.exists.outputs.apps == 'true'
+        run: |
+          host="$(az containerapp show -g "$RG" -n "rhemapod-$ENV_NAME-api" \
+            --query properties.configuration.ingress.fqdn -o tsv)"
+          # Dev and test scale to zero, so the first request also starts a replica.
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 20 "https://$host/health/ready"; then echo; exit 0; fi
+            sleep 10
+          done
+          echo "::error::https://$host/health/ready never became ready. A failing preflight keeps the previous revision serving; see the new revision's logs."
+          exit 1
+
+      - name: Roll out the admin portal
+        if: steps.exists.outputs.apps == 'true'
+        run: |
+          az containerapp update -g "$RG" -n "rhemapod-$ENV_NAME-admin" \
+            --image "$ACR.azurecr.io/rhemapod-admin:$TAG" -o none
+
+      # Test and production can run a commit older than the newest dev builds,
+      # and a replica restart has to pull it again, so the cleanup below must
+      # never delete what they run.
+      - name: Keep test and production images from being cleaned up
+        if: steps.exists.outputs.apps == 'true' && env.ENV_NAME != 'dev'
+        run: |
+          for image in rhemapod-api rhemapod-admin; do
+            az acr repository update --name "$ACR" --subscription "$ACR_SUBSCRIPTION" \
+              --image "$image:$TAG" --delete-enabled false -o none
+          done
+
+      - name: Share site deploy token
+        id: share
+        if: env.ENV_NAME == 'prod'
+        run: |
+          token="$(az staticwebapp secrets list -g "$RG" -n swa-rhemapod-prod-share \
+            --query properties.apiKey -o tsv 2>/dev/null || true)"
+          if [ -n "$token" ]; then
+            echo "::add-mask::$token"
+            echo "token=$token" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy the share site (open.rhemapod.com)
+        if: steps.share.outputs.token != ''
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.share.outputs.token }}
+          action: upload
+          app_location: open_site
+          skip_app_build: true
+          skip_api_build: true
+
+      # Cost guardrail: ACR Basic includes 10 GB. Keeps the 20 newest builds per
+      # image, anything from the last 14 days, and every image locked above.
+      - name: Clean up old images
+        if: always() && steps.exists.outcome == 'success'
+        continue-on-error: true
+        run: |
+          az acr run --registry "$ACR" --subscription "$ACR_SUBSCRIPTION" \
+            --cmd "acr purge --filter 'rhemapod-api:.*' --filter 'rhemapod-admin:.*' --ago 14d --keep 20 --untagged" \
+            /dev/null
