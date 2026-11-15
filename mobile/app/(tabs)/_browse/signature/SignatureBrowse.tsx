@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Avatar, PlatformIcon, PressableScale, QueryState } from '../../../../components';
+import { AppText, Avatar, PlatformIcon, PressableScale, QueryState, SearchField } from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
-import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { formatDuration } from '../../../../lib/format/duration';
 import { useDebouncedValue } from '../../../../lib/hooks/useDebouncedValue';
@@ -111,30 +110,12 @@ export function SignatureBrowseScreen() {
         <AppText variant="display.hero" accessibilityRole="header">
           Discover
         </AppText>
-        <View style={styles.field}>
-          <PlatformIcon name="search" size={20} color={colors.text.secondary} />
-          <TextInput
-            value={rawQuery}
-            onChangeText={setRawQuery}
-            placeholder="Sermons, series, speakers"
-            placeholderTextColor={colors.text.secondary}
-            style={styles.input}
-            accessibilityLabel="Search sermons, series, speakers"
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-          {rawQuery.length > 0 ? (
-            <Pressable
-              onPress={() => setRawQuery('')}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-              hitSlop={spacing.sm}
-            >
-              <PlatformIcon name="close-circle" size={20} color={colors.text.tertiary} />
-            </Pressable>
-          ) : null}
-        </View>
+        <SearchField
+          value={rawQuery}
+          onChangeText={setRawQuery}
+          placeholder="Sermons, series, speakers"
+          accessibilityLabel="Search sermons, series, speakers"
+        />
       </View>
 
       <ScrollView
@@ -343,23 +324,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
-  },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    height: 48,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    backgroundColor: colors.surface.raised,
-  },
-  input: {
-    flex: 1,
-    color: colors.text.primary,
-    fontSize: 16,
-    paddingVertical: spacing.xs,
   },
   scroll: {
     flex: 1,
