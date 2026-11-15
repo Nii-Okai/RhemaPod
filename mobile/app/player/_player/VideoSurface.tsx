@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
-import { VideoView } from 'expo-video';
+import { VideoView, isPictureInPictureSupported } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
 import { FittedArt } from '../../../components/FittedArt';
 import { colors } from '../../../theme/colors';
@@ -121,6 +121,17 @@ export function VideoSurface({
     return () => clearTimeout(unmount);
   }, [visible, reduceMotion, opacity]);
 
+  // Picture-in-picture is for video only: an audio sermon already keeps playing in the
+  // background with the lock-screen controls, and its video layer has nothing to show.
+  const canPictureInPicture = !isAudio && isPictureInPictureSupported();
+  const [inPictureInPicture, setInPictureInPicture] = useState(false);
+  const togglePictureInPicture = () => {
+    const view = videoRef.current;
+    if (!view) return;
+    // Best-effort, like fullscreen: a refusal (another app's PiP, a policy) changes nothing.
+    (inPictureInPicture ? view.stopPictureInPicture() : view.startPictureInPicture()).catch(() => {});
+  };
+
   const act = (action: () => void) => () => {
     overlay.touch();
     action();
@@ -136,6 +147,13 @@ export function VideoSurface({
         allowsFullscreen
         onFullscreenEnter={() => onFullscreenChange(true)}
         onFullscreenExit={() => onFullscreenChange(false)}
+        // Leaving the app (home gesture, app switcher) while a video sermon plays floats it
+        // in a small window, as YouTube and Apple TV do; the Picture in picture button in
+        // the controls does the same on demand.
+        allowsPictureInPicture={canPictureInPicture}
+        startsPictureInPictureAutomatically={canPictureInPicture}
+        onPictureInPictureStart={() => setInPictureInPicture(true)}
+        onPictureInPictureStop={() => setInPictureInPicture(false)}
         contentFit="contain"
       />
       {isAudio && artworkUrl ? (
@@ -212,6 +230,7 @@ export function VideoSurface({
               onCycleCaptions={onCycleCaptions ? act(onCycleCaptions) : undefined}
               onOpenSleepTimer={act(onOpenSleepTimer)}
               onToggleFullscreen={act(onToggleFullscreen)}
+              onTogglePictureInPicture={canPictureInPicture ? act(togglePictureInPicture) : undefined}
             />
           </View>
         </Animated.View>

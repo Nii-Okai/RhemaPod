@@ -4,10 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import type { VideoView } from 'expo-video';
+import { AirPlayButton, isAirPlayAvailable } from 'airplay-button';
 import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
 import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
-import { createThemedStyles } from '../../theme/ThemeContext';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSermonDetail, type SermonDetail } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
@@ -316,6 +317,7 @@ export default function PlayerScreen() {
           <SignaturePlayerHeader
             onBack={goBack}
             center={hasStage && !keyboardVisible ? <ModeSwitch mode={mode} onChange={setMode} /> : null}
+            right={<PlayerAirPlayButton video={detail?.media_type === 'video'} />}
           />
           {body}
         </KeyboardAvoidingView>
@@ -393,6 +395,24 @@ export default function PlayerScreen() {
  * the title block, then the panel below — so the swap to the real player reads as the
  * controls arriving rather than as a second screen transition.
  */
+/**
+ * AirPlay (iOS): the system's own device picker. The shared player follows whatever speaker
+ * or Apple TV is picked there, so nothing else in the screen changes. Nothing on Android
+ * or on builds without the native button.
+ */
+function PlayerAirPlayButton({ video }: { video: boolean }) {
+  const { colors } = useTheme();
+  if (!isAirPlayAvailable) return null;
+  return (
+    <AirPlayButton
+      testID="player-airplay"
+      tintColor={colors.text.primary}
+      activeTintColor={colors.accent.goldText}
+      video={video}
+    />
+  );
+}
+
 function PlayerLoading({ sermonId, detail }: { sermonId: string; detail?: SermonDetail }) {
   const styles = useStyles();
   return (

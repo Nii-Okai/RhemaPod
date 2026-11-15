@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 import { AppText, PlatformIcon, type AppIconName } from '../../../components';
 import { colors } from '../../../theme/colors';
 import { radius } from '../../../theme/radius';
@@ -119,6 +120,8 @@ export interface PlayerBottomBarProps {
   onCycleCaptions?: () => void;
   onOpenSleepTimer: () => void;
   onToggleFullscreen: () => void;
+  /** Floats the video in a small window. Absent for audio and where PiP isn't supported. */
+  onTogglePictureInPicture?: () => void;
 }
 
 /**
@@ -146,6 +149,7 @@ export function PlayerBottomBar({
   onCycleCaptions,
   onOpenSleepTimer,
   onToggleFullscreen,
+  onTogglePictureInPicture,
 }: PlayerBottomBarProps) {
   const timeLabel = `${formatDuration(currentTimeSeconds)} of ${formatDuration(durationSeconds)}`;
 
@@ -231,6 +235,19 @@ export function PlayerBottomBar({
           ) : null}
         </Pressable>
 
+        {onTogglePictureInPicture ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Picture in picture"
+            accessibilityHint="Keeps the video playing in a small window while you use other apps"
+            onPress={onTogglePictureInPicture}
+            hitSlop={spacing.sm}
+            style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+          >
+            <PictureInPictureIcon size={20} color={colors.text.primary} />
+          </Pressable>
+        ) : null}
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
@@ -242,6 +259,19 @@ export function PlayerBottomBar({
         </Pressable>
       </View>
     </View>
+  );
+}
+
+/**
+ * The usual picture-in-picture glyph: a screen with a smaller filled window in its corner.
+ * Drawn here because neither icon set the app uses has one on iOS (Ionicons).
+ */
+function PictureInPictureIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden importantForAccessibility="no">
+      <Rect x={2.75} y={4.75} width={18.5} height={14.5} rx={2.25} stroke={color} strokeWidth={1.5} fill="none" />
+      <Rect x={12} y={12} width={7} height={5} rx={1} fill={color} />
+    </Svg>
   );
 }
 

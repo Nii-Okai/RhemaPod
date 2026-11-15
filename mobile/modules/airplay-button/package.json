@@ -1,0 +1,9 @@
+{
+  "name": "airplay-button",
+  "version": "1.0.0",
+  "description": "Local Expo native view: the system AirPlay route picker (AVRoutePickerView) for the player screen.",
+  "main": "index.tsx",
+  "types": "index.tsx",
+  "license": "UNLICENSED",
+  "private": true
+}
