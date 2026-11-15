@@ -278,9 +278,10 @@ Nothing here happens automatically. Render keeps running until you switch DNS an
 ### Cold starts and warm hours (dev, test)
 
 With no traffic for about 5 minutes, dev and test scale to zero. The next request then waits about
-10–30 seconds while a replica starts and runs preflight. To avoid that while you work, switch on
-`warmHours` in `params/dev.bicepparam` or `params/test.bicepparam`. Set `enabled: true`, set your
-`timezone`, and set `start` / `end` as cron expressions. Then run `deploy.sh app <env>` and commit the change.
+10–30 seconds while a replica starts and runs preflight. Test has warm hours on, 09:00–20:00 UK time every day. Dev has them off. To change either one, edit
+`warmHours` in `params/dev.bicepparam` or `params/test.bicepparam`. Set `enabled`, `timezone`, and `start` / `end`. The start and end are cron
+expressions, so they control days as well as hours: `'0 9 * * *'` means 09:00 every day, and
+`'0 9 * * 1-5'` means 09:00 on weekdays. Then run `deploy.sh app <env>` and commit the change.
 Between start and end, one API replica and one admin replica stay running. Outside that window they
 scale to zero again.
 
@@ -292,6 +293,7 @@ about 0.8 US cents an hour.
 |---|---|---|---|
 | Off (default) | $0 | $0 | $0 |
 | Weekdays 08:00–19:00 (default window) | ~$2 / month | ~$4 | ~$8 |
+| Every day 09:00–20:00 (test today) | ~$2.70 | ~$5.40 | ~$11 |
 | Every day 08:00–22:00 | ~$3.40 | ~$7 | ~$14 |
 | Always on | ~$6 | ~$12 | ~$24 |
 

@@ -34,15 +34,17 @@ param adminMaxReplicas = 1
 param appCpu = '0.25'
 param appMemory = '0.5Gi'
 
-// Set enabled to true to keep the API and admin portal warm in these hours
-// (no cold starts). About 0.8 US cents per app per warm hour at this size; the
-// default weekday 08:00–19:00 window is about $2 a month per app, $4 for this
-// environment's API + admin. Off: they scale to zero after ~5 idle minutes.
+// Warm hours: one API and one admin replica stay running between start and
+// end, so nobody waits for a cold start then; outside it they scale to zero.
+// start/end are cron expressions (minute hour day-of-month month day-of-week)
+// in `timezone`: '0 9 * * *' is 09:00 every day, '0 9 * * 1-5' weekdays only.
+// About 0.8 US cents per app per warm hour at this size: 09:00–20:00 every day
+// is about $2.70 a month per app, about $5.40 for test's API + admin.
 param warmHours = {
-  enabled: false
+  enabled: true
   timezone: 'Europe/London'
-  start: '0 8 * * 1-5'
-  end: '0 19 * * 1-5'
+  start: '0 9 * * *'
+  end: '0 20 * * *'
 }
 
 param apiSettings = union(commonSettings, {
