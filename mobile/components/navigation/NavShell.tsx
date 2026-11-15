@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View } from 'react-native';
 import { createThemedStyles } from '../../theme/ThemeContext';
 import { usePlatformOS } from './platform';
 import { FloatingDock } from './FloatingDock';
-import { MiniPlayer } from './MiniPlayer';
+import { MiniPlayer, MiniPlayerSlot } from './MiniPlayer';
 import { TabletRail } from './TabletRail';
 import { resolveChromeVariant, useDeviceClass } from './useDeviceClass';
 
@@ -23,6 +23,10 @@ export function NavShell({ children }: NavShellProps) {
   const deviceClass = useDeviceClass();
   const os = usePlatformOS();
   const variant = resolveChromeVariant(deviceClass, os);
+  // Where the docked mini player's bottom edge sits, measured from its slot; the card
+  // itself floats in a layer over the whole shell so it can be dragged anywhere.
+  const [homeBottom, setHomeBottom] = useState<number | null>(null);
+  const miniPlayer = homeBottom === null ? null : <MiniPlayer homeBottom={homeBottom} />;
 
   if (variant === 'tablet-rail') {
     return (
@@ -30,7 +34,8 @@ export function NavShell({ children }: NavShellProps) {
         <TabletRail />
         <View style={styles.content}>
           <View style={styles.content}>{children}</View>
-          <MiniPlayer />
+          <MiniPlayerSlot onHomeBottom={setHomeBottom} />
+          {miniPlayer}
         </View>
       </View>
     );
@@ -40,9 +45,10 @@ export function NavShell({ children }: NavShellProps) {
     <View style={styles.stackedLayout}>
       <View style={styles.content}>{children}</View>
       {/* Daybreak redesign: one floating dock on both phone platforms, with the mini
-          player above it while a sermon plays on. */}
-      <MiniPlayer />
+          player above it while a sermon plays on (draggable, see `MiniPlayer`). */}
+      <MiniPlayerSlot onHomeBottom={setHomeBottom} />
       <FloatingDock />
+      {miniPlayer}
     </View>
   );
 }
