@@ -110,9 +110,12 @@ const useStyles = createThemedStyles((colors) => ({
   pressed: {
     opacity: 0.7,
   },
+  // Minimums, so the date grows with large text sizes instead of spilling out.
   chip: {
-    width: 58,
-    height: 62,
+    minWidth: 58,
+    minHeight: 62,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',

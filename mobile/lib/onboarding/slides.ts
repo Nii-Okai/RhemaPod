@@ -1,7 +1,6 @@
-import type { ImageSourcePropType } from 'react-native';
-
 export interface OnboardingSlide {
-  image: ImageSourcePropType;
+  /** A bundled image: `require('…/onboarding-N.jpg')`. */
+  image: number;
   headline: string;
   body: string;
 }

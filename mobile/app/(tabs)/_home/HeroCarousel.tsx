@@ -6,6 +6,7 @@ import {
   ScrollView,
   View,
 } from 'react-native';
+import { useReduceMotion } from '../../../lib/hooks/useReduceMotion';
 import { createThemedStyles } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import type { SermonListItem } from '../../../lib/query/hooks/useSermons';
@@ -62,7 +63,8 @@ const AUTO_ADVANCE_MS = 6000;
  *
  * Auto-advances every 6s, pausing while the user is actively dragging (`draggingRef`)
  * so it never fights a manual swipe — picks back up on the next tick afterward rather
- * than needing an explicit "resume" timer.
+ * than needing an explicit "resume" timer. With Reduce Motion on it doesn't auto-advance
+ * at all: the listener swipes between sermons themselves.
  *
  * Falls back to a single plain `HeroCard` (no scroll machinery, no dots, no
  * auto-advance) when there's only one sermon — a one-item "carousel" has nothing to
@@ -80,6 +82,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0, renderCard }: Her
   const [page, setPage] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const draggingRef = useRef(false);
+  const reduceMotion = useReduceMotion();
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -90,7 +93,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0, renderCard }: Her
   };
 
   useEffect(() => {
-    if (sermons.length <= 1 || !width) return;
+    if (sermons.length <= 1 || !width || reduceMotion) return;
     const id = setInterval(() => {
       if (draggingRef.current) return;
       setPage((current) => {
@@ -100,7 +103,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0, renderCard }: Her
       });
     }, AUTO_ADVANCE_MS);
     return () => clearInterval(id);
-  }, [sermons.length, width]);
+  }, [sermons.length, width, reduceMotion]);
 
   if (sermons.length <= 1) {
     const only = sermons[0];

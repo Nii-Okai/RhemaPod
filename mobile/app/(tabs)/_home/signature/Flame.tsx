@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated } from 'react-native';
+import { useReduceMotion } from '../../../../lib/hooks/useReduceMotion';
 import Svg, { Path } from 'react-native-svg';
 
 export interface FlameProps {
@@ -34,11 +35,17 @@ export function Flame({ width, fill, stroke }: FlameProps) {
 
 const GLOW_MS = 1200;
 
-/** A flame that slowly breathes — marks the episode the viewer is partway through. */
+/** A flame that slowly breathes — marks the episode the viewer is partway through. With
+    Reduce Motion on it holds still at full strength. */
 export function GlowingFlame(props: FlameProps) {
   const opacity = useRef(new Animated.Value(0.55)).current;
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      opacity.setValue(1);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: GLOW_MS, useNativeDriver: true }),
@@ -47,7 +54,7 @@ export function GlowingFlame(props: FlameProps) {
     );
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
 
   return (
     <Animated.View style={{ opacity }}>

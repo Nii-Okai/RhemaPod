@@ -348,7 +348,7 @@ describe('SermonDetailScreen — dynamic type (largest accessibility text size)'
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(ORIGINAL_FONT_SCALE);
   });
 
-  it('never caps the title with numberOfLines, and grows its line-height under a large OS font scale', async () => {
+  it('never caps the title with numberOfLines, and grows its line-height with the OS font scale up to the display cap', async () => {
     // iOS's largest non-"larger accessibility" Dynamic Type step is ~3.11x (AX5); Android's
     // largest standard font-scale setting is 2.0x — 3.11 exercises the larger of the two.
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(3.11);
@@ -362,8 +362,12 @@ describe('SermonDetailScreen — dynamic type (largest accessibility text size)'
     const flatStyle = Array.isArray(title.props.style)
       ? Object.assign({}, ...title.props.style.flat(Infinity).filter(Boolean))
       : title.props.style;
-    // display.compact is fontSize 17, lineHeightRatio 1.2 — 17 * 1.2 * 3.11 ≈ 63.
-    expect(flatStyle.lineHeight).toBeGreaterThan(60);
+    // Display text stops growing at MAX_FONT_SCALE.display (1.5x): the line height still
+    // grows past the font's own size, but follows the 1.5x cap rather than the full 3.11x,
+    // and the text itself is told the same limit.
+    expect(title.props.maxFontSizeMultiplier).toBe(1.5);
+    expect(flatStyle.lineHeight).toBeGreaterThan(flatStyle.fontSize * 1.5);
+    expect(flatStyle.lineHeight).toBeLessThan(flatStyle.fontSize * 2);
   });
 });
 

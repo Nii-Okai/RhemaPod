@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, type StyleProp, type ViewStyle } from 'react-native';
+import { useReduceMotion } from '../lib/hooks/useReduceMotion';
 
 export interface PopInProps {
   children: React.ReactNode;
@@ -14,10 +15,22 @@ export interface PopInProps {
  * callers rely on React unmounting the previous state's element (a different component
  * type at the same JSX position, e.g. the ring `Pressable` vs this `IconButton`) to
  * remount this on every fresh transition into the ready state, not on manual key changes.
+ *
+ * With Reduce Motion on, the overshoot is skipped and the child shows at full size.
  */
 export function PopIn({ children, style }: PopInProps) {
   const scale = useRef(new Animated.Value(0.5)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
+
+  useEffect(() => {
+    if (reduceMotion) {
+      scale.stopAnimation();
+      opacity.stopAnimation();
+      scale.setValue(1);
+      opacity.setValue(1);
+    }
+  }, [reduceMotion, scale, opacity]);
 
   useEffect(() => {
     Animated.parallel([

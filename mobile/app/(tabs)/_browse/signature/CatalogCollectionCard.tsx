@@ -1,6 +1,7 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { AppText, PressableScale } from '../../../../components';
+import { Artwork } from '../../../../components/Artwork';
 import { darkColors as onArt } from '../../../../theme/colors';
 import { spacing } from '../../../../theme/spacing';
 import { ArtScrim } from '../../_home/signature/ArtScrim';
@@ -32,7 +33,7 @@ export function CatalogCollectionCard({ onPress, leadTitle }: CatalogCollectionC
       accessibilityLabel={`Prophet's Catalog collection, opens ${leadTitle}`}
       style={[styles.card, LEAF]}
     >
-      <Image source={CATALOG_PHOTO} style={styles.photo} resizeMode="cover" />
+      <Artwork fallback={CATALOG_PHOTO} style={styles.photo} />
       <ArtScrim height="70%" />
       <View style={styles.label} pointerEvents="none">
         <AppText variant="ui.badge" style={styles.eyebrow}>

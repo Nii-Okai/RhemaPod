@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Image,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -14,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { AppText, PlatformIcon } from '../components';
+import { Artwork } from '../components/Artwork';
+import { useReduceMotion } from '../lib/hooks/useReduceMotion';
 import { darkColors as onArt } from '../theme/colors';
 import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
@@ -63,6 +64,7 @@ const KEN_BURNS_MAX_SCALE = 1.06;
  * add transition effects" (an earlier pass here also had a scroll-tied image parallax and
  * a per-slide fade+rise-in on the text card, both removed for that reason).
  * Each slide clips with `overflow: 'hidden'` so the zoom never visibly escapes its page.
+ * With Reduce Motion on, the zoom doesn't run and the photos hold still.
  *
  * Daybreak redesign (canvas A2): the photo now fills the top half with rounded lower
  * corners, the wordmark and Skip on it; the copy, pill dots and a full-width Continue
@@ -85,8 +87,13 @@ export default function OnboardingScreen() {
   const [page, setPage] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const kenBurns = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      kenBurns.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(kenBurns, { toValue: 1, duration: KEN_BURNS_DURATION_MS, useNativeDriver: true }),
@@ -95,8 +102,9 @@ export default function OnboardingScreen() {
     );
     loop.start();
     return () => loop.stop();
-    // Mount-only loop (empty deps on purpose), see doc comment above.
-  }, []);
+    // One loop for the screen's life (see doc comment above), stopped if Reduce Motion
+    // turns on.
+  }, [kenBurns, reduceMotion]);
 
   const kenBurnsScale = kenBurns.interpolate({ inputRange: [0, 1], outputRange: [1, KEN_BURNS_MAX_SCALE] });
 
@@ -141,17 +149,17 @@ export default function OnboardingScreen() {
               style={[styles.slide, width && height ? { width, height } : styles.pageFallback]}
             >
               <View style={styles.photo}>
-                <Animated.Image
-                  source={slide.image}
-                  style={[styles.image, { transform: [{ scale: kenBurnsScale }] }]}
-                  resizeMode="cover"
-                />
+                <Animated.View style={[styles.image, { transform: [{ scale: kenBurnsScale }] }]}>
+                  <Artwork fallback={slide.image} style={styles.fill} transition={0} />
+                </Animated.View>
                 <Scrim id={`onboardingTop${index}`} edge="top" />
                 <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
-                  <Image
-                    source={require('../assets/brand/wordmark-on-dark.png')}
+                  <Artwork
+                    fallback={require('../assets/brand/wordmark-on-dark.png')}
                     style={styles.wordmark}
-                    resizeMode="contain"
+                    contentFit="contain"
+                    transition={0}
+                    accessible
                     accessibilityLabel="RhemaPod"
                   />
                   <Pressable
@@ -251,6 +259,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   image: {
     ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  fill: {
     width: '100%',
     height: '100%',
   },

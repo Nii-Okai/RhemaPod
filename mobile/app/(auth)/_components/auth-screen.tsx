@@ -1,7 +1,8 @@
 import React from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, CircleButton, type AppTextVariant } from '../../../components';
+import { Artwork } from '../../../components/Artwork';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
 import { Flame } from '../../(tabs)/_home/signature/Flame';
@@ -92,14 +93,15 @@ export function AuthScreen({
           </View>
           <View style={styles.brand} accessible accessibilityLabel="RhemaPod">
             <View style={styles.brandMark}>
-              <Image
-                source={require('../../../assets/icon-mark.png')}
+              <Artwork
+                fallback={require('../../../assets/icon-mark.png')}
                 style={styles.brandIcon}
-                resizeMode="contain"
+                contentFit="contain"
+                transition={0}
                 accessible={false}
               />
             </View>
-            <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessible={false} />
+            <Artwork fallback={wordmark} style={styles.wordmark} contentFit="contain" transition={0} accessible={false} />
           </View>
           <View style={styles.brandSide} />
         </View>

@@ -137,8 +137,11 @@ const styles = StyleSheet.create({
   pillSlot: {
     flex: 1,
   },
+  // A minimum, not a fixed height, so the label can grow with large text sizes.
   pill: {
-    height: 48,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     borderRadius: radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
