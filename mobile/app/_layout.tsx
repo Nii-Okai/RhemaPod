@@ -20,6 +20,7 @@ import {
   setObservabilityUser,
   wrapRoot,
 } from '../lib/observability/sentry';
+import { useFetchUpdatesOnForeground } from '../lib/updates/otaUpdates';
 
 // Crash reporting starts before anything renders, so a crash during launch is caught too.
 initObservability();
@@ -238,6 +239,12 @@ function ObservabilityUser() {
   return status === 'signedIn' ? <SignedInObservabilityUser /> : null;
 }
 
+/** Downloads over-the-air fixes when the app returns to the foreground (applied on next launch). */
+function OtaUpdates() {
+  useFetchUpdatesOnForeground();
+  return null;
+}
+
 function SignedInObservabilityUser() {
   const userId = useCurrentUser().data?.id ?? null;
   useEffect(() => {
@@ -285,6 +292,7 @@ function RootLayout() {
             <NowPlayingProvider>
               <StopPlaybackOnSignOut />
               <ObservabilityUser />
+              <OtaUpdates />
               <Launch />
             </NowPlayingProvider>
           </ThemeProvider>
