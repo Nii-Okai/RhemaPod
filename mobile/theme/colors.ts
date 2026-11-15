@@ -172,9 +172,11 @@ export const frost = {
   headerTint: 'dark',
   header: 'rgba(13, 17, 26, 0.72)',
   headerSolid: 'rgba(13, 17, 26, 0.96)',
+  // The mini player card: a lifted navy, a clear step above the page and the dock, nearly
+  // opaque so it never melts into what scrolls under it (`miniPlayer` below).
   cardTint: 'dark',
-  card: 'rgba(19, 25, 38, 0.76)',
-  cardSolid: 'rgba(19, 25, 38, 0.97)',
+  card: 'rgba(42, 58, 88, 0.93)',
+  cardSolid: 'rgba(42, 58, 88, 0.98)',
   scrim: surface.app,
   hairline: border.default,
 } as const;
@@ -228,6 +230,26 @@ export const sunButton = {
 } as const;
 
 /**
+ * The mini player (Nii, 2026-11-15: "easy to confuse and overlook"). A navy card in both
+ * themes, like the dock: lifted above the dark page, the one dark object on the light
+ * one. A gold rim, a gold play disc and a gold progress line on a visible track mark it
+ * as the thing that is playing. Its background is the frost `card` colour.
+ */
+export const miniPlayer = {
+  bg: '#2A3A58',
+  rim: 'rgba(224, 180, 92, 0.45)',
+  title: text.primary,
+  subtitle: text.secondary,
+  icon: text.primary,
+  iconMuted: text.secondary,
+  playBg: sunButton.bg,
+  playIcon: sunButton.text,
+  track: '#3E4D6C',
+  progress: accent.goldText,
+  shadow: 'rgba(0, 0, 0, 0.6)',
+} as const;
+
+/**
  * Daybreak's quiet blue: the topic header wash, the "Series" and "Free, always" pills,
  * the focus ring round an input and the speaker avatar. `fill` is the solid, `soft` the
  * wash, `ink` text set on the wash.
@@ -258,6 +280,7 @@ export const darkColors = {
   feature,
   verse,
   sunButton,
+  miniPlayer,
   iris,
   playlistCover,
 } as const;
@@ -330,8 +353,8 @@ export const lightColors: ColorTokens = {
   },
   // The dock stays navy on the light ground: it is the one dark anchor on a light page.
   dock: { ...dock, bg: surface.raised, border: surface.raised, todayRing: '#F7F4EF', shadow: 'rgba(13, 17, 26, 0.28)' },
-  // The dock stays a navy blur; the headers and the mini player card frost in the light
-  // page and card colours (#F7F4EF and white).
+  // The dock and the mini player stay a navy blur; the headers frost in the light page
+  // colour (#F7F4EF).
   frost: {
     dockTint: 'dark',
     dock: 'rgba(19, 25, 38, 0.76)',
@@ -339,15 +362,23 @@ export const lightColors: ColorTokens = {
     headerTint: 'light',
     header: 'rgba(247, 244, 239, 0.72)',
     headerSolid: 'rgba(247, 244, 239, 0.96)',
-    cardTint: 'light',
-    card: 'rgba(255, 255, 255, 0.72)',
-    cardSolid: 'rgba(255, 255, 255, 0.97)',
+    // The mini player: the dock's navy, so it reads as the dark anchor's companion.
+    cardTint: 'dark',
+    card: 'rgba(24, 32, 48, 0.94)',
+    cardSolid: 'rgba(24, 32, 48, 0.98)',
     scrim: '#F7F4EF',
     hairline: '#E4DFD3',
   },
   feature: { ...feature, border: surface.raised },
   verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
   sunButton,
+  miniPlayer: {
+    ...miniPlayer,
+    bg: '#182030',
+    rim: 'rgba(217, 169, 71, 0.6)',
+    track: '#2E3A52',
+    shadow: 'rgba(13, 17, 26, 0.35)',
+  },
   iris: { fill: '#1F4276', soft: '#E3EAF4', ink: '#18355F' },
   playlistCover,
 };

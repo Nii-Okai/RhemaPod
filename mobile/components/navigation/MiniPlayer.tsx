@@ -63,7 +63,9 @@ export function restingPosition(released: number, vy: number, highest: number): 
 
 /**
  * The mini player (Daybreak redesign, canvas B1/E1): a card just above the dock while a
- * sermon plays on after its player screen has closed. Art, title and speaker; play/pause;
+ * sermon plays on after its player screen has closed. A lifted navy card with a gold rim
+ * and a gold play disc in both themes, so it stands clear of the page (Nii, 2026-11-15).
+ * Art, title and speaker; play/pause;
  * a close button that stops it; and a thin gold progress line along its foot. Tapping the
  * card reopens the full player, which picks up where the sermon is. A Next button joins
  * them while something is queued after it.
@@ -278,74 +280,76 @@ function MiniPlayerCard({
 
   return (
     <View testID="mini-player" style={[styles.wrap, floating && styles.wrapFloating, layered && styles.wrapLayered]}>
-      <Pressable
-        onPress={openPlayer}
-        accessibilityRole="button"
-        accessibilityLabel={`Now playing: ${session.title}. Open the player.`}
-        accessibilityActions={accessibilityActions}
-        onAccessibilityAction={onAccessibilityAction}
-        style={({ pressed }) => [styles.card, { backgroundColor: cardBackground }, pressed && styles.pressed]}
-      >
-        <FrostedBackdrop variant="card" borderRadius={20} />
-        {session.artworkUrl ? (
-          <View ref={artRef} collapsable={false}>
-            <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
-          </View>
-        ) : (
-          <View style={[styles.art, styles.artBlank]}>
-            <PlatformIcon name={session.mediaType === 'video' ? 'play' : 'volume-high-outline'} size={18} color={colors.feature.sun} />
-          </View>
-        )}
-        <View style={styles.text}>
-          <AppText variant="ui.bodyBold" numberOfLines={1}>
-            {session.title}
-          </AppText>
-          {session.artist ? (
-            <AppText variant="ui.badge" tone="tertiary" numberOfLines={1}>
-              {session.artist}
-            </AppText>
-          ) : null}
-        </View>
+      <View style={[styles.lift, { backgroundColor: cardBackground }]}>
         <Pressable
-          onPress={() => {
-            haptics.tap();
-            if (isPlaying) player.pause();
-            else player.play();
-          }}
+          onPress={openPlayer}
           accessibilityRole="button"
-          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-          hitSlop={spacing.xs}
-          style={({ pressed }) => [styles.control, pressed && styles.pressed]}
+          accessibilityLabel={`Now playing: ${session.title}. Open the player.`}
+          accessibilityActions={accessibilityActions}
+          onAccessibilityAction={onAccessibilityAction}
+          style={({ pressed }) => [styles.card, { backgroundColor: cardBackground }, pressed && styles.pressed]}
         >
-          <PlatformIcon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.text.primary} />
-        </Pressable>
-        {queued !== null ? (
+          <FrostedBackdrop variant="card" borderRadius={20} />
+          {session.artworkUrl ? (
+            <View ref={artRef} collapsable={false}>
+              <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
+            </View>
+          ) : (
+            <View style={[styles.art, styles.artBlank]}>
+              <PlatformIcon name={session.mediaType === 'video' ? 'play' : 'volume-high-outline'} size={18} color={colors.feature.sun} />
+            </View>
+          )}
+          <View style={styles.text}>
+            <AppText variant="ui.bodyBold" numberOfLines={1} style={styles.title}>
+              {session.title}
+            </AppText>
+            {session.artist ? (
+              <AppText variant="ui.badge" numberOfLines={1} style={styles.subtitle}>
+                {session.artist}
+              </AppText>
+            ) : null}
+          </View>
           <Pressable
             onPress={() => {
               haptics.tap();
-              onNext(queued);
+              if (isPlaying) player.pause();
+              else player.play();
             }}
             accessibilityRole="button"
-            accessibilityLabel="Play next in queue"
+            accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            hitSlop={spacing.xs}
+            style={({ pressed }) => [styles.playDisc, pressed && styles.pressed]}
+          >
+            <PlatformIcon name={isPlaying ? 'pause' : 'play'} size={22} color={colors.miniPlayer.playIcon} />
+          </Pressable>
+          {queued !== null ? (
+            <Pressable
+              onPress={() => {
+                haptics.tap();
+                onNext(queued);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Play next in queue"
+              hitSlop={spacing.xs}
+              style={({ pressed }) => [styles.control, pressed && styles.pressed]}
+            >
+              <PlatformIcon name="play-skip-forward" size={22} color={colors.miniPlayer.icon} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Stop and close the player"
             hitSlop={spacing.xs}
             style={({ pressed }) => [styles.control, pressed && styles.pressed]}
           >
-            <PlatformIcon name="play-skip-forward" size={22} color={colors.text.primary} />
+            <PlatformIcon name="close" size={20} color={colors.miniPlayer.iconMuted} />
           </Pressable>
-        ) : null}
-        <Pressable
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Stop and close the player"
-          hitSlop={spacing.xs}
-          style={({ pressed }) => [styles.control, pressed && styles.pressed]}
-        >
-          <PlatformIcon name="close" size={20} color={colors.text.tertiary} />
+          <View testID="mini-player-track" style={styles.track} pointerEvents="none">
+            <View style={[styles.bar, { width: `${fraction * 100}%` }]} />
+          </View>
         </Pressable>
-        <View style={styles.track} pointerEvents="none">
-          <View style={[styles.bar, { width: `${fraction * 100}%` }]} />
-        </View>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -369,6 +373,16 @@ const useStyles = createThemedStyles((colors) => ({
     right: 0,
     height: MINI_PLAYER_CARD_HEIGHT,
   },
+  // Carries the drop shadow the clipped card can't (and, on Android, the elevation, which
+  // needs the view's own background).
+  lift: {
+    borderRadius: 20,
+    shadowColor: colors.miniPlayer.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+  },
   card: {
     height: MINI_PLAYER_CARD_HEIGHT,
     borderRadius: 20,
@@ -378,9 +392,11 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
     paddingLeft: spacing.sm,
     paddingRight: spacing.xs,
-    // Frosted like the dock (`Frosted`), set inline: the page shows through as it scrolls.
+    // Frosted like the dock (`Frosted`), set inline, but a lifted navy in both themes and
+    // nearly opaque, with a gold rim, so it can't be mistaken for the page
+    // (`colors.miniPlayer`, Nii 2026-11-15).
     borderWidth: 1,
-    borderColor: colors.border.default,
+    borderColor: colors.miniPlayer.rim,
   },
   pressed: {
     opacity: 0.8,
@@ -392,6 +408,21 @@ const useStyles = createThemedStyles((colors) => ({
   },
   artBlank: {
     backgroundColor: colors.feature.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    color: colors.miniPlayer.title,
+  },
+  subtitle: {
+    color: colors.miniPlayer.subtitle,
+  },
+  playDisc: {
+    width: 40,
+    height: 40,
+    marginHorizontal: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.miniPlayer.playBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -413,9 +444,10 @@ const useStyles = createThemedStyles((colors) => ({
     right: 0,
     bottom: 0,
     height: 3,
+    backgroundColor: colors.miniPlayer.track,
   },
   bar: {
     height: 3,
-    backgroundColor: colors.sunButton.bg,
+    backgroundColor: colors.miniPlayer.progress,
   },
 }));

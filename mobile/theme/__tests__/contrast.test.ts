@@ -55,6 +55,13 @@ const PAIRS: Pair[] = [
   ['iris ink on its wash', (c) => c.iris.ink, (c) => c.iris.soft, TEXT],
   ['text.primary on the iris wash', (c) => c.text.primary, (c) => c.iris.soft, TEXT],
   ['sun button text on sun', (c) => c.sunButton.text, (c) => c.sunButton.bg, TEXT],
+  ['mini player title on card', (c) => c.miniPlayer.title, (c) => c.miniPlayer.bg, TEXT],
+  ['mini player speaker on card', (c) => c.miniPlayer.subtitle, (c) => c.miniPlayer.bg, TEXT],
+  ['mini player close icon on card', (c) => c.miniPlayer.iconMuted, (c) => c.miniPlayer.bg, TEXT],
+  ['mini player play glyph on its disc', (c) => c.miniPlayer.playIcon, (c) => c.miniPlayer.playBg, TEXT],
+  ['mini player progress on its track', (c) => c.miniPlayer.progress, (c) => c.miniPlayer.track, NON_TEXT],
+  // The card itself has to stand clear of the page it floats over (Nii, 2026-11-15).
+  ['mini player card on page', (c) => c.miniPlayer.bg, (c) => c.surface.app, 1.6],
   ...(['navy', 'teal', 'gold', 'berry', 'sage', 'ink'] as const).map(
     (name) =>
       [`playlist cover ${name}: initial on fill`, (c: ColorTokens) => c.playlistCover[name].ink, (c: ColorTokens) => c.playlistCover[name].bg, TEXT] as Pair,
