@@ -1,6 +1,11 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
-import { useVideoPlayer } from 'expo-video';
+import { fireEvent, render } from '@testing-library/react-native';
+import { useVideoPlayer, type VideoView } from 'expo-video';
+// The manual mock's test helpers (`__mocks__/expo-video.tsx`).
+const videoMock = require('expo-video') as {
+  isPictureInPictureSupported: jest.Mock;
+  __startPictureInPicture: jest.Mock;
+};
 import { VideoSurface, type VideoSurfaceProps } from '../VideoSurface';
 import type { ControlsOverlay } from '../useControlsOverlay';
 
@@ -21,9 +26,10 @@ type FixtureOverrides = Partial<Omit<VideoSurfaceProps, 'player' | 'videoRef'>>;
  * props from inside a render rather than constructing a player fixture by hand. */
 function Harness({ overrides = {} }: { overrides?: FixtureOverrides }) {
   const player = useVideoPlayer({ uri: 'https://example.com/stream' });
+  const videoRef = React.useRef<VideoView>(null);
   const props: VideoSurfaceProps = {
     player,
-    videoRef: { current: null },
+    videoRef,
     isBuffering: false,
     isPlaying: false,
     isEnded: false,
@@ -71,5 +77,30 @@ describe("VideoSurface — audio artwork (Isaac's report: plain dark screen for 
     );
     const image = getByTestId('player-artwork');
     expect(image.props.source).toMatchObject({ uri: 'https://cdn.example/art.jpg' });
+  });
+});
+
+describe('VideoSurface — picture-in-picture', () => {
+  afterEach(() => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(false);
+    videoMock.__startPictureInPicture.mockClear();
+  });
+
+  it('offers picture in picture for a video sermon where the device supports it', () => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(true);
+    const { getByLabelText } = render(<Harness overrides={{ isAudio: false }} />);
+    fireEvent.press(getByLabelText('Picture in picture'));
+    expect(videoMock.__startPictureInPicture).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no picture in picture control for an audio sermon', () => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(true);
+    const { queryByLabelText } = render(<Harness overrides={{ isAudio: true }} />);
+    expect(queryByLabelText('Picture in picture')).toBeNull();
+  });
+
+  it('has no picture in picture control where the device does not support it', () => {
+    const { queryByLabelText } = render(<Harness overrides={{ isAudio: false }} />);
+    expect(queryByLabelText('Picture in picture')).toBeNull();
   });
 });

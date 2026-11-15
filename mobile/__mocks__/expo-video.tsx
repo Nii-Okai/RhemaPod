@@ -137,11 +137,20 @@ export interface MockVideoViewProps extends ViewProps {
   allowsFullscreen?: boolean;
   onFullscreenEnter?: () => void;
   onFullscreenExit?: () => void;
+  allowsPictureInPicture?: boolean;
+  startsPictureInPictureAutomatically?: boolean;
+  onPictureInPictureStart?: () => void;
+  onPictureInPictureStop?: () => void;
 }
 
 /** The fullscreen calls the screen makes through its `VideoView` ref, observable by tests. */
 export const __enterFullscreen = jest.fn(async () => {});
 export const __exitFullscreen = jest.fn(async () => {});
+export const __startPictureInPicture = jest.fn(async () => {});
+export const __stopPictureInPicture = jest.fn(async () => {});
+
+/** Off by default, like Jest's real environment; a test turns it on to see the PiP control. */
+export const isPictureInPictureSupported = jest.fn(() => false);
 
 /**
  * Deliberately doesn't destructure `player`/`nativeControls`/`contentFit`/
@@ -152,9 +161,19 @@ export const __exitFullscreen = jest.fn(async () => {});
  * else is spread onto the underlying `View`.
  */
 export const VideoView = React.forwardRef<
-  { enterFullscreen: () => Promise<void>; exitFullscreen: () => Promise<void> },
+  {
+    enterFullscreen: () => Promise<void>;
+    exitFullscreen: () => Promise<void>;
+    startPictureInPicture: () => Promise<void>;
+    stopPictureInPicture: () => Promise<void>;
+  },
   MockVideoViewProps
 >(function VideoView(props, ref) {
-  useImperativeHandle(ref, () => ({ enterFullscreen: __enterFullscreen, exitFullscreen: __exitFullscreen }));
+  useImperativeHandle(ref, () => ({
+    enterFullscreen: __enterFullscreen,
+    exitFullscreen: __exitFullscreen,
+    startPictureInPicture: __startPictureInPicture,
+    stopPictureInPicture: __stopPictureInPicture,
+  }));
   return <View testID="video-view" style={props.style} />;
 });

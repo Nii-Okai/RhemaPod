@@ -10,16 +10,18 @@ export interface SignaturePlayerHeaderProps {
   onBack: () => void;
   /** Absent on the loading/error states, where the sermon isn't known yet. */
   detail?: SermonDetail;
+  /** The right-hand slot (the AirPlay button on iOS). Kept 42 wide so the label stays centred. */
+  right?: React.ReactNode;
 }
 
 /**
  * Signature player header: a chevron that closes the player, and a centred "where am I"
  * label — the series and part when the sermon belongs to one, otherwise "Now playing".
  * The sermon's own title sits below the video (`NowPlayingDetails`), so it isn't repeated
- * here. The right slot is an empty spacer that keeps the label centred; the app has no
- * player overflow menu to put there.
+ * here. The right slot holds the AirPlay button on iOS, and is an empty spacer of the same
+ * width elsewhere, so the label stays centred either way.
  */
-export function SignaturePlayerHeader({ onBack, detail }: SignaturePlayerHeaderProps) {
+export function SignaturePlayerHeader({ onBack, detail, right }: SignaturePlayerHeaderProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const label = detail ? (detail.series_title ?? 'Now playing') : null;
@@ -40,7 +42,7 @@ export function SignaturePlayerHeader({ onBack, detail }: SignaturePlayerHeaderP
           </AppText>
         ) : null}
       </View>
-      <View style={styles.spacer} />
+      <View style={styles.spacer}>{right}</View>
     </View>
   );
 }
@@ -61,5 +63,7 @@ const useStyles = createThemedStyles(() => ({
   },
   spacer: {
     width: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }));

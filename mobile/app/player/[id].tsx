@@ -4,10 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import type { VideoView } from 'expo-video';
+import { AirPlayButton, isAirPlayAvailable } from 'airplay-button';
 import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
 import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
 import { darkColors as onArt } from '../../theme/colors';
-import { createThemedStyles } from '../../theme/ThemeContext';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useSermonDetail, type SermonDetail } from '../../lib/query/hooks/useSermons';
 import { useSermonProgress } from '../../lib/query/hooks/useSermonProgress';
@@ -351,7 +352,18 @@ export default function PlayerScreen() {
 }
 
 function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
-  return <SignaturePlayerHeader onBack={onBack} detail={detail} />;
+  const { colors } = useTheme();
+  // AirPlay (iOS): the system's own device picker. The shared player follows whatever
+  // speaker or Apple TV is picked there, so nothing else in the screen changes.
+  const airPlay = isAirPlayAvailable ? (
+    <AirPlayButton
+      testID="player-airplay"
+      tintColor={colors.text.primary}
+      activeTintColor={colors.accent.goldText}
+      video={detail?.media_type === 'video'}
+    />
+  ) : null;
+  return <SignaturePlayerHeader onBack={onBack} detail={detail} right={airPlay} />;
 }
 
 /**
