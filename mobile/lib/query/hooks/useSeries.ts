@@ -10,6 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/typedClient';
 import { queryKeys } from '../queryClient';
+import { haptics } from '../../haptics';
 import type { components } from '../../api/schema';
 
 export type SeriesPublic = components['schemas']['SeriesPublic'];
@@ -61,7 +62,15 @@ export function useToggleSeriesLike(seriesId: string) {
     onSuccess: applyState,
   });
   return {
-    toggle: (currentlyLiked: boolean) => void (currentlyLiked ? unlike.mutate() : like.mutate()),
+    toggle: (currentlyLiked: boolean) => {
+      if (currentlyLiked) {
+        haptics.toggleOff();
+        unlike.mutate();
+      } else {
+        haptics.toggleOn();
+        like.mutate();
+      }
+    },
     isPending: like.isPending || unlike.isPending,
   };
 }

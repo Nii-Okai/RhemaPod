@@ -21,6 +21,7 @@ import { useNowPlaying, type NowPlayingSession } from '../../lib/playback/nowPla
 import { setMiniPlayerTop, useMiniPlayerTop } from '../../lib/playback/miniPlayerPosition';
 import { currentItem, nextIndex, usePlaybackQueue } from '../../lib/playback/queue';
 import { launchPlayerHeroFrom } from '../../lib/playback/playerHero';
+import { haptics } from '../../lib/haptics';
 import { PlatformIcon } from '../PlatformIcon';
 import { AppText } from '../Text';
 
@@ -191,6 +192,7 @@ function DraggableLayer({
             dragStart.current = value;
           });
           setLifted(true);
+          haptics.grab();
         },
         onPanResponderMove: (_event, g) => {
           translateY.setValue(dragPosition(dragStart.current + g.dy, bounds.current.highest));
@@ -198,6 +200,7 @@ function DraggableLayer({
         onPanResponderRelease: (_event, g) => {
           const released = dragPosition(dragStart.current + g.dy, bounds.current.highest);
           setLifted(false);
+          haptics.settle();
           settleAt(restingPosition(released, g.vy, bounds.current.highest), g.vy);
         },
         onPanResponderTerminate: () => {
@@ -301,7 +304,11 @@ function MiniPlayerCard({
           ) : null}
         </View>
         <Pressable
-          onPress={() => (isPlaying ? player.pause() : player.play())}
+          onPress={() => {
+            haptics.tap();
+            if (isPlaying) player.pause();
+            else player.play();
+          }}
           accessibilityRole="button"
           accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
           hitSlop={spacing.xs}
@@ -311,7 +318,10 @@ function MiniPlayerCard({
         </Pressable>
         {queued !== null ? (
           <Pressable
-            onPress={() => onNext(queued)}
+            onPress={() => {
+              haptics.tap();
+              onNext(queued);
+            }}
             accessibilityRole="button"
             accessibilityLabel="Play next in queue"
             hitSlop={spacing.xs}
