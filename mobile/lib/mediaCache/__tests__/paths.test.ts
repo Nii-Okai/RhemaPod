@@ -1,8 +1,8 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { mediaCacheDir, mediaCacheFilePath, mediaCachePartPath } from '../paths';
 import { downloadTmpDir, playbackTmpDir } from '../../downloads/paths';
 
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   __esModule: true,
   documentDirectory: 'file:///documents/',
   cacheDirectory: 'file:///cache/',

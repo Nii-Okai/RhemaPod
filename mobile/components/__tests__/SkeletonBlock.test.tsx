@@ -1,5 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
+import type { ReactTestRendererJSON } from 'react-test-renderer';
 import { SkeletonBlock } from '../SkeletonBlock';
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -8,12 +9,12 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 
 describe('SkeletonBlock', () => {
   it('is hidden from the accessibility tree — a loading placeholder carries no content', () => {
-    const tree = render(<SkeletonBlock height={120} />).toJSON();
+    const tree = render(<SkeletonBlock height={120} />).toJSON() as ReactTestRendererJSON | null;
     expect(tree?.props.accessible).toBe(false);
   });
 
   it('sizes itself to the given width/height rather than a fixed guess', () => {
-    const tree = render(<SkeletonBlock width={200} height={16} />).toJSON();
+    const tree = render(<SkeletonBlock width={200} height={16} />).toJSON() as ReactTestRendererJSON | null;
     expect(flattenStyle(tree?.props.style)).toMatchObject({ width: 200, height: 16 });
   });
 });

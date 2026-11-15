@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type ScrollViewInstance,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,7 +86,7 @@ export default function OnboardingScreen() {
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
   const [page, setPage] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const kenBurns = useRef(new Animated.Value(0)).current;
   const reduceMotion = useReduceMotion();
 
@@ -258,7 +259,7 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: onArt.surface.raised,
   },
   image: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

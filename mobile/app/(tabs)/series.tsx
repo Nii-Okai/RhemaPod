@@ -97,8 +97,10 @@ export default function SeriesScreen() {
         data={shown}
         // Progress comes from a separate query; re-render the cards when it lands.
         extraData={onEpisode}
+        // Off: FlashList otherwise keeps the first visible row in place when `data`
+        // changes, so replacing the list (e.g. a new sort order) would not start at the top.
+        maintainVisibleContentPosition={{ disabled: true }}
         keyExtractor={(item) => item.id}
-        estimatedItemSize={146 + LIST_GAP}
         renderItem={({ item }) => (
           <View style={styles.cell}>
             <SeriesRowCard

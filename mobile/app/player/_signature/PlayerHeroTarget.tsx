@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
-import { Animated, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, View, type StyleProp, type ViewStyle, type HostInstance } from 'react-native';
 import { isHeroHiding, reportHeroTarget, usePlayerHero } from '../../../lib/playback/playerHero';
 
 /** The player screen's root view: targets measure themselves against it, not the window,
  * because the window position of anything in the player is still moving mid-slide. */
-export const PlayerHeroRootContext = createContext<React.RefObject<View> | null>(null);
+export const PlayerHeroRootContext = createContext<React.RefObject<HostInstance | null> | null>(null);
 
 const REVEAL_MS = 140;
 
@@ -24,7 +24,7 @@ export interface PlayerHeroTargetProps {
  */
 export function PlayerHeroTarget({ sermonId, radius = 0, style, children }: PlayerHeroTargetProps) {
   const root = useContext(PlayerHeroRootContext);
-  const ref = useRef<View>(null);
+  const ref = useRef<HostInstance>(null);
   const flight = usePlayerHero();
   const hiding = isHeroHiding(flight, sermonId);
   const waiting = flight?.phase === 'waiting' && flight.sermonId === sermonId;

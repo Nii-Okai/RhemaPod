@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { api } from '../api/typedClient';
 import { ApiError, networkError } from '../api/errors';
 import * as RpaCrypto from '../../modules/rpa-crypto';
@@ -163,7 +163,7 @@ function defaultDeps(): DownloadManagerDeps {
     deleteFile: paths.deleteIfExists,
     clearDirectory: paths.clearDirectoryContents,
     getFileSize: async (uri: string) => {
-      const info = await FileSystem.getInfoAsync(uri, { size: true });
+      const info = await FileSystem.getInfoAsync(uri);
       return info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
     },
     fetchDownloadUrl: realFetchDownloadUrl,

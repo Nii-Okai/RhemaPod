@@ -87,8 +87,11 @@ export function useTheme(): ThemeValue {
  *   const useStyles = createThemedStyles((c) => ({ card: { backgroundColor: c.surface.raised } }));
  *   function Card() { const styles = useStyles(); ... }
  */
-export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(
-  factory: (colors: ColorTokens) => T,
+/** The style-object shape `StyleSheet.create` accepts. */
+type NamedStyles = Parameters<typeof StyleSheet.create>[0];
+
+export function createThemedStyles<T extends NamedStyles>(
+  factory: (colors: ColorTokens) => T & NamedStyles,
 ): () => T {
   const cache = new Map<ColorScheme, T>();
   return function useThemedStyles(): T {

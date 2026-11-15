@@ -151,7 +151,7 @@ describe('RelatedSermons', () => {
     // the one carrying the grid's computed `aspectRatio` straight through its style.
     const aspectRatios = card
       .findAllByType(View)
-      .map((node: { props: { style: unknown } }) => {
+      .map((node) => {
         const flat = Object.assign({}, ...(Array.isArray(node.props.style) ? node.props.style : [node.props.style]));
         return flat.aspectRatio;
       })

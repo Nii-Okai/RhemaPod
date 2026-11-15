@@ -171,7 +171,7 @@ export function AnimatedSplash({ ready, onFinish, onShown }: AnimatedSplashProps
 
 const useStyles = createThemedStyles((colors) => ({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
     backgroundColor: colors.splash.ground,
@@ -198,7 +198,7 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.splash.orbInner,
   },
   center: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

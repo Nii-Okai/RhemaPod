@@ -7,7 +7,7 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type ScrollView,
+  type ScrollViewInstance,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -149,7 +149,7 @@ const SCROLLED_AT = 2;
  */
 export function useFrostedScroll(headerHeight: number) {
   const bottom = useBottomChromeInset();
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   const offset = useRef(0);
   const appliedTop = useRef(0);
   const [scrolled, setScrolled] = useState(false);

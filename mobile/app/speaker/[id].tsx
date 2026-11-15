@@ -155,8 +155,10 @@ export default function SpeakerDrillDownScreen() {
       <FlashList
         data={sermons}
         renderItem={renderItem}
+        // Off: FlashList otherwise keeps the first visible row in place when `data`
+        // changes, so replacing the list (e.g. a new sort order) would not start at the top.
+        maintainVisibleContentPosition={{ disabled: true }}
         keyExtractor={(item) => item.id}
-        estimatedItemSize={76}
         ListHeaderComponent={profile}
         ListEmptyComponent={
           <View style={styles.list}>

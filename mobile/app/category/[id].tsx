@@ -138,10 +138,11 @@ export default function CategoryDrillDownScreen() {
       <FlashList
         data={sermons}
         renderItem={renderItem}
+        // Off: FlashList otherwise keeps the first visible row in place when `data`
+        // changes, so replacing the list (e.g. a new sort order) would not start at the top.
+        maintainVisibleContentPosition={{ disabled: true }}
         keyExtractor={(item) => item.id}
         numColumns={GRID_COLUMNS}
-        // Card art is 16:9 plus a one-line title block and the row gap.
-        estimatedItemSize={Math.round((cardWidth * 9) / 16) + 52 + ROW_GAP}
         ListHeaderComponent={header}
         ListEmptyComponent={
           <View style={styles.state}>

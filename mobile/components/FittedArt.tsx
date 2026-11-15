@@ -78,7 +78,7 @@ export function FittedArt({ uri, testID }: FittedArtProps) {
 
 const styles = StyleSheet.create({
   dim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: onArt.surface.app,
     opacity: 0.35,
   },

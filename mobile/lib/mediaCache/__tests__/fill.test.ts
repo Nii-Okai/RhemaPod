@@ -1,4 +1,4 @@
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   __esModule: true,
   documentDirectory: 'file:///documents/',
   cacheDirectory: 'file:///cache/',

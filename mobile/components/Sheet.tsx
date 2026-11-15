@@ -34,7 +34,7 @@ export function Sheet({ visible, onClose, children, onDismiss }: SheetProps) {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={onClose}
@@ -64,7 +64,7 @@ const useStyles = createThemedStyles((colors) => ({
   // Daybreak (canvas C6/C7): a navy dim in both themes, then a paper sheet with 32pt
   // corners and a grab handle.
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlay.chipFill,
   },
   sheet: {

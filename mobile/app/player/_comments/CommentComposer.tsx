@@ -49,7 +49,14 @@ export function CommentComposer({
 }: CommentComposerProps) {
   const { colors } = useTheme();
   const styles = useStyles();
-  const [draft, setDraft] = useState('');
+  const [draft, setDraftState] = useState('');
+  // The draft as of the latest keystroke, readable after an await (state in the closure is
+  // the value from when send started).
+  const draftRef = useRef('');
+  const setDraft = (text: string) => {
+    draftRef.current = text;
+    setDraftState(text);
+  };
   // CSS `maxHeight` on a multiline `TextInput` is unreliable as a growth cap — both
   // platforms can report a native content size past it, which then stretches this pill
   // (its height tracks the input) while the avatar/send stay pinned to the bottom edge via
@@ -70,17 +77,14 @@ export function CommentComposer({
     const body = draft.trim();
     try {
       if (await onSubmit(body)) {
-        // Functional update: only clear the draft if it still matches what was sent. If
-        // the user kept typing while the POST was in flight, their newer text survives —
-        // and in that case the keyboard stays up too, since there's still a draft to finish.
-        let cleared = false;
-        setDraft((current) => {
-          if (current !== body) return current;
-          cleared = true;
+        // Only clear the draft if it still matches what was sent. If the user kept typing
+        // while the POST was in flight, their newer text survives, and the keyboard stays
+        // up too, since there's still a draft to finish.
+        if (draftRef.current === body) {
+          setDraft('');
           setInputHeight(INPUT_MIN_HEIGHT);
-          return '';
-        });
-        if (cleared) Keyboard.dismiss();
+          Keyboard.dismiss();
+        }
       }
     } finally {
       sendingRef.current = false;

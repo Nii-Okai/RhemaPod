@@ -292,7 +292,7 @@ export function CommentsPanel({ sermonId, variant = 'classic', ownsBottomInset =
             </AppText>
           </View>
         }
-        ListFooterComponent={footer}
+        ListFooterComponent={footer ?? undefined}
         style={styles.list}
       />
     );

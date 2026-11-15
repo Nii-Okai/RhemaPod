@@ -26,7 +26,7 @@ export function ConfirmDialog({ visible, title, body, confirmLabel, onConfirm, o
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.root}>
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={onCancel}
@@ -67,7 +67,7 @@ const useStyles = createThemedStyles((colors) => ({
     padding: spacing.xl,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.surface.app,
     opacity: 0.6,
   },

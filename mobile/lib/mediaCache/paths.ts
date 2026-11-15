@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 /**
  * Media-cache file paths (plan D17). Own subfolder of `cacheDirectory`, distinct from

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
@@ -88,7 +88,7 @@ function Flow({
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   // Resume where the listener left off; a finished day opens on Carry.
   const [step, setStep] = useState<Step>(entry?.completedAt ? 'carry' : entry?.step ?? 'still');
   const index = STEPS.indexOf(step);

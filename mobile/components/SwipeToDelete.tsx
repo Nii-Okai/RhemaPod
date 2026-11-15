@@ -133,7 +133,7 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.lg,
   },
   actionLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'flex-end',
     justifyContent: 'center',
     backgroundColor: colors.status.rose.bg,

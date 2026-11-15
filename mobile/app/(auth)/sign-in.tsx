@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, type TextInput } from 'react-native';
+import { View, type TextInputInstance } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
 import { createThemedStyles } from '../../theme/ThemeContext';
@@ -30,7 +30,7 @@ export default function SignInScreen() {
   // Set by the delete-account screen after a 204.
   const { deleted } = useLocalSearchParams<{ deleted?: string }>();
 
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInputInstance>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);

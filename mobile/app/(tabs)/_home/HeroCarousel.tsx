@@ -5,6 +5,7 @@ import {
   NativeSyntheticEvent,
   ScrollView,
   View,
+  type ScrollViewInstance,
 } from 'react-native';
 import { useReduceMotion } from '../../../lib/hooks/useReduceMotion';
 import { createThemedStyles } from '../../../theme/ThemeContext';
@@ -80,7 +81,7 @@ export function HeroCarousel({ sermons, onPress, topInset = 0, renderCard }: Her
   const styles = useStyles();
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const draggingRef = useRef(false);
   const reduceMotion = useReduceMotion();
 

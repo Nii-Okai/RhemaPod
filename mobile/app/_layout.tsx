@@ -40,13 +40,10 @@ function RootNavigator() {
 
   return (
     <>
-      {/* Light status-bar glyphs on the dark palette, dark glyphs on the light one. On
-          Android the bar also needs the palette's background, or it keeps the native light
-          fill and the light glyphs vanish in dark mode (iOS ignores backgroundColor). */}
-      <StatusBar
-        barStyle={scheme === 'light' ? 'dark-content' : 'light-content'}
-        backgroundColor={colors.surface.app}
-      />
+      {/* Light status-bar glyphs on the dark palette, dark glyphs on the light one. The bar
+          itself is transparent on both platforms (Android is always edge-to-edge), so the
+          screen's own background shows behind it. */}
+      <StatusBar barStyle={scheme === 'light' ? 'dark-content' : 'light-content'} />
       {/* Every screen paints its own background, but the native container shows through
           during push/pop transitions — keep it on the active palette so a light screen
           never slides over a dark flash (or the reverse). */}

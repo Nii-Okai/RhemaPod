@@ -11,7 +11,7 @@ describe('useDebouncedValue', () => {
   });
 
   it('does not propagate a new value until the delay elapses', () => {
-    const { result, rerender } = renderHook(({ value }) => useDebouncedValue(value, 300), {
+    const { result, rerender } = renderHook(({ value }: { value: string }) => useDebouncedValue(value, 300), {
       initialProps: { value: 'a' },
     });
 
@@ -32,7 +32,7 @@ describe('useDebouncedValue', () => {
   });
 
   it('restarts the timer on every keystroke — proves it debounces, not throttles', () => {
-    const { result, rerender } = renderHook(({ value }) => useDebouncedValue(value, 300), {
+    const { result, rerender } = renderHook(({ value }: { value: string }) => useDebouncedValue(value, 300), {
       initialProps: { value: 'a' },
     });
 
