@@ -15,7 +15,7 @@ import { __enterFullscreen, __exitFullscreen, __lastMockPlayer } from '../../../
 import { useIsOnline } from '../../../lib/hooks/useIsOnline';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
 import { NowPlayingProvider } from '../../../lib/playback/NowPlaying';
-import { addToQueue, queueItemFromSermon, queueStore, toggleRepeat } from '../../../lib/playback/queue';
+import { addToQueue, clearUpcoming, queueItemFromSermon, queueStore, toggleRepeat } from '../../../lib/playback/queue';
 import { startPlaylistQueue } from '../../playlist/_detail/playlistQueue';
 import { AsyncStorage as MockKvStore } from 'expo-sqlite/kv-store';
 
@@ -691,9 +691,19 @@ describe('PlayerScreen — autoplay next in series', () => {
     const screen = renderInApp();
     const { findByTestId, findByText } = screen;
     await findByTestId('video-view');
-    // The queue names it before it plays.
+    // Up next lists the next episode as its own row before it plays (Nii, 2026-11-15: it
+    // used to show only the episode already playing), with no footer note.
+    await waitFor(() =>
+      expect(queueStore.get().items.map((item) => [item.sermonId, item.origin])).toEqual([
+        ['sermon-1', 'context'],
+        ['sermon-3', 'autoplay'],
+      ]),
+    );
     fireEvent.press(await screen.findByLabelText('Show queue'));
-    expect(await findByText('Autoplay is on. Next in the series: Episode sermon-3')).toBeTruthy();
+    expect(await findByText('Episode sermon-3')).toBeTruthy();
+    expect(screen.getByLabelText('Play Episode sermon-3')).toBeTruthy();
+    expect(screen.queryByText(/Autoplay is on/)).toBeNull();
+    expect(screen.queryByTestId('queue-footer')).toBeNull();
 
     await playToEnd();
     await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ id: 'sermon-3', startAt: '' }));
@@ -717,6 +727,21 @@ describe('PlayerScreen — autoplay next in series', () => {
     expect(mockSetParams).not.toHaveBeenCalled();
     expect(getByLabelText('Replay')).toBeTruthy();
     expect(mockedGet).not.toHaveBeenCalledWith('/series/{series_id}/episodes', expect.anything());
+  });
+
+  it('does not put the next episode back after the listener removes it', async () => {
+    readsWithEpisodes([episode('sermon-1'), episode('sermon-2')]);
+    mockParams = { id: 'sermon-1' };
+    const screen = renderInApp();
+    await screen.findByTestId('video-view');
+    await waitFor(() => expect(queueStore.get().items).toHaveLength(2));
+    act(() => {
+      queueStore.update(clearUpcoming);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1']);
   });
 
   it('stops after the last episode', async () => {
@@ -786,12 +811,14 @@ describe('PlayerScreen — queue list', () => {
   });
 
   it('clears everything after the current item', async () => {
-    const { findByLabelText, findByText } = renderWithQueue(['sermon-1', 'sermon-2', 'sermon-3']);
+    const { findByLabelText, findByText, queryByText } = renderWithQueue(['sermon-1', 'sermon-2', 'sermon-3']);
 
     fireEvent.press(await findByLabelText('Clear up next'));
 
     expect(queueStore.get().items.map((item) => item.sermonId)).toEqual(['sermon-1']);
-    expect(await findByText(/Nothing else queued/)).toBeTruthy();
+    // No empty-state note, and the queue stays on screen rather than snapping to comments.
+    expect(await findByText(/Driving/)).toBeTruthy();
+    expect(queryByText(/Nothing else queued/)).toBeNull();
   });
 
   it('a queue row\'s "..." menu plays it next, removes it, downloads, removes from the playlist, or shares', async () => {
