@@ -1,7 +1,8 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon } from '../../../components';
+import { Artwork } from '../../../components/Artwork';
 import { useCurrentUser } from '../../../lib/query/hooks/useProfile';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
@@ -47,7 +48,14 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
   return (
     <View testID="home-header" style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.md }]}>
       <View style={styles.titles}>
-        <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessibilityLabel="RhemaPod" />
+        <Artwork
+          fallback={wordmark}
+          style={styles.wordmark}
+          contentFit="contain"
+          transition={0}
+          accessible
+          accessibilityLabel="RhemaPod"
+        />
         {/* Two lines at most, smallest display size: a long first name wraps rather than
             being cut off (Nii's phone test, 2026-11-11). */}
         <AppText variant="display.row" accessibilityRole="header" numberOfLines={2}>

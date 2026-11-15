@@ -95,8 +95,14 @@ export const monoScale: Record<MonoVariant, TypeStyle> = {
  * size setting automatically via `allowFontScaling`, which defaults to `true` and is
  * never overridden in this app's primitives. That's the whole mechanism: use plain
  * numeric fontSize tokens (never a fixed-size image/SVG for text), never set
- * `allowFontScaling={false}` or a low `maxFontSizeMultiplier`, and OS-level Dynamic
- * Type / Android font-scale settings apply automatically.
+ * `allowFontScaling={false}`, and OS-level Dynamic Type / Android font-scale settings
+ * apply automatically.
+ *
+ * Text does stop growing at `MAX_FONT_SCALE` (below), which `AppText` passes as its
+ * `maxFontSizeMultiplier`. iOS's largest accessibility sizes reach about 3.1x, where a
+ * 32pt title becomes 100pt and fixed-width rows, pills and cards can't hold a word. The
+ * caps still give UI text twice its size (the most Android offers at all) and display
+ * text, already large, half again.
  *
  * The one thing that does NOT auto-scale is `lineHeight` — RN treats it as an absolute
  * number, so a hard-coded value would clip or overlap once fontSize grows under a large
@@ -108,8 +114,15 @@ export const monoScale: Record<MonoVariant, TypeStyle> = {
  * screen won't re-flow the instant the OS setting changes; it reflects the current value
  * on next mount/re-render (e.g. app foreground), which matches common RN practice.
  */
-export function scaledLineHeight(fontSize: number, ratio: number): number {
-  return Math.round(fontSize * ratio * PixelRatio.getFontScale());
+/** The most each type family grows with the OS text-size setting; see above. */
+export const MAX_FONT_SCALE = {
+  display: 1.5,
+  ui: 2,
+  mono: 2,
+} as const;
+
+export function scaledLineHeight(fontSize: number, ratio: number, maxScale: number = MAX_FONT_SCALE.ui): number {
+  return Math.round(fontSize * ratio * Math.min(PixelRatio.getFontScale(), maxScale));
 }
 
 export const typography = {
@@ -118,4 +131,5 @@ export const typography = {
   uiScale,
   monoScale,
   scaledLineHeight,
+  MAX_FONT_SCALE,
 } as const;

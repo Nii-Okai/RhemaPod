@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated } from 'react-native';
+import { useReduceMotion } from '../lib/hooks/useReduceMotion';
 
 export interface StaggerItemProps {
   /** Position within its shelf — drives the entrance delay. */
@@ -22,9 +23,20 @@ const DURATION_MS = 220;
  *
  * `useNativeDriver: true` keeps this off the JS thread — safe to apply to every card in
  * every shelf without scroll-performance risk.
+ *
+ * With Reduce Motion on, cards don't rise in: they show in place at once (and a rise
+ * already under way when the setting is read jumps to its end).
  */
 export function StaggerItem({ index, children }: StaggerItemProps) {
   const progress = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
+
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.stopAnimation();
+      progress.setValue(1);
+    }
+  }, [reduceMotion, progress]);
 
   useEffect(() => {
     const animation = Animated.timing(progress, {
