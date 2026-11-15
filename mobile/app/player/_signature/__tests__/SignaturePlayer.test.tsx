@@ -10,7 +10,7 @@ import { darkColors, lightColors } from '../../../../theme/colors';
 import { loadThemePreference } from '../../../../lib/settings/themePreference';
 // See the classic player test for why this is imported by its relative path.
 import { __lastMockPlayer } from '../../../../__mocks__/expo-video';
-import { queueStore } from '../../../../lib/playback/queue';
+import { addToQueue, queueStore } from '../../../../lib/playback/queue';
 import { startPlaylistQueue } from '../../../playlist/_detail/playlistQueue';
 
 jest.mock('../../../../lib/api/typedClient', () => ({
@@ -175,10 +175,14 @@ beforeEach(() => {
 });
 
 describe('Signature player', () => {
-  it('shows the series and part in the header, and closes from the chevron', async () => {
+  it('keeps only the close chevron and the Watch / Listen switch in the header', async () => {
     const screen = renderPlayer();
-    await screen.findByTestId('signature-player-header');
-    expect(await screen.findByText('Part 2')).toBeTruthy();
+    await screen.findByTestId('video-view');
+    // Nii, 2026-11-15: no "Now playing" / series label up top, so the comments get the room.
+    expect(screen.queryByText('Part 2')).toBeNull();
+    expect(screen.queryByText('Now playing')).toBeNull();
+    expect(screen.getByText('Watch')).toBeTruthy();
+    expect(screen.getByText('Listen')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Close player'));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
@@ -186,7 +190,7 @@ describe('Signature player', () => {
   it('shows the title, speaker and category under the video, and keeps every control on the video', async () => {
     const screen = renderPlayer();
     await screen.findByTestId('video-view');
-    expect(screen.getAllByText('The Destiny of the Church').length).toBe(2); // header + title
+    expect(screen.getAllByText('The Destiny of the Church').length).toBe(1); // the title block only
     expect(screen.getByText('Prophet Prince Manasseh Atsu · Prophetic')).toBeTruthy();
 
     const player = __lastMockPlayer!;
@@ -239,8 +243,9 @@ describe('Signature player', () => {
     expect(await screen.findByText('Watching this one a second time. Powerful word.')).toBeTruthy();
     expect(screen.getAllByText('Comments').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('1 comment')).toBeTruthy();
-    // A single sermon opens on its comments; the queue is a tap away.
-    expect(screen.getByLabelText('Show queue')).toBeTruthy();
+    // Nothing up next: comments alone, with no Queue / Comments switch.
+    expect(screen.queryByLabelText('Show queue')).toBeNull();
+    expect(screen.queryByLabelText('Show comments')).toBeNull();
   });
 
   it('opens a playlist on its queue, and the toolbar switches to comments and back', async () => {
@@ -257,11 +262,29 @@ describe('Signature player', () => {
     expect(await screen.findByText('Title sermon-2')).toBeTruthy();
   });
 
-  it('labels a sermon outside a series "Now playing"', async () => {
+  it('offers the queue on a standalone sermon once something is queued after it', async () => {
     mockReads({ detail: { ...detail, series_id: null, series_title: null, episode_number: null } });
     const screen = renderPlayer();
-    expect(await screen.findByText('Now playing')).toBeTruthy();
-    expect(screen.queryByText('Part 2')).toBeNull();
+    await screen.findByText('Watching this one a second time. Powerful word.');
+    expect(screen.queryByLabelText('Show queue')).toBeNull();
+    expect(screen.queryByText('Now playing')).toBeNull();
+
+    act(() => {
+      queueStore.update((state) =>
+        addToQueue(state, {
+          sermonId: 'sermon-9',
+          title: 'Queued later',
+          artist: null,
+          meta: null,
+          category: null,
+          artworkUrl: null,
+          mediaType: 'audio',
+          seriesId: null,
+        }),
+      );
+    });
+    fireEvent.press(await screen.findByLabelText('Show queue'));
+    expect(await screen.findByText('Queued later')).toBeTruthy();
   });
 
   it.each([

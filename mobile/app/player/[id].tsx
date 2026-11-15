@@ -21,6 +21,7 @@ import { useCachedSource } from '../../lib/mediaCache/useCachedSource';
 import { usePlaylist, useRemovePlaylistItem } from '../../lib/query/hooks/usePlaylists';
 import { useSeriesEpisodes } from '../../lib/query/hooks/useSeries';
 import {
+  appendAutoplay,
   clearUpcoming,
   moveToNext,
   nextEpisodeAfter,
@@ -108,7 +109,8 @@ import { haptics } from '../../lib/haptics';
  * **Queue / Comments**: the panel under the title shows the queue (`QueueList`) or the
  * comments, with a switch at the foot. A playlist opens on its queue (Isaac's ask,
  * 2026-10-11: "open another page with all playlist items"); a single sermon opens on its
- * comments, as before.
+ * comments, as before. With nothing up next there's no queue to show, so the switch is left
+ * out and the comments take the room (Nii, 2026-11-15).
  */
 export default function PlayerScreen() {
   const styles = useStyles();
@@ -184,13 +186,37 @@ export default function PlayerScreen() {
     if (detail && playable) queueStore.update((state) => syncToSermon(state, queueItemFromSermon(detail)));
   }, [detail?.id, playable]);
 
-  // What autoplay will pick when the queue runs out, shown at the foot of the queue.
+  // Up next for a series episode (Nii, 2026-11-15: it showed only the episode already
+  // playing). Opening an episode makes a queue of one (`syncToSermon`), and autoplay used to
+  // add the next episode only once this one ended. Now, with autoplay on and nothing else
+  // up next, the next episode goes on the end of the queue as soon as it's known, so the
+  // Up next list shows it as a real row (tap to play, "..." to remove) and the mini player's
+  // Next button reaches it too. `NowPlayingProvider`'s end-of-queue autoplay stays as the
+  // fallback for a sermon that plays on without this screen open.
   const current = queue.items[queue.index];
   const hasNext = nextIndex(queue) !== null;
   const autoplayOn = preferences.preferences.autoplayNextInSeries;
   const autoplaySeriesId = !hasNext && autoplayOn && current?.sermonId === sermonId ? (current.seriesId ?? '') : '';
   const seriesEpisodes = useSeriesEpisodes(autoplaySeriesId);
   const autoplayNext = autoplaySeriesId && seriesEpisodes.data ? nextEpisodeAfter(seriesEpisodes.data, sermonId) : null;
+  // Once per sermon, so removing the row (or Clear) isn't undone straight away.
+  const autoplayQueuedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoplayNext || autoplayQueuedFor.current === sermonId) return;
+    autoplayQueuedFor.current = sermonId;
+    const playingId = sermonId;
+    const artworkFallback = current?.artworkUrl ?? null;
+    queueStore.update((state) =>
+      state.items[state.index]?.sermonId === playingId && nextIndex(state) === null
+        ? appendAutoplay(state, queueItemFromSermon(autoplayNext, artworkFallback))
+        : state,
+    );
+  }, [autoplayNext?.id, sermonId]);
+
+  // A Queue pane only when there's something to show on it besides this sermon: a playlist,
+  // or anything up next. A standalone sermon with nothing queued gets its comments alone.
+  const upcomingCount = current?.sermonId === sermonId ? queue.items.length - queue.index - 1 : 0;
+  const hasQueue = source?.kind === 'playlist' || upcomingCount > 0;
 
   const queueContext: QueueListProps = {
     title: source?.name ?? 'Up next',
@@ -214,7 +240,6 @@ export default function PlayerScreen() {
       : undefined,
     onDownload: downloadQueueItem,
     onShare: shareQueueItem,
-    autoplayNextTitle: autoplayNext?.title ?? null,
   };
 
   // The variant `useStream` would otherwise hand straight to the player, before the media
@@ -264,6 +289,13 @@ export default function PlayerScreen() {
   // tapped to open the player.
   const backdropUri = detail?.thumbnail_url ?? (hero?.sermonId === sermonId ? hero.uri : null);
 
+  // The Watch / Listen switch shares the header row with the close chevron, so it shows
+  // only while there's a stage under it (loading or playing, not an error) and folds away
+  // with the keyboard like the rest of the player's chrome.
+  const keyboardVisible = useKeyboardVisible();
+  let hasStage = false;
+  const body = renderBody();
+
   return (
     <PlayerHeroRootContext.Provider value={rootRef}>
       <View ref={rootRef} testID="player-screen" collapsable={false} style={styles.screen}>
@@ -281,8 +313,11 @@ export default function PlayerScreen() {
             One shell for every state (loading, error, playing), so the backdrop and header
             stay put while the body under them changes. */}
         <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScreenHeader onBack={goBack} detail={detailQuery.isError && !isLoadingOrLeaving ? undefined : detail} />
-          {renderBody()}
+          <SignaturePlayerHeader
+            onBack={goBack}
+            center={hasStage && !keyboardVisible ? <ModeSwitch mode={mode} onChange={setMode} /> : null}
+          />
+          {body}
         </KeyboardAvoidingView>
       </View>
     </PlayerHeroRootContext.Provider>
@@ -290,7 +325,8 @@ export default function PlayerScreen() {
 
   function renderBody(): React.ReactNode {
     if (isLoadingOrLeaving) {
-      return <PlayerLoading sermonId={sermonId} detail={detail} mode={mode} onModeChange={setMode} />;
+      hasStage = true;
+      return <PlayerLoading sermonId={sermonId} detail={detail} />;
     }
 
     if (detailQuery.isError || !detail) {
@@ -318,6 +354,7 @@ export default function PlayerScreen() {
       );
     }
 
+    hasStage = true;
     const momentStart = startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
     const initialPositionSeconds =
       momentStart ?? (progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0);
@@ -344,14 +381,10 @@ export default function PlayerScreen() {
         opensOnQueue={source?.kind === 'playlist'}
         onExit={cacheSource.reportExit}
         mode={mode}
-        onModeChange={setMode}
+        hasQueue={hasQueue}
       />
     );
   }
-}
-
-function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
-  return <SignaturePlayerHeader onBack={onBack} detail={detail} />;
 }
 
 /**
@@ -360,23 +393,10 @@ function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonD
  * the title block, then the panel below — so the swap to the real player reads as the
  * controls arriving rather than as a second screen transition.
  */
-function PlayerLoading({
-  sermonId,
-  detail,
-  mode,
-  onModeChange,
-}: {
-  sermonId: string;
-  detail?: SermonDetail;
-  mode: PlayerMode;
-  onModeChange: (mode: PlayerMode) => void;
-}) {
+function PlayerLoading({ sermonId, detail }: { sermonId: string; detail?: SermonDetail }) {
   const styles = useStyles();
   return (
     <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
-      {/* The switch is already where the playing screen has it, so the stage doesn't move
-          when playback arrives (and the art flying in lands where it stays). */}
-      <ModeSwitch mode={mode} onChange={onModeChange} />
       <PlayerHeroTarget sermonId={sermonId}>
         <View style={styles.loadingStage}>
           {detail?.thumbnail_url ? <FittedArt uri={detail.thumbnail_url} /> : null}
@@ -436,7 +456,8 @@ interface PlayerContentProps {
    * a downloaded sermon or a cache hit — `useCachedSource`'s own `reportExit` decides. */
   onExit: (positionSeconds: number, durationSeconds: number | null) => void;
   mode: PlayerMode;
-  onModeChange: (mode: PlayerMode) => void;
+  /** Whether there's anything to show on a Queue pane (see `PlayerScreen`). */
+  hasQueue: boolean;
 }
 
 /**
@@ -462,7 +483,7 @@ function PlayerContent({
   opensOnQueue,
   onExit,
   mode,
-  onModeChange,
+  hasQueue,
 }: PlayerContentProps) {
   const nowPlaying = useNowPlaying();
   // The app-wide player (`lib/playback/NowPlaying.tsx`), so the sermon keeps playing in
@@ -734,7 +755,7 @@ function PlayerContent({
       video={video}
       listen={listen}
       mode={mode}
-      onModeChange={onModeChange}
+      hasQueue={hasQueue}
       sleepSheet={sleepSheet}
     />
   );
@@ -749,7 +770,7 @@ interface SignatureLayoutProps {
   video: React.ReactNode;
   listen: React.ReactNode;
   mode: PlayerMode;
-  onModeChange: (mode: PlayerMode) => void;
+  hasQueue: boolean;
   sleepSheet: React.ReactNode;
 }
 
@@ -758,7 +779,10 @@ interface SignatureLayoutProps {
  * still on its overlay (Nii, 2026-10-22: "all player controls must be kept on player"), then
  * the title block with Like / My List / Download / Share, then the queue or the comments
  * with a Queue / Comments switch at the bottom. A playlist opens on its queue, anything else
- * on its comments. The title block and that switch fold away while the keyboard is up so the
+ * on its comments. A sermon with nothing up next (a standalone one with nothing queued) has
+ * no queue to show, so it gets the comments alone and no switch (Nii, 2026-11-15). Once the
+ * switch has shown it stays for that sermon, so clearing the queue doesn't pull the pane
+ * away mid-tap. The title block and that switch fold away while the keyboard is up so the
  * comment composer keeps its room. Playback itself is `PlayerContent`'s, unchanged.
  */
 function SignatureLayout({
@@ -770,18 +794,22 @@ function SignatureLayout({
   video,
   listen,
   mode,
-  onModeChange,
+  hasQueue,
   sleepSheet,
 }: SignatureLayoutProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
   const [pane, setPane] = useState<PlayerPane>(opensOnQueue ? 'queue' : 'comments');
-  const showQueue = pane === 'queue';
+  // Sticky for this sermon (`SignatureLayout` remounts per sermon with `PlayerContent`).
+  const queueShownRef = useRef(false);
+  if (hasQueue || opensOnQueue) queueShownRef.current = true;
+  const offersQueue = queueShownRef.current;
+  const showQueue = offersQueue && pane === 'queue';
+  const showSwitch = offersQueue && !keyboardVisible;
 
   return (
     <>
-      {keyboardVisible ? null : <ModeSwitch mode={mode} onChange={onModeChange} />}
       {mode === 'listen' ? (
         keyboardVisible ? null : listen
       ) : (
@@ -793,9 +821,9 @@ function SignatureLayout({
           <QueueList {...queueContext} isPlaying={isPlaying} />
         </View>
       ) : (
-        <CommentsPanel sermonId={sermonId} variant="signature" />
+        <CommentsPanel sermonId={sermonId} variant="signature" ownsBottomInset={!showSwitch && !keyboardVisible} />
       )}
-      {keyboardVisible ? null : (
+      {!showSwitch ? null : (
         <PaneSwitch pane={showQueue ? 'queue' : 'comments'} onSelectPane={setPane} bottomInset={insets.bottom} />
       )}
       {sleepSheet}
