@@ -23,6 +23,9 @@ param apiMinReplicas int
 param apiMaxReplicas int
 param adminMinReplicas int
 param adminMaxReplicas int
+param appCpu string
+param appMemory string
+param warmHours object
 param apiSettings object
 param apiSecretNames array
 param cronJobs array
@@ -39,6 +42,7 @@ param postgresAdminPassword string
 param redisPassword string
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
+var kvName = 'kv-rp-${envName}-app-${suffix}'
 var allTags = union(tags, { app: 'rhemapod', environment: envName })
 var prefix = 'rhemapod-${envName}'
 var acrLoginServer = '${acrName}.azurecr.io'
@@ -67,7 +71,7 @@ resource managedRedis 'Microsoft.Cache/redisEnterprise@2025-04-01' existing = if
 }
 
 var redisUrl = redisMode == 'managed'
-  ? 'rediss://:${redisPassword}@${managedRedis.properties.hostName}:10000/0'
+  ? 'rediss://:${redisPassword}@${managedRedis!.properties.hostName}:10000/0'
   : 'redis://:${redisPassword}@rhemapod-${platformName}-redis:6379/${redisDatabase}'
 
 // The app rewrites postgresql:// to postgresql+psycopg://. The generated
@@ -82,7 +86,7 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 }
 
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'kv-rp-${envName}-app-${suffix}'
+  name: kvName
   location: location
   tags: allTags
   properties: {
@@ -141,7 +145,7 @@ var secretNames = union(['database-url', 'redis-url'], apiSecretNames)
 var containerSecrets = [
   for name in secretNames: {
     name: name
-    keyVaultUrl: '${kv.properties.vaultUri}secrets/${name}'
+    keyVaultUrl: 'https://${kvName}${environment().suffixes.keyvaultDns}/secrets/${name}'
     identity: identity.id
   }
 ]
@@ -185,6 +189,33 @@ var userIdentity = {
     '${identity.id}': {}
   }
 }
+
+// HTTP load, plus (optionally) one warm replica during working hours so the
+// first request of the day doesn't wait for a cold start (DEPLOYMENT-AZURE.md §10).
+var scaleRules = concat(
+  [
+    {
+      name: 'http'
+      http: { metadata: { concurrentRequests: '30' } }
+    }
+  ],
+  warmHours.enabled
+    ? [
+        {
+          name: 'warm-hours'
+          custom: {
+            type: 'cron'
+            metadata: {
+              timezone: warmHours.timezone
+              start: warmHours.start
+              end: warmHours.end
+              desiredReplicas: '1'
+            }
+          }
+        }
+      ]
+    : []
+)
 
 // ── Custom domains (two passes; DEPLOYMENT-AZURE.md §6) ──────────────────────
 resource apiCert 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (deployApps && customDomainStage == 'bound') {
@@ -257,8 +288,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
           command: ['sh', 'scripts/container-start.sh']
           env: apiEnv
           resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
+            cpu: json(appCpu)
+            memory: appMemory
           }
           probes: [
             {
@@ -286,12 +317,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
       scale: {
         minReplicas: apiMinReplicas
         maxReplicas: apiMaxReplicas
-        rules: [
-          {
-            name: 'http'
-            http: { metadata: { concurrentRequests: '30' } }
-          }
-        ]
+        rules: scaleRules
       }
     }
   }
@@ -326,13 +352,13 @@ resource admin 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
           env: [
             // The BFF calls the API over its always-valid default host, so the
             // portal works before custom-domain DNS exists.
-            { name: 'API_BASE_URL', value: 'https://${api.properties.configuration.ingress.fqdn}' }
+            { name: 'API_BASE_URL', value: 'https://${api!.properties.configuration.ingress.fqdn}' }
             // CSRF origin check: must be the hostname people actually use.
             { name: 'PORTAL_ORIGIN', value: 'https://${adminHost}' }
           ]
           resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
+            cpu: json(appCpu)
+            memory: appMemory
           }
           probes: [
             {
@@ -347,12 +373,7 @@ resource admin 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
       scale: {
         minReplicas: adminMinReplicas
         maxReplicas: adminMaxReplicas
-        rules: [
-          {
-            name: 'http'
-            http: { metadata: { concurrentRequests: '30' } }
-          }
-        ]
+        rules: scaleRules
       }
     }
   }
@@ -454,8 +475,8 @@ resource shareDomain 'Microsoft.Web/staticSites/customDomains@2023-12-01' = if (
   }
 }
 
-output apiDefaultHost string = deployApps ? api.properties.configuration.ingress.fqdn : ''
-output adminDefaultHost string = deployApps ? admin.properties.configuration.ingress.fqdn : ''
+output apiDefaultHost string = deployApps ? api!.properties.configuration.ingress.fqdn : ''
+output adminDefaultHost string = deployApps ? admin!.properties.configuration.ingress.fqdn : ''
 output keyVaultName string = kv.name
-output shareSiteDefaultHost string = deployShareSite ? shareSite.properties.defaultHostname : ''
+output shareSiteDefaultHost string = deployShareSite ? shareSite!.properties.defaultHostname : ''
 output shareSiteName string = deployShareSite ? shareSite.name : ''

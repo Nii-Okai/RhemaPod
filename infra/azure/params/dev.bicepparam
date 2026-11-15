@@ -29,6 +29,21 @@ param apiMaxReplicas = 1
 param adminMinReplicas = 0
 param adminMaxReplicas = 1
 
+// The smallest size Container Apps offers; plenty for testing.
+param appCpu = '0.25'
+param appMemory = '0.5Gi'
+
+// Set enabled to true to keep the API and admin portal warm in these hours
+// (no cold starts). About 0.8 US cents per app per warm hour at this size; the
+// default weekday 08:00–19:00 window is about $2 a month per app, $4 for this
+// environment's API + admin. Off: they scale to zero after ~5 idle minutes.
+param warmHours = {
+  enabled: false
+  timezone: 'Europe/London'
+  start: '0 8 * * 1-5'
+  end: '0 19 * * 1-5'
+}
+
 param apiSettings = union(commonSettings, {
   ENVIRONMENT: 'development'
   DEBUG: 'true' // exposes /docs, dev only

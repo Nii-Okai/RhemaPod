@@ -11,7 +11,8 @@ name: Deploy to Azure
 #
 # Does nothing until the repository variable AZURE_DEPLOY_ENABLED is "true",
 # so merging this file changes nothing, and the Render deploys keep running
-# alongside until cutover.
+# alongside until cutover. Production additionally needs
+# AZURE_PROD_DEPLOY_ENABLED = "true", so dev and test can go live first.
 on:
   push:
     branches: [dev, uat, prod]
@@ -43,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.pick.outputs.environment }}
+      enabled: ${{ steps.pick.outputs.enabled }}
       env_name: ${{ steps.pick.outputs.env_name }}
       resource_group: ${{ steps.pick.outputs.resource_group }}
     steps:
@@ -50,6 +52,7 @@ jobs:
         env:
           INPUT_ENV: ${{ inputs.environment }}
           BRANCH: ${{ github.ref_name }}
+          PROD_ENABLED: ${{ vars.AZURE_PROD_DEPLOY_ENABLED }}
         run: |
           if [ -n "$INPUT_ENV" ]; then
             environment="$INPUT_ENV"
@@ -66,7 +69,13 @@ jobs:
             test) env_name=test; rg=rg-rhemapod-nonprod ;;
             production) env_name=prod; rg=rg-rhemapod-prod ;;
           esac
+          enabled=true
+          if [ "$environment" = production ] && [ "$PROD_ENABLED" != true ]; then
+            enabled=false
+            echo "::notice::Production isn't set up on Azure yet (AZURE_PROD_DEPLOY_ENABLED is not true). Nothing deployed."
+          fi
           {
+            echo "enabled=$enabled"
             echo "environment=$environment"
             echo "env_name=$env_name"
             echo "resource_group=$rg"
@@ -75,6 +84,7 @@ jobs:
   deploy:
     name: Deploy to ${{ needs.resolve.outputs.environment }}
     needs: resolve
+    if: needs.resolve.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: ${{ needs.resolve.outputs.environment }}

@@ -54,6 +54,18 @@ param apiMaxReplicas int = 1
 param adminMinReplicas int = 0
 param adminMaxReplicas int = 1
 
+@description('vCPU and memory for each API and admin replica. Container Apps pairs them: 0.25/0.5Gi, 0.5/1Gi, 1/2Gi …')
+param appCpu string = '0.5'
+param appMemory string = '1Gi'
+
+@description('Keep one API and one admin replica running between start and end (cron expressions in timezone), so nobody waits for a cold start then. Billed while warm (DEPLOYMENT-AZURE.md §10).')
+param warmHours object = {
+  enabled: false
+  timezone: 'Europe/London'
+  start: '0 8 * * 1-5'
+  end: '0 19 * * 1-5'
+}
+
 // ── App configuration ────────────────────────────────────────────────────────
 @description('Non-secret API settings as NAME: "value" (all strings).')
 param apiSettings object
@@ -99,6 +111,9 @@ module app 'modules/app.bicep' = {
     apiMaxReplicas: apiMaxReplicas
     adminMinReplicas: adminMinReplicas
     adminMaxReplicas: adminMaxReplicas
+    appCpu: appCpu
+    appMemory: appMemory
+    warmHours: warmHours
     apiSettings: apiSettings
     apiSecretNames: apiSecretNames
     cronJobs: cronJobs

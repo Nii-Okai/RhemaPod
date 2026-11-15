@@ -9,6 +9,10 @@ workflow drive it:
 - `.github/workflows/deploy-azure.yml` builds, migrates and rolls out on every push. It stays off until you
   set `AZURE_DEPLOY_ENABLED`.
 
+**Dev and test come first.** Every production step in this guide is marked *(production, later)*. Skip
+those for now. Production needs nothing from them, and §11 is the checklist for adding it later. Pushes
+to `prod` do nothing until `AZURE_PROD_DEPLOY_ENABLED` is set.
+
 ## 0. What gets created
 
 | Branch | Environment | Runs as | Hostnames (after §6) | Lives in |
@@ -49,9 +53,8 @@ Google and Apple. Azure only replaces what Render ran: compute, Postgres, Redis 
 
 ## 1. Decide before you start
 
-1. **Subscriptions.** Use one subscription for dev/test and another for production if you can. The
-   free Container Apps allowance is per subscription, so production's always-on API would
-   otherwise use it up. One subscription also works.
+1. **Subscription for dev/test.** Production can go in a second subscription later (§11). One subscription
+   also works.
 2. **Region.** The default is `germanywestcentral`, which matches Render's Frankfurt. Override it with `AZURE_LOCATION`
    before the first deploy, because a region can't be changed later. The share site's region is set separately
    (`staticSiteLocation`, default `westeurope`).
@@ -79,7 +82,7 @@ export BUDGET_ALERT_EMAILS=you@example.com  # comma-separated
 infra/azure/deploy.sh shared                # creates the registry in rg-rhemapod-shared
 ```
 
-If production is in another subscription, also export `AZURE_ACR_SUBSCRIPTION_ID=<subscription that
+*(Production, later)* If production is in another subscription, also export `AZURE_ACR_SUBSCRIPTION_ID=<subscription that
 holds the registry>` whenever you work on production.
 
 ## 3. Outside Azure, per environment
@@ -98,7 +101,7 @@ admin app's default `https://rhemapod-<env>-admin.<…>.azurecontainerapps.io` o
 `deploy.sh` prints it. Logins only work on the hostname in `PORTAL_ORIGIN`, so finish §6
 before signing in.
 
-For production, also fill in the four `<…>` placeholders in `infra/azure/params/prod.bicepparam`
+*(Production, later)* Fill in the four `<…>` placeholders in `infra/azure/params/prod.bicepparam`
 (`CF_ACCOUNT_ID`, `CF_STREAM_CUSTOMER_SUBDOMAIN`, `ARCHIVE_STORE_BUCKET`, `ARCHIVE_STORE_REGION`). Point
 the Stream webhook at `https://api.rhemapod.com/api/v1/media/stream/webhook` once §6 is done.
 
@@ -119,7 +122,7 @@ az keyvault secret set --vault-name $KV --name google-oauth-client-secret --valu
 az keyvault secret set --vault-name $KV --name apple-private-key --file AuthKey_F8JN4PAKLB.p8
 ```
 
-For production, also set `cf-stream-api-token`, `cf-stream-webhook-secret`,
+*(Production, later)* Also set `cf-stream-api-token`, `cf-stream-webhook-secret`,
 `cf-stream-signing-key-id`, `cf-stream-signing-key-pem` (`--file`), `archive-store-access-key-id` and
 `archive-store-secret-access-key`. The dev values are the same ones as in your `.env.render`.
 
@@ -131,8 +134,7 @@ names in `infra/azure/settings.bicep`). `deploy.sh app` lists whatever is still 
 
 ## 5. First deployment of an environment
 
-Shown for dev. Test is the same with `test`. Production is the same with `prod` and the `prod` platform,
-in the production subscription.
+Shown for dev. Test is the same with `test`, on the same platform. Step 1 and step 4 run once for both.
 
 ```bash
 # 1. Platform: network, Container Apps environment, Postgres, Redis, budget.
@@ -147,9 +149,8 @@ infra/azure/deploy.sh app dev                 # prints the vault name and the mi
 infra/azure/setup-github-oidc.sh nonprod      # prints the gh variable commands to run
 ```
 
-In GitHub, go to **Settings → Environments** and create `dev`, `test` and `production`. Set the printed
-variables on each one. For `production`, add yourself as a **required reviewer** and limit deployment
-branches to `prod`. Then set the switch:
+In GitHub, go to **Settings → Environments** and create `dev` and `test`. Set the printed variables on
+each one, and limit `test` to the `uat` branch. Then set the switch:
 
 ```bash
 gh variable set AZURE_DEPLOY_ENABLED --body true
@@ -183,7 +184,7 @@ On Cloudflare, keep these **DNS only** (grey cloud) so the managed certificate c
 
 Commit each change. The stage lives in the file so a later deploy never detaches a domain.
 
-**Share site (production only):** CNAME `open.rhemapod.com` → the `shareSiteDefaultHost` output. Then set
+**Share site *(production, later)*:** CNAME `open.rhemapod.com` → the `shareSiteDefaultHost` output. Then set
 `bindShareDomain = true` and redeploy. Run the validation checks in DEPLOYMENT-RENDER.md §10
 against it, especially that both `.well-known` files return `200` with `Content-Type: application/json`
 (`open_site/staticwebapp.config.json` sets that). Do this before any native app build.
@@ -274,6 +275,42 @@ Nothing here happens automatically. Render keeps running until you switch DNS an
 - **Outside Azure.** The costs that grow with listeners are Cloudflare Stream (minutes stored and watched),
   R2 storage, the Glacier archive and Workers AI translation. Set billing notifications in Cloudflare and AWS too.
 
-Rough monthly estimates before real traffic (check them in the Azure pricing calculator): dev + test
-about $5–10, with Postgres free for 12 months on a new Azure free account, then about $15–20 more.
-Production is about $50–80.
+### Cold starts and warm hours (dev, test)
+
+With no traffic for about 5 minutes, dev and test scale to zero. The next request then waits about
+10–30 seconds while a replica starts and runs preflight. To avoid that while you work, switch on
+`warmHours` in `params/dev.bicepparam` or `params/test.bicepparam`. Set `enabled: true`, set your
+`timezone`, and set `start` / `end` as cron expressions. Then run `deploy.sh app <env>` and commit the change.
+Between start and end, one API replica and one admin replica stay running. Outside that window they
+scale to zero again.
+
+What it costs: the always-on Redis container already uses up the subscription's free Container Apps
+allowance, so warm time is billed. A warm replica at the dev/test size (0.25 vCPU, 0.5 GiB) costs
+about 0.8 US cents an hour.
+
+| Warm window | Per app | API + admin, one environment | Both environments |
+|---|---|---|---|
+| Off (default) | $0 | $0 | $0 |
+| Weekdays 08:00–19:00 (default window) | ~$2 / month | ~$4 | ~$8 |
+| Every day 08:00–22:00 | ~$3.40 | ~$7 | ~$14 |
+| Always on | ~$6 | ~$12 | ~$24 |
+
+An outside "keep-alive" ping every few minutes costs about the same and breaks silently, so use the
+warm window instead. The scheduled jobs don't wake the API: they run in their own short-lived containers.
+
+### Rough monthly totals before real traffic
+
+Check these in the Azure pricing calculator. Dev + test costs about $5–10 with warm hours off. Postgres is
+free for 12 months on a new Azure free account, then about $15–20 more. Production *(later)* is about $50–80.
+
+## 11. Adding production later
+
+1. Decide the subscription. Export `AZURE_ACR_SUBSCRIPTION_ID` if the registry stays in the dev/test one.
+2. Set up Cloudflare Stream, the Glacier archive and the production R2 buckets (§3). Fill in the
+   placeholders in `params/prod.bicepparam`.
+3. `deploy.sh platform prod`, then `deploy.sh app prod`. Set the secrets (§4), and run
+   `setup-github-oidc.sh prod`.
+4. Create the GitHub environment `production`. Add yourself as a **required reviewer**, limit it to the `prod`
+   branch, and set the printed variables. Then run `gh variable set AZURE_PROD_DEPLOY_ENABLED --body true`.
+5. Run the workflow on `prod`, then `deploy.sh app prod --image-tag <sha>`. Then follow §6 for
+   `api.` / `admin.` / `open.rhemapod.com`, and §9 for the mobile builds.

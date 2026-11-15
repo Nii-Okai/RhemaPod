@@ -29,6 +29,8 @@ param apiMinReplicas = 1
 param apiMaxReplicas = 3
 param adminMinReplicas = 0
 param adminMaxReplicas = 1
+param appCpu = '0.5'
+param appMemory = '1Gi'
 
 param apiSettings = union(commonSettings, {
   ENVIRONMENT: 'production'
