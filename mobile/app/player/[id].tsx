@@ -57,6 +57,7 @@ import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
 import { ListenPanel, ModeSwitch, type PlayerMode } from './_signature/ListenPanel';
 import { useKeyboardVisible } from './_signature/useKeyboardVisible';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
+import { haptics } from '../../lib/haptics';
 
 /**
  * Player screen (design spec §3 "Player (1d, iOS) / Now playing (2b, Android)", plan
@@ -630,8 +631,13 @@ function PlayerContent({
       overlay={overlay}
       isFullscreen={isFullscreen}
       onFullscreenChange={setIsFullscreen}
-      onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+      onTogglePlay={() => {
+        haptics.tap();
+        if (isPlaying) player.pause();
+        else player.play();
+      }}
       onReplay={() => {
+        haptics.tap();
         // `player.replay()` only seeks back to 0 — it does not resume playback (see its
         // own doc comment: "Seeks the playback to the beginning"). Without the explicit
         // `play()`, the sermon just sits paused at frame 0 and Replay looks like it does
@@ -674,8 +680,13 @@ function PlayerContent({
       durationSeconds={duration}
       playbackSpeed={speed}
       sleepRemainingSeconds={sleepTimer.remainingSeconds}
-      onTogglePlay={() => (isPlaying ? player.pause() : player.play())}
+      onTogglePlay={() => {
+        haptics.tap();
+        if (isPlaying) player.pause();
+        else player.play();
+      }}
       onReplay={() => {
+        haptics.tap();
         player.replay();
         player.play();
       }}
