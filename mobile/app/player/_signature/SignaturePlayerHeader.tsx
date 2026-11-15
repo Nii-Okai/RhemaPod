@@ -45,13 +45,14 @@ export function SignaturePlayerHeader({ onBack, detail }: SignaturePlayerHeaderP
   );
 }
 
-const useStyles = createThemedStyles((colors) => ({
+const useStyles = createThemedStyles(() => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 52,
     paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surface.app,
+    // Clear: the player's art-tinted backdrop (`PlayerBackdrop`) shows through.
+    backgroundColor: 'transparent',
   },
   label: {
     flex: 1,

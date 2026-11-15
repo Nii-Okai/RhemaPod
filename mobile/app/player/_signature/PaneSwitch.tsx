@@ -68,7 +68,8 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.default,
-    backgroundColor: colors.surface.app,
+    // Clear: the player's art-tinted backdrop (`PlayerBackdrop`) shows through.
+    backgroundColor: 'transparent',
   },
   tab: {
     flex: 1,

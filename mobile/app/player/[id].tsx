@@ -56,6 +56,9 @@ import { NowPlayingDetails } from './_signature/NowPlayingDetails';
 import { PaneSwitch, type PlayerPane } from './_signature/PaneSwitch';
 import { ListenPanel, ModeSwitch, type PlayerMode } from './_signature/ListenPanel';
 import { useKeyboardVisible } from './_signature/useKeyboardVisible';
+import { PlayerBackdrop } from './_signature/PlayerBackdrop';
+import { PlayerHeroRootContext, PlayerHeroTarget } from './_signature/PlayerHeroTarget';
+import { usePlayerHero } from '../../lib/playback/playerHero';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
 import { haptics } from '../../lib/haptics';
 
@@ -137,6 +140,15 @@ export default function PlayerScreen() {
   };
 
   const goBack = () => router.back();
+
+  // Watch / Listen (Daybreak canvas C3/C4). Held here rather than in `PlayerContent` so the
+  // switch is already in place while the sermon loads (no jump when the player arrives) and
+  // the choice carries on to the next sermon in the queue.
+  const [mode, setMode] = useState<PlayerMode>('watch');
+
+  // The screen's root, which the art flying in from the mini player measures against.
+  const rootRef = useRef<View>(null);
+  const hero = usePlayerHero();
 
   const playlistQuery = usePlaylist(playlistId);
   const removeFromPlaylist = useRemovePlaylistItem(playlistId ?? '');
@@ -246,81 +258,74 @@ export default function PlayerScreen() {
     if (redirectToDetail) router.replace({ pathname: '/sermon/[id]', params: { id: sermonId } });
     // `router` is stable for the screen's lifetime; only the decision matters.
   }, [redirectToDetail, sermonId]);
+  const isLoadingOrLeaving = isLoading || redirectToDetail;
 
-  if (isLoading || redirectToDetail) {
-    return (
-      <View style={styles.screen}>
-        <ScreenHeader onBack={goBack} detail={detail} />
-        <PlayerLoading detail={detail} />
+  // The tinted background: the sermon's art, or until its details load, the art that was
+  // tapped to open the player.
+  const backdropUri = detail?.thumbnail_url ?? (hero?.sermonId === sermonId ? hero.uri : null);
+
+  return (
+    <PlayerHeroRootContext.Provider value={rootRef}>
+      <View ref={rootRef} testID="player-screen" collapsable={false} style={styles.screen}>
+        <PlayerBackdrop uri={backdropUri} />
+        {/* Android needs no `behavior` at all here — same convention `(auth)/_components/
+            auth-screen.tsx` already established: `android:windowSoftInputMode="adjustResize"`
+            (AndroidManifest.xml) already shrinks the whole window when the keyboard opens, so
+            the composer (flex:1 below the fixed-aspect-ratio video surface) naturally ends up
+            in the smaller space without any JS-driven resize. `behavior="height"` (fixed
+            2026-10-16, Isaac's report: the keyboard covered the comment input on Android) had
+            this screen double-handling the resize — the OS's own `adjustResize` shrink *and*
+            `KeyboardAvoidingView`'s own height adjustment stacked on top of it, measured off
+            `Keyboard`'s event frame rather than the window the OS had already resized, which
+            is what actually left the composer covered rather than pushed clear.
+            One shell for every state (loading, error, playing), so the backdrop and header
+            stay put while the body under them changes. */}
+        <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScreenHeader onBack={goBack} detail={detailQuery.isError && !isLoadingOrLeaving ? undefined : detail} />
+          {renderBody()}
+        </KeyboardAvoidingView>
       </View>
-    );
-  }
+    </PlayerHeroRootContext.Provider>
+  );
 
-  if (detailQuery.isError || !detail) {
-    return (
-      <View style={styles.screen}>
-        <ScreenHeader onBack={goBack} />
-        <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />
-      </View>
-    );
-  }
-
-  if (isDownloaded) {
-    if (localPlayback.error) {
-      return (
-        <View style={styles.screen}>
-          <ScreenHeader onBack={goBack} detail={detail} />
-          <PlayerError message={localPlayback.error} />
-        </View>
-      );
+  function renderBody(): React.ReactNode {
+    if (isLoadingOrLeaving) {
+      return <PlayerLoading sermonId={sermonId} detail={detail} mode={mode} onModeChange={setMode} />;
     }
-  } else if (streamQuery.isError || !streamQuery.data) {
-    return (
-      <View style={styles.screen}>
-        <ScreenHeader onBack={goBack} detail={detail} />
-        <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />
-      </View>
-    );
-  }
 
-  const variant: StreamVariant | null =
-    isDownloaded && downloadRecord && localPlayback.localUri
-      ? { type: downloadRecord.mediaType, quality: null, url: localPlayback.localUri }
-      : streamedVariant
-        ? { ...streamedVariant, url: cacheSource.effectiveUrl ?? streamedVariant.url }
-        : null;
-  if (!variant) {
-    return (
-      <View style={styles.screen}>
-        <ScreenHeader onBack={goBack} detail={detail} />
+    if (detailQuery.isError || !detail) {
+      return <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />;
+    }
+
+    if (isDownloaded) {
+      if (localPlayback.error) return <PlayerError message={localPlayback.error} />;
+    } else if (streamQuery.isError || !streamQuery.data) {
+      return <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />;
+    }
+
+    const variant: StreamVariant | null =
+      isDownloaded && downloadRecord && localPlayback.localUri
+        ? { type: downloadRecord.mediaType, quality: null, url: localPlayback.localUri }
+        : streamedVariant
+          ? { ...streamedVariant, url: cacheSource.effectiveUrl ?? streamedVariant.url }
+          : null;
+    if (!variant) {
+      return (
         <PlayerError
           message="No playable audio or video was found for this sermon."
           onRetry={isDownloaded ? undefined : () => streamQuery.refetch()}
         />
-      </View>
-    );
-  }
+      );
+    }
 
-  const momentStart = startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
-  const initialPositionSeconds =
-    momentStart ?? (progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0);
+    const momentStart = startAt && /^\d+$/.test(startAt) ? Number(startAt) : null;
+    const initialPositionSeconds =
+      momentStart ?? (progressQuery.data && !progressQuery.data.completed ? progressQuery.data.position_seconds : 0);
 
-  return (
-    // Android needs no `behavior` at all here — same convention `(auth)/_components/
-    // auth-screen.tsx` already established: `android:windowSoftInputMode="adjustResize"`
-    // (AndroidManifest.xml) already shrinks the whole window when the keyboard opens, so
-    // the composer (flex:1 below the fixed-aspect-ratio video surface) naturally ends up
-    // in the smaller space without any JS-driven resize. `behavior="height"` (fixed
-    // 2026-10-16, Isaac's report: the keyboard covered the comment input on Android) had
-    // this screen double-handling the resize — the OS's own `adjustResize` shrink *and*
-    // `KeyboardAvoidingView`'s own height adjustment stacked on top of it, measured off
-    // `Keyboard`'s event frame rather than the window the OS had already resized, which
-    // is what actually left the composer covered rather than pushed clear.
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScreenHeader onBack={goBack} detail={detail} />
-      {/* Mounted only once detail/progress/stream/preferences have all resolved — see
-          `PlayerContent`'s own docstring for why that ordering matters (it seeds
-          `useProgressFlush`'s resume baseline exactly once, at first render). */}
+    return (
+      // Mounted only once detail/progress/stream/preferences have all resolved — see
+      // `PlayerContent`'s own docstring for why that ordering matters (it seeds
+      // `useProgressFlush`'s resume baseline exactly once, at first render).
       <PlayerContent
         // Forces a fresh mount (new `useVideoPlayer`/`useProgressFlush` seed) when the
         // queue moves to a different sermon, since `PlayerScreen` itself no longer
@@ -338,9 +343,11 @@ export default function PlayerScreen() {
         queueContext={queueContext}
         opensOnQueue={source?.kind === 'playlist'}
         onExit={cacheSource.reportExit}
+        mode={mode}
+        onModeChange={setMode}
       />
-    </KeyboardAvoidingView>
-  );
+    );
+  }
 }
 
 function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonDetail }) {
@@ -353,16 +360,29 @@ function ScreenHeader({ onBack, detail }: { onBack: () => void; detail?: SermonD
  * the title block, then the panel below — so the swap to the real player reads as the
  * controls arriving rather than as a second screen transition.
  */
-function PlayerLoading({ detail }: { detail?: SermonDetail }) {
+function PlayerLoading({
+  sermonId,
+  detail,
+  mode,
+  onModeChange,
+}: {
+  sermonId: string;
+  detail?: SermonDetail;
+  mode: PlayerMode;
+  onModeChange: (mode: PlayerMode) => void;
+}) {
   const styles = useStyles();
   return (
     <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel="Loading sermon">
-      <View style={styles.loadingStage}>
-        {detail?.thumbnail_url ? (
-          <FittedArt uri={detail.thumbnail_url} />
-        ) : null}
-        <ActivityIndicator color={onArt.text.primary} />
-      </View>
+      {/* The switch is already where the playing screen has it, so the stage doesn't move
+          when playback arrives (and the art flying in lands where it stays). */}
+      <ModeSwitch mode={mode} onChange={onModeChange} />
+      <PlayerHeroTarget sermonId={sermonId}>
+        <View style={styles.loadingStage}>
+          {detail?.thumbnail_url ? <FittedArt uri={detail.thumbnail_url} /> : null}
+          <ActivityIndicator color={onArt.text.primary} />
+        </View>
+      </PlayerHeroTarget>
       {detail ? (
         <NowPlayingDetails detail={detail} />
       ) : (
@@ -415,6 +435,8 @@ interface PlayerContentProps {
    * sermon" (never a mere app-background, which doesn't unmount anything). A no-op for
    * a downloaded sermon or a cache hit — `useCachedSource`'s own `reportExit` decides. */
   onExit: (positionSeconds: number, durationSeconds: number | null) => void;
+  mode: PlayerMode;
+  onModeChange: (mode: PlayerMode) => void;
 }
 
 /**
@@ -439,6 +461,8 @@ function PlayerContent({
   queueContext,
   opensOnQueue,
   onExit,
+  mode,
+  onModeChange,
 }: PlayerContentProps) {
   const nowPlaying = useNowPlaying();
   // The app-wide player (`lib/playback/NowPlaying.tsx`), so the sermon keeps playing in
@@ -669,7 +693,6 @@ function PlayerContent({
   );
 
   // Watch / Listen (Daybreak canvas C3/C4): the same player either way.
-  const [mode, setMode] = useState<PlayerMode>('watch');
   const listen = (
     <ListenPanel
       artworkUrl={detail.thumbnail_url ?? null}
@@ -711,7 +734,7 @@ function PlayerContent({
       video={video}
       listen={listen}
       mode={mode}
-      onModeChange={setMode}
+      onModeChange={onModeChange}
       sleepSheet={sleepSheet}
     />
   );
@@ -759,7 +782,11 @@ function SignatureLayout({
   return (
     <>
       {keyboardVisible ? null : <ModeSwitch mode={mode} onChange={onModeChange} />}
-      {mode === 'listen' ? (keyboardVisible ? null : listen) : video}
+      {mode === 'listen' ? (
+        keyboardVisible ? null : listen
+      ) : (
+        <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>
+      )}
       {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
@@ -780,6 +807,9 @@ const useStyles = createThemedStyles((colors) => ({
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,
+  },
+  body: {
+    flex: 1,
   },
   centered: {
     flex: 1,

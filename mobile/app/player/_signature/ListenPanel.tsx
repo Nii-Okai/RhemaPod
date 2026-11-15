@@ -184,7 +184,8 @@ const useStyles = createThemedStyles((colors) => ({
   switchRow: {
     alignItems: 'center',
     paddingBottom: spacing.sm,
-    backgroundColor: colors.surface.app,
+    // Clear: the player's art-tinted backdrop (`PlayerBackdrop`) shows through.
+    backgroundColor: 'transparent',
   },
   switchTrack: {
     flexDirection: 'row',
