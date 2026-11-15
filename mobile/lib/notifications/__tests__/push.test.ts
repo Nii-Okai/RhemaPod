@@ -6,6 +6,7 @@ jest.mock('expo-notifications', () => ({
   scheduleNotificationAsync: jest.fn(async () => 'id'),
   cancelScheduledNotificationAsync: jest.fn(async () => undefined),
   setNotificationHandler: jest.fn(),
+  setBadgeCountAsync: jest.fn(async () => true),
   AndroidImportance: { DEFAULT: 3 },
   SchedulableTriggerInputTypes: { DAILY: 'daily' },
 }));

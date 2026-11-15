@@ -202,6 +202,22 @@ async def test_expo_sender_batches_and_reports_dead_tokens():
     assert result.dead_tokens == [TOKEN_B]
 
 
+async def test_expo_sender_sets_the_ios_icon_badge():
+    sent = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        sent.extend(body)
+        return httpx.Response(200, json={"data": [{"status": "ok", "id": "x"} for _ in body]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await ExpoPushSender(client=http).send([PushMessage(token=TOKEN_A, title="t", body="b")])
+    assert sent[0]["badge"] == 1
+    assert sent[0]["channelId"] == "default"
+
+
 async def test_expo_sender_survives_a_failed_batch():
     def handler(request):
         return httpx.Response(503)
