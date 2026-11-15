@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { AppText, Avatar, StaggerItem } from '../../../../components';
+import { AppText, Avatar, FrostedHeader, StaggerItem, useFrostedScroll } from '../../../../components';
 import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { userMessageFor } from '../../../../lib/api/errors';
@@ -134,8 +134,8 @@ function Shelf<T extends { id: string }>({
  *  walk" — or, with none yet, a spotlight on one series — above a two-column grid of the
  *  other series) → Prophet's Catalog → recommended for you → trending.
  *
- * The header sits above the scroll in normal flow because the verse, not the hero, opens
- * the page.
+ * The header is frosted and laid over the top of the scroll (`FrostedHeader`): the page
+ * starts below it and blurs up under it as it scrolls.
  */
 export function SignatureHomeScreen() {
   const styles = useStyles();
@@ -150,6 +150,8 @@ export function SignatureHomeScreen() {
   const upcoming = useUpcomingSermon();
   const notificationsBadge = useNotificationsBadge();
   const seriesWalk = useSeriesWalk(continueWatching.data ?? []);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const frosted = useFrostedScroll(headerHeight);
 
   const heroItems = hero.data ?? [];
   const catalogItems = prophetsCatalog.data ?? [];
@@ -184,17 +186,22 @@ export function SignatureHomeScreen() {
 
   return (
     <View style={styles.screen}>
-      <HomeHeader
-        onSearchPress={() => router.push('/search')}
-        onNotificationsPress={() => router.push('/notifications')}
-        unseenNotificationsCount={notificationsBadge.unseenCount}
-      />
+      <FrostedHeader scrolled={frosted.scrolled} onHeight={setHeaderHeight}>
+        <HomeHeader
+          onSearchPress={() => router.push('/search')}
+          onNotificationsPress={() => router.push('/notifications')}
+          unseenNotificationsCount={notificationsBadge.unseenCount}
+          style={styles.headerClear}
+        />
+      </FrostedHeader>
       <ScrollView
+        ref={frosted.ref}
+        {...frosted.scrollProps}
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, frosted.contentPadding(spacing.md, spacing.xxl)]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl {...pullToRefresh} />
+          <RefreshControl {...pullToRefresh} progressViewOffset={frosted.progressViewOffset} />
         }
       >
         <View style={styles.gutter}>
@@ -366,6 +373,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   scroll: {
     flex: 1,
+  },
+  headerClear: {
+    backgroundColor: 'transparent',
   },
   content: {
     paddingTop: spacing.md,

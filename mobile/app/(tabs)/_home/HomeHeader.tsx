@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Image, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, PlatformIcon } from '../../../components';
 import { useCurrentUser } from '../../../lib/query/hooks/useProfile';
@@ -14,6 +14,8 @@ export interface HomeHeaderProps {
   unseenNotificationsCount?: number;
   /** For tests: the clock the greeting reads. */
   now?: Date;
+  /** Laid over the bar's own style; Home clears its ground to sit in a frosted header. */
+  style?: StyleProp<ViewStyle>;
 }
 
 /** "Good morning" before noon, "Good afternoon" before five, "Good evening" after. */
@@ -29,7 +31,7 @@ export function greetingFor(now: Date): string {
  * time-of-day greeting with the listener's first name, and round Search and Notifications
  * buttons on the right. It sits in normal flow above the scroll, on the page's own ground.
  */
-export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotificationsCount = 0, now }: HomeHeaderProps) {
+export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotificationsCount = 0, now, style }: HomeHeaderProps) {
   const styles = useStyles();
   const { scheme, colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -45,7 +47,7 @@ export function HomeHeader({ onSearchPress, onNotificationsPress, unseenNotifica
   const unseen = unseenNotificationsCount > 0;
 
   return (
-    <View testID="home-header" style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.md }]}>
+    <View testID="home-header" style={[styles.bar, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.md }, style]}>
       <View style={styles.titles}>
         <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessibilityLabel="RhemaPod" />
         {/* Two lines at most, smallest display size: a long first name wraps rather than

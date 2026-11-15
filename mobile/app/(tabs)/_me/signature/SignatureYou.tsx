@@ -2,7 +2,14 @@ import React from 'react';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, PlatformIcon, Toggle, type AppIconName } from '../../../../components';
+import {
+  AppText,
+  FrostedStatusBar,
+  PlatformIcon,
+  Toggle,
+  useBottomChromeInset,
+  type AppIconName,
+} from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
@@ -159,6 +166,7 @@ export function SignatureYouScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomChrome = useBottomChromeInset();
   const { signOut } = useAuth();
 
   const profileQuery = useCurrentUser();
@@ -195,9 +203,14 @@ export function SignatureYouScreen() {
   };
 
   return (
+    <View style={styles.frame}>
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.sm }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: Math.max(insets.top, spacing.lg) + spacing.sm, paddingBottom: spacing.xxl * 2 + bottomChrome },
+      ]}
+      scrollIndicatorInsets={{ bottom: bottomChrome }}
       testID="me-layout"
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl {...pullToRefresh} />}
@@ -481,10 +494,16 @@ export function SignatureYouScreen() {
         }}
       />
     </ScrollView>
+    {/* The page blurs out under the clock as it scrolls; the dock is frosted too. */}
+    <FrostedStatusBar height={insets.top} />
+    </View>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  frame: {
+    flex: 1,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.surface.app,

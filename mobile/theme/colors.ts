@@ -157,6 +157,28 @@ export const dock = {
   shadow: 'rgba(0, 0, 0, 0.45)',
 } as const;
 
+/**
+ * Frosted chrome: the tab dock, the tab screens' headers and the mini player card, which
+ * let the page blur through as it scrolls under them. `*Tint` is the native blur's own
+ * tint, `*` the colour laid over the blur, and `*Solid` the near-opaque colour used where
+ * there is no blur (Android, and iOS with Reduce Transparency on). The dock is navy in
+ * both themes, so it keeps a dark blur on the light ground too. `scrim` is the page
+ * colour the bottom chrome fades the content into, under the dock.
+ */
+export const frost = {
+  dockTint: 'dark',
+  dock: 'rgba(24, 32, 48, 0.74)',
+  dockSolid: 'rgba(24, 32, 48, 0.96)',
+  headerTint: 'dark',
+  header: 'rgba(13, 17, 26, 0.72)',
+  headerSolid: 'rgba(13, 17, 26, 0.96)',
+  cardTint: 'dark',
+  card: 'rgba(19, 25, 38, 0.76)',
+  cardSolid: 'rgba(19, 25, 38, 0.97)',
+  scrim: surface.app,
+  hairline: border.default,
+} as const;
+
 /** The navy feature card (Home's Daily Rhema). Navy in both themes. */
 export const feature = {
   bg: surface.raised,
@@ -232,6 +254,7 @@ export const darkColors = {
   shadow,
   splash,
   dock,
+  frost,
   feature,
   verse,
   sunButton,
@@ -307,6 +330,21 @@ export const lightColors: ColorTokens = {
   },
   // The dock stays navy on the light ground: it is the one dark anchor on a light page.
   dock: { ...dock, bg: surface.raised, border: surface.raised, todayRing: '#F7F4EF', shadow: 'rgba(13, 17, 26, 0.28)' },
+  // The dock stays a navy blur; the headers and the mini player card frost in the light
+  // page and card colours (#F7F4EF and white).
+  frost: {
+    dockTint: 'dark',
+    dock: 'rgba(19, 25, 38, 0.76)',
+    dockSolid: 'rgba(19, 25, 38, 0.96)',
+    headerTint: 'light',
+    header: 'rgba(247, 244, 239, 0.72)',
+    headerSolid: 'rgba(247, 244, 239, 0.96)',
+    cardTint: 'light',
+    card: 'rgba(255, 255, 255, 0.72)',
+    cardSolid: 'rgba(255, 255, 255, 0.97)',
+    scrim: '#F7F4EF',
+    hairline: '#E4DFD3',
+  },
   feature: { ...feature, border: surface.raised },
   verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
   sunButton,

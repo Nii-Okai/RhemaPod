@@ -2,7 +2,17 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, IconButton, PlatformIcon, SearchField, SectionError, ShelfSkeleton, StaggerItem } from '../../../../components';
+import {
+  AppText,
+  FrostedStatusBar,
+  IconButton,
+  PlatformIcon,
+  SearchField,
+  SectionError,
+  ShelfSkeleton,
+  StaggerItem,
+  useBottomChromeInset,
+} from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
@@ -47,6 +57,7 @@ export function SignatureLibraryScreen() {
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const bottomChrome = useBottomChromeInset();
   const { width: windowWidth } = useWindowDimensions();
   const playlists = usePlaylists();
   const downloads = useDownloads();
@@ -147,7 +158,11 @@ export function SignatureLibraryScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.lg }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: Math.max(insets.top, spacing.lg) + spacing.lg, paddingBottom: spacing.xxl * 2 + bottomChrome },
+        ]}
+        scrollIndicatorInsets={{ bottom: bottomChrome }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -310,6 +325,8 @@ export function SignatureLibraryScreen() {
           )}
         </View>
       </ScrollView>
+      {/* The page blurs out under the clock as it scrolls; the dock is frosted too. */}
+      <FrostedStatusBar height={insets.top} />
 
       <LibrarySortSheet visible={sortSheetOpen} onClose={() => setSortSheetOpen(false)} value={sortMode} onChange={setSortMode} />
     </View>

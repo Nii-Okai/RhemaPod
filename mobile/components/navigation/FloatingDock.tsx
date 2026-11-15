@@ -6,6 +6,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { AppText } from '../Text';
+import { FrostedBackdrop, useFrostBackground } from '../Frosted';
 import { NavIcon } from './NavIcon';
 import { PHONE_NAV_KEYS, isRouteActive, routeByKey, type NavRoute, type NavRouteKey } from './routes';
 
@@ -38,7 +39,8 @@ export interface FloatingDockProps {
 }
 
 /**
- * The phone tab bar (Daybreak redesign): a navy pill floating over the page's own ground,
+ * The phone tab bar (Daybreak redesign): a frosted navy pill floating over the page, which
+ * blurs through it as it scrolls (iOS; a near-solid navy on Android, see `Frosted`),
  * Home · Discover · Today · Library · You, with Today raised in the middle as a gold disc
  * that opens today's Daily Rhema. Navy in both themes. The active tab turns white with a
  * small gold dot under it; the "You" tab keeps the caller's own avatar (`NavIcon`).
@@ -55,6 +57,7 @@ export function FloatingDock({ testID = 'floating-dock' }: FloatingDockProps) {
   const routes = PHONE_NAV_KEYS.map(routeByKey);
   const middle = Math.ceil(routes.length / 2);
   const todayActive = pathname.startsWith('/devotional');
+  const dockBackground = useFrostBackground('dock');
 
   const item = (route: NavRoute) => {
     const active = isRouteActive(pathname, route);
@@ -80,7 +83,8 @@ export function FloatingDock({ testID = 'floating-dock' }: FloatingDockProps) {
 
   return (
     <View testID={testID} style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-      <View style={styles.dock}>
+      <View style={[styles.dock, { backgroundColor: dockBackground }]}>
+        <FrostedBackdrop variant="dock" borderRadius={DOCK_HEIGHT / 2} />
         {routes.slice(0, middle).map(item)}
         <Pressable
           accessibilityRole="button"
@@ -103,15 +107,15 @@ const DOCK_HEIGHT = 68;
 const TODAY_SIZE = 62;
 
 const useStyles = createThemedStyles((colors) => ({
+  // Clear: the page scrolls on under the dock, faded by the shell's scrim (`NavShell`).
   wrap: {
-    backgroundColor: colors.surface.app,
     paddingHorizontal: spacing.md + 2,
     paddingTop: spacing.lg + 2,
   },
   dock: {
     height: DOCK_HEIGHT,
     borderRadius: DOCK_HEIGHT / 2,
-    backgroundColor: colors.dock.bg,
+    // Frosted navy (`Frosted`): set inline, clear where the blur paints it.
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.dock.border,
     flexDirection: 'row',

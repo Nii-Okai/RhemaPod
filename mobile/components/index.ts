@@ -31,3 +31,4 @@ export * from './CircleButton';
 export * from './MediaRow';
 export * from './HeroStatusBar';
 export * from './SearchField';
+export * from './Frosted';

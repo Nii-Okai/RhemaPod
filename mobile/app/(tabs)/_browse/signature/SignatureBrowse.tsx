@@ -2,7 +2,16 @@ import React, { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Avatar, PlatformIcon, PressableScale, QueryState, SearchField } from '../../../../components';
+import {
+  AppText,
+  Avatar,
+  FrostedHeader,
+  PlatformIcon,
+  PressableScale,
+  QueryState,
+  SearchField,
+  useFrostedScroll,
+} from '../../../../components';
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
 import { formatDuration } from '../../../../lib/format/duration';
@@ -67,6 +76,9 @@ export function SignatureBrowseScreen() {
   const prophetsCatalog = useProphetsCatalog();
   const series = useSeriesList();
   const pullToRefresh = usePullToRefresh([categories, speakers, prophetsCatalog, series]);
+  // The title and search field sit in a frosted header over the scroll (`FrostedHeader`).
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const frosted = useFrostedScroll(headerHeight);
   const seriesItems = (series.data ?? []).slice(0, SERIES_SHELF_MAX);
   const [rawQuery, setRawQuery] = useState('');
   const [showAllCategories, setShowAllCategories] = useState(false);
@@ -105,8 +117,12 @@ export function SignatureBrowseScreen() {
     });
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md }]}>
-      <View style={styles.header}>
+    <View style={styles.screen}>
+      <FrostedHeader
+        scrolled={frosted.scrolled}
+        onHeight={setHeaderHeight}
+        style={[styles.header, { paddingTop: Math.max(insets.top, spacing.lg) + spacing.md }]}
+      >
         <AppText variant="display.hero" accessibilityRole="header">
           Discover
         </AppText>
@@ -116,14 +132,16 @@ export function SignatureBrowseScreen() {
           placeholder="Sermons, series, speakers"
           accessibilityLabel="Search sermons, series, speakers"
         />
-      </View>
+      </FrostedHeader>
 
       <ScrollView
+        ref={frosted.ref}
+        {...frosted.scrollProps}
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, frosted.contentPadding(spacing.lg, spacing.xxl * 2)]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl {...pullToRefresh} />}
+        refreshControl={<RefreshControl {...pullToRefresh} progressViewOffset={frosted.progressViewOffset} />}
       >
         {hasQuery ? (
           <View style={styles.gutter}>

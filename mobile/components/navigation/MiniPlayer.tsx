@@ -22,6 +22,7 @@ import { setMiniPlayerTop, useMiniPlayerTop } from '../../lib/playback/miniPlaye
 import { currentItem, nextIndex, usePlaybackQueue } from '../../lib/playback/queue';
 import { PlatformIcon } from '../PlatformIcon';
 import { AppText } from '../Text';
+import { FrostedBackdrop, useFrostBackground } from '../Frosted';
 
 /** The card's own height. */
 export const MINI_PLAYER_CARD_HEIGHT = 62;
@@ -259,6 +260,7 @@ function MiniPlayerCard({
   });
   const queue = usePlaybackQueue();
   const queued = currentItem(queue)?.sermonId === session.sermonId ? nextIndex(queue) : null;
+  const cardBackground = useFrostBackground('card');
   const fraction = player.duration > 0 ? Math.min(1, Math.max(0, currentTime / player.duration)) : 0;
 
   return (
@@ -269,8 +271,9 @@ function MiniPlayerCard({
         accessibilityLabel={`Now playing: ${session.title}. Open the player.`}
         accessibilityActions={accessibilityActions}
         onAccessibilityAction={onAccessibilityAction}
-        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.card, { backgroundColor: cardBackground }, pressed && styles.pressed]}
       >
+        <FrostedBackdrop variant="card" borderRadius={20} />
         {session.artworkUrl ? (
           <Artwork uri={session.artworkUrl} style={styles.art} accessible={false} />
         ) : (
@@ -353,7 +356,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
     paddingLeft: spacing.sm,
     paddingRight: spacing.xs,
-    backgroundColor: colors.surface.raised,
+    // Frosted like the dock (`Frosted`), set inline: the page shows through as it scrolls.
     borderWidth: 1,
     borderColor: colors.border.default,
   },

@@ -3,7 +3,16 @@ import { Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View }
 import { Artwork } from '../../../components/Artwork';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, CircleButton, IconButton, PlatformIcon, QueryState, StaggerItem } from '../../../components';
+import {
+  AppText,
+  CircleButton,
+  FrostedHeader,
+  IconButton,
+  PlatformIcon,
+  QueryState,
+  StaggerItem,
+  useFrostedScroll,
+} from '../../../components';
 import { useDeviceClass } from '../../../components/navigation/useDeviceClass';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
@@ -236,10 +245,17 @@ export function SignatureAnnouncementsScreen() {
   const labelled = pinned.length > 0 && latest.length > 0;
 
   const pullToRefresh = usePullToRefresh([announcements]);
+  // The title block is frosted and laid over the scroll (`FrostedHeader`).
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const frosted = useFrostedScroll(headerHeight);
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}>
+      <FrostedHeader
+        scrolled={frosted.scrolled}
+        onHeight={setHeaderHeight}
+        style={[styles.header, { paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm }]}
+      >
         {/* Back sits on the title's row (Nii, 2026-11-11); the LIVE pill moves up beside
             the eyebrow to leave the title its width. */}
         <View style={styles.titleRow}>
@@ -265,13 +281,15 @@ export function SignatureAnnouncementsScreen() {
             </AppText>
           </View>
         </View>
-      </View>
+      </FrostedHeader>
       <ScrollView
+        ref={frosted.ref}
+        {...frosted.scrollProps}
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, frosted.contentPadding(spacing.lg, spacing.xxl * 2)]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl {...pullToRefresh} />
+          <RefreshControl {...pullToRefresh} progressViewOffset={frosted.progressViewOffset} />
         }
       >
         <QueryState
