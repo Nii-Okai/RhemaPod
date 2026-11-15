@@ -82,6 +82,10 @@ async function pushToken(): Promise<string | null> {
  */
 export async function syncPushRegistration(prefs: NotificationPreferences): Promise<void> {
   try {
+    // Android only shows a notification on a channel that exists. Where permission is
+    // granted without a prompt (Android 12 and older), nothing else creates it, and a
+    // push that arrives while the app is open is dropped.
+    await ensureAndroidChannel();
     const token = await pushToken();
     if (!token) return;
     await api.put('/me/push-devices', {

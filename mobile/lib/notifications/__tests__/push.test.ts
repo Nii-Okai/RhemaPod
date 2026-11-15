@@ -19,6 +19,7 @@ jest.mock('../../api/typedClient', () => ({
   api: { put: (...a: unknown[]) => mockPut(...a), post: (...a: unknown[]) => mockPost(...a) },
 }));
 
+import { Platform } from 'react-native';
 import {
   DAILY_RHEMA_REMINDER_ID,
   requestNotificationPermission,
@@ -70,6 +71,19 @@ describe('syncPushRegistration', () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false });
     await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
     expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it('creates the Android channel even when permission came without a prompt', async () => {
+    const original = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+    try {
+      mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
+      await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
+      expect(mockNotifications.setNotificationChannelAsync).toHaveBeenCalledWith('default', expect.any(Object));
+      expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { get: () => original, configurable: true });
+    }
   });
 
   it('never throws when the API is unreachable', async () => {
