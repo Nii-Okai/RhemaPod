@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { HeroCarousel } from '../HeroCarousel';
 import { api } from '../../../../lib/api/typedClient';
@@ -128,13 +128,13 @@ describe('HeroCarousel', () => {
 
       expect(getByLabelText('Featured sermons, 1 of 3')).toBeTruthy();
 
-      jest.advanceTimersByTime(6000);
+      act(() => jest.advanceTimersByTime(6000));
       expect(getByLabelText('Featured sermons, 2 of 3')).toBeTruthy();
 
-      jest.advanceTimersByTime(6000);
+      act(() => jest.advanceTimersByTime(6000));
       expect(getByLabelText('Featured sermons, 3 of 3')).toBeTruthy();
 
-      jest.advanceTimersByTime(6000);
+      act(() => jest.advanceTimersByTime(6000));
       expect(getByLabelText('Featured sermons, 1 of 3')).toBeTruthy();
     });
 
@@ -148,7 +148,7 @@ describe('HeroCarousel', () => {
       const scrollView = getByLabelText(/Featured sermons/);
 
       fireEvent(scrollView, 'scrollBeginDrag');
-      jest.advanceTimersByTime(6000);
+      act(() => jest.advanceTimersByTime(6000));
 
       expect(getByLabelText('Featured sermons, 1 of 2')).toBeTruthy();
     });

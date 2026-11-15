@@ -477,7 +477,7 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.surface.sunken,
   },
   artDim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.surface.sunken,
     opacity: 0.45,
   },

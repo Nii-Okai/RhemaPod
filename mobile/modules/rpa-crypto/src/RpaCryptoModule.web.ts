@@ -33,4 +33,4 @@ class RpaCryptoModule extends NativeModule<Record<string, never>> {
   }
 }
 
-export default registerWebModule(RpaCryptoModule);
+export default registerWebModule(RpaCryptoModule, 'RpaCrypto');

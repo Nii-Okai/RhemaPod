@@ -397,7 +397,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 6,
   },
   initials: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primaryButton.bg,

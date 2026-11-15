@@ -15,7 +15,7 @@ const FADE_OUT_MS = 200;
 export interface VideoSurfaceProps {
   player: VideoPlayer;
   /** Ref to the underlying `VideoView`, so the controls can request native fullscreen. */
-  videoRef: React.RefObject<VideoView>;
+  videoRef: React.RefObject<VideoView | null>;
   /** Derived from the player's own `status` (`'loading'`). */
   isBuffering: boolean;
   isPlaying: boolean;
@@ -133,7 +133,7 @@ export function VideoSurface({
         player={player}
         style={styles.video}
         nativeControls={isFullscreen}
-        allowsFullscreen
+        fullscreenOptions={{ enable: true }}
         onFullscreenEnter={() => onFullscreenChange(true)}
         onFullscreenExit={() => onFullscreenChange(false)}
         contentFit="contain"
@@ -154,7 +154,7 @@ export function VideoSurface({
         </View>
       ) : null}
       <Pressable
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         accessibilityRole="button"
         accessibilityLabel={visible ? 'Hide playback controls' : 'Show playback controls'}
         onPress={overlay.toggle}
@@ -231,14 +231,14 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   artwork: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
   },
   dimmer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.surface.app,
     opacity: 0.45,
   },

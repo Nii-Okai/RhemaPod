@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as manifest from './manifest';
 import * as paths from './paths';
 import { cancelFill } from './fill';

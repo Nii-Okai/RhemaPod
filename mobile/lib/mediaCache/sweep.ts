@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as manifest from './manifest';
 import * as paths from './paths';
 import { emitCacheEvent } from './events';
@@ -31,7 +31,7 @@ async function realListDir(dirUri: string): Promise<string[]> {
 }
 
 async function realGetSize(uri: string): Promise<number> {
-  const info = await FileSystem.getInfoAsync(uri, { size: true });
+  const info = await FileSystem.getInfoAsync(uri);
   return info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
 }
 

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
-import { OVERLAY_AUTOHIDE_MS, useControlsOverlay } from '../useControlsOverlay';
+import { OVERLAY_AUTOHIDE_MS, useControlsOverlay, type UseControlsOverlayOptions } from '../useControlsOverlay';
 
 const playing = { isPlaying: true, isBuffering: false, isEnded: false, pinned: false };
 
@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 async function mount(options = playing) {
-  const hook = renderHook((props) => useControlsOverlay(props), { initialProps: options });
+  const hook = renderHook((props: UseControlsOverlayOptions) => useControlsOverlay(props), { initialProps: options });
   await act(async () => {});
   return hook;
 }

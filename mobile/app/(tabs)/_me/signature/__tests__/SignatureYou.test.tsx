@@ -288,7 +288,7 @@ describe('SignatureYouScreen', () => {
   });
 
   it('mails the contact address, and shows the legal links only once they are set', async () => {
-    const openURL = jest.spyOn(RN.Linking, 'openURL').mockResolvedValue(true);
+    const openURL = jest.spyOn(RN.Linking, 'openURL').mockResolvedValue(undefined);
     let screen = renderYou();
     fireEvent.press(await screen.findByLabelText(`Contact us at ${CONTACT_EMAIL}`));
     expect(openURL).toHaveBeenCalledWith(`mailto:${CONTACT_EMAIL}`);

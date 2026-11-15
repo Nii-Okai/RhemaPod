@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.card,
   },
   circleBacking: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.surface.app,
     opacity: 0.6,
   },

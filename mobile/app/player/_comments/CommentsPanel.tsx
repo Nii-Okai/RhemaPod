@@ -287,7 +287,7 @@ export function CommentsPanel({ sermonId, variant = 'classic' }: CommentsPanelPr
             </AppText>
           </View>
         }
-        ListFooterComponent={footer}
+        ListFooterComponent={footer ?? undefined}
         style={styles.list}
       />
     );

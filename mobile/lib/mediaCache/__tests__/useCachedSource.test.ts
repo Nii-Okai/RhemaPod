@@ -3,7 +3,7 @@
 // but the circular-import fix (S8/S9 re-check) moved that function to
 // `../downloads/network`, which has no such dependency. Confirmed empirically (not
 // assumed) by removing this mock and re-running the suite.
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   __esModule: true,
   documentDirectory: 'file:///documents/',
   cacheDirectory: 'file:///cache/',

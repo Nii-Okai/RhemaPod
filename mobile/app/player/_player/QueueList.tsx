@@ -288,7 +288,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   // The art dims behind the bars so they read on any cover; dark in both themes.
   nowPlaying: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: onArt.overlay.chipFill,

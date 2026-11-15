@@ -128,10 +128,10 @@ const useStyles = createThemedStyles((colors) => ({
     aspectRatio: 4 / 3,
   },
   art: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   artFallback: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.surface.sunken,
   },
   eyebrowChip: {
@@ -145,7 +145,7 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.xs,
   },
   playButtonWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

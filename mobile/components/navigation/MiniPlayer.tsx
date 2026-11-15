@@ -8,6 +8,7 @@ import {
   type AccessibilityActionEvent,
   type AccessibilityActionInfo,
   type LayoutChangeEvent,
+  type HostInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Artwork } from '../Artwork';
@@ -270,7 +271,7 @@ function MiniPlayerCard({
   const fraction = player.duration > 0 ? Math.min(1, Math.max(0, currentTime / player.duration)) : 0;
 
   // The art grows out of the card into the full player (`lib/playback/playerHero.ts`).
-  const artRef = useRef<View>(null);
+  const artRef = useRef<HostInstance>(null);
   const openPlayer = () =>
     launchPlayerHeroFrom(artRef.current, { sermonId: session.sermonId, uri: session.artworkUrl, radius: ART_RADIUS }, () =>
       router.push({ pathname: '/player/[id]', params: { id: session.sermonId } }),

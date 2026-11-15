@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View, type HostInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
@@ -147,7 +147,7 @@ export default function PlayerScreen() {
   const [mode, setMode] = useState<PlayerMode>('watch');
 
   // The screen's root, which the art flying in from the mini player measures against.
-  const rootRef = useRef<View>(null);
+  const rootRef = useRef<HostInstance>(null);
   const hero = usePlayerHero();
 
   const playlistQuery = usePlaylist(playlistId);

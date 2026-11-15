@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as manifest from './manifest';
 import * as paths from './paths';
 import * as nowPlaying from './nowPlaying';
@@ -31,7 +31,7 @@ export interface CachedSourceDeps {
 }
 
 async function realGetFileInfo(uri: string): Promise<{ exists: boolean; size: number }> {
-  const info = await FileSystem.getInfoAsync(uri, { size: true });
+  const info = await FileSystem.getInfoAsync(uri);
   return { exists: info.exists, size: info.exists && !info.isDirectory ? (info.size ?? 0) : 0 };
 }
 

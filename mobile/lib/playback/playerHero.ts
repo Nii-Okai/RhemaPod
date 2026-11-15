@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { AccessibilityInfo, type View } from 'react-native';
+import { AccessibilityInfo, type HostInstance } from 'react-native';
 
 /**
  * The artwork "flight" into the full player (Nii, 2026-11-15: open the player the way the
@@ -154,7 +154,7 @@ export function isHeroHiding(current: HeroFlight | null, sermonId: string): bool
  * way (measurement is asynchronous), so navigation never waits on the animation.
  */
 export function launchPlayerHeroFrom(
-  view: View | null,
+  view: HostInstance | null,
   args: { sermonId: string; uri: string | null | undefined; radius: number },
   then: () => void,
 ) {

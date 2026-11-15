@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TextInput, View, type TextInputProps } from 'react-native';
+import { TextInput, View, type TextInputProps, type TextInputInstance } from 'react-native';
 import { AppText, IconButton, PlatformIcon, type AppIconName } from '../../../components';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { spacing } from '../../../theme/spacing';
@@ -30,7 +30,7 @@ export interface FieldProps extends TextInputProps {
  * app gets this without each screen wiring it separately. A field that isn't
  * `secureTextEntry` renders exactly as before, no toggle, no layout change.
  */
-export const Field = React.forwardRef<TextInput, FieldProps>(function Field(
+export const Field = React.forwardRef<TextInputInstance, FieldProps>(function Field(
   { label, error, icon, labelAccessory, style, secureTextEntry, onFocus, onBlur, ...rest },
   ref,
 ) {

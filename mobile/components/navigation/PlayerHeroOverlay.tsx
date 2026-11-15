@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View, type HostInstance } from 'react-native';
 import { Artwork } from '../Artwork';
 import { useTheme } from '../../theme/ThemeContext';
 import {
@@ -39,7 +39,7 @@ export function flightStart(from: HeroRect, to: HeroRect) {
  */
 export function PlayerHeroOverlay() {
   const flight = usePlayerHero();
-  const layer = useRef<View>(null);
+  const layer = useRef<HostInstance>(null);
   // The layer's own window position: the tapped art is measured in window coordinates.
   const [offset, setOffset] = useState({ x: 0, y: 0 });
 
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
   },
   clip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, View, type PressableProps } from 'react-native';
+import { ActivityIndicator, Pressable, View, type PressableProps, type HostInstance } from 'react-native';
 import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
@@ -63,7 +63,7 @@ export interface LinkButtonProps extends Omit<PressableProps, 'style' | 'childre
  * any confirmed in-scope screen — don't add one here; a future need should follow the
  * admin portal's existing ghost-button convention rather than being invented fresh.
  */
-export const LinkButton = React.forwardRef<View, LinkButtonProps>(function LinkButton(
+export const LinkButton = React.forwardRef<HostInstance, LinkButtonProps>(function LinkButton(
   { label, disabled, ...rest },
   ref,
 ) {
