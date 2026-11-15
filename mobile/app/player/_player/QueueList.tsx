@@ -28,8 +28,6 @@ export interface QueueListProps {
   onRemoveFromPlaylist?: (item: QueueItem) => void;
   onDownload: (item: QueueItem) => void;
   onShare: (item: QueueItem) => void;
-  /** The episode autoplay will play once the queue runs out, when it's on. */
-  autoplayNextTitle?: string | null;
   /** Whether the current item is actually playing — its visualiser moves only then. */
   isPlaying?: boolean;
 }
@@ -45,8 +43,9 @@ const THUMBNAIL_SIZE = 44;
  * Header: Repeat (loop back to the first item once the last one ends), Shuffle (the items
  * not played yet, in place) and Clear (everything after the current item). Each row's "..."
  * menu offers Play next and Remove from queue, plus Remove from playlist for a playing
- * playlist's own rows, Download and Share. When nothing is left and autoplay is on, the
- * foot of the list names the episode that comes next in the series.
+ * playlist's own rows, Download and Share. A series episode's next episode is a row of its
+ * own (marked "Autoplay"), added by the player screen, so the list needs no footer note for
+ * it; the only footer left says when Repeat will start the queue again.
  */
 export function QueueList({
   title,
@@ -65,7 +64,6 @@ export function QueueList({
   onRemoveFromPlaylist,
   onDownload,
   onShare,
-  autoplayNextTitle,
 }: QueueListProps) {
   const { colors } = useTheme();
   const styles = useStyles();
@@ -159,14 +157,10 @@ export function QueueList({
             </Pressable>
           );
         })}
-        {upcomingCount === 0 ? (
+        {upcomingCount === 0 && repeatEnabled && items.length > 1 ? (
           <View style={styles.footer} testID="queue-footer">
             <AppText variant="ui.body" tone="tertiary">
-              {repeatEnabled && items.length > 1
-                ? 'Repeat is on: the queue starts again from the top.'
-                : autoplayNextTitle
-                  ? `Autoplay is on. Next in the series: ${autoplayNextTitle}`
-                  : 'Nothing else queued. Long-press any sermon to play it next or add it to the queue.'}
+              Repeat is on: the queue starts again from the top.
             </AppText>
           </View>
         ) : null}

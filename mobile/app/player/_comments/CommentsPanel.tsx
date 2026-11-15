@@ -47,6 +47,11 @@ export interface CommentsPanelProps {
    * and owns the bottom safe-area inset, so the composer doesn't pad for it.
    */
   variant?: 'classic' | 'signature';
+  /**
+   * Signature only: pad the composer for the bottom safe area, because no toolbar sits
+   * below the panel to do it (a sermon with no Queue / Comments switch).
+   */
+  ownsBottomInset?: boolean;
 }
 
 /**
@@ -59,7 +64,7 @@ export interface CommentsPanelProps {
  * the server's 403 is the backstop and re-reads the profile to reopen whichever prompt
  * applies. The draft lives in the composer, so it survives both prompts.
  */
-export function CommentsPanel({ sermonId, variant = 'classic' }: CommentsPanelProps) {
+export function CommentsPanel({ sermonId, variant = 'classic', ownsBottomInset = false }: CommentsPanelProps) {
   const { colors } = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -351,7 +356,7 @@ export function CommentsPanel({ sermonId, variant = 'classic' }: CommentsPanelPr
         viewerName={fullName || user?.email || ''}
         isPosting={post.isPending}
         error={postError}
-        bottomInset={signature ? 0 : insets.bottom}
+        bottomInset={signature && !ownsBottomInset ? 0 : insets.bottom}
         onGate={gate}
         onSubmit={submitComment}
         notice={

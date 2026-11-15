@@ -13,7 +13,7 @@ const SEEK_SECONDS = 10;
 
 export type PlayerMode = 'watch' | 'listen';
 
-/** The Watch / Listen switch above the stage (Daybreak canvas C3/C4). */
+/** The Watch / Listen switch, centred in the player's header row (Daybreak canvas C3/C4). */
 export function ModeSwitch({ mode, onChange }: { mode: PlayerMode; onChange: (mode: PlayerMode) => void }) {
   const styles = useStyles();
   return (
@@ -183,7 +183,6 @@ export function ListenPanel({
 const useStyles = createThemedStyles((colors) => ({
   switchRow: {
     alignItems: 'center',
-    paddingBottom: spacing.sm,
     // Clear: the player's art-tinted backdrop (`PlayerBackdrop`) shows through.
     backgroundColor: 'transparent',
   },
