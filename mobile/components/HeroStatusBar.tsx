@@ -1,16 +1,15 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { Platform, StatusBar } from 'react-native';
+import { StatusBar } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 /**
  * Light status-bar glyphs while a screen's dark cover art sits under the bar (series and
  * sermon detail). The root layout picks dark glyphs for the light theme, which vanish over
- * the art (Nii's phone test, 2026-11-11). Rendered only while the screen is focused, so a
- * screen pushed on top gets the root's choice back; `active` hands it back too once the
- * art has scrolled away.
+ * the art. Rendered only while the screen is focused, so a screen pushed on top gets the
+ * root's choice back; `active` hands it back too once the art has scrolled away.
  *
- * iOS only. On Android the root layout paints the bar in the palette's own colour, so the
- * art never sits under it, and light glyphs there would vanish on the light theme's bar.
+ * Both platforms: the bar is transparent on Android too (edge-to-edge), so the art sits
+ * under it there as well.
  */
 export function HeroStatusBar({ active = true }: { active?: boolean }) {
   // Read the context directly (not `useIsFocused`), so a screen rendered outside a
@@ -29,6 +28,6 @@ export function HeroStatusBar({ active = true }: { active?: boolean }) {
     };
   }, [navigation]);
 
-  if (Platform.OS === 'android' || !focused || !active) return null;
+  if (!focused || !active) return null;
   return <StatusBar barStyle="light-content" animated />;
 }

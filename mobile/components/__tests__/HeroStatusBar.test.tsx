@@ -15,10 +15,10 @@ it('turns the status-bar glyphs light over the cover art on iOS', () => {
   expect(ui.UNSAFE_getByType(StatusBar).props.barStyle).toBe('light-content');
 });
 
-it("leaves Android's bar to the root layout, which paints it in the palette colour", () => {
+it('turns them light on Android too, where the bar is transparent over the art', () => {
   Platform.OS = 'android';
   const ui = render(<HeroStatusBar />);
-  expect(ui.UNSAFE_queryByType(StatusBar)).toBeNull();
+  expect(ui.UNSAFE_getByType(StatusBar).props.barStyle).toBe('light-content');
 });
 
 it('hands the bar back once the art has scrolled away', () => {
