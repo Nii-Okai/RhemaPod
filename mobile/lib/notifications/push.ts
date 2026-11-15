@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { api } from '../api/typedClient';
-import type { NotificationPreferences } from '../settings/notificationPreferences';
+import type { NotificationPreferences, ReminderTime } from '../settings/notificationPreferences';
 
 /**
  * Push and local notifications.
@@ -12,12 +12,12 @@ import type { NotificationPreferences } from '../settings/notificationPreference
  * - New sermons are pushed by the API through Expo's push service. This module asks the
  *   OS for permission (only when the listener turns a notification on), gets this
  *   install's Expo push token and registers it with `PUT /me/push-devices`.
- * - The Daily Rhema reminder is a local notification scheduled on the phone at 07:00
- *   in the listener's own time zone, so it needs no server and works offline.
+ * - The Daily Rhema reminder is a local notification scheduled on the phone at the
+ *   time the listener picked (07:00 unless they chose another), in the phone's own time
+ *   zone, so it needs no server and works offline.
  */
 
 export const DAILY_RHEMA_REMINDER_ID = 'daily-rhema-reminder';
-export const DAILY_RHEMA_HOUR = 7;
 const ANDROID_CHANNEL_ID = 'default';
 
 let handlerSet = false;
@@ -118,8 +118,8 @@ export async function teardownNotificationsForSignOut(): Promise<void> {
   await Promise.race([work, new Promise((resolve) => setTimeout(resolve, 3000))]);
 }
 
-/** Turns the 07:00 Daily Rhema reminder on or off. */
-export async function setDailyRhemaReminder(enabled: boolean): Promise<void> {
+/** Turns the Daily Rhema reminder on (at `time`, local) or off. Re-arming replaces the old one. */
+export async function setDailyRhemaReminder(enabled: boolean, time: ReminderTime): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(DAILY_RHEMA_REMINDER_ID).catch(() => undefined);
   if (!enabled) return;
   await ensureAndroidChannel();
@@ -132,8 +132,8 @@ export async function setDailyRhemaReminder(enabled: boolean): Promise<void> {
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: DAILY_RHEMA_HOUR,
-      minute: 0,
+      hour: time.hour,
+      minute: time.minute,
       channelId: ANDROID_CHANNEL_ID,
     },
   });

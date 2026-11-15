@@ -59,7 +59,7 @@ describe('requestNotificationPermission', () => {
 describe('syncPushRegistration', () => {
   it('registers the Expo token with the new-sermons choice', async () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
-    await syncPushRegistration({ newSermons: true, dailyRhema: false });
+    await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
     expect(mockNotifications.getExpoPushTokenAsync).toHaveBeenCalledWith({ projectId: 'proj-1' });
     expect(mockPut).toHaveBeenCalledWith('/me/push-devices', {
       body: { token: TOKEN, platform: expect.any(String), new_sermons: true },
@@ -68,20 +68,20 @@ describe('syncPushRegistration', () => {
 
   it('does nothing without permission', async () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false });
-    await syncPushRegistration({ newSermons: true, dailyRhema: false });
+    await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
     expect(mockPut).not.toHaveBeenCalled();
   });
 
   it('never throws when the API is unreachable', async () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
     mockPut.mockRejectedValueOnce(new Error('offline'));
-    await expect(syncPushRegistration({ newSermons: false, dailyRhema: false })).resolves.toBeUndefined();
+    await expect(syncPushRegistration({ newSermons: false, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } })).resolves.toBeUndefined();
   });
 });
 
 describe('daily reminder', () => {
   it('schedules one daily reminder at 07:00 and replaces any earlier one', async () => {
-    await setDailyRhemaReminder(true);
+    await setDailyRhemaReminder(true, { hour: 7, minute: 0 });
     expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(DAILY_RHEMA_REMINDER_ID);
     expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,8 +92,17 @@ describe('daily reminder', () => {
     );
   });
 
+  it('schedules at the time the listener picked', async () => {
+    await setDailyRhemaReminder(true, { hour: 21, minute: 30 });
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: expect.objectContaining({ type: 'daily', hour: 21, minute: 30 }),
+      }),
+    );
+  });
+
   it('turning it off only cancels', async () => {
-    await setDailyRhemaReminder(false);
+    await setDailyRhemaReminder(false, { hour: 7, minute: 0 });
     expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalled();
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
@@ -102,7 +111,7 @@ describe('daily reminder', () => {
 describe('teardownNotificationsForSignOut', () => {
   it('cancels the reminder and unregisters the token it registered', async () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
-    await syncPushRegistration({ newSermons: true, dailyRhema: false });
+    await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
     await teardownNotificationsForSignOut();
     expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(DAILY_RHEMA_REMINDER_ID);
     expect(mockPost).toHaveBeenCalledWith('/me/push-devices/remove', { body: { token: TOKEN } });
@@ -112,7 +121,7 @@ describe('teardownNotificationsForSignOut', () => {
     jest.useFakeTimers();
     try {
       mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
-      await syncPushRegistration({ newSermons: true, dailyRhema: false });
+      await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
       mockPost.mockImplementationOnce(() => new Promise(() => undefined));
       const done = teardownNotificationsForSignOut();
       await jest.advanceTimersByTimeAsync(3000);
