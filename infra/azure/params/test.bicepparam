@@ -19,7 +19,7 @@ param deployApps = bool(readEnvironmentVariable('DEPLOY_APPS', 'false'))
 
 param apiHost = 'api-test.rhemapod.com'
 param adminHost = 'admin-test.rhemapod.com'
-param customDomainStage = 'none'
+param customDomainStage = 'bound'
 
 param databaseName = 'rhemapod_test'
 param redisMode = 'container'
