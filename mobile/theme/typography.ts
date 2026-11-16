@@ -2,10 +2,11 @@ import { PixelRatio } from 'react-native';
 
 /**
  * Font family roles — strict separation per spec §1.2, a hard constraint from the brief,
- * not a suggestion:
- *  - Newsreader: display only (hero/section/card/list titles). Always weight 400 — no
+ * not a suggestion. Daybreak redesign (2026-11) swapped the faces from
+ * Newsreader/Figtree to Fraunces/Plus Jakarta Sans; the roles are unchanged.
+ *  - Fraunces: display only (hero/section/card/list titles). Always weight 400 — no
  *    bold serif anywhere in the source.
- *  - Figtree: all UI text — body, labels, buttons, badges, avatar initials.
+ *  - Plus Jakarta Sans: all UI text — body, labels, buttons, badges, avatar initials.
  *  - IBM Plex Mono: numeric/temporal data only (durations, dates, episode numbers, file
  *    sizes, timestamps). Always weight 400. Never carries a UI label; sans text never
  *    carries a number that reads as a duration/timestamp/episode index.
@@ -13,16 +14,24 @@ import { PixelRatio } from 'react-native';
  * Only load the weights actually used above — see theme/fonts.ts.
  */
 export const fontFamily = {
-  display: 'Newsreader_400Regular',
-  ui: 'Figtree_400Regular',
-  uiSemiBold: 'Figtree_600SemiBold',
-  uiBold: 'Figtree_700Bold',
+  display: 'Fraunces_400Regular',
+  ui: 'PlusJakartaSans_400Regular',
+  uiSemiBold: 'PlusJakartaSans_600SemiBold',
+  uiBold: 'PlusJakartaSans_700Bold',
   mono: 'IBMPlexMono_400Regular',
 } as const;
 
-export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact';
-export type UiVariant = 'bodyLarge' | 'body' | 'label' | 'button' | 'badge' | 'avatarInitials';
-export type MonoVariant = 'meta' | 'tight';
+export type DisplayVariant = 'hero' | 'title' | 'section' | 'row' | 'compact' | 'scripture';
+export type UiVariant =
+  | 'bodyLarge'
+  | 'body'
+  | 'bodyBold'
+  | 'label'
+  | 'button'
+  | 'badge'
+  | 'avatarInitials'
+  | 'actionLabel';
+export type MonoVariant = 'meta' | 'tight' | 'counter';
 
 interface TypeStyle {
   fontFamily: string;
@@ -32,7 +41,7 @@ interface TypeStyle {
 }
 
 /**
- * Display scale (Newsreader, 400 weight only). Sizes rationalized from spec §1.2's
+ * Display scale (Fraunces, 400 weight only). Sizes rationalized from spec §1.2's
  * observed ranges — target is within ±1-2px of source, not byte-exact.
  */
 export const displayScale: Record<DisplayVariant, TypeStyle> = {
@@ -41,22 +50,41 @@ export const displayScale: Record<DisplayVariant, TypeStyle> = {
   section: { fontFamily: fontFamily.display, fontSize: 24, lineHeightRatio: 1.15 },
   row: { fontFamily: fontFamily.display, fontSize: 20, lineHeightRatio: 1.1 },
   compact: { fontFamily: fontFamily.display, fontSize: 17, lineHeightRatio: 1.2 },
+  /** A passage read slowly (Daily Rhema's Hear step). Open leading so Fraunces' tall
+      ascenders never touch the line above (Nii, 2026-11-12: "not well formatted"). */
+  scripture: { fontFamily: fontFamily.display, fontSize: 19, lineHeightRatio: 1.6 },
 };
 
-/** UI scale (Figtree). `label`/`button`/`badge`/`avatarInitials` carry weight via family. */
+/** UI scale (Plus Jakarta Sans). `label`/`button`/`badge`/`avatarInitials` carry weight via family. */
 export const uiScale: Record<UiVariant, TypeStyle> = {
   bodyLarge: { fontFamily: fontFamily.ui, fontSize: 16, lineHeightRatio: 1.4 },
   body: { fontFamily: fontFamily.ui, fontSize: 14, lineHeightRatio: 1.4 },
+  /** Same metrics as `body`, bold weight — a bolded run inside otherwise-body text (e.g.
+      a document's own title line rendered ahead of its body, TermsSheet's comment
+      guidelines). Not a heading — use a `display.*` variant for that. */
+  bodyBold: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1.4 },
   label: { fontFamily: fontFamily.uiSemiBold, fontSize: 13, lineHeightRatio: 1.2 },
   button: { fontFamily: fontFamily.uiSemiBold, fontSize: 14, lineHeightRatio: 1.2 },
   badge: { fontFamily: fontFamily.uiSemiBold, fontSize: 12, lineHeightRatio: 1.2 },
-  avatarInitials: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1 },
+  // `lineHeightRatio: 1` (exactly matching fontSize) was the one variant in this whole
+  // scale tighter than 1.2 — Isaac's ask, session 2026-10-10: "the owner's initials is
+  // not centered in the circle". A bold font's line box at `lineHeightRatio: 1` is
+  // tighter than its natural ascent+descent, so the glyph renders visually shifted
+  // within `Avatar`'s flex-centered circle rather than truly centered; every sibling
+  // variant already uses 1.2+ for exactly this reason.
+  avatarInitials: { fontFamily: fontFamily.uiBold, fontSize: 14, lineHeightRatio: 1.2 },
+  /** Small bold label under an icon — `ActionButton`'s own label (My List/Like/Share/
+      Download), Isaac's ask, session 2026-10-01: smaller than `body`, bold rather than
+      `label`'s semibold. */
+  actionLabel: { fontFamily: fontFamily.uiBold, fontSize: 11, lineHeightRatio: 1.2 },
 };
 
 /** Mono scale (IBM Plex Mono, 400 weight only) — numeric/temporal data exclusively. */
 export const monoScale: Record<MonoVariant, TypeStyle> = {
   meta: { fontFamily: fontFamily.mono, fontSize: 11, lineHeightRatio: 1.4 },
   tight: { fontFamily: fontFamily.mono, fontSize: 13, lineHeightRatio: 1 },
+  /** Large ticking numbers — Signature Home's countdown to the next message. */
+  counter: { fontFamily: fontFamily.mono, fontSize: 24, lineHeightRatio: 1.1 },
 };
 
 /**
@@ -67,8 +95,14 @@ export const monoScale: Record<MonoVariant, TypeStyle> = {
  * size setting automatically via `allowFontScaling`, which defaults to `true` and is
  * never overridden in this app's primitives. That's the whole mechanism: use plain
  * numeric fontSize tokens (never a fixed-size image/SVG for text), never set
- * `allowFontScaling={false}` or a low `maxFontSizeMultiplier`, and OS-level Dynamic
- * Type / Android font-scale settings apply automatically.
+ * `allowFontScaling={false}`, and OS-level Dynamic Type / Android font-scale settings
+ * apply automatically.
+ *
+ * Text does stop growing at `MAX_FONT_SCALE` (below), which `AppText` passes as its
+ * `maxFontSizeMultiplier`. iOS's largest accessibility sizes reach about 3.1x, where a
+ * 32pt title becomes 100pt and fixed-width rows, pills and cards can't hold a word. The
+ * caps still give UI text twice its size (the most Android offers at all) and display
+ * text, already large, half again.
  *
  * The one thing that does NOT auto-scale is `lineHeight` — RN treats it as an absolute
  * number, so a hard-coded value would clip or overlap once fontSize grows under a large
@@ -80,8 +114,15 @@ export const monoScale: Record<MonoVariant, TypeStyle> = {
  * screen won't re-flow the instant the OS setting changes; it reflects the current value
  * on next mount/re-render (e.g. app foreground), which matches common RN practice.
  */
-export function scaledLineHeight(fontSize: number, ratio: number): number {
-  return Math.round(fontSize * ratio * PixelRatio.getFontScale());
+/** The most each type family grows with the OS text-size setting; see above. */
+export const MAX_FONT_SCALE = {
+  display: 1.5,
+  ui: 2,
+  mono: 2,
+} as const;
+
+export function scaledLineHeight(fontSize: number, ratio: number, maxScale: number = MAX_FONT_SCALE.ui): number {
+  return Math.round(fontSize * ratio * Math.min(PixelRatio.getFontScale(), maxScale));
 }
 
 export const typography = {
@@ -90,4 +131,5 @@ export const typography = {
   uiScale,
   monoScale,
   scaledLineHeight,
+  MAX_FONT_SCALE,
 } as const;

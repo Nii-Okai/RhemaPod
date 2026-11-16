@@ -12,9 +12,14 @@ const notFound = vi.hoisted(() =>
     throw new Error("NEXT_NOT_FOUND");
   }),
 );
+const redirect = vi.hoisted(() =>
+  vi.fn((href: string) => {
+    throw new Error(`NEXT_REDIRECT ${href}`);
+  }),
+);
 
 vi.mock("@/lib/auth/session", () => ({ getServerUser }));
-vi.mock("next/navigation", () => ({ notFound }));
+vi.mock("next/navigation", () => ({ notFound, redirect }));
 
 const { default: SettingsPage } = await import("@/app/(portal)/settings/page");
 
@@ -42,15 +47,15 @@ describe("SettingsPage — requireRole('manager')", () => {
     await expect(SettingsPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("renders the placeholder screen for a manager and an admin", async () => {
+  // admin-settings S17: the placeholder became a redirect to the Profile
+  // section; the role gate still runs first.
+  it("redirects a manager and an admin to /settings/profile", async () => {
     getServerUser.mockResolvedValue(session("manager"));
-    const manager = await SettingsPage();
-    expect(manager).toBeTruthy();
+    await expect(SettingsPage()).rejects.toThrow("NEXT_REDIRECT /settings/profile");
     expect(notFound).not.toHaveBeenCalled();
 
     getServerUser.mockResolvedValue(session("admin"));
-    const admin = await SettingsPage();
-    expect(admin).toBeTruthy();
+    await expect(SettingsPage()).rejects.toThrow("NEXT_REDIRECT /settings/profile");
     expect(notFound).not.toHaveBeenCalled();
   });
 });

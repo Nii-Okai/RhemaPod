@@ -21,15 +21,30 @@ const STORAGE_KEY = 'rhemapod-playback-preferences';
 export const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
+/**
+ * Subtitle language for video sermons. Captions are English by default (every video gets
+ * an English track; French is translated from it), and stay off until the viewer turns
+ * them on from the player's CC control, which then remembers the choice here.
+ */
+export const CAPTION_LANGUAGES = ['en', 'fr'] as const;
+export type CaptionLanguageCode = (typeof CAPTION_LANGUAGES)[number];
+export type CaptionPreference = 'off' | CaptionLanguageCode;
+
 export interface PlaybackPreferences {
   defaultSpeed: PlaybackSpeed;
   autoplayNextInSeries: boolean;
+  captionLanguage: CaptionPreference;
 }
 
 export const DEFAULT_PLAYBACK_PREFERENCES: PlaybackPreferences = {
   defaultSpeed: 1,
   autoplayNextInSeries: true,
+  captionLanguage: 'off',
 };
+
+export function isCaptionPreference(value: unknown): value is CaptionPreference {
+  return value === 'off' || (CAPTION_LANGUAGES as readonly unknown[]).includes(value);
+}
 
 function isPlaybackSpeed(value: unknown): value is PlaybackSpeed {
   return typeof value === 'number' && (PLAYBACK_SPEEDS as readonly number[]).includes(value);
@@ -50,6 +65,9 @@ function parse(raw: string | null): PlaybackPreferences {
         typeof parsed.autoplayNextInSeries === 'boolean'
           ? parsed.autoplayNextInSeries
           : DEFAULT_PLAYBACK_PREFERENCES.autoplayNextInSeries,
+      captionLanguage: isCaptionPreference(parsed.captionLanguage)
+        ? parsed.captionLanguage
+        : DEFAULT_PLAYBACK_PREFERENCES.captionLanguage,
     };
   } catch {
     return { ...DEFAULT_PLAYBACK_PREFERENCES };

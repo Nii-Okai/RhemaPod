@@ -454,3 +454,89 @@ describe("Media card — confirm rejects oversized (413)", () => {
     ).toBeInTheDocument();
   });
 });
+
+/* --- one sermon, one media slot (item 6 fix) ------------------------ */
+
+describe("Media card — a fresh upload replaces the existing media, not alongside it", () => {
+  it("hides the existing ready job the instant a new file is picked, even across media types, and it never resurfaces once the new job lands", async () => {
+    const state = backend({
+      uploads: [
+        job({
+          id: "job-old",
+          status: "ready",
+          media_type: "video",
+          original_filename: "old-sermon.mp4",
+        }),
+      ],
+    });
+    const { fileInput } = renderCard();
+
+    // The existing video is there before anything new is picked.
+    expect(await screen.findByText("old-sermon.mp4")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+
+    // Pick a new file — a plain pick, not a Retry. Cross-type on purpose
+    // (audio replacing video): "latest wins" regardless of media type.
+    await userEvent.upload(
+      fileInput(),
+      mediaFile("new-sermon.mp3", "audio/mpeg", 1_000_000),
+    );
+
+    // The old row is retired the instant the new one appears — never a tick
+    // where both show (the bug this fixes: they used to coexist forever).
+    expect(screen.queryByText("old-sermon.mp4")).not.toBeInTheDocument();
+    expect(await screen.findByText("new-sermon.mp3")).toBeInTheDocument();
+
+    // Once the new job lands in the poll, the old one still must not
+    // resurface — even though the backend still has both jobs in its history
+    // and keeps returning both from `GET .../uploads`.
+    await waitFor(() => expect(FakeXHR.last).toBeDefined());
+    state.uploads = [
+      job({
+        id: "job-old",
+        status: "ready",
+        media_type: "video",
+        original_filename: "old-sermon.mp4",
+      }),
+      job({
+        id: "job-1",
+        status: "processing",
+        media_type: "audio",
+        original_filename: "new-sermon.mp3",
+      }),
+    ];
+    FakeXHR.last!.respond(200);
+
+    await waitFor(() => expect(state.confirmCalls).toBe(1));
+    expect(await screen.findByText("Processing")).toBeInTheDocument();
+    expect(screen.queryByText("old-sermon.mp4")).not.toBeInTheDocument();
+  });
+
+  it("does NOT supersede the existing media when the picked file fails pre-flight validation", async () => {
+    backend({
+      uploads: [
+        job({
+          id: "job-old",
+          status: "ready",
+          media_type: "video",
+          original_filename: "old-sermon.mp4",
+        }),
+      ],
+    });
+    const { fileInput } = renderCard();
+
+    expect(await screen.findByText("old-sermon.mp4")).toBeInTheDocument();
+
+    // An unsupported file is rejected entirely — the existing media must
+    // stay put and visible, not vanish for a file that was never accepted.
+    await userEvent.upload(
+      fileInput(),
+      mediaFile("notes.txt", "text/plain", 20),
+      { applyAccept: false },
+    );
+
+    expect(await screen.findByText(/isn’t a supported file/)).toBeInTheDocument();
+    expect(screen.getByText("old-sermon.mp4")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+  });
+});

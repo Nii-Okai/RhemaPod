@@ -1,35 +1,44 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Link } from 'expo-router';
-import { LinkButton, PrimaryButton } from '../../components';
+import React, { useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { AppText, LinkButton, PrimaryButton } from '../../components';
+import { createThemedStyles } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
+import { performAppleSignIn, useAppleSignInAvailable } from '../../lib/auth/appleSignIn';
+import { performGoogleSignIn } from '../../lib/auth/googleSignIn';
 import { AuthScreen } from './_components/auth-screen';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
+import { OrDivider } from './_components/or-divider';
+import { SocialSignInButton } from './_components/social-sign-in-button';
+import {
+  retryWindowText,
+  socialAuthErrorCopy,
+  type SocialAuthErrorCopy,
+  type SocialProvider,
+} from './_components/socialAuthErrorCopy';
 
 type ErrorKind = null | 'credentials' | 'rate' | 'generic';
 
-/** Matches the admin portal login form's retry-window copy (login-form.tsx). */
-function retryWindowText(retryAfter: string | null): string {
-  const seconds = retryAfter ? Number.parseInt(retryAfter, 10) : NaN;
-  if (Number.isFinite(seconds) && seconds > 0) {
-    if (seconds < 90) return `Try again in about ${seconds} seconds.`;
-    return `Try again in about ${Math.ceil(seconds / 60)} minutes.`;
-  }
-  return 'Wait a minute or so, then try again.';
-}
-
 export default function SignInScreen() {
-  const { signIn } = useAuth();
+  const styles = useStyles();
+  const { signIn, signInWithGoogle, signInWithApple } = useAuth();
+  const appleAvailable = useAppleSignInAvailable();
+  const router = useRouter();
+  // Set by the delete-account screen after a 204.
+  const { deleted } = useLocalSearchParams<{ deleted?: string }>();
 
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorKind, setErrorKind] = useState<ErrorKind>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [socialSubmitting, setSocialSubmitting] = useState<SocialProvider | null>(null);
+  const [socialError, setSocialError] = useState<SocialAuthErrorCopy | null>(null);
 
   async function onSubmit() {
     setFieldError(null);
@@ -46,7 +55,10 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 401) {
+        if (err.status === 403) {
+          // Correct password, but the account hasn't entered its sign-up code yet.
+          router.push({ pathname: '/(auth)/verify-email', params: { email: email.trim(), resend: '1' } });
+        } else if (err.status === 401) {
           setErrorKind('credentials');
         } else if (err.status === 429) {
           setErrorKind('rate');
@@ -64,29 +76,127 @@ export default function SignInScreen() {
     }
   }
 
+  async function onGooglePress() {
+    setSocialError(null);
+    setSocialSubmitting('google');
+    try {
+      const credential = await performGoogleSignIn();
+      if (credential === null) return; // user dismissed the native sheet — silent no-op
+      await signInWithGoogle(credential);
+    } catch (err) {
+      setSocialError(socialAuthErrorCopy(err, 'google'));
+    } finally {
+      setSocialSubmitting(null);
+    }
+  }
+
+  async function onApplePress() {
+    setSocialError(null);
+    setSocialSubmitting('apple');
+    try {
+      const result = await performAppleSignIn();
+      if (result === null) return; // user tapped Apple's own Cancel — silent no-op
+      await signInWithApple(
+        result.identityToken,
+        result.rawNonce,
+        result.authorizationCode,
+        result.givenName,
+        result.familyName,
+      );
+    } catch (err) {
+      setSocialError(socialAuthErrorCopy(err, 'apple'));
+    } finally {
+      setSocialSubmitting(null);
+    }
+  }
+
+  const socialButtons = (
+    <View style={styles.socialStack}>
+      <SocialSignInButton
+        provider="google"
+        label="Continue with Google"
+        loading={socialSubmitting === 'google'}
+        disabled={socialSubmitting !== null || submitting}
+        onPress={onGooglePress}
+      />
+      {appleAvailable ? (
+        <SocialSignInButton
+          provider="apple"
+          label="Continue with Apple"
+          loading={socialSubmitting === 'apple'}
+          disabled={socialSubmitting !== null || submitting}
+          onPress={onApplePress}
+        />
+      ) : null}
+      {socialError ? (
+        <InlineAlert variant="error" title={socialError.title}>
+          {socialError.detail}
+        </InlineAlert>
+      ) : null}
+    </View>
+  );
+
   return (
-    <AuthScreen heading="Welcome back" subhead="Sign in to keep listening where you left off.">
-      <Field
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        textContentType="username"
-        returnKeyType="next"
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-        autoComplete="password"
-        textContentType="password"
-        returnKeyType="done"
-        onSubmitEditing={onSubmit}
-      />
+    <AuthScreen
+      heading="Welcome back"
+      headingVariant="display.title"
+      centerHeader
+      centerVertically
+      footer={
+        <>
+          <View style={styles.footerRow}>
+            <AppText variant="ui.body" tone="secondary">
+              New here?
+            </AppText>
+            <Link href="/(auth)/register" asChild>
+              <LinkButton label="Create an account" />
+            </Link>
+          </View>
+        </>
+      }
+    >
+      {deleted === '1' ? (
+        <InlineAlert variant="success" title="Your account was deleted.">
+          We've sent a confirmation to your email. You're welcome back any time.
+        </InlineAlert>
+      ) : null}
+
+      {socialButtons}
+
+      <OrDivider label="or use email" />
+
+      <View style={styles.fieldGroup}>
+        <Field
+          label="Email"
+          icon="mail-outline"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="username"
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+        <Field
+          ref={passwordRef}
+          label="Password"
+          icon="lock-closed-outline"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="password"
+          textContentType="password"
+          returnKeyType="done"
+          onSubmitEditing={onSubmit}
+        />
+        <View style={styles.forgotRow}>
+          <Link href="/(auth)/forgot-password" asChild>
+            <LinkButton label="Forgot password?" />
+          </Link>
+        </View>
+      </View>
 
       {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
       {errorKind === 'credentials' ? (
@@ -105,24 +215,34 @@ export default function SignInScreen() {
         </InlineAlert>
       ) : null}
 
-      <PrimaryButton label={submitting ? 'Signing in…' : 'Sign in'} onPress={onSubmit} loading={submitting} />
-
-      <View style={styles.links}>
-        <Link href="/(auth)/register" asChild>
-          <LinkButton label="Create an account" />
-        </Link>
-        <Link href="/(auth)/forgot-password" asChild>
-          <LinkButton label="Forgot password?" />
-        </Link>
-      </View>
+      <PrimaryButton
+        label={submitting ? 'Signing in…' : 'Sign in'}
+        onPress={onSubmit}
+        loading={submitting}
+        disabled={socialSubmitting !== null}
+        fullWidth
+      />
     </AuthScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  links: {
+const useStyles = createThemedStyles(() => ({
+  fieldGroup: {
+    gap: spacing.lg,
+  },
+  // Under the password field, on the right (as before Daybreak).
+  forgotRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
+    marginTop: -spacing.sm,
+  },
+  socialStack: {
     gap: spacing.md,
   },
-});
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+}));

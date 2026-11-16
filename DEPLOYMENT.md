@@ -16,17 +16,16 @@ Deleting the file from the working tree is not enough — it remains in history.
 ## 2. Configuration
 
 The app **refuses to start** in production unless every external dependency is
-real. This is deliberate: the stub payment provider accepts unsigned webhooks,
-so a silent fallback would let anyone grant themselves a subscription.
+real. This is deliberate: a silent fallback — an in-memory storage stub, a
+console email backend, debug mode left on — is the most dangerous failure
+mode in the system.
 
 Required when `ENVIRONMENT=production`:
 
 | Variable | Why |
 |---|---|
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Otherwise the mock provider accepts unsigned webhooks |
-| `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL` | Checkout cannot price a plan without them |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Otherwise uploads go to an in-memory stub |
-| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Otherwise invite and reset emails are only logged |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Otherwise invite, reset and verification emails are only logged |
 | `SECRET_KEY` | 32+ chars, from a secrets manager |
 | `ALLOWED_ORIGINS` | https only, no `*` |
 | `FRONTEND_BASE_URL` | https |
@@ -49,6 +48,20 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 
 Run migrations as a separate step before rolling instances — concurrent
 `alembic upgrade` from several starting containers will race.
+
+### Dropping `church_settings.comment_guidelines` (revision `a7c3e9f1b2d4`)
+
+The comment guidelines now live in `app/content/comment_guidelines.txt`; the
+migration drops the column. Code that still maps the column errors once it is
+gone, so the new code must be serving **before** the drop runs. For prod, run
+it as two releases: code first, `alembic upgrade head` second. The migration
+locks the row and aborts if the stored text differs from the canonical seed
+(a staff edit would otherwise be lost); reconcile and re-run.
+
+Rollback: `alembic downgrade d9e0f1a2b3c4` **before** redeploying older code
+(it restores the column holding the canonical text). Exports taken before this
+revision cannot be imported after it (the `schema_revision` guard refuses
+them); take a fresh export after the migration.
 
 ### API schema (`openapi.json`)
 
@@ -142,6 +155,34 @@ uv run python -m app.scripts.sweep_uploads
 uv run python -m app.scripts.sweep_stream_jobs
 ```
 
+One more runs **daily** (plan-admin-settings §A.7, ADR 0018):
+
+```bash
+# Daily — audit-log retention (ADR 0018 addendum, 2026-10-30): deletes auth.*
+# rows older than AUDIT_AUTH_RETENTION_DAYS (365) and nulls ip/user_agent on
+# EVERY row (auth.* included) older than AUDIT_NETWORK_RETENTION_DAYS (30).
+# A value below 1 stops the app from starting. Without this job, login IPs
+# are kept indefinitely, contradicting the published 30-day retention.
+# If RETENTION_SCHEDULER_ENABLED=true the app runs this in-process once a day
+# (lock-guarded); keep it false wherever this CLI runs on a real scheduler.
+uv run python -m app.scripts.purge_audit_log
+```
+
+It is not part of the compose `sweeps` loop; schedule it on the same real
+scheduler as the jobs above.
+
+Video captions also need a frequent job (every few minutes), because
+Cloudflare Stream sends no webhook when generated captions finish:
+
+```bash
+# Every 2-5 minutes — polls Stream for English captions still generating and
+# translates finished English tracks into French (§12 "Video captions").
+# If CAPTIONS_SCHEDULER_ENABLED=true the app runs this in-process every 2
+# minutes (advisory-lock guarded); keep it false wherever this CLI runs on a
+# real scheduler.
+uv run python -m app.scripts.sweep_captions
+```
+
 **Local / self-host:** the compose `sweeps` profile runs all three on a
 1-hour `sleep` loop:
 
@@ -161,16 +202,7 @@ out of scope here.
 
 ## 6. Stripe setup
 
-1. Create the monthly and annual prices; put their IDs in the env.
-2. Add a webhook endpoint pointing at
-   `https://<your-api>/api/v1/subscriptions/webhook`.
-3. Subscribe to: `checkout.session.completed`, `invoice.paid`,
-   `invoice.payment_failed`, `customer.subscription.updated`,
-   `customer.subscription.deleted`.
-4. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
-
-Verify locally first: `stripe listen --forward-to
-localhost:8000/api/v1/subscriptions/webhook`.
+Stripe was removed — see [ADR 0016](docs/adr/0016-remove-stripe.md).
 
 ## 7. Email (Resend)
 
@@ -195,11 +227,28 @@ directly**, so nothing in the send path changes — this is configuration only.
    | `SMTP_PORT` | `587` (STARTTLS) or `465` (implicit TLS) — `email.py` handles both |
    | `SMTP_USERNAME` | the literal string `resend` |
    | `SMTP_PASSWORD` | your Resend API key |
-   | `SMTP_FROM_EMAIL` | a verified sender address on your verified domain |
+   | `SMTP_FROM_EMAIL` | `RhemaPod <no-reply@rhemapod.com>` (any address on the verified `rhemapod.com` domain; the display name is optional) |
 
-No code change, no new dependency. `send_staff_invite` and
-`send_password_reset` (both in `email.py`) are unaffected — they call the
-same `_send` seam regardless of which SMTP provider is configured behind it.
+No new dependency. Every message (`send_staff_invite`, `send_password_reset`,
+`send_email_verification`, `send_sign_in_method_linked`, all in `email.py`)
+goes out as branded HTML with a plain-text alternative through the same
+`_send` seam, whichever SMTP provider is configured behind it.
+
+What gets sent:
+
+| Email | Trigger | Link / code |
+|---|---|---|
+| Confirm your email | `POST /auth/register` (email/password sign-up only; Google/Apple skip it) | 6-digit code, entered in the app (`POST /auth/verify-email`), valid `EMAIL_VERIFICATION_EXPIRE_MINUTES` (15), 5 wrong guesses burn it; `POST /auth/resend-verification` sends a new one |
+| Reset your password | `POST /auth/forgot-password` | `{FRONTEND_BASE_URL}/set-password?token=…`, plus `&app=1` for app users so the page shows app copy |
+| Staff invite | `POST /users`, `POST /users/{id}/resend-invite` | `{FRONTEND_BASE_URL}/set-password?token=…` |
+| Sign-in connected | Google/Apple linked to a password account | none |
+
+`/auth/login` answers **403 "Email address not verified"** for a viewer who
+hasn't entered their code yet; the app takes them to its code screen. Accounts
+that existed before this shipped were backfilled as verified by migration
+`b7e2c4d9a1f3`, and a completed reset link or a Google/Apple sign-in also marks
+the address verified. Staff never see the gate (the invite link proves the
+address).
 
 ## 8. S3 / CORS
 
@@ -361,6 +410,45 @@ existing presigned-PUT flow, which this does not touch.
    the request — see `app/services/media_service.py`'s
    `_resolve_variant_url`.
 
+### Video captions (English + French subtitles)
+
+Every video that finishes Stream ingest gets subtitles automatically:
+
+1. The ready webhook (or `sweep_stream_jobs`) asks Stream to transcribe the
+   audio into **English** captions (`POST /stream/{uid}/captions/en/generate`).
+2. `sweep_captions` (or the in-process captions scheduler) polls until the
+   English track is ready, then translates it to **French** with Workers AI
+   (`@cf/meta/m2m100-1.2b`, `CAPTIONS_TRANSLATION_MODEL`) and uploads it as
+   the `fr` track.
+3. Stream lists ready tracks in the HLS manifest, so the signed playback URL
+   already carries them: the mobile player's CC button and the admin review
+   player pick them up with no extra request.
+
+Setup:
+
+- The Workers AI call reuses `CF_STREAM_API_TOKEN` unless
+  `CF_WORKERS_AI_API_TOKEN` is set. Either way the token needs the
+  **Workers AI: Read** permission in addition to Stream: Edit. Without it,
+  English captions still work and the French rows end in `error` with the
+  Workers AI 403 visible in the admin portal's Captions card.
+- `CAPTIONS_AUTO_GENERATE=false` stops the automatic part; staff can still
+  upload `.vtt` files by hand.
+- Videos ingested before this shipped have no captions. Queue them once:
+
+  ```bash
+  uv run python -m app.scripts.backfill_captions            # dry run: count
+  uv run python -m app.scripts.backfill_captions --execute  # queue them
+  ```
+
+  Sermons still on the pre-Stream S3 path need `backfill_stream` first.
+
+Staff manage captions from the sermon editor's **Captions** card: download a
+track as `.vtt`, correct it, upload it back (uploaded tracks are never
+overwritten automatically; a new English upload re-translates a
+machine-translated French track), or regenerate/re-translate a track.
+
+Offline downloads play the MP4 without captions.
+
 ### Glacier Deep Archive setup
 
 1. Confirm (or create) `/sermon_archives` as a prefix in the **raw** bucket,
@@ -421,3 +509,178 @@ after Stream did report ready. Both are retried automatically on the hourly
 sweep; neither is a silent failure — failed archive attempts log at `ERROR`
 (`stream_sweep_archive_failed` / a propagated `StorageError` on the webhook
 path, surfaced as a 500 so Cloudflare redelivers).
+
+## 13. Client IP and User-Agent for the audit trail
+
+The audit log (ADR 0018) records the client IP and User-Agent of every login,
+logout and staff change. Behind the admin portal's BFF, every backend request
+comes from the BFF itself, so two settings are required for staff rows to
+record the **browser's** IP:
+
+| Where | Variable | Value |
+|---|---|---|
+| Admin portal | `CLIENT_IP_HEADER` | The header your edge (nginx, load balancer) **sets from the TCP peer**, e.g. `x-real-ip`. It must be overwritten by the edge on every request, never passed through from the client, or clients can choose their recorded IP. |
+| Backend | `TRUSTED_PROXIES` | The BFF's address or narrow subnet, as a JSON list, e.g. `["10.0.3.12"]`. IPv4 entries must be /8 or narrower (the app refuses to boot otherwise). |
+
+With both set, the BFF forwards one validated `X-Forwarded-For` and the backend
+trusts it only from the BFF. A browser-supplied `X-Forwarded-For` is ignored.
+Without `CLIENT_IP_HEADER`, staff rows record the BFF's own IP and the backend
+logs `client_ip_fallback` on every request; that warning's volume is the sign
+the chain is misconfigured. The same two settings also make the login rate
+limiter key per staff member instead of per BFF.
+
+The User-Agent needs no configuration: the BFF forwards the browser's,
+stripped of control characters and cut to 512 characters.
+
+`docker-compose.yml` has no admin portal service and sets neither variable;
+plain `npm run dev` against a local backend records `127.0.0.1`, which is
+expected.
+
+## 14. Apple revocation key (account deletion)
+
+Account deletion revokes the user's Sign in with Apple grant (App Store
+guideline 5.1.1(v)). That needs a server-side `.p8` key. Design: ADR 0020;
+plan: `plans/plan-account-deletion-backend.md` (§A.4, §A.5).
+
+**Never commit the key, never log it.** The log pipeline redacts
+`apple_private_key`, `client_secret` and the token fields, but don't rely on
+that: keep the `.p8` outside the repo (`.gitignore` covers `.env*` and `*.p8`, but
+a password manager is the right home) and delete the downloaded file once it
+is stored.
+
+### Settings
+
+| Variable | Default | Notes |
+|---|---|---|
+| `APPLE_REVOCATION_BACKEND` | `stub` | `http` or `stub`. Must be `http` wherever `OAUTH_APPLE_ENABLED` is true (preflight enforces it); `stub` is for local dev and tests |
+| `APPLE_TEAM_ID` | `FAND2W5VMM` | |
+| `APPLE_KEY_ID` | none | 10-char Key ID shown when the key is created |
+| `APPLE_PRIVATE_KEY` | none | **PEM contents** (not a path). Secret |
+| `APPLE_CLIENT_ID` | first `APPLE_OAUTH_AUDIENCES` entry | Primary App ID, `com.niitech.rhemapod` |
+| `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` | `300` | Max age of the re-auth proof |
+| `ACCOUNT_DELETE_RATE_LIMIT` / `ACCOUNT_DELETE_RATE_WINDOW_SECONDS` | `5` / `3600` | Per-user limiter on `POST /auth/me/delete` |
+
+Only `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` are secrets/provisioned; the rest
+are config.
+
+### 1. Create the key (Apple Developer, by hand)
+
+1. developer.apple.com -> Certificates, Identifiers & Profiles -> Keys -> `+`.
+2. Name it (e.g. `rhemapod-siwa-revoke`). Tick **Sign in with Apple** only,
+   nothing else.
+3. Configure -> choose the primary App ID `com.niitech.rhemapod` (team
+   `FAND2W5VMM`) -> Save -> Continue -> Register.
+4. Note the **Key ID**, then **Download** the `.p8`. Apple lets you download it
+   once.
+
+### 2. Local placement
+
+Put the values in the gitignored `.env`, or the gitignored
+`docker-compose.override.yml` if you run via compose. The PEM goes in as
+contents, on one line, double-quoted, newlines written as `\n`:
+
+```bash
+APPLE_REVOCATION_BACKEND=http   # leave as stub until you actually test revocation
+APPLE_KEY_ID=ABC123DEFG
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----"
+```
+
+To produce that line from the downloaded file:
+`awk 'NF {printf "%s\\n", $0}' AuthKey_ABC123DEFG.p8`. `.env.example` and
+`.env.docker.example` carry placeholders only.
+
+### 3. Deployed environments
+
+Store the key in the platform's secret store, never a file on disk or in the
+image:
+
+- **Render (current host; decided at AD2, 2026-10-29):** `APPLE_KEY_ID` and
+  `APPLE_PRIVATE_KEY` are encrypted environment variables on the API service,
+  set in the dashboard (`sync: false` in `render.yaml`, never a literal).
+  `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_REVOCATION_BACKEND=http` are
+  plain config in the `rhemapod-dev` env group (`render.yaml`);
+  `APPLE_CLIENT_ID` falls back to `APPLE_OAUTH_AUDIENCES`. Only
+  `APPLE_PRIVATE_KEY` is entered by hand (DEPLOYMENT-RENDER.md §7).
+- **AWS:** no Secrets Manager entry until the app actually moves to AWS. Decide
+  the secret's name and shape then.
+
+### 4. Preflight
+
+With `oauth_apple_enabled` on, `python -m app.scripts.preflight` (and app
+startup in production) refuses to boot when:
+
+- `APPLE_REVOCATION_BACKEND` is `stub`;
+- `APPLE_KEY_ID` or `APPLE_PRIVATE_KEY` is missing;
+- the PEM does not load, or is not an EC P-256 key.
+
+It makes **no network call**: a wrong Key ID, revoked key or wrong team passes
+preflight and surfaces at the first real deletion as `invalid_client`
+(logged at error level, returned as 503). After every key change, prove the
+credentials against Apple with
+
+```sh
+python -m app.scripts.check_apple_key
+```
+
+It sends Apple a deliberately invalid authorization code: `invalid_grant`
+means Apple accepted the client secret (team, key ID, key and client ID are
+right), `invalid_client` means one of them is wrong. Nothing is revoked. On
+Render, run it from the API service's **Shell** tab. Then smoke-test a real
+revocation with a throwaway Apple account.
+
+### 5. Rotation
+
+Apple allows overlapping keys, so rotation has no downtime window.
+
+1. Create a new key (step 1 above). Keep the old one active.
+2. Store the new `APPLE_KEY_ID` + `APPLE_PRIVATE_KEY` (local `.env`, then the
+   deployed secret).
+3. Deploy. Preflight must pass.
+4. Verify: run a throwaway-account deletion; revocation must return success.
+5. Only then revoke the old key in the Apple Developer portal and delete its
+   `.p8` everywhere.
+
+If step 4 fails, the old key is still active: roll the secret back. The same
+steps, minus the "old key" parts, apply if a key leaks; revoke it immediately
+rather than after verification.
+
+---
+
+## 15. Restores, imports and erased accounts
+
+Account erasure (self-service deletion, ADR 0020, and staff user deletion)
+removes the user from the live database only. Anything that brings older data
+back can **resurrect an account that was erased after that data was captured**:
+
+- restoring a database backup (production backups are planned with **90-day
+  retention**, decided 2026-10-30, which is also the figure the account-deleted
+  notice email quotes), and
+- importing an admin data export (admin data import, merge mode).
+
+After any restore or import, re-run erasure for every user deleted since the
+snapshot:
+
+1. **Identify them.** `user.deleted` audit rows newer than the snapshot time;
+   `target_id` is the erased user's id (`target_label` is already null for
+   viewers):
+
+   ```sql
+   SELECT target_id, created_at FROM audit_log
+   WHERE action = 'user.deleted' AND created_at > :snapshot_time;
+   ```
+
+   For an **import** run this on the live database as is. For a **backup
+   restore** the restored `audit_log` stops at the snapshot, so take that list
+   *before* restoring (dump the query result from the live database first). If
+   that was not possible, fall back to the `user_deleted` structured log events
+   (they carry `user_id`) in the log platform.
+2. **Re-erase.** For each id still present after the restore, delete the
+   account through the normal deletion path so the same cleanup (sessions,
+   identities, storage objects, Apple revocation where applicable) runs.
+3. Confirm: none of the ids remain in `user`, and a fresh `user.deleted` audit
+   row exists for each re-erasure.
+
+Admin data exports are copies of personal data. Store them only where access is
+restricted, do not keep them longer than the task that needed them, and delete
+them (including downloads on staff machines) when done. An export is itself
+outside the 90-day backup window and is never purged automatically.

@@ -33,8 +33,9 @@ export type ProgressPublic = components['schemas']['ProgressPublic'];
 /** The backend's own ceiling (`Query(..., le=100)`, `analytics_service.history`'s own clamp) — applies only to the unscoped read. */
 export const WATCH_HISTORY_LIMIT = 100;
 
-export function useWatchHistory(seriesId?: string) {
+export function useWatchHistory(seriesId?: string, options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: seriesId ? queryKeys.me.historyForSeries(seriesId) : queryKeys.me.history(WATCH_HISTORY_LIMIT),
     queryFn: ({ signal }) =>
       api.get('/me/history', {

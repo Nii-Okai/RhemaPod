@@ -1,36 +1,239 @@
-import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { VideoView } from 'expo-video';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
+import { VideoView, isPictureInPictureSupported } from 'expo-video';
 import type { VideoPlayer } from 'expo-video';
+import { FittedArt } from '../../../components/FittedArt';
 import { colors } from '../../../theme/colors';
+import { spacing } from '../../../theme/spacing';
+import { PlaybackOverlayControls, PlayerBottomBar } from './TransportControls';
+import type { ControlsOverlay } from './useControlsOverlay';
+import type { CaptionLanguageCode, PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
+
+const FADE_IN_MS = 150;
+const FADE_OUT_MS = 200;
 
 export interface VideoSurfaceProps {
   player: VideoPlayer;
-  /** Derived from the player's own `status` (`'loading'`) — design spec §3 Player:
-   * "buffering (spinner over player surface, not source-specified but required — flag to
-   * `mobile-developer` as a needed addition)". Built here per that flag. */
+  /** Ref to the underlying `VideoView`, so the controls can request native fullscreen. */
+  videoRef: React.RefObject<VideoView>;
+  /** Derived from the player's own `status` (`'loading'`). */
   isBuffering: boolean;
+  isPlaying: boolean;
+  isEnded: boolean;
+  /** True for an audio-only sermon — renders the sermon's artwork behind the controls
+   * instead of (visually, atop) the `VideoView`, so the surface isn't just a flat dark
+   * rectangle while audio plays. `VideoView` itself still mounts either way: the player
+   * needs it for playback regardless of media type, it just never shows visible frames
+   * for an audio-only source. */
+  isAudio: boolean;
+  /** The sermon's thumbnail — same URL the lock-screen/Control-Center metadata already
+   * uses (`detail.thumbnail_url`, `PlayerContent`'s own `artwork` metadata field).
+   * `null`/`undefined` falls back to the plain dark surface, same as before this prop
+   * existed. */
+  artworkUrl?: string | null;
+  overlay: ControlsOverlay;
+  isFullscreen: boolean;
+  onFullscreenChange: (fullscreen: boolean) => void;
+  onTogglePlay: () => void;
+  onReplay: () => void;
+  onSeekBy: (seconds: number) => void;
+  /** The rest of what used to be the separate below-player bar (design spec revision,
+   * Isaac's ask session 2026-10-08: no buttons outside the player — scrub, time, speed,
+   * sleep timer and fullscreen all move onto the video surface itself, in the same
+   * tap-to-toggle, auto-hiding overlay as play/pause/skip). */
+  currentTimeSeconds: number;
+  durationSeconds: number | null;
+  playbackSpeed: PlaybackSpeed;
+  sleepRemainingSeconds: number | null;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onSeekTo: (seconds: number) => void;
+  onScrubStart: () => void;
+  onScrubEnd: () => void;
+  onCycleSpeed: () => void;
+  /** Subtitle languages on this video (empty hides the CC control). */
+  captionLanguages?: CaptionLanguageCode[];
+  /** Language currently on screen, `null` when subtitles are off. */
+  activeCaptionLanguage?: CaptionLanguageCode | null;
+  onCycleCaptions?: () => void;
+  onOpenSleepTimer: () => void;
+  onToggleFullscreen: () => void;
 }
 
 /**
- * The pinned-to-top video surface (design spec §3 Player: "Player pinned to top (video
- * surface, ...)"). Native controls are off (`nativeControls={false}`) — this app builds
- * its own transport row (`TransportControls`) below the surface rather than the OS
- * default overlay, so speed/sleep-timer/notes affordances live in one consistent place
- * instead of split between a native overlay and custom chrome.
+ * The video area (design spec comments-and-player §1.2, revised 2026-10-08): a 16:9 surface
+ * with a single tap-to-toggle overlay holding every control — a dimmer, rewind / play-pause /
+ * forward centred over the video, and the scrub bar / time / speed / sleep timer / fullscreen
+ * row anchored to its bottom edge. Nothing plays-related renders outside this surface. The
+ * overlay fades in and out (instantly under Reduce Motion) and auto-hides per
+ * `useControlsOverlay`. Inline, native controls are off: this app draws its own. In native
+ * fullscreen they switch on and the OS controls take over (so the overlay is not drawn
+ * there); exiting returns to the inline layout with the playback position intact, since it is
+ * the same player.
  */
-export function VideoSurface({ player, isBuffering }: VideoSurfaceProps) {
+export function VideoSurface({
+  player,
+  videoRef,
+  isBuffering,
+  isPlaying,
+  isEnded,
+  isAudio,
+  artworkUrl,
+  overlay,
+  isFullscreen,
+  onFullscreenChange,
+  onTogglePlay,
+  onReplay,
+  onSeekBy,
+  currentTimeSeconds,
+  durationSeconds,
+  playbackSpeed,
+  sleepRemainingSeconds,
+  isMuted,
+  onToggleMute,
+  onSeekTo,
+  onScrubStart,
+  onScrubEnd,
+  onCycleSpeed,
+  captionLanguages,
+  activeCaptionLanguage,
+  onCycleCaptions,
+  onOpenSleepTimer,
+  onToggleFullscreen,
+}: VideoSurfaceProps) {
+  const { visible, reduceMotion } = overlay;
+  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const [rendered, setRendered] = useState(visible);
+
+  useEffect(() => {
+    if (visible) setRendered(true);
+    if (reduceMotion) {
+      opacity.setValue(visible ? 1 : 0);
+      if (!visible) setRendered(false);
+      return;
+    }
+    const duration = visible ? FADE_IN_MS : FADE_OUT_MS;
+    Animated.timing(opacity, { toValue: visible ? 1 : 0, duration, useNativeDriver: true }).start();
+    if (visible) return;
+    // Unmount the controls once the fade-out has run. A timer rather than the animation's
+    // completion callback, which a natively-driven animation may never deliver.
+    const unmount = setTimeout(() => setRendered(false), FADE_OUT_MS);
+    return () => clearTimeout(unmount);
+  }, [visible, reduceMotion, opacity]);
+
+  // Picture-in-picture is for video only: an audio sermon already keeps playing in the
+  // background with the lock-screen controls, and its video layer has nothing to show.
+  const canPictureInPicture = !isAudio && isPictureInPictureSupported();
+  const [inPictureInPicture, setInPictureInPicture] = useState(false);
+  const togglePictureInPicture = () => {
+    const view = videoRef.current;
+    if (!view) return;
+    // Best-effort, like fullscreen: a refusal (another app's PiP, a policy) changes nothing.
+    (inPictureInPicture ? view.stopPictureInPicture() : view.startPictureInPicture()).catch(() => {});
+  };
+
+  const act = (action: () => void) => () => {
+    overlay.touch();
+    action();
+  };
+
   return (
     <View style={styles.wrap}>
-      <VideoView player={player} style={styles.video} nativeControls={false} contentFit="contain" />
-      {isBuffering ? (
-        <View style={styles.overlay} accessibilityRole="progressbar" accessibilityLabel="Buffering">
-          {/* A separate scrim layer (not the indicator's own parent's opacity) so the
-              spinner itself renders at full opacity instead of fading with the backdrop —
-              `colors.surface.app` + `opacity` keeps this token-only, no raw rgba literal. */}
-          <View style={styles.overlayScrim} />
+      <VideoView
+        ref={videoRef}
+        player={player}
+        style={styles.video}
+        nativeControls={isFullscreen}
+        allowsFullscreen
+        onFullscreenEnter={() => onFullscreenChange(true)}
+        onFullscreenExit={() => onFullscreenChange(false)}
+        // Leaving the app (home gesture, app switcher) while a video sermon plays floats it
+        // in a small window, as YouTube and Apple TV do; the Picture in picture button in
+        // the controls does the same on demand.
+        allowsPictureInPicture={canPictureInPicture}
+        startsPictureInPictureAutomatically={canPictureInPicture}
+        onPictureInPictureStart={() => setInPictureInPicture(true)}
+        onPictureInPictureStop={() => setInPictureInPicture(false)}
+        contentFit="contain"
+      />
+      {isAudio && artworkUrl ? (
+        // Audio has no visible video frames — without this the surface is just the flat
+        // dark `colors.surface.app` rectangle the whole time audio plays, with nothing to
+        // show playback is active (Isaac's report). Rendered *over* `VideoView` (which
+        // still mounts regardless — the player needs it to actually play the audio, and
+        // the fullscreen control still targets it) rather than behind it: a native video
+        // surface's own paint behavior for a track-less audio source isn't guaranteed
+        // transparent on every platform, so stacking the artwork on top is the only
+        // layering that reliably shows it either way. `pointerEvents="none"` (on the
+        // wrapping `View` — `Image` itself has no such prop) so it never intercepts the
+        // tap-to-toggle `Pressable` below, which still needs the touch.
+        <View style={styles.artwork} pointerEvents="none">
+          <FittedArt testID="player-artwork" uri={artworkUrl} />
+        </View>
+      ) : null}
+      <Pressable
+        style={StyleSheet.absoluteFillObject}
+        accessibilityRole="button"
+        accessibilityLabel={visible ? 'Hide playback controls' : 'Show playback controls'}
+        onPress={overlay.toggle}
+      />
+      {isBuffering && !rendered ? (
+        <View
+          style={styles.overlay}
+          pointerEvents="none"
+          accessibilityRole="progressbar"
+          accessibilityLabel="Buffering"
+        >
           <ActivityIndicator color={colors.accent.gold} size="large" />
         </View>
+      ) : null}
+      {rendered ? (
+        <Animated.View style={[styles.overlay, { opacity }]} pointerEvents={visible ? 'box-none' : 'none'}>
+          {/* The dimmer is its own layer (`surface.app` + `opacity`, no rgba literal) so the
+              controls above it render at full opacity and hold contrast over bright frames. */}
+          <View style={styles.dimmer} pointerEvents="none" />
+          <View style={styles.centerRow}>
+            <PlaybackOverlayControls
+              isPlaying={isPlaying}
+              isBuffering={isBuffering}
+              isEnded={isEnded}
+              onTogglePlay={act(onTogglePlay)}
+              onReplay={act(onReplay)}
+              onSeekBy={(seconds) => {
+                overlay.touch();
+                onSeekBy(seconds);
+              }}
+            />
+          </View>
+          <View style={styles.bottomRow}>
+            <PlayerBottomBar
+              currentTimeSeconds={currentTimeSeconds}
+              durationSeconds={durationSeconds}
+              playbackSpeed={playbackSpeed}
+              sleepRemainingSeconds={sleepRemainingSeconds}
+              isFullscreen={isFullscreen}
+              isMuted={isMuted}
+              onToggleMute={act(onToggleMute)}
+              onSeekTo={(seconds) => {
+                overlay.touch();
+                onSeekTo(seconds);
+              }}
+              onSeekBy={(seconds) => {
+                overlay.touch();
+                onSeekBy(seconds);
+              }}
+              onScrubStart={onScrubStart}
+              onScrubEnd={onScrubEnd}
+              onCycleSpeed={act(onCycleSpeed)}
+              captionLanguages={captionLanguages}
+              activeCaptionLanguage={activeCaptionLanguage}
+              onCycleCaptions={onCycleCaptions ? act(onCycleCaptions) : undefined}
+              onOpenSleepTimer={act(onOpenSleepTimer)}
+              onToggleFullscreen={act(onToggleFullscreen)}
+              onTogglePictureInPicture={canPictureInPicture ? act(togglePictureInPicture) : undefined}
+            />
+          </View>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -40,20 +243,31 @@ const styles = StyleSheet.create({
   wrap: {
     width: '100%',
     aspectRatio: 16 / 9,
-    backgroundColor: colors.surface.sunken,
+    backgroundColor: colors.surface.app,
   },
   video: {
     width: '100%',
     height: '100%',
   },
+  artwork: {
+    ...StyleSheet.absoluteFillObject,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+  },
+  dimmer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.surface.app,
+    opacity: 0.45,
+  },
+  centerRow: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  overlayScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.surface.app,
-    opacity: 0.6,
+  bottomRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
 });

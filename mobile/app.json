@@ -3,27 +3,70 @@
     "name": "RhemaPod",
     "slug": "rhemapod-mobile",
     "version": "0.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/94c017d2-4c66-4c78-bb13-ee0f60f0543f",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTabletMode": true,
-      "bundleIdentifier": "com.niitech.rhemapod"
+      "bundleIdentifier": "com.niitech.rhemapod",
+      "appleTeamId": "FAND2W5VMM",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "RhemaPod uses your local network to find Chromecast and Google TV devices to cast sermons to.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "associatedDomains": [
+        "applinks:open.rhemapod.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0B1725"
       },
-      "package": "com.niitech.rhemapod"
+      "package": "com.niitech.rhemapod",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/sermon/"
+            },
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/series/"
+            },
+            {
+              "scheme": "https",
+              "host": "open.rhemapod.com",
+              "pathPrefix": "/playlist/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,16 +77,74 @@
       [
         "expo-video",
         {
-          "supportsBackgroundPlayback": true
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": false
+          "microphonePermission": "RhemaPod does not record audio. This permission is required by the audio component the app uses for sermon playback."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RhemaPod needs access to your photos to set a profile picture.",
+          "cameraPermission": "RhemaPod needs access to your camera to take a profile picture."
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.827558560538-ujevidt1217i6a2gu8fm9sn8je755kta"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brand/mark-bronze.png",
+          "imageWidth": 150,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F4EF",
+          "dark": {
+            "image": "./assets/brand/mark-gold.png",
+            "backgroundColor": "#0D111A"
+          }
+        }
+      ],
+      [
+        "react-native-google-cast",
+        {
+          "androidPlayServicesCastFrameworkVersion": "22.0.0"
+        }
+      ],
+      "expo-apple-authentication",
+      "./plugins/withMinPodsDeploymentTarget",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://sentry.io/",
+          "organization": "wedid-systems",
+          "project": "rhemapod-mobile"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C99A33"
         }
       ]
     ],
-    "scheme": "rhemapod"
+    "scheme": "rhemapod",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "94c017d2-4c66-4c78-bb13-ee0f60f0543f"
+      }
+    },
+    "owner": "wedid-system"
   }
 }

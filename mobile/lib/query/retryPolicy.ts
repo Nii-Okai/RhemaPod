@@ -1,3 +1,4 @@
+import { onlineManager } from '@tanstack/react-query';
 import { ApiError } from '../api/errors';
 
 /**
@@ -40,7 +41,9 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
     // transient condition. Don't mask it behind a retry loop.
     return false;
   }
-  if (error.network) return failureCount < MAX_RETRIES;
+  // Offline, a retry can only fail the same way — fail fast so the screen's offline state
+  // (or a saved copy of the data) shows at once. `lifecycle.ts` keeps this reading live.
+  if (error.network) return onlineManager.isOnline() && failureCount < MAX_RETRIES;
   if (error.status === 429) return failureCount < MAX_RATE_LIMIT_RETRIES;
   if (error.status >= 500) return failureCount < MAX_RETRIES;
   return false;

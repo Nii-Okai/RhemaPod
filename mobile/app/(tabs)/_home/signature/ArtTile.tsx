@@ -1,0 +1,66 @@
+import React from 'react';
+import type { ViewStyle } from 'react-native';
+import { FittedArt, PressableScale } from '../../../../components';
+import { createThemedStyles } from '../../../../theme/ThemeContext';
+import type { SermonLike } from '../../../../lib/playback/queue';
+import { useQueueGesture } from '../../../../lib/playback/useQueueGesture';
+import { LEAF_SM } from './leaf';
+
+export interface ArtTileProps {
+  thumbnailUrl: string | null | undefined;
+  onPress: () => void;
+  accessibilityLabel: string;
+  /** Fixed shelf width, or omitted to fill the parent (grid tiles). */
+  width?: number;
+  aspectRatio: number;
+  /** Corner shape; defaults to the small leaf. */
+  shape?: ViewStyle;
+  /** Drawn over the art (progress bar, chip, play button). */
+  children?: React.ReactNode;
+  /** A sermon card: a long press offers Play next / Add to queue. */
+  queueSermon?: SermonLike | null;
+}
+
+/**
+ * The art block every Signature shelf card is built on. Sermon and series thumbnails
+ * already carry their title in the artwork, so the card draws no title over it — only
+ * self-contained overlays (`children`) go on top. `cover` fills the box; for a portrait
+ * box the middle of the landscape art is what shows, as on the classic Trending shelf.
+ */
+export function ArtTile({
+  thumbnailUrl,
+  onPress,
+  accessibilityLabel,
+  width,
+  aspectRatio,
+  shape = LEAF_SM,
+  children,
+  queueSermon,
+}: ArtTileProps) {
+  const styles = useStyles();
+  const queueGesture = useQueueGesture(queueSermon);
+  return (
+    <PressableScale
+      onPress={onPress}
+      {...queueGesture}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.tile, shape, width !== undefined ? { width } : styles.fill, { aspectRatio }]}
+    >
+      {thumbnailUrl ? (
+        <FittedArt uri={thumbnailUrl} />
+      ) : null}
+      {children}
+    </PressableScale>
+  );
+}
+
+const useStyles = createThemedStyles((colors) => ({
+  tile: {
+    overflow: 'hidden',
+    backgroundColor: colors.surface.sunken,
+  },
+  fill: {
+    width: '100%',
+  },
+}));

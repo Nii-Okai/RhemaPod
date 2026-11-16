@@ -1,8 +1,9 @@
+import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security, token_store
@@ -10,9 +11,21 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import check_rate_limit
 from app.core.token_store import TokenStoreUnavailable
-from app.models.models import User, UserRole
-from app.models.schemas import UserRegister
-from app.services.content_service import ContentError
+from app.models.models import (
+    AuditAction,
+    AuditLog,
+    AuditOutcome,
+    AuthProvider,
+    Gender,
+    Playlist,
+    User,
+    UserIdentity,
+    UserRole,
+)
+from app.models.schemas import AvatarTicket, UserPublic, UserRegister
+from app.services import audit_service
+from app.services.audit_service import AuditContext, AuditTarget
+from app.services.content_service import ALLOWED_IMAGE_TYPES, ContentError
 
 import secrets  # noqa: E402
 
@@ -29,6 +42,15 @@ _ASSIGNABLE_BY: dict[_UserRole, set[_UserRole]] = {
     _UserRole.MANAGER: {_UserRole.EDITOR},
     _UserRole.ADMIN: {_UserRole.EDITOR, _UserRole.MANAGER, _UserRole.ADMIN},
 }
+
+# Default for callers with no request (scripts, direct service tests): the
+# audit row is still written, just without ip / user agent / correlation id.
+_NO_CTX = AuditContext()
+
+
+def _user_target(user: User) -> AuditTarget:
+    return AuditTarget(type="user", id=user.id, label=user.email)
+
 
 class AuthError(Exception):
     """Raised for expected auth failures; carries a public-safe message."""
@@ -50,21 +72,169 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return await db.get(User, user_id)
 
 
-async def register_user(db: AsyncSession, data: UserRegister) -> User:
-    existing = await get_user_by_email(db, data.email)
-    if existing is not None:
-        # Do not reveal whether the email exists — generic message.
-        raise AuthError("Could not complete registration")
+def _avatar_url(key: str | None) -> str | None:
+    """Turn a stored avatar key into a fetchable URL — same presigned-then-
+    `cdn_url_for` path `content_service._thumbnail_url` uses for a sermon/series
+    cover image, not duplicated logic reinvented here, just the user-domain copy
+    of it (avatars are a `User` concern, not a `content_service` one)."""
+    if not key:
+        return None
+    from app.core import storage as storage_module
 
+    return storage_module.stable_image_url(key)
+
+
+async def linked_providers_by_user(
+    db: AsyncSession, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[AuthProvider]]:
+    """OAuth providers linked to each of `user_ids`, in one query (no N+1 for
+    the members list). Users with no link are absent from the map."""
+    if not user_ids:
+        return {}
+    rows = (await db.execute(
+        select(UserIdentity.user_id, UserIdentity.provider)
+        .where(UserIdentity.user_id.in_(list(user_ids)))
+        .order_by(UserIdentity.provider)
+    )).all()
+    out: dict[uuid.UUID, list[AuthProvider]] = {}
+    for uid, provider in rows:
+        out.setdefault(uid, []).append(provider)
+    return out
+
+
+async def to_user_public_linked(db: AsyncSession, user: User) -> UserPublic:
+    """`to_user_public` with the account's linked providers filled in."""
+    providers = (await linked_providers_by_user(db, [user.id])).get(user.id, [])
+    return to_user_public(user, providers)
+
+
+def to_user_public(user: User, linked_providers: Sequence[AuthProvider] = ()) -> UserPublic:
+    """Builds `UserPublic` field-by-field rather than `UserPublic.model_validate(user)`
+    — `avatar_url` is derived from `avatar_key` (same reason `to_list_item` builds
+    `SermonListItem` explicitly instead of blind-validating the ORM row), so a plain
+    `from_attributes` validate would just silently leave it `None` forever."""
+    return UserPublic(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        gender=user.gender,
+        avatar_url=_avatar_url(user.avatar_key),
+        role=user.role,
+        is_active=user.is_active,
+        has_password=bool(user.password_hash),
+        linked_providers=list(linked_providers),
+        activated_at=user.activated_at,
+        comments_terms_accepted_at=user.comments_terms_accepted_at,
+        created_at=user.created_at,
+    )
+
+
+async def update_gender(db: AsyncSession, actor: User, gender: Gender) -> User:
+    """No moderation/rate-limit concern — unlike a name, this is never shown to
+    other viewers and has no free-text injection surface (a fixed enum)."""
+    actor.gender = gender
+    await db.commit()
+    await db.refresh(actor)
+    log.info("profile_gender_updated", user_id=str(actor.id))
+    return actor
+
+
+def _validate_avatar_image_type(content_type: str) -> None:
+    if content_type.lower() not in ALLOWED_IMAGE_TYPES:
+        raise ContentError(
+            f"Unsupported image type '{content_type}'. Use JPEG, PNG, or WebP.",
+            status_code=400,
+        )
+
+
+async def create_avatar_ticket(actor: User, filename: str, content_type: str) -> AvatarTicket:
+    """Issue a pre-signed PUT for a profile picture — same direct-to-storage
+    pattern `content_service.create_thumbnail_ticket` uses; the image never
+    passes through this API."""
+    from app.core import storage as storage_module
+
+    _validate_avatar_image_type(content_type)
+    key = storage_module.avatar_key(actor.id, filename)
+    url = storage_module.get_storage().presigned_upload_url(
+        settings.object_store_media_bucket, key, content_type,
+        settings.upload_url_expire_seconds,
+    )
+    return AvatarTicket(
+        upload_url=url,
+        headers={"Content-Type": content_type},
+        expires_in=settings.upload_url_expire_seconds,
+        avatar_key=key,
+    )
+
+
+async def confirm_avatar(db: AsyncSession, actor: User, key: str) -> str | None:
+    """Attach an uploaded profile picture after verifying it actually landed —
+    same verification sequence `content_service.confirm_thumbnail` runs (prefix
+    check, object exists, size cap), just against the user's own row instead of
+    a sermon/series."""
+    from app.core import storage as storage_module
+
+    expected_prefix = f"avatars/{actor.id}/"
+    if not key.startswith(expected_prefix):
+        raise ContentError("Avatar key does not belong to this account", 400)
+
+    store = storage_module.get_storage()
+    if not store.object_exists(settings.object_store_media_bucket, key):
+        raise ContentError(
+            "No uploaded image found — complete the PUT first", status_code=409
+        )
+
+    size = store.object_size(settings.object_store_media_bucket, key)
+    if size is not None and size > settings.max_thumbnail_bytes:
+        try:
+            store.delete_object(settings.object_store_media_bucket, key)
+        except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
+            log.warning("oversize_avatar_cleanup_failed", key=key)
+        raise ContentError(
+            f"Image is larger than the "
+            f"{settings.max_thumbnail_bytes // (1024 * 1024)} MB limit.",
+            status_code=413,
+        )
+
+    actor.avatar_key = key
+    await db.commit()
+    log.info("avatar_set", user_id=str(actor.id))
+    return _avatar_url(key)
+
+
+async def _create_viewer(
+    db: AsyncSession,
+    email: str,
+    password_hash: str | None,
+    *,
+    email_verified: bool = False,
+) -> User:
+    """Shared account-creation core for a fresh viewer: the user row
+    (activated immediately — a brand-new account, whether self-registered or
+    OAuth-created, is never a "pending invite") plus the FREE-tier
+    `Subscription` row every account owns from the moment it exists.
+
+    Flushes but does NOT commit — the PK is assigned so a caller can attach
+    anything else that belongs in the same transaction (e.g. ADR 0015's
+    `UserIdentity` row for an OAuth sign-in) before committing once,
+    atomically. `register_user` below and `oauth_service.sign_in_with_identity`
+    are the two callers; neither duplicates the subscription-creation logic.
+
+    `email_verified` is True only for OAuth (the provider verified the
+    address); a self-registered account waits for its emailed code.
+    """
+    now = datetime.now(timezone.utc)
     user = User(
-        email=data.email.lower(),
-        password_hash=security.hash_password(data.password),
+        email=email,
+        password_hash=password_hash,
         role=UserRole.VIEWER,
-        # Self-registration chooses its own password at creation, so the account
-        # is activated by definition. `activated_at` must be non-NULL here or
-        # `resend_invite` (which reads NULL as "invite still pending") would mint
-        # a working set-password link for a live account (CWE-620/640).
-        activated_at=datetime.now(timezone.utc),
+        # `activated_at` must be non-NULL here or `resend_invite` (which reads
+        # NULL as "invite still pending") would mint a working set-password
+        # link for a live account (CWE-620/640).
+        activated_at=now,
+        email_verified_at=now if email_verified else None,
     )
     db.add(user)
     await db.flush()
@@ -74,6 +244,19 @@ async def register_user(db: AsyncSession, data: UserRegister) -> User:
     from app.models.models import Subscription, SubscriptionTier
 
     db.add(Subscription(user_id=user.id, tier=SubscriptionTier.FREE))
+    return user
+
+
+async def register_user(db: AsyncSession, data: UserRegister) -> User:
+    existing = await get_user_by_email(db, data.email)
+    if existing is not None:
+        # Do not reveal whether the email exists — generic message.
+        raise AuthError("Could not complete registration")
+
+    # Self-registration chooses its own password at creation.
+    user = await _create_viewer(
+        db, data.email.lower(), security.hash_password(data.password)
+    )
 
     await db.commit()
     await db.refresh(user)
@@ -81,16 +264,83 @@ async def register_user(db: AsyncSession, data: UserRegister) -> User:
     return user
 
 
+def _email_code_digest(user_id: uuid.UUID, code: str) -> str:
+    """Keyed digest of a verification code, bound to its account: Redis never
+    holds a usable code, and a digest can't be replayed against another user."""
+    import hashlib
+    import hmac
+
+    msg = f"{user_id}:{code}".encode()
+    return hmac.new(settings.secret_key.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def needs_email_verification(user: User) -> bool:
+    """Whether `/auth/login` must refuse this (already authenticated) account
+    until it enters its emailed code. Viewers only: staff prove their address
+    by completing the invite link."""
+    return (
+        settings.require_email_verification
+        and user.role == UserRole.VIEWER
+        and user.email_verified_at is None
+    )
+
+
+async def issue_email_verification_code(user_id: uuid.UUID) -> str:
+    """Mint and record a fresh 6-digit code for the account, replacing any earlier
+    one. Returns the code for the caller to email. Fails closed
+    (`TokenStoreUnavailable`) — a code we could not record would be useless."""
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await token_store.store_email_code(
+        str(user_id),
+        _email_code_digest(user_id, code),
+        settings.email_verification_expire_minutes * 60,
+    )
+    return code
+
+
+async def verify_email(db: AsyncSession, email: str, code: str) -> User:
+    """Confirm a self-registered account's address with its emailed code.
+
+    One generic error for every failure (unknown email, already verified,
+    wrong/expired/burned code, deactivated) so this is not an enumeration
+    oracle."""
+    generic = AuthError("Invalid or expired code")
+    user = await get_user_by_email(db, email)
+    if user is None or not user.is_active or user.email_verified_at is not None:
+        raise generic
+    ok = await token_store.consume_email_code(
+        str(user.id),
+        _email_code_digest(user.id, code.strip()),
+        settings.email_verification_max_attempts,
+    )
+    if not ok:
+        raise generic
+    user.email_verified_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(user)
+    log.info("email_verified", user_id=str(user.id))
+    return user
+
+
 async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     user = await get_user_by_email(db, email)
     # verify_password runs a dummy verify when user is None, so an unknown
     # email costs the same time as a wrong password (no enumeration oracle).
+    # It must run unconditionally: `user is None or not verify_password(...)`
+    # short-circuits past the dummy verify, and unknown emails then answered
+    # ~10x faster than known ones (measured while building S8).
     stored = user.password_hash if user is not None else None
-    if user is None or not security.verify_password(password, stored):
+    password_ok = security.verify_password(password, stored)
+    if user is None or not password_ok:
         raise AuthError("Invalid email or password")
     if not user.is_active:
         raise AuthError("Invalid email or password")
 
+    # `password_hash` is nullable since ADR 0015 (password-less OAuth
+    # accounts), but `verify_password` above only returns True when `hashed`
+    # was a real string (its `None` branch always returns False, never
+    # matches) — reaching here proves `user.password_hash` is not None.
+    assert user.password_hash is not None
     # Transparent hash upgrade if Argon2 parameters have been raised since the
     # password was set. The user notices nothing and never resets a password.
     _, new_hash = security.verify_and_rehash(password, user.password_hash)
@@ -191,7 +441,9 @@ async def logout(user_id: str, refresh_token: str) -> None:
     log.info("logout", user_id=user_id, sid=sid)
 
 
-async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:
+async def reset_password(
+    db: AsyncSession, token: str, new_password: str, ctx: AuditContext = _NO_CTX
+) -> None:
     payload = security.decode_token(token, {security.RESET, security.INVITE})
     if payload is None:
         raise AuthError("Invalid or expired reset token")
@@ -217,6 +469,18 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
     # timestamp untouched. `resend_invite` reads this column, not Redis.
     if user.activated_at is None:
         user.activated_at = datetime.now(timezone.utc)
+    # Following the emailed link proves the address, so a viewer still waiting
+    # on their sign-up code can recover through Forgot Password too.
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
+    # The account holder is the actor: whoever held the emailed link set this
+    # password. `token_type` tells a forgot-password reset from an invite's
+    # first set-password.
+    await audit_service.record(
+        db, AuditAction.PASSWORD_RESET,
+        actor=user, target=None, details={"token_type": payload.get("type")},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     # Force re-login everywhere after a password change.
     await token_store.revoke_refresh(str(user.id))
@@ -224,13 +488,27 @@ async def reset_password(db: AsyncSession, token: str, new_password: str) -> Non
 
 
 async def change_password(
-    db: AsyncSession, user_id: uuid.UUID, current_password: str, new_password: str
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    current_password: str,
+    new_password: str,
+    ctx: AuditContext = _NO_CTX,
 ) -> None:
     """Change an authenticated user's password. Requires the current password —
     an access token alone is not enough."""
     user = await get_user_by_id(db, user_id)
     if user is None:
         raise AuthError("User not found")
+
+    # A password-less (OAuth-only) account has nothing for "current password"
+    # to match against — `verify_password(_, None)` would just run its dummy
+    # verify and always say "incorrect", which is accurate but misleading for
+    # this account shape. Distinct message, same 400 the router already maps
+    # every AuthError from this function to.
+    if user.password_hash is None:
+        raise AuthError(
+            "No password is set on this account. Use Forgot Password to set one."
+        )
 
     if not security.verify_password(current_password, user.password_hash):
         log.warning("password_change_denied", user_id=str(user.id))
@@ -249,6 +527,12 @@ async def change_password(
     # TokenStoreUnavailable -> 503 and the pending hash change rolls back with
     # the session — rather than persisting a new password whose old sessions
     # were never cut while telling the caller "unavailable, retry".
+    # Audit flush first, so a failed insert aborts before any session is cut.
+    await audit_service.record(
+        db, AuditAction.PASSWORD_CHANGED,
+        actor=user, target=None, details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await token_store.revoke_refresh(str(user.id))
     await db.commit()
     log.info("password_changed", user_id=str(user.id))
@@ -261,6 +545,7 @@ async def create_staff(
     role: _UserRole,
     actor: User,
     send_invite: Callable[[str, str | None, str], Awaitable[None]],
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, str]:
     """Create a staff account and send its invite atomically.
 
@@ -298,6 +583,14 @@ async def create_staff(
     from app.models.models import Subscription, SubscriptionTier
 
     db.add(Subscription(user_id=user.id, tier=SubscriptionTier.FREE))
+
+    # Same transaction as the account: if the audit insert fails, nothing is
+    # created and no invite is minted or sent.
+    await audit_service.record(
+        db, AuditAction.STAFF_INVITED,
+        actor=actor, target=_user_target(user), details={"role": role.value},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
 
     invite_token, invite_jti = security.create_invite_token(str(user.id))
     invite_ttl_seconds = settings.invite_token_expire_hours * 60 * 60
@@ -380,7 +673,11 @@ async def _assert_not_last_active_admin(db: AsyncSession, target: User) -> None:
 
 
 async def change_role(
-    db: AsyncSession, target_id: uuid.UUID, new_role: _UserRole, actor: User
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    new_role: _UserRole,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
 ) -> User:
     if not _may_assign(actor.role, new_role):
         raise AuthError(f"You are not permitted to assign the '{new_role.value}' role")
@@ -418,6 +715,12 @@ async def change_role(
 
     old_role = target.role
     target.role = new_role
+    await audit_service.record(
+        db, AuditAction.ROLE_CHANGED,
+        actor=actor, target=_user_target(target),
+        details={"from": old_role.value, "to": new_role.value},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     await db.refresh(target)
     log.info(
@@ -431,7 +734,11 @@ async def change_role(
 
 
 async def set_active(
-    db: AsyncSession, target_id: uuid.UUID, is_active: bool, actor: User
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    is_active: bool,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, bool]:
     """Deactivate (`is_active=False`) or reactivate a staff account.
 
@@ -452,8 +759,13 @@ async def set_active(
     if target is None:
         raise ContentError("User not found", status_code=404)
 
-    # Mirror the role matrix: managers reach editors only; admins reach anyone.
-    if not _may_assign(actor.role, target.role):
+    # Mirror the role matrix: managers reach editors only; admins reach any
+    # staff account, and also mobile (viewer) accounts — only for switching
+    # them off and on, never for assigning the viewer role.
+    admin_on_viewer = (
+        actor.role == _UserRole.ADMIN and target.role == _UserRole.VIEWER
+    )
+    if not (admin_on_viewer or _may_assign(actor.role, target.role)):
         raise ContentError(
             "You are not permitted to change this account's active status.",
             status_code=403,
@@ -467,6 +779,13 @@ async def set_active(
         # Would deactivating this account strand the admin role?
         await _assert_not_last_active_admin(db, target)
         target.is_active = False
+        # `revocation_deferred` is only known after this commit, so it goes to
+        # structlog below, not into the row (§A.3).
+        await audit_service.record(
+            db, AuditAction.DEACTIVATED,
+            actor=actor, target=_user_target(target), details=None,
+            outcome=AuditOutcome.SUCCESS, ctx=ctx,
+        )
         await db.commit()
         await db.refresh(target)
 
@@ -502,6 +821,11 @@ async def set_active(
     # first, then the revoke; a Redis outage still returns 200 with
     # `revocation_deferred=true` rather than 503.
     target.is_active = True
+    await audit_service.record(
+        db, AuditAction.REACTIVATED,
+        actor=actor, target=_user_target(target), details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
     await db.commit()
     await db.refresh(target)
 
@@ -525,11 +849,221 @@ async def set_active(
     return target, revocation_deferred
 
 
+# Human labels for the tables whose `users` FK is RESTRICT — the history a
+# delete would have to erase or falsify, so it refuses instead.
+_HISTORY_LABELS = {
+    "sermons": "sermons",
+    "series": "series",
+    "approval_log": "sermon review steps",
+    "upload_jobs": "media uploads",
+    "announcements": "announcements",
+    "announcement_approval_log": "announcement review steps",
+    "devotionals": "devotionals",
+    "devotional_approval_log": "devotional review steps",
+}
+
+
+async def _authored_history(db: AsyncSession, user_id: uuid.UUID) -> dict[str, int]:
+    """Rows in RESTRICT-FK tables that point at `user_id`, by table. Read off
+    the metadata so a new RESTRICT reference is covered without a code
+    change here."""
+    from sqlalchemy import func
+
+    from app.db.database import Base
+
+    users = User.__table__
+    counts: dict[str, int] = {}
+    for table in Base.metadata.sorted_tables:
+        for fk in table.foreign_keys:
+            if fk.column.table is not users:
+                continue
+            if (fk.ondelete or "RESTRICT").upper() not in ("RESTRICT", "NO ACTION"):
+                continue
+            n = (await db.execute(
+                select(func.count()).select_from(table).where(fk.parent == user_id)
+            )).scalar_one()
+            if n:
+                counts[table.name] = counts.get(table.name, 0) + n
+    return counts
+
+
+async def ensure_no_authored_history(
+    db: AsyncSession, user_id: uuid.UUID, message_template: str
+) -> None:
+    """Raise a 409 `ContentError` when `user_id` has RESTRICT-FK history.
+    `message_template` carries a `{parts}` placeholder, filled with the
+    "label (count), ..." summary; each caller supplies its own wording."""
+    history = await _authored_history(db, user_id)
+    if history:
+        parts = ", ".join(
+            f"{_HISTORY_LABELS.get(name, name)} ({n})" for name, n in sorted(history.items())
+        )
+        raise ContentError(message_template.format(parts=parts), status_code=409)
+
+
+async def delete_user(
+    db: AsyncSession,
+    target_id: uuid.UUID,
+    actor: User,
+    ctx: AuditContext = _NO_CTX,
+) -> bool:
+    """Permanently remove a staff or mobile (viewer) account. Returns
+    `revocation_deferred`.
+
+    Admin only, and deliberately narrower than deactivation:
+
+    * never your own account;
+    * the account must already be deactivated, so removing someone is always
+      two steps and the lockout (reversible) comes first;
+    * refused (409) while the account authored sermons, series, announcements
+      or uploads, or took part in a review: those rows reference the user with
+      ON DELETE RESTRICT, and erasing or reassigning them would rewrite who
+      did what. Such accounts stay deactivated instead.
+
+    What does go with the row (ON DELETE CASCADE / SET NULL) is the account's
+    own listener data: sign-in identities, subscription, playlists, likes,
+    comments. The audit row keeps the email as its target label for staff;
+    for a viewer it is pseudonymized (see `erase_user`).
+    """
+    if actor.role != _UserRole.ADMIN:
+        raise ContentError("Only an admin can remove an account.", status_code=403)
+    target = await get_user_by_id(db, target_id)
+    if target is None:
+        raise ContentError("User not found", status_code=404)
+    if target.id == actor.id:
+        raise ContentError("You can't remove your own account.", status_code=403)
+    if target.is_active:
+        raise ContentError(
+            "Deactivate this account before removing it.", status_code=409
+        )
+
+    await ensure_no_authored_history(
+        db,
+        target.id,
+        "This account can't be removed because it is linked to {parts}. "
+        "Keep it deactivated instead — it can't sign in.",
+    )
+
+    return await erase_user(db, target, actor, ctx, {})
+
+
+async def erase_user(
+    db: AsyncSession,
+    target: User,
+    actor: User,
+    ctx: AuditContext,
+    details: dict,
+) -> bool:
+    """The one erasure path, shared by admin `delete_user` and self-service
+    deletion (§A.3 steps 6, 8-10 of plans/plan-account-deletion-backend.md).
+    Callers own authz and preconditions (deactivated-first, RESTRICT precheck,
+    re-auth, Apple revocation); this owns the data.
+
+    1. Snapshots the email, avatar key and every playlist cover key.
+    2. One transaction: for a *viewer* target, NULLs the email-bearing audit
+       columns on rows that name the user (`actor_email`, `target_label`),
+       writes the `USER_DELETED` row with no email for the user, deletes the
+       row (FK cascades run here) and commits. Staff targets keep today's
+       snapshot label (ADR 0018 accountability).
+    3. Best-effort after commit, never raising: refresh-token revocation and
+       object deletes (`orphaned_object` is logged, with the key and never
+       the email, when one fails).
+
+    `details` is merged over `{"role": ...}` into the audit row. When
+    `actor` is the target, the row's `actor_email` is NULL too. Returns
+    `revocation_deferred` (the token store was unreachable).
+    """
+    user_id = target.id
+    email, role = target.email, target.role.value
+    is_viewer = target.role == _UserRole.VIEWER
+    object_keys, object_prefixes = await _owned_objects(db, target)
+
+    if is_viewer:
+        await db.execute(
+            update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_email=None)
+        )
+        await db.execute(
+            update(AuditLog)
+            .where(AuditLog.target_id == user_id, AuditLog.target_type == "user")
+            .values(target_label=None)
+        )
+    row = await audit_service.record(
+        db, AuditAction.USER_DELETED,
+        actor=actor,
+        target=AuditTarget(
+            type="user", id=user_id, label=None if is_viewer else email
+        ),
+        details={"role": role, **details},
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+    if is_viewer and actor.id == user_id:
+        row.actor_email = None
+    await db.delete(target)
+    await db.commit()
+
+    revocation_deferred = False
+    try:
+        await token_store.revoke_refresh(str(user_id))
+    except TokenStoreUnavailable:
+        # The row is gone, so no token can authenticate anyway.
+        revocation_deferred = True
+
+    from app.core import storage as storage_module
+
+    await asyncio.to_thread(
+        _delete_owned_objects,
+        storage_module.get_storage(), settings.object_store_media_bucket,
+        object_keys, object_prefixes, user_id,
+    )
+
+    log.info("user_deleted", user_id=str(user_id), by=str(actor.id))
+    return revocation_deferred
+
+
+async def _owned_objects(
+    db: AsyncSession, user: User
+) -> tuple[list[str], list[str]]:
+    """What the account owns in storage, read before the delete cascades it
+    away: the keys its rows point at (avatar, every playlist cover;
+    de-duplicated, NULLs dropped) and the per-owner prefixes those uploads
+    live under (`avatars/{user_id}/`, `playlist_covers/{playlist_id}/`), so
+    replaced or never-confirmed uploads are erased too."""
+    playlists = (await db.execute(
+        select(Playlist.id, Playlist.cover_key).where(Playlist.user_id == user.id)
+    )).all()
+    keys = [user.avatar_key, *(cover for _, cover in playlists)]
+    prefixes = [
+        f"avatars/{user.id}/",
+        *(f"playlist_covers/{playlist_id}/" for playlist_id, _ in playlists),
+    ]
+    return list(dict.fromkeys(k for k in keys if k)), prefixes
+
+
+def _delete_owned_objects(
+    store, bucket: str, keys: list[str], prefixes: list[str], user_id: uuid.UUID
+) -> None:
+    """Best-effort, in a worker thread: one listing per prefix, then one delete
+    per key. A prefix that can't be listed still has its known keys deleted;
+    a failure is logged with the key or prefix, never the email."""
+    targets = dict.fromkeys(keys)
+    for prefix in prefixes:
+        try:
+            targets.update(dict.fromkeys(store.list_keys(bucket, prefix)))
+        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
+            log.warning("orphaned_prefix", prefix=prefix, user_id=str(user_id))
+    for key in targets:
+        try:
+            store.delete_object(bucket, key)
+        except Exception:  # noqa: BLE001 - best-effort; the account is already gone
+            log.warning("orphaned_object", key=key, user_id=str(user_id))
+
+
 async def resend_invite(
     db: AsyncSession,
     target_id: uuid.UUID,
     actor: User,
     send_invite: Callable[[str, str | None, str], Awaitable[None]],
+    ctx: AuditContext = _NO_CTX,
 ) -> tuple[User, str]:
     """Re-issue the invite for a staff account that has not finished
     set-password: a fresh single-use jti and a fresh invite email.
@@ -577,6 +1111,15 @@ async def resend_invite(
             status_code=429,
         )
 
+    # Flushed before any Redis or email work and committed only after the send
+    # succeeds: a failed audit insert retires and mints nothing, and a failed
+    # send leaves no row claiming a resend happened.
+    await audit_service.record(
+        db, AuditAction.INVITE_RESENT,
+        actor=actor, target=_user_target(target), details=None,
+        outcome=AuditOutcome.SUCCESS, ctx=ctx,
+    )
+
     # Retire the previously *pointed* invite link BEFORE minting a new one, so
     # the fan-out of live links stays bounded (CWE-770). take_invite_jti pops the
     # pointer; consume_single_use kills the jti. This does NOT guarantee "exactly
@@ -613,6 +1156,8 @@ async def resend_invite(
             "Could not send the invite email. Please try again."
         )
 
+    await db.commit()
+    await db.refresh(target)
     log.info("staff_invite_resent", user_id=str(target.id), by=str(actor.id))
     return target, invite_token
 
@@ -659,6 +1204,75 @@ async def list_users(
         .offset(max(0, offset))
     )).scalars().all()
     return list(rows), total
+
+
+MEMBER_STATUSES = ("all", "active", "deactivated")
+
+
+async def list_members(
+    db: AsyncSession,
+    *,
+    limit: int = 25,
+    offset: int = 0,
+    search: str | None = None,
+    status: str = "all",
+) -> tuple[list[User], int]:
+    """Mobile app accounts (role `viewer`), newest first, for the admin-only
+    Mobile users screen. `search` matches email or name (case-insensitive);
+    `status` narrows to active or deactivated accounts."""
+    from sqlalchemy import func, or_
+
+    conditions = [User.role == _UserRole.VIEWER]
+    if status == "active":
+        conditions.append(User.is_active.is_(True))
+    elif status == "deactivated":
+        conditions.append(User.is_active.is_(False))
+    if search:
+        # Escape LIKE wildcards so a search for "50%" means the literal text.
+        needle = (
+            search.strip().lower()
+            .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        pattern = f"%{needle}%"
+        conditions.append(or_(
+            func.lower(User.email).like(pattern, escape="\\"),
+            func.lower(func.coalesce(User.full_name, "")).like(pattern, escape="\\"),
+        ))
+
+    total = (await db.execute(
+        _select(func.count()).select_from(User).where(*conditions)
+    )).scalar_one()
+    rows = (await db.execute(
+        _select(User)
+        .where(*conditions)
+        .order_by(User.created_at.desc(), User.id)
+        .limit(max(1, min(limit, 100)))
+        .offset(max(0, offset))
+    )).scalars().all()
+    return list(rows), total
+
+
+async def confirm_password(actor: User, password: str | None) -> None:
+    """Re-check the signed-in admin's password before an irreversible action
+    (wiping the database or the audit trail). A stolen session cookie alone
+    is then not enough. Capped at 5 attempts per 15 minutes per account.
+    Refusals are 403, never 401, so the portal doesn't treat them as an
+    expired session."""
+    if not await check_rate_limit(
+        f"reauth:{actor.id}", limit=5, window_seconds=15 * 60
+    ):
+        raise ContentError(
+            "Too many password attempts. Wait 15 minutes and try again.",
+            status_code=429,
+        )
+    if not actor.password_hash:
+        raise ContentError(
+            "Your account has no password to confirm with. Set one from "
+            "Settings › Profile first.",
+            status_code=403,
+        )
+    if not password or not security.verify_password(password, actor.password_hash):
+        raise ContentError("That password isn't right.", status_code=403)
 
 
 async def role_counts(db: AsyncSession) -> dict[str, int]:

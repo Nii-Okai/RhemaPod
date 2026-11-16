@@ -11,7 +11,7 @@ import { Field } from "../_components/field";
 
 const MIN_LENGTH = 12; // mirrors ResetPasswordRequest.new_password on the backend
 
-export function SetPasswordForm() {
+export function SetPasswordForm({ forApp = false }: { forApp?: boolean }) {
   const router = useRouter();
   const token = useSearchParams().get("token") ?? "";
 
@@ -21,6 +21,7 @@ export function SetPasswordForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [pwError, setPwError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [appDone, setAppDone] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +31,9 @@ export function SetPasswordForm() {
 
     if (!token) {
       setFormError(
-        "This link is missing its token. Ask an admin to send a fresh invite.",
+        forApp
+          ? "This link is missing its token. Request a new reset link from the app."
+          : "This link is missing its token. Ask an admin to send a fresh invite.",
       );
       return;
     }
@@ -59,6 +62,12 @@ export function SetPasswordForm() {
 
     if (res.ok) {
       // reset-password returns a message, not a token pair — go sign in.
+      // App users sign in on their phone, not on this portal.
+      if (forApp) {
+        setAppDone(true);
+        setSubmitting(false);
+        return;
+      }
       router.replace("/login?reset=success");
       return;
     }
@@ -75,12 +84,22 @@ export function SetPasswordForm() {
     } else if (res.status === 400) {
       setFormError(
         body?.detail ??
-          "This link is invalid or has already been used. Ask an admin for a new invite.",
+          (forApp
+            ? "This link is invalid or has already been used. Request a new one from the app."
+            : "This link is invalid or has already been used. Ask an admin for a new invite."),
       );
     } else {
       setFormError(body?.detail ?? "Something went wrong. Try again.");
     }
     setSubmitting(false);
+  }
+
+  if (appDone) {
+    return (
+      <Alert variant="success" title="Password updated">
+        Open the RhemaPod app and sign in with your new password.
+      </Alert>
+    );
   }
 
   return (
@@ -125,12 +144,14 @@ export function SetPasswordForm() {
         {submitting ? "Setting password…" : "Set password"}
       </Button>
 
-      <Link
-        href="/login"
-        className="text-[13px] font-medium text-clay-600 hover:text-clay-700"
-      >
-        Back to sign in
-      </Link>
+      {forApp ? null : (
+        <Link
+          href="/login"
+          className="text-[13px] font-medium text-clay-600 hover:text-clay-700"
+        >
+          Back to sign in
+        </Link>
+      )}
     </form>
   );
 }

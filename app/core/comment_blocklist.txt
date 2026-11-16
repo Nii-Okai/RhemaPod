@@ -1,0 +1,78 @@
+# Sermon-comment objectionable-content floor (plan §A.7, D3).
+#
+# One term or phrase per line. Lines starting with '#' and blank lines are
+# ignored. Matching runs on the NORMALISED comment (NFKC, Cyrillic/Greek
+# look-alikes folded to Latin, case-folded, diacritics and zero-width/bidi
+# characters removed) on WHOLE-WORD boundaries, so a term never fires inside a
+# larger benign word.
+#
+# Line syntax:
+#   term      exact whole word or phrase
+#   +stem     profanity stem, also matches its inflections as whole words:
+#             -s -es -ed -ing -y -er -ers, a doubled final consonant
+#             (shit -> shitting) and -y -> -ies (pussy -> pussies)
+#   !phrase   self-harm incitement, matched with whitespace and punctuation
+#             collapsed and repeated letters squeezed ("killyourself",
+#             "kill ur self", "go dieee", "only fans", "n u d e s"), still on word
+#             boundaries at both ends. Also matched after a leetspeak fold
+#             (0->o 1->i 3->e 4->a @->a $->s): "kill y0urself", "k1ll urself".
+#
+# This is a deliberate minimal seed, reviewed by Isaac at gate C4. It is a
+# floor, not a filter of record: report + moderator hide remain the main
+# defence. Terms that are legitimate in scripture or sermon discussion
+# (bastard, whore, damn, hell, cock, rape, porn, sex, ass) are intentionally NOT
+# listed. Leetspeak and spaced-out letters of profanity are accepted residuals.
+# (The leetspeak fold applies to the ! entries only.)
+
+# profanity (suffix tolerant)
++fuck
++motherfuck
++shit
++bullshit
++bitch
++asshole
++cunt
++dickhead
++pussy
++dumbass
++slut
++retard
+
+# profanity (exact; "dick" alone is also a given name, so only the plural)
+dicks
+
+# slurs and hate
+nigger
+niggers
+nigga
+niggas
+faggot
+faggots
+fag
+kike
+spic
+chink
+gook
+wetback
+tranny
+nazi
+nazis
+
+# explicit sexual solicitation (collapsed: "only fans", "only-fans", "n u d e s")
+blowjob
+handjob
+!onlyfans
+!nudes
+
+# self-harm incitement
+!kill yourself
+!kill yourselves
+!kill urself
+!kill urselves
+!kill yaself
+!kill yoself
+!kill youself
+!hang yourself
+!hang urself
+!kys
+!go die

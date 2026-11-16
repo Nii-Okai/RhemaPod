@@ -9,7 +9,7 @@
  *
  * The screen makes **no mutating call of any kind** (plan §A.3 / §W21) — there
  * is no cancel, refund, plan-change, retry or sync. Everything mutating a
- * subscription happens in the Stripe dashboard; this portal only reads. So
+ * subscription happens with the payment provider; this portal only reads. So
  * there are no mutation hooks here and nothing invalidates these queries — the
  * list falls stale 30s after a fetch and the counts 60s (`staleTime` below),
  * each refetching on the next mount or window refocus past that window.

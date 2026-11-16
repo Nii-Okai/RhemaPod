@@ -43,8 +43,35 @@ export function encryptedFilePath(sermonId: string): string {
   return `${downloadsDir()}${sermonId}.rpa1`;
 }
 
+/** The final, plain (unencrypted — see `types.ts`'s own doc comment on `DownloadMediaType`)
+ * video file — lives in the same `downloadsDir` as audio's `.rpa1` files, distinguished by
+ * extension, so the one startup sweep / storage-summary walk over that directory already
+ * covers both kinds without a second directory to manage. */
+export function videoFilePath(sermonId: string): string {
+  return `${downloadsDir()}${sermonId}.mp4`;
+}
+
+/** The local, permanent copy of the thumbnail image (session 2026-10-15 fix for the
+ * 6h-expiring presigned `thumbnail_url` going blank/403 on a sermon that's sat `ready`
+ * for a while — see `types.ts`'s own doc comment on `DownloadRecord.thumbnailPath`).
+ * Lives in the same `downloadsDir` as the media file itself, not a separate directory —
+ * same lifecycle (deleted alongside it in `deleteDownload`, survives offline the same
+ * way), so it needs no startup-sweep reconciliation of its own beyond what the media file
+ * already gets. */
+export function thumbnailFilePath(sermonId: string): string {
+  return `${downloadsDir()}${sermonId}.thumb`;
+}
+
 export function tmpDownloadFilePath(sermonId: string): string {
   return `${downloadTmpDir()}${sermonId}.audio.tmp`;
+}
+
+/** Video has no separate encrypt pass (plain fetch straight to its final path), so unlike
+ * audio it needs no plaintext-staging tmp file at all in steady state — this exists only
+ * for the download itself to resume into before the atomic rename to `videoFilePath`,
+ * mirroring `tmpDownloadFilePath`'s role for audio's own plaintext-before-encrypt stage. */
+export function tmpDownloadVideoFilePath(sermonId: string): string {
+  return `${downloadTmpDir()}${sermonId}.video.tmp`;
 }
 
 /** A fresh, unpredictable filename per playback session — never reused, so a stale decrypted file from a crash never collides with (or gets mistaken for) a new one. */

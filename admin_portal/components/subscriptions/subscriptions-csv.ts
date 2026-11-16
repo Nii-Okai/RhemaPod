@@ -8,9 +8,9 @@
  *
  *   - NO amount / price / currency column — no amount is stored anywhere and
  *     no dollar figure appears in the portal (plan decision 2, §A.3).
- *   - NO `provider_customer_id` column — the Stripe customer id is a
- *     row-action-only affordance and must not land in an exported spreadsheet
- *     of the whole membership (W20 security-review note in status.md).
+ *   - NO `provider_customer_id` column — it is not rendered anywhere on the
+ *     screen and must not land in an exported spreadsheet of the whole
+ *     membership (W20 security-review note in status.md).
  *
  * Status is the human label ("Past due", not "past_due") so the file reads the
  * same as the screen. The renewal date is `current_period_end` as a plain

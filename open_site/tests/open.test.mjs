@@ -1,0 +1,192 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+
+const require = createRequire(import.meta.url);
+const { appUrlForPath, detectPlatform, init } = require("../open.js");
+
+const ID = "0b9f6c1e-3a4d-4e8b-9c2f-1d7a5e6b8c90";
+
+for (const type of ["sermon", "series", "playlist"]) {
+  test(`valid ${type} uuid maps to rhemapod://`, () => {
+    assert.equal(appUrlForPath(`/${type}/${ID}`), `rhemapod://${type}/${ID}`);
+  });
+}
+
+test("uppercase uuid accepted", () => {
+  assert.equal(appUrlForPath(`/sermon/${ID.toUpperCase()}`), `rhemapod://sermon/${ID}`);
+});
+
+test("trailing slash accepted", () => {
+  assert.equal(appUrlForPath(`/series/${ID}/`), `rhemapod://series/${ID}`);
+});
+
+for (const [name, p] of [
+  ["/playlist/create", "/playlist/create"],
+  ["non-uuid", "/sermon/not-a-uuid"],
+  ["short uuid", "/sermon/0b9f6c1e-3a4d-4e8b-9c2f"],
+  ["extra segment", `/sermon/${ID}/extra`],
+  ["unknown type", `/user/${ID}`],
+  ["javascript-ish", "/sermon/javascript:alert(1)"],
+  ["javascript in id slot", `/sermon/${ID}"><script>`],
+  ["encoded path", `/sermon/%30b9f6c1e-3a4d-4e8b-9c2f-1d7a5e6b8c90`],
+  ["encoded slash", `/sermon%2F${ID}`],
+  ["empty", ""],
+  ["root", "/"],
+]) {
+  test(`rejected: ${name}`, () => assert.equal(appUrlForPath(p), null));
+}
+
+test("UA to platform", () => {
+  assert.equal(detectPlatform("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", 5), "ios");
+  assert.equal(detectPlatform("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)", 5), "ios");
+  assert.equal(detectPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 5), "ios");
+  assert.equal(detectPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 0), "other");
+  assert.equal(detectPlatform("Mozilla/5.0 (Linux; Android 14; Pixel 8)", 5), "android");
+  assert.equal(detectPlatform("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 0), "other");
+  assert.equal(detectPlatform("", undefined), "other");
+});
+
+function fakeDoc() {
+  const mk = (hidden) => ({ hidden, attrs: {}, textContent: "", setAttribute(k, v) { this.attrs[k] = v; } });
+  const els = {
+    "open-app": mk(true),
+    "badge-ios": mk(false),
+    "badge-android": mk(false),
+    "phone-hint": mk(true),
+    "get-lead": Object.assign(mk(false), { textContent: "Get RhemaPod" }),
+    "share-context": mk(true),
+  };
+  return { els, getElementById: (id) => els[id] ?? null };
+}
+
+test("init: iOS shows App Store only and sets the href", () => {
+  const d = fakeDoc();
+  init(d, { pathname: `/sermon/${ID}` }, { userAgent: "iPhone", maxTouchPoints: 5 });
+  assert.equal(d.els["open-app"].attrs.href, `rhemapod://sermon/${ID}`);
+  assert.equal(d.els["open-app"].hidden, false);
+  assert.equal(d.els["badge-android"].hidden, true);
+  assert.equal(d.els["badge-ios"].hidden, false);
+  assert.equal(d.els["phone-hint"].hidden, true);
+});
+
+test("init: Android shows Play only", () => {
+  const d = fakeDoc();
+  init(d, { pathname: `/series/${ID}` }, { userAgent: "Android", maxTouchPoints: 5 });
+  assert.equal(d.els["badge-ios"].hidden, true);
+  assert.equal(d.els["badge-android"].hidden, false);
+});
+
+test("init: desktop shows both badges and the phone hint; invalid path hides the button", () => {
+  const d = fakeDoc();
+  d.els["open-app"].hidden = false;
+  init(d, { pathname: "/playlist/create" }, { userAgent: "Windows", maxTouchPoints: 0 });
+  assert.equal(d.els["open-app"].hidden, true);
+  assert.equal("href" in d.els["open-app"].attrs, false);
+  assert.equal(d.els["badge-ios"].hidden, false);
+  assert.equal(d.els["badge-android"].hidden, false);
+  assert.equal(d.els["phone-hint"].hidden, false);
+});
+
+test("init: desktop with a valid path keeps the button hidden and shows the hint", () => {
+  const d = fakeDoc();
+  init(d, { pathname: `/sermon/${ID}` }, { userAgent: "Windows", maxTouchPoints: 0 });
+  assert.equal(d.els["open-app"].hidden, true);
+  assert.equal("href" in d.els["open-app"].attrs, false);
+  assert.equal(d.els["phone-hint"].hidden, false);
+  assert.equal(d.els["share-context"].hidden, true);
+  assert.equal(d.els["get-lead"].textContent, "Get RhemaPod");
+});
+
+test("init: lead text swaps only when the button is shown", () => {
+  const shown = fakeDoc();
+  init(shown, { pathname: `/sermon/${ID}` }, { userAgent: "iPhone", maxTouchPoints: 5 });
+  assert.equal(shown.els["get-lead"].textContent, "Don't have the app yet? Get RhemaPod:");
+  const bad = fakeDoc();
+  init(bad, { pathname: "/sermon/nope" }, { userAgent: "iPhone", maxTouchPoints: 5 });
+  assert.equal(bad.els["open-app"].hidden, true);
+  assert.equal(bad.els["get-lead"].textContent, "Get RhemaPod");
+  assert.equal(bad.els["share-context"].hidden, true);
+});
+
+for (const [type, noun] of [["sermon", "a sermon"], ["series", "a series"], ["playlist", "a playlist"]]) {
+  test(`init: context line names ${type}`, () => {
+    const d = fakeDoc();
+    init(d, { pathname: `/${type}/${ID}` }, { userAgent: "Android", maxTouchPoints: 5 });
+    assert.equal(d.els["share-context"].textContent, `Someone shared ${noun} with you.`);
+    assert.equal(d.els["share-context"].hidden, false);
+  });
+}
+
+test("open.js never uses innerHTML", () => {
+  assert.doesNotMatch(readFileSync(new URL("../open.js", import.meta.url), "utf8"), /innerHTML|outerHTML|insertAdjacentHTML/);
+});
+
+test("static pages carry no inline script/style, no content id, no auto-redirect", () => {
+  for (const f of ["open.html", "index.html"]) {
+    const html = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)/i, `${f}: inline script`);
+    assert.doesNotMatch(html, /<style/i, `${f}: style block`);
+    assert.doesNotMatch(html, /\sstyle=|\son[a-z]+=/i, `${f}: inline style/handler`);
+    assert.doesNotMatch(html, /http-equiv=["']refresh/i, `${f}: refresh`);
+  }
+  const open = readFileSync(new URL("../open.html", import.meta.url), "utf8");
+  assert.match(open, /noindex,nofollow/);
+  assert.match(open, /id="get-lead">Get RhemaPod</);
+  for (const f of ["open.html", "index.html"]) {
+    const html = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    assert.match(html, /<meta name="color-scheme" content="light">/);
+    assert.match(html, /Sermons, series and playlists, in your pocket\./);
+  }
+  assert.match(open, /app-id=6828878983/);
+  assert.doesNotMatch(open, /app-argument/);
+});
+
+test("association files have the contracted shape", () => {
+  const aasa = JSON.parse(readFileSync(new URL("../.well-known/apple-app-site-association", import.meta.url), "utf8"));
+  const d = aasa.applinks.details[0];
+  assert.deepEqual(d.appIDs, ["FAND2W5VMM.com.niitech.rhemapod"]);
+  assert.deepEqual(d.components[0], { "/": "/playlist/create", exclude: true });
+  assert.deepEqual(d.components.slice(1).map((c) => c["/"]), ["/sermon/*", "/series/*", "/playlist/*"]);
+  const al = JSON.parse(readFileSync(new URL("../.well-known/assetlinks.json", import.meta.url), "utf8"));
+  assert.equal(al[0].target.package_name, "com.niitech.rhemapod");
+  assert.match(al[0].target.sha256_cert_fingerprints[0], /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+});
+
+test("open.html link-preview tags and og-image meet crawler limits", () => {
+  const html = readFileSync(new URL("../open.html", import.meta.url), "utf8");
+  for (const re of [/property="og:title"/, /property="og:description"/, /property="og:image"/, /name="twitter:card"/]) {
+    assert.match(html, re);
+  }
+  const imgs = [...html.matchAll(/(?:og|twitter):image" content="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(imgs.length >= 1);
+  for (const u of imgs) {
+    assert.match(u, /^https:\/\/open\.rhemapod\.com\/assets\/[\w.-]+$/);
+  }
+  const buf = readFileSync(new URL("../assets/og-image.png", import.meta.url));
+  assert.equal(buf.subarray(1, 4).toString(), "PNG");
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  assert.ok(w >= 600 && h >= 315, `og-image ${w}x${h}`);
+  assert.ok(buf.length < 300 * 1024, `og-image ${buf.length} bytes`);
+});
+
+test("open.js has no network, navigation or storage APIs", () => {
+  const js = readFileSync(new URL("../open.js", import.meta.url), "utf8");
+  assert.doesNotMatch(js, /fetch|XMLHttpRequest|sendBeacon|WebSocket|location\.(href|replace|assign)\s*=|window\.open|document\.cookie|localStorage/);
+});
+
+test("HTML and CSS reference only the store and RhemaPod origins", () => {
+  const allowed = [
+    /^https:\/\/apps\.apple\.com\/app\/id6828878983$/,
+    /^https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.niitech\.rhemapod$/,
+    /^https:\/\/(open|admin)\.rhemapod\.com\//,
+  ];
+  for (const f of ["open.html", "index.html", "style.css"]) {
+    const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    for (const [u] of src.matchAll(/(?:https?:)?\/\/[^\s"'<>)]+/g)) {
+      assert.ok(allowed.some((re) => re.test(u)), `${f}: unexpected origin ${u}`);
+    }
+  }
+});

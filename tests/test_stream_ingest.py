@@ -215,8 +215,8 @@ async def test_webhook_ready_resolves_job_and_archives(client, engine):
     settings = get_settings()
     store = storage_module.get_storage()
     dest = storage_module.archive_key(uuid.UUID(sid), raw_key)
-    assert store.object_exists(settings.s3_raw_bucket, dest)
-    assert store.object_storage_class(settings.s3_raw_bucket, dest) == settings.s3_archive_storage_class
+    assert store.object_exists(settings.object_store_raw_bucket, dest)
+    assert store.object_storage_class(settings.object_store_raw_bucket, dest) == settings.archive_store_storage_class
 
 
 async def test_webhook_error_still_archives_and_resolves(client, engine):
@@ -238,7 +238,7 @@ async def test_webhook_error_still_archives_and_resolves(client, engine):
     settings = get_settings()
     store = storage_module.get_storage()
     dest = storage_module.archive_key(uuid.UUID(sid), job.raw_key)
-    assert store.object_storage_class(settings.s3_raw_bucket, dest) == settings.s3_archive_storage_class
+    assert store.object_storage_class(settings.object_store_raw_bucket, dest) == settings.archive_store_storage_class
 
     job = await _row(engine, UploadJob, id=job.id)
     assert job.finished_at is not None

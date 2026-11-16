@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.niitech.rhemapod",
+      "sha256_cert_fingerprints": [
+        "EB:BA:A2:38:89:28:CA:E9:7A:75:D1:25:CF:A9:00:E0:21:D0:9B:C2:70:E7:10:37:B8:80:74:40:24:9F:99:07"
+      ]
+    }
+  }
+]

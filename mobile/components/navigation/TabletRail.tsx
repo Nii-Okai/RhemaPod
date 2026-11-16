@@ -1,11 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../theme/colors';
+import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
 import { IconNavItem } from './IconNavItem';
+import { PlatformIcon } from '../PlatformIcon';
 import { TABLET_RAIL_KEYS, isRouteActive, routeByKey } from './routes';
 
 /**
@@ -17,6 +17,8 @@ import { TABLET_RAIL_KEYS, isRouteActive, routeByKey } from './routes';
  * job; this item is chrome/routing only and does no data fetching.
  */
 export function TabletRail() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -47,13 +49,13 @@ export function TabletRail() {
         onPress={() => router.push(meRoute.href)}
         style={({ pressed }) => [styles.avatarChip, pressed && styles.avatarChipPressed]}
       >
-        <Ionicons name="person" size={20} color={colors.accent.goldText} />
+        <PlatformIcon name="person" size={20} color={colors.accent.goldText} />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   rail: {
     width: 88,
     backgroundColor: colors.surface.nav,
@@ -73,4 +75,4 @@ const styles = StyleSheet.create({
   avatarChipPressed: {
     opacity: 0.7,
   },
-});
+}));

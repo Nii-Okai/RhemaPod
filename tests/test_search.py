@@ -5,6 +5,13 @@ pytestmark = pytest.mark.asyncio
 PW = "correct-horse-battery"
 
 
+async def publish_series(client, mgr, series_id):
+    r = await client.patch(
+        f"/api/v1/series/{series_id}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
+
+
 async def make_user(client, engine, email, role):
     await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
     from sqlalchemy import text
@@ -264,6 +271,7 @@ async def test_grouped_series_and_speakers_match_q(client, engine):
     series = (await client.post(
         "/api/v1/series", json={"title": "Grace Abounding"}, headers=ed
     )).json()
+    await publish_series(client, mgr, series["id"])
     speaker = (await client.post(
         "/api/v1/speakers", json={"name": "Pastor Grace"}, headers=ed
     )).json()
@@ -285,18 +293,28 @@ async def test_grouped_series_and_speakers_match_q(client, engine):
 
 async def test_grouped_series_visibility_matches_get_series(client, engine):
     """An anonymous caller sees the same series in the grouped search result
-    that `GET /series` would show them — no separate visibility rule."""
+    that `GET /series` would show them — no separate visibility rule. Drafts
+    are hidden from both for anon; staff see the draft in both."""
+    mgr = await make_user(client, engine, "m@example.com", "manager")
     ed = await make_user(client, engine, "e@example.com", "editor")
     draft = (await client.post(
         "/api/v1/series", json={"title": "Draft Grace Series"}, headers=ed
     )).json()
 
-    # list_series applies no status filter of its own (episode_count scoping
-    # is separate) — a draft series is visible there to anon callers too, so
-    # the grouped search result must show it as well, not hide it.
+    listed = (await client.get("/api/v1/series")).json()
+    assert draft["id"] not in {s["id"] for s in listed}
+    body = (await client.get("/api/v1/search?q=draft+grace")).json()
+    assert draft["id"] not in {s["id"] for s in body["series"]}
+    assert body["series_total"] == 0
+
+    staff_listed = (await client.get("/api/v1/series", headers=mgr)).json()
+    assert draft["id"] in {s["id"] for s in staff_listed}
+    staff_body = (await client.get("/api/v1/search?q=draft+grace", headers=mgr)).json()
+    assert draft["id"] in {s["id"] for s in staff_body["series"]}
+
+    await publish_series(client, mgr, draft["id"])
     listed = (await client.get("/api/v1/series")).json()
     assert draft["id"] in {s["id"] for s in listed}
-
     body = (await client.get("/api/v1/search?q=draft+grace")).json()
     assert draft["id"] in {s["id"] for s in body["series"]}
 
@@ -330,10 +348,72 @@ async def test_grouped_series_capped_at_group_limit(client, engine):
     """Series/speaker matches are capped at a small fixed limit (5), unlike
     sermon results which page on `limit`/`offset`."""
     ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
     for i in range(7):
-        await client.post(
+        sid = (await client.post(
             "/api/v1/series", json={"title": f"Grace Series {i}"}, headers=ed
-        )
+        )).json()["id"]
+        await publish_series(client, mgr, sid)
     body = (await client.get("/api/v1/search?q=grace")).json()
     assert body["series_total"] == 7
     assert len(body["series"]) == 5
+# ── series/speakers groups (Decision 4) ─────────────────────────────────────────
+async def test_search_includes_matching_series(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/series", json={"title": "Walking in Grace"}, headers=ed
+    )).json()["id"]
+    await publish_series(client, mgr, sid)
+    await client.post("/api/v1/series", json={"title": "Unrelated"}, headers=ed)
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    titles = [s["title"] for s in body["series"]]
+    assert titles == ["Walking in Grace"]
+    assert body["series_total"] == 1
+
+
+async def test_search_includes_matching_speakers(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    await client.post("/api/v1/speakers", json={"name": "Grace Adeyemi"}, headers=ed)
+    await client.post("/api/v1/speakers", json={"name": "Unrelated Name"}, headers=ed)
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    names = [s["name"] for s in body["speakers"]]
+    assert names == ["Grace Adeyemi"]
+    assert body["speakers_total"] == 1
+
+
+async def test_search_series_and_speakers_omitted_when_query_empty(client, engine):
+    """Decision 4 groups only apply to a real query — the filter-only browse
+    mode (no `q`) doesn't try to name-match series/speakers against nothing."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    await client.post("/api/v1/series", json={"title": "Some Series"}, headers=ed)
+
+    body = (await client.get("/api/v1/search")).json()
+    assert body["series"] == [] and body["speakers"] == []
+    assert body["series_total"] == 0 and body["speakers_total"] == 0
+
+
+async def test_search_series_group_capped_at_side_result_limit(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    for i in range(8):
+        sid = (await client.post(
+            "/api/v1/series", json={"title": f"Grace Series {i}"}, headers=ed
+        )).json()["id"]
+        await publish_series(client, mgr, sid)
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    assert len(body["series"]) == 5  # SIDE_RESULT_LIMIT
+    assert body["series_total"] == 8
+
+
+async def test_search_sermon_results_unaffected_by_series_speakers_addition(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    await publish(client, ed, mgr, title="Grace Abounding")
+
+    body = (await client.get("/api/v1/search?q=grace")).json()
+    assert body["total"] == 1
+    assert body["results"][0]["title"] == "Grace Abounding"

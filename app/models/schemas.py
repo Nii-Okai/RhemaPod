@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.models.models import UserRole
+from app.models.models import AuthProvider, Gender, UserRole
 
 # Obvious values rejected regardless of length. Length is the dominant factor
 # in resistance to offline cracking, so we require 12 rather than imposing
@@ -57,6 +58,15 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\s*\d{6}\s*$")
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=128)
@@ -65,6 +75,80 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def password_strength(cls, v: str) -> str:
         return _validate_password_strength(v)
+
+
+class _GoogleProofMixin(BaseModel):
+    """Exactly one of Google's signed ID token (iOS) or a one-time server auth
+    code (Android) that the API exchanges for an ID token. Either way the ID
+    token is verified in `app/core/oauth.py` — nothing here is trusted until
+    the signature, issuer, and audience all check out."""
+
+    id_token: str | None = Field(default=None, min_length=1, max_length=4096)
+    server_auth_code: str | None = Field(default=None, min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def _exactly_one_google_proof(self):
+        if (self.id_token is None) == (self.server_auth_code is None):
+            raise ValueError("provide exactly one of id_token or server_auth_code")
+        return self
+
+
+class GoogleSignInRequest(_GoogleProofMixin):
+    """Google sign-in proof from the mobile app's native flow (ADR 0015)."""
+
+
+class AppleSignInRequest(BaseModel):
+    """Apple's signed identity token plus the raw nonce the client generated
+    for this attempt (ADR 0015) — the server re-derives `sha256(raw_nonce)`
+    and checks it against the token's own `nonce` claim. `given_name`/
+    `family_name` are Apple's one-time-only name delivery: Apple's identity
+    token never carries a name, so the client forwards whatever
+    `ASAuthorizationAppleIDCredential.fullName` returned on the FIRST
+    authorization only (it's None on every subsequent sign-in) — used only to
+    prefill a brand-new account's profile, dropped otherwise.
+    `authorization_code` is accepted for forward-compatibility (a future
+    server-side revocation flow, ADR 0015 §"Apple token revocation deferred")
+    but is not exchanged or used anywhere in this phase."""
+
+    identity_token: str = Field(min_length=1, max_length=4096)
+    raw_nonce: str = Field(min_length=1, max_length=512)
+    authorization_code: str | None = Field(default=None, max_length=4096)
+    given_name: str | None = Field(default=None, max_length=100)
+    family_name: str | None = Field(default=None, max_length=100)
+
+
+class _AccountDeletionBase(BaseModel):
+    # Only meaningful with a non-Apple proof on an account that has Apple
+    # linked: skips Apple token revocation, never re-auth (ADR 0020).
+    apple_unavailable: bool = False
+
+
+class PasswordDeletionRequest(_AccountDeletionBase):
+    method: Literal["password"]
+    password: str = Field(min_length=1, max_length=256)
+
+
+class GoogleDeletionRequest(_AccountDeletionBase, _GoogleProofMixin):
+    method: Literal["google"]
+
+
+class AppleDeletionRequest(_AccountDeletionBase):
+    method: Literal["apple"]
+    identity_token: str = Field(min_length=1, max_length=4096)
+    raw_nonce: str = Field(min_length=1, max_length=512)
+    authorization_code: str = Field(min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def _flag_needs_non_apple_proof(self) -> "AppleDeletionRequest":
+        if self.apple_unavailable:
+            raise ValueError("apple_unavailable only applies to a non-Apple proof")
+        return self
+
+
+AccountDeletionRequest = Annotated[
+    Union[PasswordDeletionRequest, GoogleDeletionRequest, AppleDeletionRequest],
+    Field(discriminator="method"),
+]
 
 
 class ChangePasswordRequest(BaseModel):
@@ -84,13 +168,75 @@ class UserPublic(BaseModel):
     id: uuid.UUID
     email: EmailStr
     full_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    gender: Gender | None = None
+    # Resolved from `avatar_key` at read time (`auth_service._avatar_url`), same
+    # presigned/CDN path as a sermon's `thumbnail_url` — never the raw key itself.
+    avatar_url: str | None = None
     role: UserRole
     is_active: bool
+    # What the account can re-authenticate with (account deletion, ADR 0020):
+    # whether a password is set, and which OAuth providers are linked.
+    has_password: bool = False
+    linked_providers: list[AuthProvider] = Field(default_factory=list)
     # NULL while the staff invite is still outstanding; the timestamp the account
     # first set its own password otherwise. Lets the portal (resend-invite) tell a
     # pending account from an active one without a second call.
     activated_at: datetime | None = None
+    # NULL until the viewer accepts the comments Terms (gates the first post).
+    comments_terms_accepted_at: datetime | None = None
     created_at: datetime
+
+
+class ProfileUpdate(BaseModel):
+    """Self-edit of the caller's profile via `full_name` directly — unchanged,
+    still used by the comments flow's own name prompt (`comments_service.
+    update_full_name`). Role, email and activation are never self-editable
+    (extra keys are a 422). Normalisation and the URL/blocklist checks live in
+    the service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str
+
+
+class ProfileDetailsUpdate(BaseModel):
+    """Me-page profile edit (Isaac's ask, session 2026-10-09): first/last
+    name and gender, independent of `ProfileUpdate`'s single `full_name`
+    field above and of avatar upload (its own ticket/confirm pair below).
+    `first_name`/`last_name` must be given together or not at all — the
+    service rejects one without the other (a name can't be half-updated);
+    `gender` can be set on its own. Saving a name goes through the same
+    content-moderation rules `full_name` always has
+    (`comments_service.update_profile_name`), since it still recomputes and
+    publicly displays as `full_name`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    first_name: str | None = None
+    last_name: str | None = None
+    gender: Gender | None = None
+
+
+class AvatarUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=3, max_length=120)
+
+
+class AvatarTicket(BaseModel):
+    """Pre-signed PUT for a profile picture — same direct-to-storage pattern
+    sermon/series thumbnails already use."""
+
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int
+    avatar_key: str
+
+
+class AvatarResponse(BaseModel):
+    avatar_url: str | None
 
 
 class TokenPair(BaseModel):

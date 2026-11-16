@@ -70,6 +70,12 @@ export function useProgressFlush(
       api.post('/sermons/{sermon_id}/progress', { params: { path: { sermon_id: sermonId } }, body }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.progress.detail(sermonId) });
+      // Home's "Continue watching" shelf (`useContinueWatching`) is a separate cached
+      // query with the app-wide 5-minute `staleTime` (queryClient.ts) — that default is
+      // tuned for staff-edited catalog content, not this listener-driven list. Without
+      // this, a flush here (this sermon's own position) can succeed while Home still
+      // shows its pre-flush snapshot for up to 5 minutes on the very next screen.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.me.continueWatching() });
     },
   });
   const mutateRef = useRef(mutation.mutate);

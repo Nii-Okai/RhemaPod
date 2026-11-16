@@ -12,15 +12,20 @@ from app.core.stream import get_provider as get_stream_provider
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     AudioDownloadResponse,
+    CaptionListResponse,
+    CaptionPublic,
+    CaptionUpload,
+    CaptionVtt,
     MediaRefPublic,
     StreamResponse,
     UploadConfirm,
     UploadJobPublic,
     UploadRequest,
     UploadTicket,
+    VideoDownloadResponse,
 )
 from app.models.models import MediaType, User, UserRole
-from app.services import auth_service, content_service, media_service
+from app.services import auth_service, captions_service, content_service, media_service
 from app.services.content_service import ContentError
 
 log = get_logger("media_api")
@@ -210,6 +215,24 @@ async def download_audio(
         raise _err(exc)
 
 
+@router.get(
+    "/sermons/{sermon_id}/download/video", response_model=VideoDownloadResponse
+)
+async def download_video(
+    sermon_id: uuid.UUID, db: ReadDbDep, user: OptionalUser
+) -> VideoDownloadResponse:
+    """Short-lived signed URL for the video rendition only — offline video
+    downloads (Isaac's ask, session 2026-10-08, revisiting L6). Same
+    authorization as get_stream; 409 if the sermon has no video rendition.
+    See `media_service.get_video_download` for the at-rest protection
+    tradeoff this path accepts versus the audio download's encryption."""
+    has_sub = await content_service._has_subscription(db, user)
+    try:
+        return await media_service.get_video_download(db, sermon_id, user, has_sub)
+    except ContentError as exc:
+        raise _err(exc)
+
+
 # ── Media management ──────────────────────────────────────────────────────────
 @router.get("/sermons/{sermon_id}/media", response_model=list[MediaRefPublic])
 async def list_media(
@@ -265,3 +288,69 @@ async def delete_media_by_type(
     except ContentError as exc:
         raise _err(exc)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Captions ──────────────────────────────────────────────────────────────────
+@router.get("/sermons/{sermon_id}/captions", response_model=CaptionListResponse)
+async def list_captions(
+    sermon_id: uuid.UUID, user: EditorPlus, db: DbDep
+) -> CaptionListResponse:
+    """Caption tracks (English, French) on the sermon's video and where each
+    one is in the pipeline: generating, ready, or error."""
+    actor = await _actor(db, user)
+    try:
+        available, rows = await captions_service.list_captions(db, sermon_id, actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return CaptionListResponse(
+        available=available,
+        default_language=captions_service.SOURCE_LANGUAGE,
+        captions=[CaptionPublic.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/sermons/{sermon_id}/captions/{language}/vtt", response_model=CaptionVtt)
+async def get_caption_vtt(
+    sermon_id: uuid.UUID, language: str, user: EditorPlus, db: DbDep
+) -> CaptionVtt:
+    """The current WebVTT text for one language, so staff can download,
+    correct and re-upload it."""
+    actor = await _actor(db, user)
+    try:
+        text = await captions_service.get_caption_vtt(db, sermon_id, language, actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return CaptionVtt(language=language, vtt=text)
+
+
+@router.put("/sermons/{sermon_id}/captions/{language}", response_model=CaptionPublic)
+async def upload_caption(
+    sermon_id: uuid.UUID, language: str, data: CaptionUpload, user: EditorPlus, db: DbDep
+) -> CaptionPublic:
+    """Replace one language's captions with a staff-supplied WebVTT file.
+    Uploaded tracks are never overwritten automatically. Uploading English
+    re-translates a machine-translated French track from the new English."""
+    actor = await _actor(db, user)
+    try:
+        row = await captions_service.upload_caption(
+            db, sermon_id, language, data.vtt.encode("utf-8"), actor
+        )
+    except ContentError as exc:
+        raise _err(exc)
+    return CaptionPublic.model_validate(row)
+
+
+@router.post(
+    "/sermons/{sermon_id}/captions/{language}/regenerate", response_model=CaptionPublic
+)
+async def regenerate_caption(
+    sermon_id: uuid.UUID, language: str, user: EditorPlus, db: DbDep
+) -> CaptionPublic:
+    """Discard a track and redo it automatically (English: re-transcribe;
+    French: re-translate from English). Also the retry for a failed track."""
+    actor = await _actor(db, user)
+    try:
+        row = await captions_service.regenerate_caption(db, sermon_id, language, actor)
+    except ContentError as exc:
+        raise _err(exc)
+    return CaptionPublic.model_validate(row)

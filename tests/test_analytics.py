@@ -428,6 +428,84 @@ async def test_history_series_scope_exceeds_hundred_row_cap(client, engine):
     assert len(unscoped) == 100
 
 
+async def test_history_scoped_to_series(client, engine):
+    """Decision 6: `?series_id=<id>` returns only this caller's progress rows
+    for sermons in that series, ignoring watches on sermons outside it."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "A Series"}, headers=ed
+    )).json()
+    in_series = await publish(
+        client, ed, mgr, title="Ep1", series_id=series["id"], episode_number=1,
+    )
+    outside_series = await publish(client, ed, mgr, title="Standalone")
+
+    v = await make_viewer(client)
+    for sid in (in_series, outside_series):
+        await client.post(
+            f"/api/v1/sermons/{sid}/progress",
+            json={"position_seconds": 10, "watched_delta": 10}, headers=v,
+        )
+
+    rows = (await client.get(f"/api/v1/me/history?series_id={series['id']}", headers=v)).json()
+    assert len(rows) == 1
+    assert rows[0]["sermon_id"] == in_series
+
+
+async def test_history_scoped_to_series_ignores_limit(client, engine):
+    """The scoped read's own ceiling (SERIES_HISTORY_LIMIT), not `limit`, bounds
+    it — a caller asking for `series_id` + a small `limit` still gets every row."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Long Series"}, headers=ed
+    )).json()
+    sids = [
+        await publish(
+            client, ed, mgr, title=f"Ep{i}", series_id=series["id"], episode_number=i,
+        )
+        for i in range(1, 4)
+    ]
+
+    v = await make_viewer(client)
+    for sid in sids:
+        await client.post(
+            f"/api/v1/sermons/{sid}/progress",
+            json={"position_seconds": 10, "watched_delta": 10}, headers=v,
+        )
+
+    rows = (await client.get(
+        f"/api/v1/me/history?series_id={series['id']}&limit=1", headers=v
+    )).json()
+    assert len(rows) == 3
+
+
+async def test_history_scoped_to_series_is_per_user(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Shared Series"}, headers=ed
+    )).json()
+    sid = await publish(
+        client, ed, mgr, title="Ep1", series_id=series["id"], episode_number=1,
+    )
+
+    a = await make_viewer(client, "a@example.com")
+    b = await make_viewer(client, "b@example.com")
+    await client.post(
+        f"/api/v1/sermons/{sid}/progress",
+        json={"position_seconds": 10, "watched_delta": 10}, headers=a,
+    )
+
+    assert len((await client.get(
+        f"/api/v1/me/history?series_id={series['id']}", headers=a
+    )).json()) == 1
+    assert (await client.get(
+        f"/api/v1/me/history?series_id={series['id']}", headers=b
+    )).json() == []
+
+
 # ── admin analytics ───────────────────────────────────────────────────────────
 async def test_overview_stats(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")

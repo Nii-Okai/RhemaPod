@@ -373,7 +373,7 @@ async def test_confirm_rejects_upload_that_exceeds_cap_and_deletes_object(
     # The oversized object was deleted...
     raw_key = ticket["raw_key"]
     from app.core.config import get_settings
-    assert not store.object_exists(get_settings().s3_raw_bucket, raw_key)
+    assert not store.object_exists(get_settings().object_store_raw_bucket, raw_key)
 
     # ...and the job never reached a ready/uploaded state.
     job = (await client.get(

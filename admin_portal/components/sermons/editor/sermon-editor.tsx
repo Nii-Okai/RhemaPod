@@ -12,8 +12,10 @@ import { toBadgeStatus, type SermonStatus } from "@/components/sermons/sermon-st
 
 import { AccessCard } from "@/components/sermons/editor/access-card";
 import { ApprovalLogCard } from "@/components/sermons/editor/approval-log-card";
+import { CommentsCard } from "@/components/sermons/editor/comments-card";
 import { DetailsCard } from "@/components/sermons/editor/details-card";
 import { EditorSkeleton } from "@/components/sermons/editor/editor-skeleton";
+import { CaptionsCard } from "@/components/sermons/editor/captions-card";
 import { MediaJobsCard } from "@/components/sermons/editor/media-jobs-card";
 import { SaveStamp } from "@/components/sermons/editor/save-stamp";
 import { ThumbnailCard } from "@/components/sermons/editor/thumbnail-card";
@@ -83,6 +85,7 @@ const EMPTY_FORM: SermonFormValues = {
   episode_number: null,
   tier: null,
   tags: [],
+  is_prophets_catalog: false,
 };
 
 /** The locked-fields banner's title, by status — kept distinct so "in
@@ -104,9 +107,9 @@ function lockedBannerTitle(status: SermonStatus): string {
 function lockedBannerBody(status: SermonStatus): string {
   switch (status) {
     case "approved":
-      return "Fields are locked now that it’s approved. It can still be published, but there’s no way to send it back for edits.";
+      return "Fields are locked now that it’s approved. A manager can publish it, or reject it from the Review queue to send it back for edits.";
     case "published":
-      return "Fields are locked while it’s live. A manager can unpublish it from the Sermons list to edit it again.";
+      return "Fields are locked while it’s live. A manager can unpublish it from the Sermons list to edit it again — any edit then sends it back for review.";
     default:
       return "Fields are locked while a manager reviews it. Withdraw it to keep editing.";
   }
@@ -125,6 +128,7 @@ function fromDetail(detail: SermonAdminDetail): SermonFormValues {
     // (`detail.tier` is the resolved effective tier — for display only.)
     tier: detail.tier_override ?? null,
     tags: detail.tags,
+    is_prophets_catalog: detail.is_prophets_catalog,
   };
 }
 
@@ -484,6 +488,11 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               <Alert variant="warning" title={lockedBannerTitle(displayStatus)}>
                 {lockedBannerBody(displayStatus)}
               </Alert>
+            ) : mode === "edit" && displayStatus === "unpublished" ? (
+              <Alert variant="warning" title="This sermon is unpublished">
+                Any change you save moves it back to draft. It will need to be
+                submitted and approved again before it can go live.
+              </Alert>
             ) : null}
 
             <DetailsCard
@@ -502,6 +511,8 @@ function EditorForm({ mode, initial }: EditorFormProps) {
               sermonDurationSeconds={current?.duration_seconds ?? null}
               disabled={locked || !sermonId}
             />
+
+            {sermonId ? <CaptionsCard sermonId={sermonId} /> : null}
           </div>
 
           <div className="flex flex-col gap-16">
@@ -531,6 +542,7 @@ function EditorForm({ mode, initial }: EditorFormProps) {
                 approvalLog.error.status === 404
               }
             />
+            {sermonId ? <CommentsCard sermonId={sermonId} /> : null}
           </div>
         </div>
       </div>

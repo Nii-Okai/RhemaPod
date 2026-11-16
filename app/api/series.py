@@ -4,11 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, get_optional_user, require_role
+from app.core.dependencies import CurrentUser, CurrentUserDep, get_optional_user, require_role
 from app.db.database import get_db, get_read_db
 from app.models.content_schemas import (
     EpisodeOrderItem,
     EpisodeOrderRequest,
+    LikeState,
     SeriesUpdate,
     SermonListItem,
     SeriesCreate,
@@ -18,11 +19,12 @@ from app.models.content_schemas import (
     ThumbnailUploadRequest,
 )
 
-from app.models.models import Series, User, UserRole
-from app.services import auth_service, content_service
+from app.models.models import Series, SermonStatus, User, UserRole
+from app.services import auth_service, content_service, likes_service
 from app.services.content_service import (
     ContentError,
     effective_tier,
+    load_ref_names,
     renumber_for_display,
     sermon_visibility_clause,
     to_list_item,
@@ -67,12 +69,14 @@ async def _staff(db: AsyncSession, current: CurrentUser) -> User:
     return user
 
 
-def _series_public(row: tuple[Series, int, str | None]) -> SeriesPublic:
-    series, episode_count, category_name = row
+def _series_public(row: tuple[Series, int, str | None, int, bool]) -> SeriesPublic:
+    series, episode_count, category_name, like_count, liked_by_me = row
     return SeriesPublic(
         **content_service.series_to_public(series),
         episode_count=episode_count,
         category_name=category_name,
+        like_count=like_count,
+        liked_by_me=liked_by_me,
     )
 
 
@@ -93,7 +97,7 @@ async def create_series(data: SeriesCreate, user: EditorPlus, db: DbDep) -> Seri
     await db.refresh(series)
     return _series_public(
         await content_service.get_series_public(
-            db, series.id, include_unpublished=True
+            db, series.id, include_unpublished=True, viewer_id=actor.id
         )
     )
 
@@ -103,7 +107,9 @@ async def list_series(db: ReadDbDep, user: OptionalUser) -> list[SeriesPublic]:
     # Count scoping (Option B): staff callers get the true all-status
     # episode_count, anon/viewer get published-only. See `staff_sees_full_counts`.
     rows = await content_service.list_series(
-        db, include_unpublished=content_service.staff_sees_full_counts(user)
+        db,
+        include_unpublished=content_service.staff_sees_full_counts(user),
+        viewer_id=user.id if user is not None else None,
     )
     return [_series_public(row) for row in rows]
 
@@ -115,6 +121,7 @@ async def get_series(
         row = await content_service.get_series_public(
             db, series_id,
             include_unpublished=content_service.staff_sees_full_counts(user),
+            viewer_id=user.id if user is not None else None,
         )
     except ContentError as exc:
         raise _err(exc)
@@ -130,7 +137,7 @@ async def update_series(
     try:
         await content_service.update_series(db, series_id, fields, actor)
         row = await content_service.get_series_public(
-            db, series_id, include_unpublished=True
+            db, series_id, include_unpublished=True, viewer_id=actor.id
         )
     except ContentError as exc:
         raise _err(exc)
@@ -144,6 +151,30 @@ async def delete_series(series_id: uuid.UUID, user: ManagerPlus, db: DbDep) -> R
     except ContentError as exc:
         raise _err(exc)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{series_id}/like", response_model=LikeState)
+async def like_series(series_id: uuid.UUID, user: CurrentUserDep, db: DbDep) -> LikeState:
+    """Idempotent — liking an already-liked series is a 200 no-op, not a 409
+    (see `likes_service`'s own doc comment). 404 if the series doesn't exist
+    or isn't visible to this viewer, same existence check `get_series` itself
+    uses, so liking never leaks whether an invisible series id is real."""
+    try:
+        await content_service.get_series_public(
+            db, series_id, include_unpublished=content_service.staff_sees_full_counts(user)
+        )
+    except ContentError as exc:
+        raise _err(exc)
+    await likes_service.like_series(db, user.id, series_id)
+    like_count, liked = await likes_service.series_like_state(db, series_id, user.id)
+    return LikeState(liked=liked, like_count=like_count)
+
+
+@router.delete("/{series_id}/like", response_model=LikeState)
+async def unlike_series(series_id: uuid.UUID, user: CurrentUserDep, db: DbDep) -> LikeState:
+    await likes_service.unlike_series(db, user.id, series_id)
+    like_count, liked = await likes_service.series_like_state(db, series_id, user.id)
+    return LikeState(liked=liked, like_count=like_count)
 
 
 @router.put("/{series_id}/episode-order", response_model=list[EpisodeOrderItem])
@@ -204,8 +235,13 @@ async def series_episodes(
     series = await db.get(Series, series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="Series not found")
+    is_staff = content_service.staff_sees_full_counts(user)
+    if series.status != SermonStatus.PUBLISHED and not is_staff:
+        # Draft series are invisible to viewers/anon — same body as nonexistent.
+        raise HTTPException(status_code=404, detail="Series not found")
 
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from app.models.models import Sermon
 
@@ -213,14 +249,32 @@ async def series_episodes(
         select(Sermon)
         .where(Sermon.series_id == series_id, *sermon_visibility_clause())
         .order_by(Sermon.episode_number.asc().nullslast())
+        # Eager-loaded for `media_type` below (offline downloads need to know a
+        # episode's rendition without a second request per row) — scoped to this
+        # one query, not a change to `Sermon`'s default loading elsewhere.
+        .options(selectinload(Sermon.media_refs))
     )
     rows = (await db.execute(stmt)).scalars().all()
     # Resolve entitlement once for the caller — not per row (that would be a
     # Redis round-trip per episode). is_entitled writes only to Redis, so the
     # read-only session is not violated.
     has_sub = await content_service._has_subscription(db, user)
+    # Bug fix (Isaac's report, session 2026-09-30: "speaker name is not showing on
+    # episode items"): this route never resolved speaker/category/series names onto
+    # the returned `SermonListItem`s — `to_list_item` was called with no `names` arg,
+    # so it silently fell back to an all-empty `RefNames()` regardless of whether the
+    # episode actually had a speaker assigned. `series_title` was affected too (every
+    # episode's own `series_title` came back `None`, even though it's obviously this
+    # series).
+    names = await load_ref_names(db, rows, include_draft_series=is_staff)
     items = [
-        to_list_item(s, effective_tier(s, series), has_sub)
+        to_list_item(
+            s,
+            effective_tier(s, series),
+            has_sub,
+            names,
+            media_type=next((ref.type.value for ref in s.media_refs), None),
+        )
         for s in rows
     ]
     return renumber_for_display(items)

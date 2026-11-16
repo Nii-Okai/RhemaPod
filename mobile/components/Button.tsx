@@ -1,20 +1,30 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
-import { colors } from '../theme/colors';
+import { ActivityIndicator, Pressable, View, type PressableProps } from 'react-native';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { AppText } from './Text';
+import { PlatformIcon, type AppIconName } from './PlatformIcon';
 
 export interface PrimaryButtonProps extends Omit<PressableProps, 'style' | 'children'> {
   label: string;
   loading?: boolean;
+  /** Leading glyph — series detail's Play CTA (Isaac's ask, session 2026-09-30,
+      Netflix's own Play button) is this prop's first user. */
+  icon?: AppIconName;
+  /** Stretches to fill its container instead of sizing to the label — series detail's
+      Play button (same ask) is this prop's first user; every existing call site keeps
+      the original content-sized pill by leaving this at its default. */
+  fullWidth?: boolean;
 }
 
 /**
- * The white-pill primary action (spec §4/§1.1) — the only filled non-gold primary
- * button. Gold is reserved for accents/links/progress, never a general primary action.
+ * The filled primary action: Daybreak's navy pill in light, gold in dark (the
+ * `primaryButton` tokens).
  */
-export function PrimaryButton({ label, loading = false, disabled, ...rest }: PrimaryButtonProps) {
+export function PrimaryButton({ label, loading = false, disabled, icon, fullWidth = false, ...rest }: PrimaryButtonProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const isDisabled = Boolean(disabled) || loading;
 
   return (
@@ -22,15 +32,23 @@ export function PrimaryButton({ label, loading = false, disabled, ...rest }: Pri
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
-      style={({ pressed }) => [styles.primaryBase, pressed && styles.primaryPressed, isDisabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.primaryBase,
+        fullWidth && styles.fullWidth,
+        pressed && styles.primaryPressed,
+        isDisabled && styles.disabled,
+      ]}
       {...rest}
     >
       {loading ? (
         <ActivityIndicator color={colors.primaryButton.text} />
       ) : (
-        <AppText variant="ui.button" tone="inverse">
-          {label}
-        </AppText>
+        <View style={styles.contentRow}>
+          {icon ? <PlatformIcon name={icon} size={18} color={colors.primaryButton.text} /> : null}
+          <AppText variant="ui.button" tone="inverse">
+            {label}
+          </AppText>
+        </View>
       )}
     </Pressable>
   );
@@ -45,9 +63,14 @@ export interface LinkButtonProps extends Omit<PressableProps, 'style' | 'childre
  * any confirmed in-scope screen — don't add one here; a future need should follow the
  * admin portal's existing ghost-button convention rather than being invented fresh.
  */
-export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
+export const LinkButton = React.forwardRef<View, LinkButtonProps>(function LinkButton(
+  { label, disabled, ...rest },
+  ref,
+) {
+  const styles = useStyles();
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
@@ -61,16 +84,28 @@ export function LinkButton({ label, disabled, ...rest }: LinkButtonProps) {
       )}
     </Pressable>
   );
-}
+});
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   primaryBase: {
     backgroundColor: colors.primaryButton.bg,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xxl,
+    // 12*2 padding + 14*1.2 label is ~41pt; 44 is the iOS HIG / Material touch-target floor.
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fullWidth: {
+    width: '100%',
+    // Daybreak's full-width action is a 54pt pill (canvas `.btn`).
+    minHeight: 54,
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   primaryPressed: {
     opacity: 0.85,
@@ -81,4 +116,4 @@ const styles = StyleSheet.create({
   linkDisabled: {
     opacity: 0.4,
   },
-});
+}));

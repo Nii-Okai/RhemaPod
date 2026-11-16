@@ -317,3 +317,27 @@ export function useResendInvite() {
       ),
   });
 }
+
+/* --- remove (admin only; not optimistic) ------------------------------- */
+
+/**
+ * `DELETE /users/{id}` — permanently remove a deactivated staff account.
+ * Admin only. The server refuses (409) an active account, and an account
+ * linked to authored content or review history (it names what); the screen
+ * shows that reason inside the confirm dialog. Not optimistic: the row is
+ * only dropped once the server agrees, then `users.all()` refetches the list
+ * and the role-count tiles.
+ */
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { id: string }>({
+    mutationFn: async ({ id }) => {
+      await api.DELETE("/api/v1/users/{user_id}", {
+        params: { path: { user_id: id } },
+      });
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.users.all() });
+    },
+  });
+}

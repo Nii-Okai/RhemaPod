@@ -17,14 +17,19 @@ LIVE_ENV = {
     **BASE_ENV,
     "environment": "production",
     "debug": False,
+    # conftest turns verification off for the suite via the environment.
+    "require_email_verification": True,
     "allowed_origins": ["https://app.example.com"],
     "frontend_base_url": "https://app.example.com",
-    "stripe_secret_key": "sk_live_x",
-    "stripe_webhook_secret": "whsec_x",
-    "stripe_price_monthly": "price_m",
-    "stripe_price_annual": "price_a",
-    "s3_access_key_id": "AKIA_X",
-    "s3_secret_access_key": "secret",
+    "object_store_endpoint_url": "https://acct123.r2.cloudflarestorage.com",
+    "object_store_access_key_id": "AKIA_X",
+    "object_store_secret_access_key": "secret",
+    "object_store_raw_bucket": "sermon-raw-prod",
+    "object_store_media_bucket": "sermon-media-prod",
+    "archive_store_access_key_id": "AKIAARCHIVE_X",
+    "archive_store_secret_access_key": "archive-secret",
+    "archive_store_region": "eu-north-1",
+    "archive_store_bucket": "sermon-archive-prod",
     "smtp_host": "smtp.example.com",
     "smtp_from_email": "no-reply@example.com",
     "cf_account_id": "acct_x",
@@ -32,6 +37,10 @@ LIVE_ENV = {
     "cf_stream_webhook_secret": "whsec_stream_x",
     "cf_stream_signing_key_id": "key_x",
     "cf_stream_signing_key_pem": "pem_x",
+    # ADR 0015: oauth_google_enabled defaults True, so a fully-configured
+    # production boot needs a real client-id allow-list or the preflight
+    # refuses (see app/core/config.py's production_preflight).
+    "google_oauth_client_ids": ["123456-abc.apps.googleusercontent.com"],
 }
 
 
@@ -45,8 +54,9 @@ def _settings(**overrides):
 def test_fully_configured_production_boots():
     s = _settings()
     assert s.is_production
-    assert s.payments_are_live and s.storage_is_live and s.email_is_live
+    assert s.storage_is_live and s.email_is_live
     assert s.stream_is_live
+    assert s.archive_is_live
     assert s.cdn_base_url is None
 
 
@@ -59,7 +69,8 @@ def test_production_refuses_stub_stream():
 
 def test_production_refuses_stream_without_webhook_secret():
     """Stream live but no webhook secret means the webhook endpoint can never
-    verify an inbound event — same class of gap as the mock-payments check."""
+    verify an inbound event — an unverifiable webhook is exactly the gap a
+    production preflight exists to catch."""
     with pytest.raises(ValueError, match="CF_STREAM_WEBHOOK_SECRET"):
         _settings(cf_stream_webhook_secret=None)
 
@@ -92,20 +103,19 @@ def test_production_refuses_cdn_without_signing():
         _settings(cdn_base_url="https://cdn.example.com")
 
 
-def test_production_refuses_mock_payments():
-    """The mock provider accepts unsigned webhooks — never in production."""
-    with pytest.raises(ValueError, match="STRIPE_SECRET_KEY"):
-        _settings(stripe_secret_key=None, stripe_webhook_secret=None)
-
-
 def test_production_refuses_stub_storage():
-    with pytest.raises(ValueError, match="S3_ACCESS_KEY_ID"):
-        _settings(s3_access_key_id=None, s3_secret_access_key=None)
+    with pytest.raises(ValueError, match="OBJECT_STORE_ACCESS_KEY_ID"):
+        _settings(object_store_access_key_id=None, object_store_secret_access_key=None)
 
 
 def test_production_refuses_console_email():
     with pytest.raises(ValueError, match="SMTP_HOST"):
         _settings(smtp_host=None, smtp_from_email=None)
+
+
+def test_production_refuses_disabled_email_verification():
+    with pytest.raises(ValueError, match="REQUIRE_EMAIL_VERIFICATION"):
+        _settings(require_email_verification=False)
 
 
 def test_production_refuses_debug():
@@ -123,69 +133,23 @@ def test_production_refuses_insecure_origin():
         _settings(allowed_origins=["http://app.example.com"])
 
 
-def test_production_refuses_localhost_s3_public_endpoint():
-    """S3_PUBLIC_ENDPOINT is a dev-only shim (rewrites the presigned-URL host so
-    a browser can reach a compose MinIO). It must not slip into production."""
-    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
-        _settings(s3_public_endpoint="http://localhost:9000")
-    with pytest.raises(ValueError, match="S3_PUBLIC_ENDPOINT"):
-        _settings(s3_public_endpoint="http://minio:9000")
-
-
-def test_production_allows_a_real_s3_public_endpoint():
-    """A genuine https host is unusual but not unsafe — don't block it."""
-    s = _settings(s3_public_endpoint="https://cdn.example.com")
-    assert s.s3_public_endpoint == "https://cdn.example.com"
-
-
-# ── s3_public_endpoint structural validator (runs in every environment) ───────
-def test_s3_public_endpoint_rejects_userinfo():
-    with pytest.raises(ValueError, match="credentials"):
-        _dev_settings(s3_public_endpoint="https://user:pass@storage.example.com")
-
-
-def test_s3_public_endpoint_rejects_a_path():
-    with pytest.raises(ValueError, match="no path"):
-        _dev_settings(s3_public_endpoint="https://storage.example.com/attacker-path")
-
-
-def test_s3_public_endpoint_rejects_query_and_fragment():
-    with pytest.raises(ValueError, match="query or fragment"):
-        _dev_settings(s3_public_endpoint="https://storage.example.com?x=1")
-
-
-def test_s3_public_endpoint_rejects_http_for_a_real_host():
-    with pytest.raises(ValueError, match="http://"):
-        _dev_settings(s3_public_endpoint="http://storage.example.com")
-
-
-def test_s3_public_endpoint_allows_http_for_the_compose_shim():
-    """The dev shim — http://localhost:9000 / http://minio:9000 — is exactly
-    what compose sets, and must still validate outside production."""
-    assert _dev_settings(
-        s3_public_endpoint="http://localhost:9000"
-    ).s3_public_endpoint == "http://localhost:9000"
-    assert _dev_settings(
-        s3_public_endpoint="http://minio:9000"
-    ).s3_public_endpoint == "http://minio:9000"
-
-
-# ── s3_endpoint_url must be https in production ──────────────────────────────
+# ── object_store_endpoint_url must be https in EVERY environment (§A.2.2) ─────
 def test_production_refuses_cleartext_s3_endpoint_url():
-    with pytest.raises(ValueError, match="S3_ENDPOINT_URL"):
-        _settings(s3_endpoint_url="http://minio:9000")
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _settings(object_store_endpoint_url="http://minio:9000")
 
 
 def test_production_allows_https_s3_endpoint_url():
-    s = _settings(s3_endpoint_url="https://s3.eu-north-1.example.com")
-    assert s.s3_endpoint_url == "https://s3.eu-north-1.example.com"
+    s = _settings(object_store_endpoint_url="https://acct123.r2.cloudflarestorage.com")
+    assert s.object_store_endpoint_url == "https://acct123.r2.cloudflarestorage.com"
 
 
-def test_dev_allows_cleartext_s3_endpoint_url():
-    """Outside production the compose http endpoint is fine."""
-    assert _dev_settings(
-        s3_endpoint_url="http://minio:9000"
-    ).s3_endpoint_url == "http://minio:9000"
+def test_dev_also_refuses_cleartext_object_store_endpoint_url():
+    """Local dev now points at a real R2 bucket (decision L3), not a
+    compose-shim MinIO endpoint — there is no environment left where http
+    is legitimate, so this must fail exactly like production."""
+    with pytest.raises(ValueError, match="OBJECT_STORE_ENDPOINT_URL"):
+        _dev_settings(object_store_endpoint_url="http://minio:9000")
 
 
 def test_development_allows_stubs():
@@ -194,7 +158,6 @@ def test_development_allows_stubs():
 
     s = Settings(**BASE_ENV, environment="development")
     assert not s.is_production
-    assert not s.payments_are_live
 
 
 # ── config loading + secret/environment guards (review finding 1) ─────────────

@@ -1,0 +1,18 @@
+diff --git a/node_modules/expo-video/ios/VideoManager.swift b/node_modules/expo-video/ios/VideoManager.swift
+index 895f909..eacfad5 100644
+--- a/node_modules/expo-video/ios/VideoManager.swift
++++ b/node_modules/expo-video/ios/VideoManager.swift
+@@ -104,8 +104,12 @@ class VideoManager {
+   }
+ 
+   private func findAudioMixingMode() -> AudioMixingMode? {
++    // RhemaPod patch: a paused player that shows the Now Playing notification still counts.
++    // Upstream only looked at playing players, so pausing fell back to `.mixWithOthers`,
++    // and iOS drops the Now Playing widget for a mixable audio session (it vanished from
++    // the lock screen / Control Center the moment the user pressed pause).
+     let playingPlayers = videoPlayers.allObjects.filter({ player in
+-      player.isPlaying
++      player.isPlaying || player.showNowPlayingNotification
+     })
+     var audioMixingMode: AudioMixingMode = .mixWithOthers
+ 

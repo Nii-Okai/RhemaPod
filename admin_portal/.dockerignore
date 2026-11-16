@@ -1,0 +1,13 @@
+node_modules
+.next
+coverage
+test-results
+playwright-report
+blob-report
+tests
+.env
+.env.*
+!.env.local.example
+Dockerfile
+.dockerignore
+*.md

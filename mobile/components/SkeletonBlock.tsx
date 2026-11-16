@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, type DimensionValue } from 'react-native';
-import { colors } from '../theme/colors';
+import { View, type DimensionValue } from 'react-native';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius, type RadiusToken } from '../theme/radius';
 
 export interface SkeletonBlockProps {
@@ -19,6 +19,7 @@ export interface SkeletonBlockProps {
  * shelf skeletons (W4.1) are the second concrete use that clears the promotion bar (§8.6).
  */
 export function SkeletonBlock({ width = '100%', height, radiusToken = 'md' }: SkeletonBlockProps) {
+  const styles = useStyles();
   return (
     <View
       accessible={false}
@@ -28,8 +29,8 @@ export function SkeletonBlock({ width = '100%', height, radiusToken = 'md' }: Sk
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   base: {
     backgroundColor: colors.border.card,
   },
-});
+}));

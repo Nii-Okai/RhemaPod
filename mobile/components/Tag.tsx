@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { View } from 'react-native';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 import { AppText } from './Text';
@@ -21,6 +21,7 @@ export interface TagProps {
  * (§1.1/§5 item 10).
  */
 export function Tag({ label }: TagProps) {
+  const styles = useStyles();
   return (
     <View style={styles.chip}>
       <AppText variant="ui.badge" tone="secondary">
@@ -30,11 +31,11 @@ export function Tag({ label }: TagProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   chip: {
     backgroundColor: colors.track.default,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-});
+}));

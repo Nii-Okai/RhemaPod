@@ -1,12 +1,10 @@
-import type { ComponentProps } from 'react';
-import type { Ionicons } from '@expo/vector-icons';
+import type { AppIconName } from '../PlatformIcon';
 
 export type NavRouteKey =
   | 'home'
   | 'series'
   | 'browse'
-  | 'search'
-  | 'downloads'
+  | 'library'
   | 'announcements'
   | 'me';
 
@@ -17,8 +15,8 @@ export interface NavRoute {
   href: `/(tabs)/${string}`;
   /** iOS tab label (text-only) and the label paired with an icon on Android/tablet. */
   label: string;
-  icon: ComponentProps<typeof Ionicons>['name'];
-  iconActive: ComponentProps<typeof Ionicons>['name'];
+  icon: AppIconName;
+  iconActive: AppIconName;
 }
 
 /**
@@ -30,16 +28,23 @@ export interface NavRoute {
 export const NAV_ROUTES: readonly NavRoute[] = [
   { key: 'home', href: '/(tabs)/home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
   { key: 'series', href: '/(tabs)/series', label: 'Series', icon: 'layers-outline', iconActive: 'layers' },
-  { key: 'browse', href: '/(tabs)/browse', label: 'Browse', icon: 'grid-outline', iconActive: 'grid' },
-  { key: 'search', href: '/(tabs)/search', label: 'Search', icon: 'search-outline', iconActive: 'search' },
+  // Browse is also the sole search entry point (Isaac's ask, session 2026-10-02) — the
+  // dedicated Search tab was removed; `app/search.tsx` is now a top-level stack route
+  // Browse pushes into, not a tab destination.
+  // Shown as "Discover" since the Daybreak redesign (2026-11); the route stays `browse`.
+  { key: 'browse', href: '/(tabs)/browse', label: 'Discover', icon: 'compass-outline', iconActive: 'compass' },
   {
-    key: 'downloads',
-    // P1 (planner resolution): "Downloads" on iOS, Android, and tablet alike — never
-    // "Saved". Only one screen (1l) was ever designed for this destination.
-    href: '/(tabs)/downloads',
-    label: 'Downloads',
-    icon: 'download-outline',
-    iconActive: 'download',
+    // Session 2026-10-10 (Isaac's ask): the former `downloads` destination (P1:
+    // "Downloads" on iOS, Android, and tablet alike) is renamed/absorbed into
+    // `library` — the Library tab holds downloaded content as one of its two
+    // sections, the other being user-created playlists (Spotify's own "Your
+    // Library" as the reference). Same href slot, same tab-bar position, just a
+    // bigger screen behind it; no new tab was added (phone bar stays at 4 items).
+    key: 'library',
+    href: '/(tabs)/library',
+    label: 'Library',
+    icon: 'library-outline',
+    iconActive: 'library',
   },
   {
     key: 'announcements',
@@ -48,17 +53,24 @@ export const NAV_ROUTES: readonly NavRoute[] = [
     icon: 'megaphone-outline',
     iconActive: 'megaphone',
   },
-  { key: 'me', href: '/(tabs)/me', label: 'Me', icon: 'person-outline', iconActive: 'person' },
+  // Label is "You", not "Me" (Isaac's ask, session 2026-10-11, YouTube's own "You" tab
+  // as the reference) — the route's own file/href stays `me` (an app-wide rename of the
+  // URL itself isn't what was asked for, just the visible label), and its icon shows
+  // the caller's own avatar instead of this generic fallback glyph (`NavIcon`'s own
+  // doc comment) whenever profile data has loaded.
+  { key: 'me', href: '/(tabs)/me', label: 'You', icon: 'person-outline', iconActive: 'person' },
 ] as const;
 
 /**
- * iOS 5-tab bar + Android 5-item M3 nav bar — the same five destinations, just two
- * different chromes (design spec §2, plan W3.4).
+ * The phone dock's four destinations (`FloatingDock`, the same on iOS and Android since
+ * the Daybreak redesign; it adds the raised Today button between the two halves). A dedicated Search tab existed here
+ * originally; removed (Isaac's ask, session 2026-10-02) once Browse absorbed its
+ * query/suggest/results flow as a pushed, not tabbed, screen.
  */
-export const PHONE_NAV_KEYS: readonly NavRouteKey[] = ['home', 'browse', 'search', 'downloads', 'me'] as const;
+export const PHONE_NAV_KEYS: readonly NavRouteKey[] = ['home', 'browse', 'library', 'me'] as const;
 
 /**
- * Tablet rail — six destinations, not a re-skin of the phone set. `series` and
+ * Tablet rail — five destinations, not a re-skin of the phone set. `series` and
  * `announcements` have no phone equivalent by design (planner resolution P3: the rail
  * has room the phone tab bar doesn't; not a gap to fix on phone). `me` is reached via
  * the rail's avatar row instead of a dedicated item (design spec §2), so it's
@@ -68,8 +80,7 @@ export const TABLET_RAIL_KEYS: readonly NavRouteKey[] = [
   'home',
   'series',
   'browse',
-  'search',
-  'downloads',
+  'library',
   'announcements',
 ] as const;
 

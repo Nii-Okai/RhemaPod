@@ -589,6 +589,40 @@ describe("BFF proxy — auth-path blocklist (security M1)", () => {
   });
 });
 
+describe("BFF proxy — dot-segment traversal", () => {
+  it.each([
+    [["x", "..", "auth", "login"]],
+    [["sermons", "..", "..", "auth", "refresh"]],
+    [[".", "auth", "login"]],
+    [["x/../auth", "login"]],
+  ])("404s %j and never calls upstream", async (segments) => {
+    let called = false;
+    server.use(
+      http.post(`${API}/api/v1/auth/login`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+      http.post(`${API}/api/v1/auth/refresh`, () => {
+        called = true;
+        return HttpResponse.json({ access_token: "leaked", refresh_token: "leaked" });
+      }),
+    );
+
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/x", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        body: { email: "a@b.c", password: "pw" },
+        sameOrigin: true,
+      }),
+      ctx(segments),
+    );
+
+    expect(res.status).toBe(404);
+    expect(called).toBe(false);
+  });
+});
+
 describe("BFF proxy — slow-body read timeout (security N1)", () => {
   it("408s a body that drips under the size cap, and never calls upstream", async () => {
     vi.stubEnv("BFF_BODY_READ_TIMEOUT_MS", "50");
@@ -701,6 +735,43 @@ describe("BFF proxy — request body size cap (security N1)", () => {
 
     expect(res.status).toBe(413);
     expect(called).toBe(false);
+  });
+
+  it("allows the admin data import a larger body, and only that path", async () => {
+    let seenBytes = 0;
+    server.use(
+      http.post(`${API}/api/v1/admin/data/import`, async ({ request }) => {
+        seenBytes = (await request.arrayBuffer()).byteLength;
+        return HttpResponse.json({ mode: "merge", dry_run: true, tables: [] });
+      }),
+    );
+
+    const big = "x".repeat(2_000_000);
+    const res = await POST(
+      makeRequest("http://localhost:3000/api/bff/admin/data/import", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "content-type": "application/json" },
+        body: big,
+        sameOrigin: true,
+      }),
+      ctx(["admin", "data", "import"]),
+    );
+    expect(res.status).toBe(200);
+    expect(seenBytes).toBe(2_000_000);
+
+    const tooBig = "x".repeat(25 * 1024 * 1024 + 1);
+    const refused = await POST(
+      makeRequest("http://localhost:3000/api/bff/admin/data/import", {
+        method: "POST",
+        cookies: { rp_at: makeJwt(3600) },
+        headers: { "content-type": "application/json" },
+        body: tooBig,
+        sameOrigin: true,
+      }),
+      ctx(["admin", "data", "import"]),
+    );
+    expect(refused.status).toBe(413);
   });
 
   it("lets a normal-sized body through", async () => {

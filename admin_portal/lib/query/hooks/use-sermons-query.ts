@@ -5,7 +5,7 @@
  *    of truth") ────────────────────────────────────────────────────────────
  * Every filter / page choice lives in the query string:
  *
- *     ?status=&speaker=&series=&tier=&q=&page=
+ *     ?status=&speaker=&series=&category=&tier=&q=&page=
  *
  * so a reload and the back button both restore the exact view. This hook only
  * *reads* it (`useSearchParams`); the screen writes it with `router.replace`
@@ -66,6 +66,7 @@ export interface SermonsUrlState {
   status: StatusFilter;
   speakerId?: string;
   seriesId?: string;
+  categoryId?: string;
   tier?: TierFilter;
   q?: string;
   /** 1-based, always ≥ 1. */
@@ -112,6 +113,7 @@ export function parseSermonsParams(params: ParamSource): SermonsUrlState {
     status,
     speakerId: trimmed("speaker"),
     seriesId: trimmed("series"),
+    categoryId: trimmed("category"),
     tier,
     q: trimmed("q"),
     page,
@@ -137,6 +139,7 @@ function nonStatusParams(state: SermonsUrlState): SermonListParams {
   const params: SermonListParams = {};
   if (state.speakerId) params.speaker_id = state.speakerId;
   if (state.seriesId) params.series_id = state.seriesId;
+  if (state.categoryId) params.category_id = state.categoryId;
   if (state.tier) params.tier = state.tier;
   if (state.q) params.q = state.q;
   return params;
@@ -147,12 +150,20 @@ export interface SermonsFilterPatch {
   status?: StatusFilter;
   speaker?: string;
   series?: string;
+  category?: string;
   tier?: TierFilter;
   q?: string;
   page?: number;
 }
 
-const FILTER_KEYS = ["status", "speaker", "series", "tier", "q"] as const;
+const FILTER_KEYS = [
+  "status",
+  "speaker",
+  "series",
+  "category",
+  "tier",
+  "q",
+] as const;
 
 /**
  * Apply a patch to the current query string and return the next one (no `?`).
@@ -180,6 +191,7 @@ export function buildSermonsSearch(
   }
   if ("speaker" in patch) setOrDelete("speaker", patch.speaker);
   if ("series" in patch) setOrDelete("series", patch.series);
+  if ("category" in patch) setOrDelete("category", patch.category);
   if ("tier" in patch) setOrDelete("tier", patch.tier);
   if ("q" in patch) setOrDelete("q", patch.q?.trim());
 

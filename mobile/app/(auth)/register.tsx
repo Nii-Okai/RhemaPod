@@ -1,23 +1,36 @@
-import React, { useState } from 'react';
-import { Link } from 'expo-router';
+import React, { useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
+import { Link, useRouter } from 'expo-router';
 import { AppText, LinkButton, PrimaryButton } from '../../components';
+import { createThemedStyles } from '../../theme/ThemeContext';
+import { spacing } from '../../theme/spacing';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { ApiError } from '../../lib/api/errors';
+import { performAppleSignIn, useAppleSignInAvailable } from '../../lib/auth/appleSignIn';
+import { performGoogleSignIn } from '../../lib/auth/googleSignIn';
 import { AuthScreen } from './_components/auth-screen';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
-
-const MIN_PASSWORD_LENGTH = 12;
+import { OrDivider } from './_components/or-divider';
+import { isServerCommonPassword, MIN_PASSWORD_LENGTH, PasswordFlames } from './_components/password-flames';
+import { SocialSignInButton } from './_components/social-sign-in-button';
+import { socialAuthErrorCopy, type SocialAuthErrorCopy, type SocialProvider } from './_components/socialAuthErrorCopy';
 
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const styles = useStyles();
+  const { register, signInWithGoogle, signInWithApple } = useAuth();
+  const appleAvailable = useAppleSignInAvailable();
+  const router = useRouter();
 
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [socialSubmitting, setSocialSubmitting] = useState<SocialProvider | null>(null);
+  const [socialError, setSocialError] = useState<SocialAuthErrorCopy | null>(null);
 
   async function onSubmit() {
     setFieldError(null);
@@ -32,10 +45,16 @@ export default function RegisterScreen() {
       setFieldError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
+    if (isServerCommonPassword(password)) {
+      setFieldError('That password is too common. Choose something less predictable.');
+      return;
+    }
 
     setSubmitting(true);
     try {
       await register(email.trim(), password);
+      // The new account confirms its email with a 6-digit code before it can sign in.
+      router.replace({ pathname: '/(auth)/verify-email', params: { email: email.trim() } });
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorTitle('Could not create your account');
@@ -49,32 +68,116 @@ export default function RegisterScreen() {
     }
   }
 
+  async function onGooglePress() {
+    setSocialError(null);
+    setSocialSubmitting('google');
+    try {
+      const credential = await performGoogleSignIn();
+      if (credential === null) return; // user dismissed the native sheet — silent no-op
+      await signInWithGoogle(credential);
+    } catch (err) {
+      setSocialError(socialAuthErrorCopy(err, 'google'));
+    } finally {
+      setSocialSubmitting(null);
+    }
+  }
+
+  async function onApplePress() {
+    setSocialError(null);
+    setSocialSubmitting('apple');
+    try {
+      const result = await performAppleSignIn();
+      if (result === null) return; // user tapped Apple's own Cancel — silent no-op
+      await signInWithApple(
+        result.identityToken,
+        result.rawNonce,
+        result.authorizationCode,
+        result.givenName,
+        result.familyName,
+      );
+    } catch (err) {
+      setSocialError(socialAuthErrorCopy(err, 'apple'));
+    } finally {
+      setSocialSubmitting(null);
+    }
+  }
+
   return (
-    <AuthScreen heading="Create an account" subhead="Sign up to save your place and download sermons.">
-      <Field
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        textContentType="username"
-        returnKeyType="next"
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-        autoComplete="new-password"
-        textContentType="newPassword"
-        returnKeyType="done"
-        onSubmitEditing={onSubmit}
-      />
-      <AppText variant="ui.badge" tone="tertiary">
-        At least {MIN_PASSWORD_LENGTH} characters.
-      </AppText>
+    <AuthScreen
+      heading="Start listening"
+      subhead="Save your place across devices, keep playlists and download for offline."
+      subheadVariant="ui.body"
+      centerHeader
+      onBack={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'))}
+      footer={
+        <>
+          <View style={styles.footerRow}>
+            <AppText variant="ui.body" tone="secondary">
+              Already have an account?
+            </AppText>
+            <Link href="/(auth)/sign-in" asChild>
+              <LinkButton label="Sign in" />
+            </Link>
+          </View>
+        </>
+      }
+    >
+      <View style={styles.socialStack}>
+        <SocialSignInButton
+          provider="google"
+          label="Continue with Google"
+          loading={socialSubmitting === 'google'}
+          disabled={socialSubmitting !== null || submitting}
+          onPress={onGooglePress}
+        />
+        {appleAvailable ? (
+          <SocialSignInButton
+            provider="apple"
+            label="Continue with Apple"
+            loading={socialSubmitting === 'apple'}
+            disabled={socialSubmitting !== null || submitting}
+            onPress={onApplePress}
+          />
+        ) : null}
+        {socialError ? (
+          <InlineAlert variant="error" title={socialError.title}>
+            {socialError.detail}
+          </InlineAlert>
+        ) : null}
+      </View>
+
+      <OrDivider label="or use email" />
+
+      <View style={styles.fieldGroup}>
+        <Field
+          label="Email"
+          icon="mail-outline"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="username"
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+        <View style={styles.passwordGroup}>
+          <Field
+            ref={passwordRef}
+            label="Password"
+            icon="lock-closed-outline"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="new-password"
+            textContentType="newPassword"
+            returnKeyType="done"
+            onSubmitEditing={onSubmit}
+          />
+          <PasswordFlames password={password} />
+        </View>
+      </View>
 
       {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
       {errorTitle ? (
@@ -87,11 +190,27 @@ export default function RegisterScreen() {
         label={submitting ? 'Creating account…' : 'Create account'}
         onPress={onSubmit}
         loading={submitting}
+        disabled={socialSubmitting !== null}
+        fullWidth
       />
-
-      <Link href="/(auth)/sign-in" asChild>
-        <LinkButton label="Already have an account? Sign in" />
-      </Link>
     </AuthScreen>
   );
 }
+
+const useStyles = createThemedStyles(() => ({
+  fieldGroup: {
+    gap: spacing.lg,
+  },
+  passwordGroup: {
+    gap: spacing.sm,
+  },
+  socialStack: {
+    gap: spacing.md,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+}));

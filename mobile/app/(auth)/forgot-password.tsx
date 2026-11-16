@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { LinkButton, PrimaryButton } from '../../components';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { AuthScreen } from './_components/auth-screen';
+import { CheckEmailBody, MailArt } from './_components/check-email';
 import { Field } from './_components/field';
 import { InlineAlert } from './_components/inline-alert';
+import { SocialTip } from './_components/social-tip';
 
 /**
  * The backend's `/auth/forgot-password` always answers the same generic 200
@@ -19,6 +21,8 @@ const GENERIC_SUCCESS = 'If that email exists, a reset link has been sent.';
 
 export default function ForgotPasswordScreen() {
   const { forgotPassword } = useAuth();
+  const router = useRouter();
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/(auth)/sign-in'));
 
   const [email, setEmail] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -50,47 +54,75 @@ export default function ForgotPasswordScreen() {
     }
   }
 
+  const backToSignIn = (
+    <Link href="/(auth)/sign-in" asChild>
+      <LinkButton label="Back to sign in" />
+    </Link>
+  );
+
+  if (sent) {
+    return (
+      <AuthScreen
+        eyebrow="Reset link sent"
+        heading="Check your email"
+        subhead={GENERIC_SUCCESS}
+        centerHeader
+        art={<MailArt />}
+        onBack={goBack}
+        backLabel="Back to sign in"
+        footer={backToSignIn}
+      >
+        <CheckEmailBody
+          email={email.trim()}
+          kind="reset"
+          onResend={async () => {
+            await forgotPassword(email.trim());
+          }}
+          onUseDifferentEmail={() => setSent(false)}
+        />
+      </AuthScreen>
+    );
+  }
+
   return (
     <AuthScreen
-      heading="Reset your password"
-      subhead="Enter your email and we'll send you a link to reset your password."
+      heading="Forgot your password?"
+      headingVariant="display.title"
+      subheadVariant="ui.body"
+      subhead="Enter the email you signed up with and we'll send you a link to set a new one."
+      onBack={goBack}
+      backLabel="Back to sign in"
+      footer={backToSignIn}
     >
-      {sent ? (
-        <InlineAlert variant="success" title="Check your email">
-          {GENERIC_SUCCESS}
+      <Field
+        label="Email"
+        icon="mail-outline"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        textContentType="username"
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+        autoFocus
+      />
+
+      {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
+      {networkErrorMessage ? (
+        <InlineAlert variant="error" title="Could not send reset link">
+          {networkErrorMessage}
         </InlineAlert>
-      ) : (
-        <>
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="username"
-            returnKeyType="done"
-            onSubmitEditing={onSubmit}
-          />
+      ) : null}
 
-          {fieldError ? <InlineAlert variant="error" title={fieldError} /> : null}
-          {networkErrorMessage ? (
-            <InlineAlert variant="error" title="Could not send reset link">
-              {networkErrorMessage}
-            </InlineAlert>
-          ) : null}
+      <PrimaryButton
+        label={submitting ? 'Sending…' : 'Send reset link'}
+        onPress={onSubmit}
+        loading={submitting}
+        fullWidth
+      />
 
-          <PrimaryButton
-            label={submitting ? 'Sending…' : 'Send reset link'}
-            onPress={onSubmit}
-            loading={submitting}
-          />
-        </>
-      )}
-
-      <Link href="/(auth)/sign-in" asChild>
-        <LinkButton label="Back to sign in" />
-      </Link>
+      <SocialTip />
     </AuthScreen>
   );
 }

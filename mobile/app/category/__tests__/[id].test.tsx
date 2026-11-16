@@ -9,12 +9,18 @@ jest.mock('../../../lib/api/typedClient', () => ({
   api: { get: jest.fn() },
 }));
 
+jest.mock('@expo/vector-icons');
+
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 let mockParams: Record<string, string | undefined> = { id: 'c1', name: 'Teaching' };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
   useLocalSearchParams: () => mockParams,
-  Stack: { Screen: () => null },
 }));
 
 const mockedGet = api.get as jest.Mock;
@@ -48,10 +54,20 @@ const sermon = {
 beforeEach(() => {
   mockedGet.mockReset();
   mockPush.mockClear();
+  mockBack.mockClear();
   mockParams = { id: 'c1', name: 'Teaching' };
 });
 
 describe('CategoryDrillDownScreen', () => {
+  it('shows the category name as a centered header title and fires router.back() on the chevron', async () => {
+    mockedGet.mockResolvedValue({ query: '', total: 0, limit: 20, offset: 0, results: [] });
+    const { findByText, getByLabelText } = renderScreen();
+
+    await findByText('Teaching');
+    fireEvent.press(getByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
   it('filters /search by category_id with no q, and navigates to /sermon/[id] on tap', async () => {
     mockedGet.mockResolvedValue({ query: '', total: 1, limit: 20, offset: 0, results: [sermon] });
 
@@ -60,11 +76,11 @@ describe('CategoryDrillDownScreen', () => {
 
     expect(mockedGet).toHaveBeenCalledWith(
       '/search',
-      expect.objectContaining({ params: { query: { category_id: 'c1' } } }),
+      expect.objectContaining({ params: { query: { category_id: 'c1', limit: 50, offset: 0 } } }),
     );
 
     fireEvent.press(getByText('Anchored in the Storm'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/sermon/[id]', params: { id: 'sermon-1' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
   });
 
   it('shows a loading state', () => {
@@ -89,5 +105,30 @@ describe('CategoryDrillDownScreen', () => {
 
     fireEvent.press(getByText('Retry'));
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2));
+  });
+
+  it('pages through the whole topic, not just the first page the header counts', async () => {
+    const page = (offset: number, count: number, total: number) => ({
+      query: '',
+      total,
+      limit: 50,
+      offset,
+      results: Array.from({ length: count }, (_, i) => ({ ...sermon, id: `s${offset + i}`, title: `Sermon ${offset + i}` })),
+    });
+    mockedGet.mockImplementation((_path: string, { params }: { params: { query: { offset: number } } }) =>
+      Promise.resolve(params.query.offset === 0 ? page(0, 50, 52) : page(50, 2, 52)),
+    );
+
+    const { findByText, getByText } = renderScreen();
+    await findByText('52 sermons');
+    // Oldest first has to see every page before it can reverse them.
+    fireEvent.press(getByText('Newest'));
+    await findByText('Sermon 51');
+    expect(mockedGet).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ params: { query: { category_id: 'c1', limit: 50, offset: 50 } } }),
+    );
+    fireEvent.press(getByText('Play all'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 's51' } });
   });
 });

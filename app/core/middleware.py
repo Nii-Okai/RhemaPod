@@ -95,6 +95,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# The one route allowed a larger body (`Settings.max_import_bytes`).
+DATA_IMPORT_PATH = "/api/v1/admin/data/import"
+
+
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     """Reject oversized request bodies before they are parsed.
 
@@ -105,8 +109,13 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         declared = request.headers.get("content-length")
         if declared is not None:
+            limit = (
+                _settings.max_import_bytes
+                if request.url.path == DATA_IMPORT_PATH
+                else _settings.max_request_bytes
+            )
             try:
-                if int(declared) > _settings.max_request_bytes:
+                if int(declared) > limit:
                     return JSONResponse(
                         status_code=413,
                         content={"detail": "Request body too large"},
@@ -159,11 +168,11 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         if capacity <= 0 or refill_per_minute <= 0:
             return await call_next(request)
 
-        from app.core.rate_limit import check_token_bucket
+        from app.core.rate_limit import check_token_bucket, key_prefix
 
         allowed = await check_token_bucket(key, capacity, refill_per_minute)
         if not allowed:
-            log.warning("rate_limit_exceeded", key=key)
+            log.warning("rate_limit_exceeded", key_prefix=key_prefix(key))
             retry_after = max(1, -(-60 // refill_per_minute))  # ceil(60 / rate)
             return JSONResponse(
                 status_code=429,

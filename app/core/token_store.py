@@ -330,6 +330,33 @@ async def take_invite_jti(user_id: str) -> str | None:
         raise TokenStoreUnavailable("redis unavailable") from exc
 
 
+async def claim_once(key: str, ttl_seconds: int) -> bool:
+    """Atomically claim `key` for the first time, returning whether THIS call
+    is the one that claimed it (`True` the first time, `False` on replay).
+
+    Built for OAuth provider-token replay protection (ADR 0015): unlike
+    `register_single_use`/`consume_single_use` (mint-then-consume — a jti this
+    app generated, registered, and later redeems exactly once), a provider's
+    ID token is already valid the moment it arrives; there is nothing to
+    "register" ahead of time, only "has this exact already-verified token been
+    presented before". A single `SET NX EX` does the whole check-and-claim in
+    one round trip, so two concurrent presentations of the same token cannot
+    both win.
+
+    Callers pass `key=f"oauth:used:{sha256(raw_token).hexdigest()}"` and size
+    `ttl_seconds` to the token's own remaining lifetime — the claim only needs
+    to outlive the token itself; once the token is expired on its own terms it
+    can never be presented again regardless of this ledger.
+    """
+    r = get_redis()
+    try:
+        claimed = await r.set(key, "1", nx=True, ex=max(1, ttl_seconds))
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="claim_once")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+    return bool(claimed)
+
+
 async def consume_single_use(jti: str) -> bool:
     """Atomically claim a one-shot token jti.
 
@@ -345,3 +372,57 @@ async def consume_single_use(jti: str) -> bool:
         log.warning("token_store_unavailable", op="consume_single_use")
         raise TokenStoreUnavailable("redis unavailable") from exc
     return claimed is not None
+
+
+def _email_code_key(user_id: str) -> str:
+    return f"email_verify:{user_id}"
+
+
+def _email_code_attempts_key(user_id: str) -> str:
+    return f"email_verify_attempts:{user_id}"
+
+
+async def store_email_code(user_id: str, code_digest: str, ttl_seconds: int) -> None:
+    """Record the account's current sign-up verification code (as a keyed
+    digest, never the code itself). Replaces any earlier code and resets its
+    wrong-guess counter, so a resend always starts a fresh allowance."""
+    r = get_redis()
+    try:
+        await r.delete(_email_code_attempts_key(user_id))
+        await r.setex(_email_code_key(user_id), max(1, ttl_seconds), code_digest)
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="store_email_code")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+
+
+async def consume_email_code(user_id: str, code_digest: str, max_attempts: int) -> bool:
+    """Check a presented verification code, consuming it on a match.
+
+    Every call counts as an attempt; once `max_attempts` is exceeded the code
+    is burned and the user must request a new one (a 6-digit code is only
+    10^6 wide, so the cap has to live on the code, not the caller's IP). The
+    match itself is claimed with GETDEL so two concurrent correct guesses
+    cannot both verify.
+    """
+    import hmac
+
+    r = get_redis()
+    code_key = _email_code_key(user_id)
+    attempts_key = _email_code_attempts_key(user_id)
+    try:
+        attempts = await r.incr(attempts_key)
+        if attempts == 1:
+            await r.expire(attempts_key, settings.email_verification_expire_minutes * 60)
+        if attempts > max_attempts:
+            await r.delete(code_key)
+            return False
+        stored = await r.get(code_key)
+        if stored is None or not hmac.compare_digest(str(stored), code_digest):
+            return False
+        if await r.getdel(code_key) is None:
+            return False
+        await r.delete(attempts_key)
+    except RedisError as exc:
+        log.warning("token_store_unavailable", op="consume_email_code")
+        raise TokenStoreUnavailable("redis unavailable") from exc
+    return True

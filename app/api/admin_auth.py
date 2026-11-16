@@ -1,12 +1,12 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import email as email_module
 from app.core.config import get_settings
-from app.core.dependencies import CurrentUser, require_role
+from app.core.dependencies import AuditCtx, CurrentUser, require_role
 from app.db.database import get_db
 
 from app.models.models import UserRole
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/users", tags=["admin auth"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 ManagerPlus = Annotated[CurrentUser, Depends(require_role(UserRole.MANAGER, UserRole.ADMIN))]
+AdminOnly = Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))]
 
 
 # User management (managers/admins)
@@ -66,7 +67,30 @@ async def list_users(
         db, limit=limit, offset=offset, role_filter=role
     )
     return Page[UserPublic](
-        items=[UserPublic.model_validate(u) for u in rows],
+        items=[auth_service.to_user_public(u) for u in rows],
+        total=total, limit=limit, offset=offset,
+    )
+
+
+@router.get("/members", response_model=Page[UserPublic])
+async def list_members(
+    user: AdminOnly,
+    db: DbDep,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=200, description="Email or name contains"),
+    status_filter: Literal["all", "active", "deactivated"] = Query(default="all", alias="status"),
+) -> Page[UserPublic]:
+    """Mobile app accounts (role `viewer`), newest first. Admin only: the
+    staff directory above never lists viewers, and this list exists so an
+    admin can deactivate or remove one (`PATCH /users/{id}/active`,
+    `DELETE /users/{id}`)."""
+    rows, total = await auth_service.list_members(
+        db, limit=limit, offset=offset, search=q, status=status_filter
+    )
+    providers = await auth_service.linked_providers_by_user(db, [u.id for u in rows])
+    return Page[UserPublic](
+        items=[auth_service.to_user_public(u, providers.get(u.id, ())) for u in rows],
         total=total, limit=limit, offset=offset,
     )
 
@@ -90,7 +114,7 @@ async def role_counts(user: ManagerPlus, db: DbDep) -> RoleCounts:
 
 @router.post("", response_model=StaffCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_staff(
-    data: StaffCreateRequest, user: ManagerPlus, db: DbDep
+    data: StaffCreateRequest, user: ManagerPlus, db: DbDep, ctx: AuditCtx
 ) -> StaffCreateResponse:
     """Create an editor/manager/admin account. A temporary password is set
     server-side; the user receives an email invite to set their own password."""
@@ -98,7 +122,7 @@ async def create_staff(
     try:
         created, invite_token = await auth_service.create_staff(
             db, data.email, data.full_name, data.role, actor,
-            send_invite=email_module.send_staff_invite,
+            send_invite=email_module.send_staff_invite, ctx=ctx,
         )
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
@@ -121,29 +145,37 @@ async def create_staff(
         invite_link = email_module._reset_link(invite_token)
 
     return StaffCreateResponse(
-        user=UserPublic.model_validate(created), invite_link=invite_link
+        user=auth_service.to_user_public(created), invite_link=invite_link
     )
 
 
 @router.patch("/{user_id}/role", response_model=UserPublic)
 async def change_role(
-    user_id: uuid.UUID, data: RoleUpdateRequest, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID,
+    data: RoleUpdateRequest,
+    user: ManagerPlus,
+    db: DbDep,
+    ctx: AuditCtx,
 ) -> UserPublic:
     actor = await _actor(db, user)
     try:
-        updated = await auth_service.change_role(db, user_id, data.role, actor)
+        updated = await auth_service.change_role(db, user_id, data.role, actor, ctx=ctx)
     except ContentError as exc:
         # The last-admin invariant (409) surfaces as a typed ContentError from
         # the shared guard; everything else here is still AuthError -> 400.
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
-    return UserPublic.model_validate(updated)
+    return await auth_service.to_user_public_linked(db, updated)
 
 
 @router.patch("/{user_id}/active", response_model=UserActiveResponse)
 async def set_active(
-    user_id: uuid.UUID, data: ActiveUpdateRequest, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID,
+    data: ActiveUpdateRequest,
+    user: ManagerPlus,
+    db: DbDep,
+    ctx: AuditCtx,
 ) -> UserActiveResponse:
     """Deactivate (`is_active=false`) or reactivate a staff account.
 
@@ -156,21 +188,37 @@ async def set_active(
     actor = await _actor(db, user)
     try:
         updated, revocation_deferred = await auth_service.set_active(
-            db, user_id, data.is_active, actor
+            db, user_id, data.is_active, actor, ctx=ctx
         )
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
     return UserActiveResponse(
-        user=UserPublic.model_validate(updated),
+        user=await auth_service.to_user_public_linked(db, updated),
         revocation_deferred=revocation_deferred,
     )
 
 
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx
+) -> Response:
+    """Permanently remove a staff or mobile account. Admin only (a manager gets 403).
+    The account must already be deactivated (409 otherwise), can't be your
+    own, and can't have authored content or review history (409, with what
+    it is linked to — keep such accounts deactivated)."""
+    actor = await _actor(db, user)
+    try:
+        await auth_service.delete_user(db, user_id, actor, ctx=ctx)
+    except ContentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{user_id}/resend-invite", response_model=StaffCreateResponse)
 async def resend_invite(
-    user_id: uuid.UUID, user: ManagerPlus, db: DbDep
+    user_id: uuid.UUID, user: ManagerPlus, db: DbDep, ctx: AuditCtx
 ) -> StaffCreateResponse:
     """Re-issue the invite for a staff account that has not finished
     set-password. Same authz as `PATCH /users/{id}/active`. A 409 means the
@@ -182,6 +230,7 @@ async def resend_invite(
     try:
         target, invite_token = await auth_service.resend_invite(
             db, user_id, actor, send_invite=email_module.send_staff_invite,
+            ctx=ctx,
         )
     except ContentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
@@ -201,5 +250,5 @@ async def resend_invite(
         invite_link = email_module._reset_link(invite_token)
 
     return StaffCreateResponse(
-        user=UserPublic.model_validate(target), invite_link=invite_link
+        user=auth_service.to_user_public(target), invite_link=invite_link
     )

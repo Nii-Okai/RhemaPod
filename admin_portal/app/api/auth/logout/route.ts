@@ -18,6 +18,7 @@ import { clientIpFrom, forwardedForHeaders } from "@/lib/auth/client-ip";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "@/lib/auth/config";
 import { clearAuthCookies, readAuthCookies } from "@/lib/auth/cookies";
 import { csrfGuard } from "@/lib/auth/csrf";
+import { userAgentFrom, userAgentHeaders } from "@/lib/auth/user-agent";
 import { logError } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             authorization: `Bearer ${accessToken}`,
             "content-type": "application/json",
             ...forwardedForHeaders(clientIpFrom(req)),
+            ...userAgentHeaders(userAgentFrom(req.headers)),
           },
           body: JSON.stringify({ refresh_token: refreshToken }),
           cache: "no-store",

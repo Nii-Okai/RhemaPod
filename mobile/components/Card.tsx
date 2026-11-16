@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { colors } from '../theme/colors';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
 
@@ -15,10 +15,11 @@ export interface CardProps extends ViewProps {
  * here.
  */
 export function Card({ padded = true, style, ...rest }: CardProps) {
+  const styles = useStyles();
   return <View style={[styles.base, padded && styles.padded, style]} {...rest} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   base: {
     backgroundColor: colors.surface.raised,
     borderColor: colors.border.card,
@@ -29,4 +30,4 @@ const styles = StyleSheet.create({
   padded: {
     padding: spacing.lg,
   },
-});
+}));

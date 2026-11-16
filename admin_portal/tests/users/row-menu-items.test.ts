@@ -18,6 +18,8 @@ const target = (over: Partial<UserPublic>): UserPublic => ({
   full_name: "Target One",
   role: "editor",
   is_active: true,
+  has_password: false,
+  linked_providers: [],
   activated_at: "2025-01-01T00:00:00Z",
   created_at: "2024-06-21T10:00:00Z",
   ...over,
@@ -68,14 +70,14 @@ describe("userRowMenuItems — state-correct verbs", () => {
     ).toEqual(["Deactivate"]);
   });
 
-  it("a deactivated row offers Reactivate, not Deactivate", () => {
+  it("a deactivated row offers Reactivate (and Remove for an admin), not Deactivate", () => {
     expect(
       labels({
         actor: ADMIN,
         target: target({ is_active: false }),
         activeAdminCount: 3,
       }),
-    ).toEqual(["Reactivate"]);
+    ).toEqual(["Reactivate", "Remove…"]);
   });
 
   it("Resend invite appears only while `activated_at == null`", () => {
@@ -95,7 +97,7 @@ describe("userRowMenuItems — state-correct verbs", () => {
     ).toEqual(["Deactivate"]);
   });
 
-  it("a deactivated, never-activated row offers Reactivate only — not Resend invite", () => {
+  it("a deactivated, never-activated row offers no Resend invite", () => {
     // Resend is gated on `is_active`: a deactivated account can't authenticate,
     // so a fresh set-password link is a dead affordance.
     expect(
@@ -104,7 +106,7 @@ describe("userRowMenuItems — state-correct verbs", () => {
         target: target({ is_active: false, activated_at: null }),
         activeAdminCount: 3,
       }),
-    ).toEqual(["Reactivate"]);
+    ).toEqual(["Reactivate", "Remove…"]);
   });
 
   it("Resend invite needs `is_active` — an active, pending row still offers it", () => {
@@ -146,5 +148,32 @@ describe("userRowMenuItems — last active admin", () => {
       activeAdminCount: 3,
     });
     expect(item).toMatchObject({ action: "deactivate", destructive: true });
+  });
+});
+
+describe("userRowMenuItems — Remove", () => {
+  it("is admin only, and only once the account is deactivated", () => {
+    const off = target({ is_active: false });
+    expect(labels({ actor: MANAGER, target: off, activeAdminCount: 1 })).toEqual([
+      "Reactivate",
+    ]);
+    expect(
+      labels({ actor: ADMIN, target: target({ is_active: true }), activeAdminCount: 3 }),
+    ).not.toContain("Remove…");
+  });
+});
+
+describe("userRowMenuItems — mobile (viewer) accounts", () => {
+  it("lets an admin deactivate, reactivate and remove, never resend an invite", () => {
+    const viewer = target({ role: "viewer", is_active: true, activated_at: null });
+    expect(labels({ actor: ADMIN, target: viewer, activeAdminCount: 1 })).toEqual(["Deactivate"]);
+    expect(
+      labels({ actor: ADMIN, target: { ...viewer, is_active: false }, activeAdminCount: 1 }),
+    ).toEqual(["Reactivate", "Remove…"]);
+  });
+
+  it("gives a manager nothing", () => {
+    const viewer = target({ role: "viewer", is_active: true });
+    expect(labels({ actor: MANAGER, target: viewer, activeAdminCount: 1 })).toEqual([]);
   });
 });

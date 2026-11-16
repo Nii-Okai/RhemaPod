@@ -5,14 +5,17 @@
  * guards on `PATCH /users/{id}/active` and `POST /users/{id}/resend-invite`
  * (`auth_service.set_active` / `resend_invite`, both keyed on `_ASSIGNABLE_BY`):
  *
- *   caller \ target   editor           manager / admin
- *   manager           may act          — (403)      → no menu
- *   admin             may act          may act
+ *   caller \ target   editor           manager / admin   viewer (mobile)
+ *   manager           may act          — (403)           — (403)
+ *   admin             may act          may act           may act
  *
  * State then decides the verbs:
  *
  *   active     → Deactivate            (destructive; confirmation dialog)
  *   deactivated→ Reactivate            (constructive; no dialog)
+ *              + Remove                (admin only; destructive; confirmation
+ *                                       dialog — the server refuses accounts
+ *                                       linked to content or review history)
  *   pending    → + Resend invite       (`is_active && activated_at == null`)
  *
  * Resend is gated on `is_active` too: a deactivated-never-activated account
@@ -37,18 +40,24 @@
 
 import type { UserPublic } from "@/lib/query/hooks/use-users";
 
-export type UserRowAction = "deactivate" | "reactivate" | "resend-invite";
+export type UserRowAction =
+  | "deactivate"
+  | "reactivate"
+  | "resend-invite"
+  | "remove";
 
 export interface UserRowMenuItem {
   action: UserRowAction;
   label: string;
-  /** Rose text (Deactivate). */
+  /** Rose text (Deactivate, Remove). */
   destructive?: boolean;
 }
 
+// An admin may also switch mobile (viewer) accounts off and on and remove
+// them — the Mobile users screen reuses this menu.
 const CAN_ACT_ON: Record<string, readonly string[]> = {
   manager: ["editor"],
-  admin: ["editor", "manager", "admin"],
+  admin: ["editor", "manager", "admin", "viewer"],
 };
 
 export interface UserRowMenuArgs {
@@ -83,9 +92,14 @@ export function userRowMenuItems({
     }
   } else {
     items.push({ action: "reactivate", label: "Reactivate" });
+    // Removing is two steps on purpose: deactivate first, then remove.
+    if (actor.role === "admin") {
+      items.push({ action: "remove", label: "Remove…", destructive: true });
+    }
   }
 
-  if (target.is_active && target.activated_at == null) {
+  // Invites are a staff concept; a mobile account signs itself up.
+  if (target.role !== "viewer" && target.is_active && target.activated_at == null) {
     items.push({ action: "resend-invite", label: "Resend invite" });
   }
 

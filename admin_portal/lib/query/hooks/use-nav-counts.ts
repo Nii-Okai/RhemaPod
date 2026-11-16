@@ -1,17 +1,18 @@
 /**
  * `useNavCounts` — the sidebar's trailing counts (W5).
  *
- * Three independent numbers, each from an endpoint that already exists:
+ * Four independent numbers, each from an endpoint that already exists:
  *   - `sermons`     ← `GET /api/bff/sermons` → `total`   (a `limit=1` probe)
  *   - `series`      ← `GET /api/bff/series`  → array length
  *   - `reviewQueue` ← `GET /api/bff/approvals/sermons/review-queue` → array length
+ *   - `comments`    ← `GET /api/bff/admin/comments?needs_review=true&limit=1` → `total`
  *
  * Role tolerance (plan §5 of the W5 brief): if an endpoint 403s for the
  * signed-in role, that count is `null` and the sidebar simply omits it — a
  * missing count must never blank the nav or surface an error. Any other
  * failure (network, 5xx) rejects so React Query can retry/show nothing.
  *
- * One query, not three: `Promise.all` over three individually-caught calls
+ * One query, not four: `Promise.all` over individually-caught calls
  * keeps a single cache entry and a single loading state, and lets one 403 fall
  * to `null` without disturbing the others.
  */
@@ -31,6 +32,9 @@ export interface NavCounts {
   series: number | null;
   /** Sermons awaiting review, or `null` if forbidden (Editors get 403 here). */
   reviewQueue: number | null;
+  /** Comments needing moderation (`needs_review=true&limit=1` → `total`;
+      an Editor's count covers only their own sermons), or `null` if forbidden. */
+  comments: number | null;
 }
 
 /** Run one count call; a 403 becomes `null`, anything else rethrows. */
@@ -44,14 +48,14 @@ async function count(load: () => Promise<number>): Promise<number | null> {
 }
 
 /**
- * Fetch all three counts. Exported (and client-injectable) so the wire
+ * Fetch all four counts. Exported (and client-injectable) so the wire
  * behaviour — success and the 403→null path — is unit-tested through MSW
  * rather than a mocked fetch (plan §A.11).
  */
 export async function loadNavCounts(
   client: ApiClient = api,
 ): Promise<NavCounts> {
-  const [sermons, series, reviewQueue] = await Promise.all([
+  const [sermons, series, reviewQueue, comments] = await Promise.all([
     count(async () => {
       const { data } = await client.GET("/api/v1/sermons", {
         params: { query: { limit: 1 } },
@@ -70,15 +74,22 @@ export async function loadNavCounts(
       // GATE 3 Batch 3: the queue is now a Page[ReviewQueueItem] envelope.
       return data?.total ?? 0;
     }),
+    count(async () => {
+      const { data } = await client.GET("/api/v1/admin/comments", {
+        params: { query: { needs_review: true, limit: 1 } },
+      });
+      return data?.total ?? 0;
+    }),
   ]);
 
-  return { sermons, series, reviewQueue };
+  return { sermons, series, reviewQueue, comments };
 }
 
 const EMPTY_COUNTS: NavCounts = {
   sermons: null,
   series: null,
   reviewQueue: null,
+  comments: null,
 };
 
 export function useNavCounts(): NavCounts {

@@ -50,6 +50,11 @@ function Wordmark() {
   );
 }
 
+/** The pill's text: capped at "99+" so a long queue never widens the rail. */
+export function commentsCountLabel(value: number): string {
+  return value > 99 ? "99+" : String(value);
+}
+
 function TrailingCount({
   kind,
   value,
@@ -59,16 +64,31 @@ function TrailingCount({
 }) {
   if (value === null) return null;
 
-  if (kind === "reviewQueue") {
+  if (kind === "reviewQueue" || kind === "comments") {
     if (value <= 0) return null;
     return (
-      <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full bg-clay-600 px-[6px] font-mono text-[11px] leading-none text-on-clay">
-        {value}
+      <span
+        aria-hidden={kind === "comments" ? true : undefined}
+        className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full bg-clay-600 px-[6px] font-mono text-[11px] leading-none text-on-clay"
+      >
+        {kind === "comments" ? commentsCountLabel(value) : value}
       </span>
     );
   }
 
   return <span className="font-mono text-[11px] text-ink-faint">{value}</span>;
+}
+
+/** Accessible name override: the comments pill is aria-hidden, so the link
+    itself says "Comments, 3 reported". Other links keep their text name. */
+function navLinkLabel(
+  item: NavGroup["items"][number],
+  counts: NavCounts,
+): string | undefined {
+  if (item.count !== "comments") return undefined;
+  const n = counts.comments;
+  if (n === null || n <= 0) return undefined;
+  return `${item.label}, ${commentsCountLabel(n)} reported`;
 }
 
 export interface SidebarProps {
@@ -132,6 +152,7 @@ export function Sidebar({
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
+                  aria-label={navLinkLabel(item, counts)}
                   onClick={onNavigate}
                   className={cn(
                     "flex h-[36px] items-center justify-between gap-8 rounded-9 px-[10px] text-[14px] transition-colors duration-150 ease-out focus-visible:focus-ring-button",

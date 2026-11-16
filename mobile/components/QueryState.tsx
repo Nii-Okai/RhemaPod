@@ -1,9 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
-import { ApiError } from '../lib/api/errors';
+import { userMessageFor } from '../lib/api/errors';
 import { LinkButton } from './Button';
 import { AppText } from './Text';
 
@@ -19,11 +19,6 @@ export interface QueryStateProps {
   /** Announced to screen readers while `isLoading` — e.g. "Loading categories". */
   loadingLabel: string;
   children: React.ReactNode;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  return 'Something went wrong. Try again.';
 }
 
 /**
@@ -43,6 +38,8 @@ export function QueryState({
   loadingLabel,
   children,
 }: QueryStateProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   if (isLoading) {
     return (
       <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel={loadingLabel}>
@@ -55,7 +52,7 @@ export function QueryState({
     return (
       <View style={styles.banner}>
         <AppText variant="ui.label" style={styles.errorText}>
-          {errorMessage(error)}
+          {userMessageFor(error)}
         </AppText>
         {onRetry ? (
           <View style={styles.retry}>
@@ -84,7 +81,7 @@ export function QueryState({
   return <>{children}</>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   centered: {
     paddingVertical: spacing.xxl,
     alignItems: 'center',
@@ -111,4 +108,4 @@ const styles = StyleSheet.create({
   emptyDescription: {
     textAlign: 'center',
   },
-});
+}));

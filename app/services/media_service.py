@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, delete, func, select, type_coerce
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -35,6 +35,7 @@ from app.models.content_schemas import (
     AudioDownloadResponse,
     StreamResponse,
     StreamVariant,
+    VideoDownloadResponse,
     UploadTicket,
 )
 from app.models.models import (
@@ -50,10 +51,13 @@ from app.models.models import (
     User,
     UserRole,
 )
+from app.services import captions_service
 from app.services.content_service import (
     ContentError,
     effective_tier,
     ensure_editor_can_access,
+    ensure_not_content_locked,
+    reopen_unpublished_for_edit,
     sermon_publish_time_passed,
     staff_scope_hides,
 )
@@ -87,6 +91,11 @@ async def _load_sermon_for_editor(
         raise ContentError(
             "Unpublish the sermon before replacing its media", status_code=409
         )
+    # An approved sermon is content-locked like its fields and thumbnail:
+    # swapping its media would publish something nobody reviewed.
+    ensure_not_content_locked(sermon)
+    # Changing an unpublished sermon's media sends it back through review.
+    reopen_unpublished_for_edit(sermon, actor, db)
     return sermon
 
 
@@ -159,14 +168,14 @@ async def create_upload_ticket(
     if size_bytes is not None and size_bytes > settings.max_upload_bytes:
         raise ContentError(
             f"File exceeds the maximum upload size of "
-            f"{settings.max_upload_bytes // (1024 ** 3)} GB",
+            f"{settings.max_upload_bytes // 1_000_000_000} GB",
             status_code=413,
         )
 
     key = storage_module.raw_key(sermon.id, filename)
     store = storage_module.get_storage()
     url = store.presigned_upload_url(
-        settings.s3_raw_bucket, key, content_type, settings.upload_url_expire_seconds
+        settings.object_store_raw_bucket, key, content_type, settings.upload_url_expire_seconds
     )
 
     job = UploadJob(
@@ -213,9 +222,16 @@ async def confirm_upload(
             f"Upload is already '{job.status.value}'", status_code=409
         )
 
+    # The ticket may have been issued while the sermon was still a draft; it
+    # must not land on a sermon that has since been approved or published.
+    target = await db.get(Sermon, job.sermon_id)
+    if target is not None:
+        ensure_not_content_locked(target)
+        reopen_unpublished_for_edit(target, actor, db)
+
     store = storage_module.get_storage()
     # Trust but verify: never mark an upload complete on the client's word alone.
-    if not store.object_exists(settings.s3_raw_bucket, job.raw_key):
+    if not store.object_exists(settings.object_store_raw_bucket, job.raw_key):
         raise ContentError(
             "No uploaded file found for this job — complete the PUT first",
             status_code=409,
@@ -226,11 +242,11 @@ async def confirm_upload(
     # and record the observed size (overriding the client's figure). Over the
     # cap: delete the object so a rejected upload leaves nothing behind, and
     # 413 exactly as the presign path would have.
-    observed_size = store.object_size(settings.s3_raw_bucket, job.raw_key)
+    observed_size = store.object_size(settings.object_store_raw_bucket, job.raw_key)
     if observed_size is not None:
         if observed_size > settings.max_upload_bytes:
             try:
-                store.delete_object(settings.s3_raw_bucket, job.raw_key)
+                store.delete_object(settings.object_store_raw_bucket, job.raw_key)
             except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
                 log.warning(
                     "oversize_upload_cleanup_failed",
@@ -238,7 +254,7 @@ async def confirm_upload(
                 )
             raise ContentError(
                 f"File exceeds the maximum upload size of "
-                f"{settings.max_upload_bytes // (1024 ** 3)} GB",
+                f"{settings.max_upload_bytes // 1_000_000_000} GB",
                 status_code=413,
             )
         job.size_bytes = observed_size
@@ -275,6 +291,12 @@ async def process_upload(db: AsyncSession, job_id: uuid.UUID) -> UploadJob:
     """Transcode a confirmed upload into renditions and create MediaRef rows.
 
     Idempotent per job: re-running replaces that job's previous MediaRefs.
+
+    Single-media-slot guarantee: a sermon has exactly one media attachment
+    (video OR audio) at a time. A successful transcode here replaces EVERY
+    existing MediaRef for the sermon, not just same-type ones, so uploading
+    audio over an existing video (or vice versa) fully replaces it instead of
+    leaving both as separate playable variants.
     """
     job = await db.get(UploadJob, job_id)
     if job is None:
@@ -292,11 +314,15 @@ async def process_upload(db: AsyncSession, job_id: uuid.UUID) -> UploadJob:
         log.warning("transcode_failed", job_id=str(job.id), error=str(exc))
         return job
 
-    # Replace any renditions from a previous run of this job.
+    # Replace every existing MediaRef for this sermon, regardless of type —
+    # not just same-type ones. A sermon has exactly one media attachment at a
+    # time, so a new VIDEO upload must displace an existing AUDIO MediaRef
+    # (and vice versa), the same way a same-type re-upload already displaces
+    # its own previous renditions. Deliberately after _transcode succeeds
+    # (see the try/except above): a failed new upload must never destroy the
+    # sermon's existing working media.
     existing = (await db.execute(
-        select(MediaRef).where(
-            MediaRef.sermon_id == job.sermon_id, MediaRef.type == job.media_type
-        )
+        select(MediaRef).where(MediaRef.sermon_id == job.sermon_id)
     )).scalars().all()
     for ref in existing:
         await db.delete(ref)
@@ -341,14 +367,14 @@ async def _transcode(job: UploadJob) -> list[tuple[str | None, str, str]]:
     """
     if not settings.transcode_enabled:
         # One rendition: the original upload, in the raw bucket.
-        return [(None, settings.s3_raw_bucket, job.raw_key)]
+        return [(None, settings.object_store_raw_bucket, job.raw_key)]
 
     qualities = (
         VIDEO_QUALITIES if job.media_type == MediaType.VIDEO else AUDIO_QUALITIES
     )
     kind = job.media_type.value
     return [
-        (q, settings.s3_media_bucket, storage_module.media_key(job.sermon_id, kind, q))
+        (q, settings.object_store_media_bucket, storage_module.media_key(job.sermon_id, kind, q))
         for q in qualities
     ]
 
@@ -482,7 +508,7 @@ async def delete_upload_job(
     await db.commit()
 
     try:
-        storage_module.get_storage().delete_object(settings.s3_raw_bucket, raw_key)
+        storage_module.get_storage().delete_object(settings.object_store_raw_bucket, raw_key)
     except Exception:  # noqa: BLE001 - best-effort; row already deleted
         log.warning(
             "upload_job_raw_object_delete_failed",
@@ -536,7 +562,7 @@ def _resolve_variant_url(ref: MediaRef, *, expires_in: int) -> str:
     store = storage_module.get_storage()
     playback_key = ref.hls_manifest_key or ref.s3_key
     presigned = store.presigned_download_url(
-        ref.bucket or settings.s3_media_bucket, playback_key, expires_in
+        ref.bucket or settings.object_store_media_bucket, playback_key, expires_in
     )
     return storage_module.cdn_url_for(playback_key, presigned_fallback=presigned)
 
@@ -553,6 +579,30 @@ async def _authorize_stream_access(
     staff. This is where `locked` stops being advisory: a locked sermon
     raises 403 upgrade_required, so the catalog can stay fully browsable.
     """
+    # Defense in depth: see the matching check in
+    # content_service._load_sermon_with_detail_rels — a targeted Core read
+    # of the raw `status` column lets us treat a row with an unparseable
+    # `status` as not-found before the full ORM query below would otherwise
+    # choke on it. `type_coerce(..., String)` is what actually bypasses the
+    # Enum type's result processor here (selecting `Sermon.__table__.c.status`
+    # directly still carries that column's Enum type and raises identically).
+    # Deliberately not a blanket `except LookupError` around that query:
+    # `media_refs` is eager-loaded here too, and `MediaRef.type` is the same
+    # kind of Enum — a blanket catch would misreport that unrelated
+    # corruption as "sermon not found" instead of surfacing it as the real,
+    # different bug it is.
+    raw_status = (await db.execute(
+        select(type_coerce(Sermon.__table__.c.status, String))
+        .where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if raw_status is not None and raw_status not in SermonStatus.__members__:
+        log.error(
+            "sermon_status_unparseable",
+            sermon_id=str(sermon_id),
+            raw_status=raw_status,
+        )
+        raise ContentError("Sermon not found", status_code=404)
+
     sermon = (await db.execute(
         select(Sermon)
         .where(Sermon.id == sermon_id)
@@ -664,6 +714,49 @@ async def get_audio_download(
     return AudioDownloadResponse(sermon_id=sermon.id, url=url, expires_in=expires_in)
 
 
+async def get_video_download(
+    db: AsyncSession,
+    sermon_id: uuid.UUID,
+    user: User | None,
+    has_subscription: bool,
+) -> VideoDownloadResponse:
+    """Short-lived signed URL for the VIDEO rendition, for offline download
+    (Isaac's ask, session 2026-10-08 — revisits L6's original "audio-only,
+    ever" call). Deliberately NOT given the same at-rest protection the
+    mobile client's audio download path gets (JS-level encryption via its
+    native `rpa-crypto` module, decrypted to a temp file only at playback
+    time): `expo-video` needs to read a file format it recognizes directly,
+    which a custom-encrypted blob isn't, so a video download the mobile
+    client writes from this URL sits on disk under the OS's own file
+    protection only. A disclosed tradeoff (Isaac's call), not an oversight.
+
+    Same authorization as get_stream/get_audio_download — reused via
+    _authorize_stream_access, not reimplemented. 409 when the sermon has no
+    video rendition, matching get_audio_download's own framing.
+    """
+    sermon, _is_staff = await _authorize_stream_access(
+        db, sermon_id, user, has_subscription
+    )
+
+    video_ref = next(
+        (ref for ref in sermon.media_refs if ref.type == MediaType.VIDEO), None
+    )
+    if video_ref is None:
+        raise ContentError(
+            "No video rendition available for this sermon", status_code=409
+        )
+
+    expires_in = settings.stream_url_expire_seconds
+    url = _resolve_variant_url(video_ref, expires_in=expires_in)
+
+    log.info(
+        "video_download_issued",
+        sermon_id=str(sermon.id),
+        user_id=str(user.id) if user else None,
+    )
+    return VideoDownloadResponse(sermon_id=sermon.id, url=url, expires_in=expires_in)
+
+
 # ── Media ref management ──────────────────────────────────────────────────────
 async def list_media_refs(
     db: AsyncSession, sermon_id: uuid.UUID, actor: User
@@ -712,7 +805,7 @@ async def delete_media_ref(
     if ref is None:
         raise ContentError("Media not found for this sermon", status_code=404)
 
-    bucket = ref.bucket or settings.s3_media_bucket
+    bucket = ref.bucket or settings.object_store_media_bucket
     key = ref.s3_key
 
     await db.delete(ref)
@@ -756,7 +849,7 @@ async def delete_media_by_type(
             f"No {media_type.value} media on this sermon", status_code=404
         )
 
-    targets = [(r.bucket or settings.s3_media_bucket, r.s3_key) for r in refs]
+    targets = [(r.bucket or settings.object_store_media_bucket, r.s3_key) for r in refs]
     for ref in refs:
         await db.delete(ref)
     await db.commit()
@@ -878,7 +971,7 @@ async def _start_stream_ingest(db: AsyncSession, job: UploadJob) -> None:
 
     store = storage_module.get_storage()
     source_url = store.presigned_download_url(
-        settings.s3_raw_bucket, job.raw_key, settings.stream_ingest_url_expire_seconds
+        settings.object_store_raw_bucket, job.raw_key, settings.stream_ingest_url_expire_seconds
     )
 
     job.attempts += 1
@@ -956,9 +1049,9 @@ async def _archive_raw_master(ref: MediaRef, job: UploadJob | None) -> None:
     dest_key = storage_module.archive_key(ref.sermon_id, job.raw_key)
     await asyncio.to_thread(
         store.copy_object,
-        settings.s3_raw_bucket, job.raw_key,
-        settings.s3_raw_bucket, dest_key,
-        storage_class=settings.s3_archive_storage_class,
+        settings.object_store_raw_bucket, job.raw_key,
+        settings.object_store_raw_bucket, dest_key,
+        storage_class=settings.archive_store_storage_class,
     )
     log.info(
         "raw_master_archived",
@@ -1032,8 +1125,8 @@ def _is_stream_webhook_ledger_violation(exc: IntegrityError) -> bool:
 
 async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     """Apply a Cloudflare Stream ready/error notification. Idempotent: a
-    redelivered event is a no-op (ProcessedWebhook ledger — same precedent
-    subscription_service.handle_webhook uses for Stripe).
+    redelivered event is a no-op (ProcessedWebhook ledger — the shared
+    dedup table any webhook consumer in this app writes to).
 
     A StorageError from the archive step (see _apply_stream_state) propagates
     uncaught: the route returns 500, Cloudflare redelivers the webhook later,
@@ -1048,7 +1141,7 @@ async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     if not uid or not state:
         raise ContentError("Webhook missing uid or status.state", status_code=400)
 
-    # Cloudflare Stream webhooks carry no event id (unlike Stripe) — the
+    # Cloudflare Stream webhooks carry no event id of their own — the
     # (uid, state) pair is the redelivery identity: two deliveries of the same
     # "ready" event for the same uid must dedupe. A later, genuinely different
     # state for the same uid is a distinct event_id and is not swallowed.
@@ -1071,6 +1164,8 @@ async def handle_stream_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
         outcome = await _apply_stream_state(
             ref, job, state=state, ready_to_stream=bool(event.get("readyToStream", False)),
         )
+        if outcome == "ready":
+            await captions_service.on_video_ready(db, ref)
 
     db.add(ProcessedWebhook(provider=provider_name, event_id=event_id, event_type=state))
     try:
@@ -1160,6 +1255,8 @@ async def sweep_stream_jobs(db: AsyncSession, older_than_minutes: int | None = N
                 sermon_id=str(ref.sermon_id), uid=ref.stream_uid, error=str(exc),
             )
             continue
+        if outcome == "ready":
+            await captions_service.on_video_ready(db, ref)
         if outcome != "not_terminal":
             resolved += 1
 

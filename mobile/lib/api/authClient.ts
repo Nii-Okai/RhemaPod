@@ -1,10 +1,13 @@
 import { apiUrl } from './config';
 import { apiErrorFromResponse, networkError } from './errors';
+import type { GoogleCredential } from '../auth/googleSignIn';
 import type { TokenPair, UserPublic } from '../auth/types';
 
 /**
- * Raw calls to the four public auth endpoints (`/auth/register`, `/auth/login`,
- * `/auth/refresh`, `/auth/forgot-password`) plus `/auth/logout`. Deliberately
+ * Raw calls to the public auth endpoints (`/auth/register`, `/auth/login`,
+ * `/auth/refresh`, `/auth/forgot-password`, `/auth/verify-email`,
+ * `/auth/resend-verification`, `/auth/oauth/google`, `/auth/oauth/apple`)
+ * plus `/auth/logout`. Deliberately
  * separate from `lib/api/client.ts`'s authenticated `apiFetch`: these never
  * attach a bearer token and never trigger the 401-refresh-retry dance —
  * `session.ts`'s single-flight refresh calls `refresh()` here directly, and a
@@ -42,6 +45,44 @@ export function refresh(refreshToken: string): Promise<TokenPair> {
 
 export function forgotPassword(email: string): Promise<{ message: string }> {
   return post<{ message: string }>('/auth/forgot-password', { email });
+}
+
+/** Exchanges the 6-digit sign-up code for a token pair (signs the user in). */
+export function verifyEmail(email: string, code: string): Promise<TokenPair> {
+  return post<TokenPair>('/auth/verify-email', { email, code });
+}
+
+/** Always a generic 200 (not an enumeration oracle); 429 when rate limited. */
+export function resendVerification(email: string): Promise<{ message: string }> {
+  return post<{ message: string }>('/auth/resend-verification', { email });
+}
+
+/**
+ * Google/Apple sign-in-or-sign-up — a brand-new identity auto-creates an account
+ * server-side, so there is no separate "register with Google/Apple" call, same as the
+ * screens' own single `SocialSignInButton` press for both sign-in.tsx and register.tsx.
+ */
+export function oauthGoogle(credential: GoogleCredential): Promise<TokenPair> {
+  return post<TokenPair>(
+    '/auth/oauth/google',
+    credential.kind === 'id_token' ? { id_token: credential.idToken } : { server_auth_code: credential.code },
+  );
+}
+
+export function oauthApple(
+  identityToken: string,
+  rawNonce: string,
+  authorizationCode: string | null,
+  givenName: string | null,
+  familyName: string | null,
+): Promise<TokenPair> {
+  return post<TokenPair>('/auth/oauth/apple', {
+    identity_token: identityToken,
+    raw_nonce: rawNonce,
+    authorization_code: authorizationCode,
+    given_name: givenName,
+    family_name: familyName,
+  });
 }
 
 export async function logout(accessToken: string, refreshToken: string): Promise<void> {

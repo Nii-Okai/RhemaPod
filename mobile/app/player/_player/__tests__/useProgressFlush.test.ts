@@ -2,7 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import { api } from '../../../../lib/api/typedClient';
 import { useProgressFlush } from '../useProgressFlush';
-import { wrapWithQueryClient } from '../../../../lib/query/testUtils';
+import { queryKeys } from '../../../../lib/query/queryClient';
+import { createTestQueryClient, wrapWithQueryClient } from '../../../../lib/query/testUtils';
 
 jest.mock('../../../../lib/api/typedClient', () => ({
   api: { post: jest.fn() },
@@ -191,6 +192,28 @@ describe('useProgressFlush — event-triggered flushes', () => {
     unmount();
 
     await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('useProgressFlush — cache invalidation', () => {
+  it('invalidates Home\'s continue-watching list on every successful flush, not just this sermon\'s own progress', async () => {
+    const client = createTestQueryClient();
+    const invalidateSpy = jest.spyOn(client, 'invalidateQueries');
+
+    const { result } = renderHook(() => useProgressFlush('s1', 0, { intervalMs: INTERVAL_MS }), {
+      wrapper: wrapWithQueryClient(client),
+    });
+
+    act(() => {
+      result.current.reportPosition(12);
+      result.current.flushNow();
+    });
+
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.me.continueWatching() }),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.progress.detail('s1') });
   });
 });
 

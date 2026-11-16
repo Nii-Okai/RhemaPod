@@ -530,10 +530,118 @@ async def test_audio_download_uses_stream_url_when_ingested(client, engine):
     assert "cloudflarestream.test" in r.json()["url"]
 
 
+async def test_video_download_free_sermon(client, engine):
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Free", "tier": "free"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)  # VIDEO only
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sermon_id"] == sid
+    # Unlike audio, a VIDEO upload auto-ingests into Stream as part of the normal
+    # upload/confirm flow (`_start_stream_ingest`), so `_resolve_variant_url` routes
+    # through the Stream stub, not the plain S3 presigned URL — proven generically by
+    # `test_audio_download_uses_stream_url_when_ingested` for the other direction.
+    assert "cloudflarestream.test" in body["url"]
+    from app.core.config import get_settings
+
+    assert body["expires_in"] == get_settings().stream_url_expire_seconds
+
+
+async def test_video_download_paid_sermon_blocked_for_viewer(client, engine):
+    """Authz parity with get_stream/get_audio_download: same 403 upgrade_required gate."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post(
+        "/api/v1/sermons", json={"title": "Paid", "tier": "paid"}, headers=ed
+    )).json()["id"]
+    await upload_and_process(client, ed, sid)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 403
+    assert r.json()["detail"]["upgrade_required"] is True
+
+
+async def test_video_download_unpublished_hidden_from_viewer(client, engine):
+    """Authz parity with get_stream: same 404 non-disclosure for unpublished."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 404
+
+
+async def test_video_download_editor_cannot_preview_another_editors_draft(client, engine):
+    """Authz parity with get_stream: same BOLA ownership guard."""
+    a = await make_user(client, engine, "a@example.com", "editor")
+    b = await make_user(client, engine, "b@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "A"}, headers=a)).json()["id"]
+    await upload_and_process(client, a, sid)
+
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=b)
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=a)
+    ).status_code == 200
+    assert (
+        await client.get(f"/api/v1/sermons/{sid}/download/video", headers=mgr)
+    ).status_code == 200
+
+
+async def test_video_download_returns_409_when_no_video_rendition(client, engine):
+    """Audio-only sermon: 409, never a 404 (sermon itself is visible/authorized)
+    and never an audio URL from the video endpoint."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await publish(client, ed, mgr, sid)
+
+    viewer = await make_viewer(client)
+    r = await client.get(f"/api/v1/sermons/{sid}/download/video", headers=viewer)
+    assert r.status_code == 409
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Media management: list and delete renditions
 # ═══════════════════════════════════════════════════════════════════════════════
 AUDIO = {"filename": "sermon.mp3", "content_type": "audio/mpeg", "media_type": "audio"}
+
+
+async def _seed_media_ref(engine, sid, media_type: str):
+    """Insert a MediaRef row directly, bypassing process_upload — used only to
+    construct a multi-row state for exercising delete_media_ref /
+    delete_media_by_type in isolation. Since the single-media-slot fix
+    (process_upload now replaces every existing MediaRef for a sermon, not
+    just same-type ones), two types can no longer coexist via the real
+    upload path, so tests that need two rows present seed the second one
+    here instead of via a second upload_and_process call."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.models import MediaRef, MediaType
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        ref = MediaRef(
+            sermon_id=uuid.UUID(sid),
+            type=MediaType(media_type),
+            s3_key=f"media/{sid}/{media_type}/seed.bin",
+        )
+        s.add(ref)
+        await s.commit()
+        return str(ref.id)
 
 
 async def test_list_media_after_upload(client, engine):
@@ -548,28 +656,63 @@ async def test_list_media_after_upload(client, engine):
     assert refs[0]["type"] == "video"
 
 
-async def test_video_and_audio_coexist(client, engine):
-    """Uploading audio must not wipe the video rendition."""
+async def test_cross_type_upload_replaces_existing_media(client, engine):
+    """Single-media-slot guarantee: a sermon has exactly one media attachment
+    (video OR audio) at a time. Uploading AUDIO over an existing VIDEO must
+    fully replace it, not leave both as separate playable variants.
+    process_upload used to only delete MediaRefs matching the new job's own
+    type, leaving the old VIDEO row stale."""
     ed = await make_user(client, engine, "e@example.com", "editor")
     sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
     await upload_and_process(client, ed, sid)
     await upload_and_process(client, ed, sid, payload=AUDIO)
 
     refs = (await client.get(f"/api/v1/sermons/{sid}/media", headers=ed)).json()
-    assert {r["type"] for r in refs} == {"video", "audio"}
+    assert [r["type"] for r in refs] == ["audio"]
+
+
+async def test_cross_type_upload_replaces_existing_media_reverse(client, engine):
+    """Same guarantee in the other direction: a new VIDEO upload fully
+    replaces an existing AUDIO MediaRef."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await upload_and_process(client, ed, sid)
+
+    refs = (await client.get(f"/api/v1/sermons/{sid}/media", headers=ed)).json()
+    assert [r["type"] for r in refs] == ["video"]
+
+
+async def test_same_type_reupload_still_replaces(client, engine):
+    """Regression guard: same-type replacement (the pre-existing behavior,
+    unaffected by broadening the delete query to every type) still works
+    exactly as it did before the cross-type fix."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)
+    first = (await client.get(f"/api/v1/sermons/{sid}/media", headers=ed)).json()
+    assert len(first) == 1
+
+    await upload_and_process(client, ed, sid)
+
+    refs = (await client.get(f"/api/v1/sermons/{sid}/media", headers=ed)).json()
+    assert len(refs) == 1
+    assert refs[0]["type"] == "video"
+    assert refs[0]["s3_key"] != first[0]["s3_key"]
 
 
 async def test_delete_single_media_ref(client, engine):
+    """Deleting one specific MediaRef by id leaves any other row alone. The
+    second row is seeded directly (bypassing process_upload, which the
+    single-media-slot fix no longer lets two types reach via the upload
+    path) purely to exercise delete-by-id in isolation."""
     ed = await make_user(client, engine, "e@example.com", "editor")
     sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
     await upload_and_process(client, ed, sid)
-    await upload_and_process(client, ed, sid, payload=AUDIO)
-
-    refs = (await client.get(f"/api/v1/sermons/{sid}/media", headers=ed)).json()
-    audio = next(r for r in refs if r["type"] == "audio")
+    audio_id = await _seed_media_ref(engine, sid, "audio")
 
     r = await client.delete(
-        f"/api/v1/sermons/{sid}/media/{audio['id']}", headers=ed
+        f"/api/v1/sermons/{sid}/media/{audio_id}", headers=ed
     )
     assert r.status_code == 204
 
@@ -581,7 +724,7 @@ async def test_delete_media_by_type(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
     sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
     await upload_and_process(client, ed, sid)
-    await upload_and_process(client, ed, sid, payload=AUDIO)
+    await _seed_media_ref(engine, sid, "audio")
 
     r = await client.delete(
         f"/api/v1/sermons/{sid}/media", params={"media_type": "audio"}, headers=ed
@@ -612,7 +755,7 @@ def _bucket_for(key: str) -> str:
     from app.core.config import get_settings
 
     s = get_settings()
-    return s.s3_raw_bucket if key.startswith("raw/") else s.s3_media_bucket
+    return s.object_store_raw_bucket if key.startswith("raw/") else s.object_store_media_bucket
 
 
 async def test_delete_can_keep_stored_object(client, engine):
@@ -688,3 +831,56 @@ async def test_delete_by_type_when_none_404(client, engine):
         f"/api/v1/sermons/{sid}/media", params={"media_type": "audio"}, headers=ed
     )
     assert r.status_code == 404
+
+
+async def test_stream_survives_unparseable_status(client, engine):
+    """Same defense-in-depth guarantee as the catalog detail read path (see
+    test_crud.test_catalog_detail_survives_unparseable_status), for the
+    stream endpoint's own Sermon load in `_authorize_stream_access`: a row
+    with a status value that isn't a valid `SermonStatus` member name must
+    404, not 500."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        # Bare raw SQL, deliberately bypassing the ORM's Enum type (which
+        # would otherwise coerce this back to "DRAFT" on the way in) —
+        # exactly the kind of write that produces this data shape in
+        # practice. Only one sermon exists in this test, so no WHERE needed.
+        await s.execute(text("UPDATE sermons SET status = 'draft'"))
+        await s.commit()
+
+    r = await client.get(f"/api/v1/sermons/{sid}/stream", headers=ed)
+    assert r.status_code == 404
+
+
+async def test_unrelated_media_type_corruption_is_not_misreported_as_not_found(
+    client, engine
+):
+    """The targeted raw-`status` check in `_authorize_stream_access` must
+    check only `status` and must not be a blanket `except LookupError`
+    around the ORM query: `MediaRef.type` is eager-loaded by that same
+    query and is the identical kind of ORM `Enum` (no `values_callable`).
+    A corrupted `media_refs.type` is a real, different bug and must not be
+    silently relabeled as 'sermon not found' — it should surface, same as
+    any other unhandled server error would."""
+    ed = await make_user(client, engine, "e@example.com", "editor")
+    sid = (await client.post("/api/v1/sermons", json={"title": "S"}, headers=ed)).json()["id"]
+    await upload_and_process(client, ed, sid)
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as s:
+        # Bare raw SQL, same technique as above, this time on the sibling
+        # Enum column eager-loaded in the same query as `status`.
+        await s.execute(text("UPDATE media_refs SET type = 'bogus'"))
+        await s.commit()
+
+    with pytest.raises(LookupError):
+        await client.get(f"/api/v1/sermons/{sid}/stream", headers=ed)

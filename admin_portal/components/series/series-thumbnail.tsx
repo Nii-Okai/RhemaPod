@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { MediaPlaceholder } from "@/components/portal/media-placeholder";
 import { IMAGE_ACCEPT_ATTR } from "@/lib/upload";
+import { COVER_HINT, coverDimensionsWarning, readImageSize } from "@/lib/upload/cover-guidance";
 import { useSeriesThumbnailUpload } from "@/lib/query/hooks/use-series-thumbnail-upload";
 
 /* =============================================================================
@@ -33,6 +34,7 @@ export function SeriesThumbnail({
   title,
 }: SeriesThumbnailProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const [sizeWarning, setSizeWarning] = React.useState<string | null>(null);
   const { replace, isPending, errorMessage, uploadedUrl, reset } =
     useSeriesThumbnailUpload({ seriesId });
 
@@ -49,13 +51,13 @@ export function SeriesThumbnail({
         <img
           src={shown}
           alt={`Art for ${title}`}
-          className="aspect-video w-full rounded-10 border border-border object-cover"
+          className="aspect-square w-full max-w-[280px] rounded-10 border border-border object-cover"
         />
       ) : (
         <MediaPlaceholder
           scale="card"
-          caption="series art 16:9"
-          className="aspect-video rounded-10 border border-border"
+          caption="cover · square · 1080×1080"
+          className="aspect-square w-full max-w-[280px] rounded-10 border border-border"
         />
       )}
 
@@ -74,6 +76,13 @@ export function SeriesThumbnail({
         </Alert>
       ) : null}
 
+      <p className="text-[12.5px] text-ink-muted">{COVER_HINT}</p>
+      {sizeWarning && !errorMessage ? (
+        <Alert variant="warning" title="Check this image">
+          {sizeWarning}
+        </Alert>
+      ) : null}
+
       <input
         ref={inputRef}
         type="file"
@@ -82,7 +91,12 @@ export function SeriesThumbnail({
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
-          if (file) replace(file);
+          if (!file) return;
+          setSizeWarning(null);
+          replace(file);
+          void readImageSize(file).then((size) =>
+            setSizeWarning(size ? coverDimensionsWarning(size.width, size.height) : null),
+          );
         }}
       />
 

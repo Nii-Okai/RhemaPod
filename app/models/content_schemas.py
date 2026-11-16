@@ -1,9 +1,19 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.models.models import ContentTier, MediaType, SermonStatus
+from app.core.text_safety import normalise_text, raw_length_exceeded
+from app.models.models import (
+    CaptionSource,
+    CaptionStatus,
+    CommentReportReason,
+    CommentStatus,
+    ContentTier,
+    MediaType,
+    SermonStatus,
+)
 from app.models.models import MediaType as _MediaType  # noqa: E402
 from app.models.models import UploadStatus as _UploadStatus  # noqa: E402
 
@@ -132,6 +142,14 @@ class SeriesPublic(BaseModel):
     # the portal's series grid drops its per-card count + category-join probes.
     episode_count: int
     category_name: str | None
+    # Isaac's ask, session 2026-10-09: the series-page Like button needs a real
+    # counter. Computed the same way episode_count is (a correlated subquery in
+    # the read query, see `content_service._series_public_stmt`) — every series
+    # read carries it, list and detail alike, same as episode_count/category_name
+    # above; nothing about this field is detail-only. `liked_by_me` is `false`
+    # for an anonymous viewer (no user to have liked anything).
+    like_count: int = 0
+    liked_by_me: bool = False
 
 
 class EpisodeOrderRequest(BaseModel):
@@ -173,6 +191,7 @@ class SermonCreate(BaseModel):
     )
     tier: ContentTier | None = None  # None = inherit from series / free
     tags: list[str] = Field(default_factory=list, max_length=30)
+    is_prophets_catalog: bool = False
     # publish_at is intentionally NOT settable here. Only a manager/admin may
     # gate a sermon's public visibility, and only via the publish review
     # action (`PublishRequest` below) — never at creation, for any role. See
@@ -188,6 +207,7 @@ class SermonUpdate(BaseModel):
     episode_number: int | None = Field(default=None, ge=0)
     tier: ContentTier | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
+    is_prophets_catalog: bool | None = None
     # publish_at is intentionally NOT editable here. Only a manager/admin may
     # gate a sermon's public visibility, and only via the publish review
     # action (`PublishRequest` below) — never through the general editor,
@@ -236,6 +256,30 @@ class SermonListItem(BaseModel):
     # already cleared sermon_visibility_clause, so a returned publish_at is
     # always already in the past (or unset) — nothing premature leaks.
     publish_at: datetime | None = None
+    # Which rendition this sermon actually has (a sermon carries exactly one —
+    # video or audio, never both — mobile download UI's own assumption). None
+    # on every list endpoint except GET /series/{id}/episodes, the only caller
+    # that passes `to_list_item` a value for it today (offline downloads need
+    # to know the type per episode without a second request) — deliberately
+    # not resolved for every other list endpoint's rows (that's an eager-load
+    # per call site this field doesn't need yet).
+    media_type: Literal["audio", "video"] | None = None
+
+
+class UpcomingSermon(BaseModel):
+    """The next scheduled sermon — PUBLISHED with a future `publish_at` — for Home's
+    "next message" countdown. Deliberately thin: the title, its cover art (Nii's call,
+    2026-10-21: the countdown shows the sermon's own art), when it goes live, and the
+    names a card needs. No description or media, so nothing playable leaks ahead of
+    the release."""
+
+    id: uuid.UUID
+    title: str
+    publish_at: datetime
+    thumbnail_url: str | None = None
+    speaker_name: str | None = None
+    series_title: str | None = None
+    episode_number: int | None = None
 
 
 class SermonAdminListItem(SermonListItem):
@@ -254,6 +298,23 @@ class SermonDetail(SermonListItem):
     media_refs: list[MediaRefPublic]
     published_at: datetime | None
     created_at: datetime
+    # Isaac's ask, session 2026-10-09: the sermon-page Like button needs a real
+    # counter. Detail-only (unlike `SeriesPublic`'s own like fields, which also
+    # cover list rows) — `SermonListItem` already splits list from detail, so
+    # there's no shared-schema reason to compute this for every catalog row the
+    # way series' own single list+detail schema does. `liked_by_me` is `false`
+    # for an anonymous viewer.
+    like_count: int = 0
+    liked_by_me: bool = False
+
+
+class LikeState(BaseModel):
+    """Response for a like/unlike action — the caller's own `ActionButton`
+    reflects both halves (the glyph from `liked`, the number from
+    `like_count`) off one response, not a second round trip."""
+
+    liked: bool
+    like_count: int
 
 
 class SermonAdminDetail(SermonDetail):
@@ -274,6 +335,7 @@ class SermonAdminDetail(SermonDetail):
     # Raw `Sermon.tier` column: None = inherit from series / free default.
     tier_override: ContentTier | None = None
     updated_at: datetime | None
+    is_prophets_catalog: bool = False
 
 
 # ── Approval workflow ─────────────────────────────────────────────────────────
@@ -465,31 +527,26 @@ class AudioDownloadResponse(BaseModel):
     expires_in: int
 
 
+class VideoDownloadResponse(BaseModel):
+    """GET .../download/video — a short-lived signed URL for the video
+    rendition only, for offline download (L6's "audio-only, ever" revisited:
+    Isaac's ask, session 2026-10-08 — video downloads now ship, with weaker
+    at-rest protection than audio's own JS-level encryption gets; see
+    `media_service.get_video_download`'s own docstring). Same minimal shape
+    as `AudioDownloadResponse` deliberately — each sermon carries exactly one
+    rendition, never both, so no caller ever needs the two responses to
+    disagree in shape."""
+
+    sermon_id: uuid.UUID
+    url: str
+    expires_in: int
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 5: Subscriptions
 # ═══════════════════════════════════════════════════════════════════════════════
 from app.models.models import SubscriptionStatus as _SubStatus  # noqa: E402
 from app.models.models import SubscriptionTier as _SubTier  # noqa: E402
-
-
-class CheckoutRequest(BaseModel):
-    tier: _SubTier = _SubTier.MONTHLY
-
-    @field_validator("tier")
-    @classmethod
-    def must_be_paid(cls, v: _SubTier) -> _SubTier:
-        if v == _SubTier.FREE:
-            raise ValueError("Choose a paid tier to start a checkout")
-        return v
-
-
-class CheckoutResponse(BaseModel):
-    checkout_url: str
-    session_id: str
-
-
-class PortalResponse(BaseModel):
-    portal_url: str
 
 
 class SubscriptionPublic(BaseModel):
@@ -511,11 +568,10 @@ class SubscriptionAdminItem(BaseModel):
 
     Deliberately carries **no** monetary field — no `amount`, `price`,
     `currency` or MRR (resolved decision 2). No amount is stored on
-    `Subscription` and the webhook never parses one; there is nothing truthful
-    to put here and Phase 2 shows no dollar figure anywhere in the portal.
-    `current_period_end` is the model's `valid_until` column (null on free /
-    fully-lapsed rows). `provider_customer_id` is null until the member's first
-    payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+    `Subscription`; there is nothing truthful to put here and Phase 2 shows no
+    dollar figure anywhere in the portal. `current_period_end` is the model's
+    `valid_until` column (null on free / fully-lapsed rows).
+    `provider_customer_id` is null until a payment provider populates it.
     """
 
     id: uuid.UUID
@@ -717,7 +773,14 @@ class TopSermonStat(BaseModel):
 
 
 class OverviewStats(BaseModel):
+    """All-time platform figures for the Dashboard. Every number is a count
+    over the live tables at request time (not the daily rollups), so it
+    covers history from before the rollups existed."""
+
     total_users: int
+    # Mobile app accounts (role viewer); `active_members` excludes deactivated.
+    members: int = 0
+    active_members: int = 0
     active_subscribers: int
     published_sermons: int
     total_plays: int
@@ -725,6 +788,79 @@ class OverviewStats(BaseModel):
     completions: int
     completion_rate: float
     plays_last_7_days: int
+    watch_hours: float = 0.0
+
+
+class SermonStatusCounts(BaseModel):
+    """Sermons per workflow status, in the caller's scope (an editor's own
+    sermons; everyone's for a manager/admin). Zero-filled."""
+
+    draft: int = 0
+    pending_review: int = 0
+    under_review: int = 0
+    approved: int = 0
+    published: int = 0
+    rejected: int = 0
+    unpublished: int = 0
+    total: int = 0
+
+
+class ReportPeriod(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: date = Field(alias="from", serialization_alias="from")
+    to: date
+    granularity: Literal["day", "week", "month"]
+
+
+class ReportKpis(BaseModel):
+    """Period totals. `listeners` is distinct accounts over the whole period
+    (not a sum of bucket counts). `new_listeners` and `signups` (viewer
+    accounts created) are accurate for any period; the other measures exist
+    only from `data_available_from` on."""
+
+    plays: int
+    completions: int
+    watch_hours: float
+    listeners: int
+    new_listeners: int
+    signups: int
+
+
+class ReportBucket(BaseModel):
+    """One bucket, half-open `[start, end)`. Weekly buckets cut at ISO
+    Mondays and monthly at the 1st; the first and last are clipped to the
+    period."""
+
+    start: date
+    end: date
+    plays: int
+    completions: int
+    watch_hours: float
+    listeners: int
+    new_listeners: int
+    signups: int
+
+
+class ReportTopSermon(BaseModel):
+    sermon_id: uuid.UUID
+    title: str
+    plays: int
+    completions: int
+    watch_hours: float
+
+
+class UsageReport(BaseModel):
+    """`GET /admin/analytics/report` (plan-admin-settings §A.5).
+    `data_available_from` is the earliest day with any rollup data: plays,
+    completions and watch time are forward-only from then (§A.2). Null when
+    there is no rollup data yet."""
+
+    period: ReportPeriod
+    data_available_from: date | None
+    kpis: ReportKpis
+    series: list[ReportBucket]
+    top_sermons: list[ReportTopSermon]
 
 
 class NewListenersBucket(BaseModel):
@@ -741,27 +877,159 @@ class NewListenersBucket(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Notes
+# Notes retired (Isaac's ask, session 2026-10-02): replaced by sermon comments.
+# NoteCreate/NoteUpdate/NotePublic deliberately not carried forward from
+# feat/r2-storage during the merge — bringing them back would contradict the
+# whole point of the comments feature (ADR-0012 "Retire Notes").
 # ═══════════════════════════════════════════════════════════════════════════════
-class NoteCreate(BaseModel):
-    position_seconds: int = Field(ge=0)
-    body: str = Field(min_length=1)
+# Verses (Home's "verse of the day" — see app/scripts/seed_verses.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+class VerseCreate(BaseModel):
+    reference: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1)
+    translation: str = Field(default="kjv", max_length=20)
+    is_active: bool = True
 
 
-class NoteUpdate(BaseModel):
-    position_seconds: int | None = Field(default=None, ge=0)
-    body: str | None = Field(default=None, min_length=1)
+class VerseUpdate(BaseModel):
+    reference: str | None = Field(default=None, min_length=1, max_length=100)
+    text: str | None = Field(default=None, min_length=1)
+    translation: str | None = Field(default=None, max_length=20)
+    is_active: bool | None = None
 
 
-class NotePublic(BaseModel):
+class VersePublic(BaseModel):
+    """What `GET /verses/today` returns — no `is_active`/`created_by`/timestamps,
+    same split Announcements draws between its public and staff shapes."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    sermon_id: uuid.UUID
-    position_seconds: int
-    body: str
+    reference: str
+    text: str
+    translation: str
+
+
+class VerseAdminItem(VersePublic):
+    is_active: bool
+    created_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime | None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Playlists (Isaac's ask, session 2026-10-10: a "Library" tab for user-created
+# playlists, Spotify's own playlist flow as the reference). Private by default;
+# every write is owner-only and `GET /playlists` lists only the viewer's own.
+# `GET /playlists/{id}` is also readable by a signed-in non-owner when
+# `is_public` is true and no block exists in either direction (share links,
+# ADR 0021 Phase 2); private, missing and blocked are one identical 404.
+# Making a playlist public runs the comment content rules on name/description.
+# A playlist item always points at a `Sermon` row — series episodes ARE
+# sermons (`Sermon.series_id`), so "sermons and episodes" needs no second
+# content type or polymorphic column, unlike the Like tables' sermon/series
+# split.
+# ═══════════════════════════════════════════════════════════════════════════════
+# The cover colours a playlist without a photo can pick (Daybreak canvas E3). Names,
+# not hex: each app draws its own shade per theme.
+PlaylistCoverColor = Literal["navy", "teal", "gold", "berry", "sage", "ink"]
+
+
+class PlaylistCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=300)
+    is_public: bool = False
+    cover_color: PlaylistCoverColor | None = None
+
+
+class PlaylistUpdate(BaseModel):
+    """Every field optional — a PATCH only touches what the client sends,
+    same convention `SeriesUpdate`/`ProfileDetailsUpdate` already use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=300)
+    is_public: bool | None = None
+    # An explicit null clears the colour back to the default cover.
+    cover_color: PlaylistCoverColor | None = None
+
+    @model_validator(mode="after")
+    def _no_explicit_null_for_required_columns(self) -> "PlaylistUpdate":
+        # Omit a field to leave it alone; an explicit null would hit a NOT NULL column.
+        for field in ("name", "is_public"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class PlaylistItemPublic(BaseModel):
+    id: uuid.UUID
+    position: int
+    added_at: datetime
+    sermon: SermonListItem
+
+
+class PlaylistPublic(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    is_public: bool
+    cover_url: str | None
+    cover_color: PlaylistCoverColor | None = None
+    owner_name: str | None
+    item_count: int
+    total_duration_seconds: int
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class PlaylistDetail(PlaylistPublic):
+    """Items are pre-filtered to what's currently visible to the viewer —
+    a sermon unpublished after being added just quietly drops out of the
+    list (same "invisible content never renders" rule every other catalog
+    read follows), without deleting the underlying `PlaylistItem` row, so it
+    reappears if the sermon is republished."""
+
+    is_owner: bool
+    items: list[PlaylistItemPublic]
+
+
+class PlaylistItemAdd(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sermon_id: uuid.UUID
+
+
+class PlaylistItemOrderRequest(BaseModel):
+    """Every current item id, in the caller's desired order — same
+    all-or-nothing shape `EpisodeOrderRequest` uses for episode reordering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[uuid.UUID]
+
+
+class PlaylistCoverUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=3, max_length=120)
+
+
+class PlaylistCoverTicket(BaseModel):
+    """Pre-signed PUT for a playlist cover image — same direct-to-storage
+    pattern the profile avatar and sermon/series thumbnails already use."""
+
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int
+    cover_key: str
+
+
+class PlaylistCoverResponse(BaseModel):
+    cover_url: str | None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -780,3 +1048,334 @@ class Page(BaseModel, Generic[_T]):
     total: int
     limit: int
     offset: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Church settings (plan-admin-settings §A.4.3 / §A.5)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SETTINGS_URL_MAX = 2048
+
+# Editable text fields: name -> (max length, multiline). Lengths match the
+# `church_settings` columns. The comment guidelines are not editable: they
+# are served from `app/content/comment_guidelines.txt`.
+SETTINGS_TEXT_FIELDS: dict[str, tuple[int, bool]] = {
+    "church_name": (200, False),
+    "app_display_name": (100, False),
+    "tagline": (200, False),
+    "about": (5000, True),
+    "contact_phone": (40, False),
+    "address": (500, True),
+    "copyright_notice": (300, False),
+}
+SETTINGS_URL_FIELDS = ("website_url", "terms_of_use_url", "privacy_policy_url")
+# Columns that are NOT NULL: a PATCH may change them but never clear them.
+SETTINGS_REQUIRED_FIELDS = ("contact_email",)
+SETTINGS_EDITABLE_FIELDS = (
+    *SETTINGS_TEXT_FIELDS, *SETTINGS_URL_FIELDS, "contact_email",
+)
+
+
+class ChurchSettingsPublic(BaseModel):
+    """`GET /settings/public` — what the mobile app reads, unauthenticated.
+    No `updated_by_id` or `updated_at`. `version` plus the guidelines digest
+    form the weak ETag. `comment_guidelines` comes from the static
+    file `app/content/comment_guidelines.txt`, not from the row. The mobile
+    app renders contact email, comment guidelines and the two legal URLs in
+    v1; the other fields are returned but not yet shown."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    church_name: str | None
+    app_display_name: str | None
+    tagline: str | None
+    about: str | None
+    contact_email: str
+    contact_phone: str | None
+    website_url: str | None
+    address: str | None
+    comment_guidelines: str
+    terms_of_use_url: str | None
+    privacy_policy_url: str | None
+    copyright_notice: str | None
+    # The admin portal's sign-in screen photo (a time-limited URL), or null
+    # for the portal's built-in artwork. Changed through
+    # `/admin/settings/sign-in-image*`, not the PATCH.
+    sign_in_image_url: str | None = None
+    version: int
+
+
+class ChurchSettingsAdmin(ChurchSettingsPublic):
+    """`GET/PATCH /admin/settings` — the public fields plus who last saved
+    and when. `updated_by` is that account's email, `"Deleted account"` once
+    it is gone, or null before the first edit."""
+
+    updated_at: datetime
+    updated_by: str | None
+
+
+class ChurchSettingsUpdate(BaseModel):
+    """Partial update. Omit a field to leave it unchanged; send `null` to
+    clear an optional one (`contact_email` can be changed but never cleared;
+    the comment guidelines are not editable and a body carrying them is a
+    422). `version` must be the one the editor loaded: a stale value is a
+    409, never a silent overwrite.
+
+    Text is normalised like comments (NFC, control characters stripped,
+    whitespace trimmed); an optional field left empty after that is stored
+    as null. URLs must be absolute `https`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    church_name: str | None = None
+    app_display_name: str | None = None
+    tagline: str | None = None
+    about: str | None = None
+    contact_email: EmailStr | None = None
+    contact_phone: str | None = None
+    website_url: str | None = None
+    address: str | None = None
+    terms_of_use_url: str | None = None
+    privacy_policy_url: str | None = None
+    copyright_notice: str | None = None
+
+    @field_validator(*SETTINGS_TEXT_FIELDS)
+    @classmethod
+    def _clean_text(cls, v: str | None, info) -> str | None:
+        if v is None:
+            return None
+        cap, multiline = SETTINGS_TEXT_FIELDS[info.field_name]
+        if raw_length_exceeded(v, cap):
+            raise ValueError(f"Must be at most {cap} characters")
+        cleaned = normalise_text(v, multiline=multiline)
+        if len(cleaned) > cap:
+            raise ValueError(f"Must be at most {cap} characters")
+        return cleaned or None
+
+    @field_validator(*SETTINGS_URL_FIELDS)
+    @classmethod
+    def _https_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        from urllib.parse import urlsplit
+
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > SETTINGS_URL_MAX:
+            raise ValueError(f"Must be at most {SETTINGS_URL_MAX} characters")
+        if any(c.isspace() or ord(c) < 0x20 or ord(c) == 0x7F for c in v):
+            raise ValueError("Must not contain spaces or control characters")
+        parts = urlsplit(v)
+        if parts.scheme != "https" or not parts.hostname:
+            raise ValueError("Must be an absolute https:// URL")
+        return v
+
+    @model_validator(mode="after")
+    def _required_fields_not_cleared(self) -> "ChurchSettingsUpdate":
+        for name in SETTINGS_REQUIRED_FIELDS:
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be empty")
+        return self
+
+    def changes(self) -> dict[str, str | None]:
+        """The fields the caller actually sent, `version` excluded."""
+        return {
+            name: (str(getattr(self, name)) if getattr(self, name) is not None else None)
+            for name in SETTINGS_EDITABLE_FIELDS
+            if name in self.model_fields_set
+        }
+
+
+class AuditEntry(BaseModel):
+    """One row of the unified audit feed (`GET /admin/audit`,
+    plan-admin-settings §A.5, D9): `audit_log` plus the three domain logs
+    that predate it, in one shape.
+
+    `source` names the table a row came from. Legacy rows report `outcome`
+    `success`, carry no `ip`/`user_agent`, and resolve `actor_label` from
+    the actor's current account ("Deleted account" once it is gone,
+    "System" for automatic comment hides); `audit_log` rows carry the email
+    snapshot taken at write time. `summary` is a server-built sentence."""
+
+    source: Literal[
+        "audit_log", "approval_log", "announcement_approval_log", "comment_moderation_log"
+    ]
+    id: uuid.UUID
+    created_at: datetime
+    action: str
+    outcome: Literal["success", "failure"]
+    actor_id: uuid.UUID | None
+    actor_label: str
+    actor_role: str | None
+    target_type: str | None
+    target_id: uuid.UUID | None
+    target_label: str | None
+    ip: str | None
+    user_agent: str | None
+    details: dict
+    summary: str
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sermon comments (viewer side)
+# ═══════════════════════════════════════════════════════════════════════════════
+COMMENT_BODY_MAX = 1000
+COMMENT_DETAIL_MAX = 500
+
+
+class CommentCreate(BaseModel):
+    """Only `body` is accepted. `sermon_id` comes from the URL path and the
+    author from the token; any other key is a 422.
+
+    Length, URL and blocklist rules are enforced in the service, after the
+    rate-limit budget is charged, so a rejected attempt still costs budget
+    (plan pin A6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str
+
+
+class CommentReportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: CommentReportReason
+    detail: str | None = None
+
+    @field_validator("detail")
+    @classmethod
+    def _clean_detail(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if raw_length_exceeded(v, COMMENT_DETAIL_MAX):
+            raise ValueError(f"Detail must be at most {COMMENT_DETAIL_MAX} characters")
+        cleaned = normalise_text(v)
+        if len(cleaned) > COMMENT_DETAIL_MAX:
+            raise ValueError(f"Detail must be at most {COMMENT_DETAIL_MAX} characters")
+        return cleaned or None
+
+
+class CommentPublic(BaseModel):
+    """What a viewer sees. Deliberately carries no user id, email or role:
+    the author is only ever "First L."; `is_mine` marks the caller's own rows.
+    `status` and `hidden_label` are meaningful only when `is_mine`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sermon_id: uuid.UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    is_mine: bool
+    status: CommentStatus
+    hidden_label: Literal["under_review", "removed_by_moderator"] | None = None
+
+
+class BlockPublic(BaseModel):
+    """`id` is the block row's own id, never the blocked user's."""
+
+    id: uuid.UUID
+    display_name: str
+    created_at: datetime
+
+
+class BlockCreated(BaseModel):
+    """Result of blocking by comment id. `id` is null only when there was
+    nothing to block (the caller's own comment, or a block removed
+    concurrently)."""
+
+    id: uuid.UUID | None = None
+
+
+# ── Moderation (admin side) ──────────────────────────────────────────────────
+MODERATION_REASON_MAX = 300  # C2 deviation 4: the DB column is uncapped text
+
+
+def _clean_moderation_reason(v: str) -> str:
+    """Shared reason validation: raw-length check first (M-1, so a huge payload is
+    rejected before normalisation), then normalise, then the post-normalisation
+    cap. Returns the cleaned text, which may be empty."""
+    if raw_length_exceeded(v, MODERATION_REASON_MAX):
+        raise ValueError(f"Reason must be at most {MODERATION_REASON_MAX} characters")
+    cleaned = normalise_text(v)
+    if len(cleaned) > MODERATION_REASON_MAX:
+        raise ValueError(f"Reason must be at most {MODERATION_REASON_MAX} characters")
+    return cleaned
+
+
+class ModerationReason(BaseModel):
+    """Request body for hide, hard delete and dismiss-reports. The reason is required, trimmed,
+    normalised like any user text, and capped at 300 characters. It is stored
+    in the moderation log and is never written to application logs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _clean_reason(cls, v: str) -> str:
+        cleaned = _clean_moderation_reason(v)
+        if not cleaned:
+            raise ValueError("A reason is required")
+        return cleaned
+
+
+class CommentAdminForEditor(CommentPublic):
+    """Moderation-queue row as an EDITOR sees it. A separate schema (not a
+    nullable field) so the author's email and id are absent from the payload,
+    per Isaac's C1 decision 3."""
+
+    status: CommentStatus
+    hidden_at: datetime | None = None
+    hidden_reason: str | None = None
+    hidden_auto: bool
+    report_count: int
+    sermon_title: str
+
+
+class CommentAdmin(CommentAdminForEditor):
+    """Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who
+    hid it (the moderator's id is not shown to EDITORs)."""
+
+    hidden_by_id: uuid.UUID | None = None
+    author_id: uuid.UUID
+    author_email: str
+
+
+# ── Captions ──────────────────────────────────────────────────────────────────
+class CaptionPublic(BaseModel):
+    """One caption language on a sermon's video, as the admin portal shows it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    language: str
+    status: CaptionStatus
+    source: CaptionSource
+    error_message: str | None
+    updated_at: datetime | None
+
+
+class CaptionListResponse(BaseModel):
+    """GET /sermons/{id}/captions. `available` is false when the sermon has no
+    processed Stream video (audio-only, still processing, or a pre-Stream
+    video not yet backfilled) — captions can't be added until it does."""
+
+    available: bool
+    default_language: str
+    captions: list[CaptionPublic]
+
+
+class CaptionUpload(BaseModel):
+    """PUT /sermons/{id}/captions/{language}: a WebVTT file's text."""
+
+    vtt: str = Field(min_length=6, max_length=1024 * 1024)
+
+
+class CaptionVtt(BaseModel):
+    language: str
+    vtt: str

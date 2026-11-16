@@ -11,7 +11,7 @@ import { retryDelay, shouldRetry } from './retryPolicy';
  *
  * `sermons` is built out below as the concrete instance (it's also the
  * plan's own example, §A.8). Phase 4 adds sibling domains — `series`,
- * `announcements`, `notes`, etc. — by mirroring this exact shape:
+ * `announcements`, etc. — by mirroring this exact shape:
  *
  *   <domain>: {
  *     all: ['<domain>'] as const,
@@ -33,6 +33,11 @@ export const queryKeys = {
     list: (params: Record<string, unknown> = {}) => [...queryKeys.sermons.lists(), params] as const,
     details: () => [...queryKeys.sermons.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.sermons.details(), id] as const,
+    trending: () => [...queryKeys.sermons.all, 'trending'] as const,
+    newReleases: () => [...queryKeys.sermons.all, 'new-releases'] as const,
+    prophetsCatalog: () => [...queryKeys.sermons.all, 'prophets-catalog'] as const,
+    hero: () => [...queryKeys.sermons.all, 'hero'] as const,
+    upcoming: () => [...queryKeys.sermons.all, 'upcoming'] as const,
   },
   // W4.3 — mirrors the `sermons` shape above per this factory's own doc comment.
   categories: {
@@ -56,6 +61,13 @@ export const queryKeys = {
     // `object`, not `Record<string, unknown>`: callers pass a named params interface
     // (`SearchResultsParams`), which has no index signature of its own.
     results: (params: object = {}) => [...queryKeys.search.all, 'results', params] as const,
+    // Distinct key namespace from `results` above — an `useInfiniteQuery` cache entry
+    // ({pages, pageParams}) has a different shape than a plain `useQuery` one (a flat
+    // `SearchResults`), so the two must never collide under the same key even when
+    // called with identical params (`AddToPlaylistSheet`'s own paginated Sermons/
+    // Episodes tabs, Isaac's ask, session 2026-10-10 — "not all episodes are showing,"
+    // the 20-result-cap root cause).
+    resultsInfinite: (params: object = {}) => [...queryKeys.search.all, 'results-infinite', params] as const,
     suggest: (q: string) => [...queryKeys.search.all, 'suggest', q] as const,
   },
   // W4.4 — mirrors the `sermons` shape above per this factory's own doc comment.
@@ -72,6 +84,24 @@ export const queryKeys = {
     lists: () => [...queryKeys.announcements.all, 'list'] as const,
     list: (params: Record<string, unknown> = {}) => [...queryKeys.announcements.lists(), params] as const,
   },
+  verses: {
+    all: ['verses'] as const,
+    today: () => [...queryKeys.verses.all, 'today'] as const,
+  },
+  /** `GET /devotionals/days` — the Daily Rhema prefetch window (plan-daily-devotional M1).
+      Keyed by the window's first date so a new day refetches. */
+  devotionals: {
+    all: ['devotionals'] as const,
+    window: (from: string) => [...queryKeys.devotionals.all, 'window', from] as const,
+    /** The on-device journal (D2) — local storage only, cached here so screens share it. */
+    journal: () => [...queryKeys.devotionals.all, 'journal'] as const,
+  },
+  /** `GET /settings/public` — church contact email, comment guidelines and legal links
+      (plan-admin-settings S18). One public, unauthenticated read. */
+  settings: {
+    all: ['settings'] as const,
+    public: () => [...queryKeys.settings.all, 'public'] as const,
+  },
   /**
    * The caller's own `/me/*` reads, folded into one domain rather than split across
    * `me` and a standalone `continueWatching` (W4.1/W4.4 reconciliation — both are reads
@@ -85,24 +115,15 @@ export const queryKeys = {
   me: {
     all: ['me'] as const,
     continueWatching: () => [...queryKeys.me.all, 'continueWatching'] as const,
+    recommended: () => [...queryKeys.me.all, 'recommended'] as const,
     history: (limit: number) => [...queryKeys.me.all, 'history', limit] as const,
     historyForSeries: (seriesId: string) => [...queryKeys.me.all, 'history', 'series', seriesId] as const,
     // `GET /auth/me` (W4.6) — a different path prefix than the rest of this domain's
     // `/me/*` reads, but the same "the caller's own data" scoping, so it's folded in here
     // rather than opening a new top-level domain for one endpoint.
     profile: () => [...queryKeys.me.all, 'profile'] as const,
-  },
-  /**
-   * W4.6 — the two distinct note reads this app has: every note the caller owns
-   * (Profile & Settings' Library "Notes" row, and the tablet two-pane "Your notes"
-   * panel) vs. one sermon's own notes (the eventual W4.2 Player drawer). Mirrors the
-   * `sermons` shape's `all`-prefix convention, adapted since neither read takes the
-   * same shape of params as a generic paginated list.
-   */
-  notes: {
-    all: ['notes'] as const,
-    mine: () => [...queryKeys.notes.all, 'mine'] as const,
-    forSermon: (sermonId: string) => [...queryKeys.notes.all, 'sermon', sermonId] as const,
+    // `GET /me/blocks` — the authors the caller has blocked (Me > Blocked users).
+    blocks: () => [...queryKeys.me.all, 'blocks'] as const,
   },
   // Per-sermon resume position — `GET /sermons/{sermon_id}/progress`, deliberately
   // separate from `sermons.detail(id)` (SermonDetail) since the two responses are
@@ -120,6 +141,23 @@ export const queryKeys = {
     all: ['stream'] as const,
     details: () => [...queryKeys.stream.all, 'detail'] as const,
     detail: (sermonId: string) => [...queryKeys.stream.details(), sermonId] as const,
+  },
+  // `GET /sermons/{sermon_id}/comments` — one sermon's comment thread (offset-paginated,
+  // newest first). Its own domain, like `progress`/`stream`: a per-sermon resource that
+  // shares a path segment with `sermons` but is a different, user-generated resource.
+  comments: {
+    all: ['comments'] as const,
+    forSermon: (sermonId: string) => [...queryKeys.comments.all, 'sermon', sermonId] as const,
+  },
+  // The Library tab's playlists (Isaac's ask, session 2026-10-10) — mirrors the
+  // `sermons`/`series` shape; `list()` takes no params (GET /playlists is always
+  // "all of the caller's own playlists", there's no filter to key on).
+  playlists: {
+    all: ['playlists'] as const,
+    lists: () => [...queryKeys.playlists.all, 'list'] as const,
+    list: () => [...queryKeys.playlists.lists()] as const,
+    details: () => [...queryKeys.playlists.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.playlists.details(), id] as const,
   },
 } as const;
 
@@ -154,9 +192,13 @@ export const queryClient = new QueryClient({
       retry: shouldRetry,
       retryDelay,
       refetchOnReconnect: true,
+      // See `lifecycle.ts`: offline is known but never pauses a request, so screens keep
+      // failing fast into their own offline states instead of hanging on "Loading…".
+      networkMode: 'always',
     },
     mutations: {
       retry: false,
+      networkMode: 'always',
     },
   },
 });

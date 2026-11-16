@@ -1,11 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useImperativeHandle, useRef } from 'react';
 import { View, type ViewProps } from 'react-native';
 
 /**
  * Manual Jest mock for `expo-video`. The real `VideoPlayer`/`VideoView` are backed by
  * ExoPlayer/AVPlayer native machinery `jest-expo`'s test environment doesn't stand up
  * (same reasoning as the `@expo/vector-icons` manual mock alongside this one) — Player
- * screen tests exercise the screen's own logic (transport wiring, progress flush, notes),
+ * screen tests exercise the screen's own logic (transport wiring, progress flush, comments),
  * not real video decoding, so this stands in a controllable fake player plus a bare
  * `<View>` for the video surface.
  *
@@ -51,7 +51,17 @@ export class MockVideoPlayer extends MockEventEmitter {
   showNowPlayingNotification = false;
   timeUpdateEventInterval = 0;
   loop = false;
-  muted = false;
+  availableSubtitleTracks: { id?: string; language: string; label: string }[] = [];
+  subtitleTrack: { id?: string; language: string; label: string } | null = null;
+  private _muted = false;
+  get muted() {
+    return this._muted;
+  }
+  set muted(next: boolean) {
+    const old = this._muted;
+    this._muted = next;
+    if (old !== next) this.emit('mutedChange', { muted: next, oldMuted: old });
+  }
 
   play = jest.fn(() => {
     this.playing = true;
@@ -69,6 +79,7 @@ export class MockVideoPlayer extends MockEventEmitter {
 
   replace = jest.fn();
   replay = jest.fn();
+  release = jest.fn();
   generateThumbnailsAsync = jest.fn();
 
   /** Test helper, not part of the real API: simulates the native side finishing a load. */
@@ -83,6 +94,13 @@ export class MockVideoPlayer extends MockEventEmitter {
     this.currentTime = currentTime;
     this.bufferedPosition = currentTime;
     this.emit('timeUpdate', { currentTime, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: currentTime });
+  }
+
+  /** Test helper: simulates the manifest's subtitle tracks becoming known. */
+  __simulateSubtitleTracks(tracks: { language: string; label: string }[]) {
+    const old = this.availableSubtitleTracks;
+    this.availableSubtitleTracks = tracks;
+    this.emit('availableSubtitleTracksChange', { availableSubtitleTracks: tracks, oldAvailableSubtitleTracks: old });
   }
 
   /** Test helper: simulates reaching the end of the source. */
@@ -105,12 +123,34 @@ export function useVideoPlayer(source: unknown, setup?: (player: MockVideoPlayer
   return playerRef.current;
 }
 
+/** `createVideoPlayer` (the shared app-wide player, `lib/playback/NowPlaying.tsx`). */
+export function createVideoPlayer(): MockVideoPlayer {
+  const player = new MockVideoPlayer();
+  __lastMockPlayer = player;
+  return player;
+}
+
 export interface MockVideoViewProps extends ViewProps {
   player: MockVideoPlayer;
   nativeControls?: boolean;
   contentFit?: string;
   allowsFullscreen?: boolean;
+  onFullscreenEnter?: () => void;
+  onFullscreenExit?: () => void;
+  allowsPictureInPicture?: boolean;
+  startsPictureInPictureAutomatically?: boolean;
+  onPictureInPictureStart?: () => void;
+  onPictureInPictureStop?: () => void;
 }
+
+/** The fullscreen calls the screen makes through its `VideoView` ref, observable by tests. */
+export const __enterFullscreen = jest.fn(async () => {});
+export const __exitFullscreen = jest.fn(async () => {});
+export const __startPictureInPicture = jest.fn(async () => {});
+export const __stopPictureInPicture = jest.fn(async () => {});
+
+/** Off by default, like Jest's real environment; a test turns it on to see the PiP control. */
+export const isPictureInPictureSupported = jest.fn(() => false);
 
 /**
  * Deliberately doesn't destructure `player`/`nativeControls`/`contentFit`/
@@ -120,6 +160,20 @@ export interface MockVideoViewProps extends ViewProps {
  * Only `style` (the one prop a test could plausibly care about) is pulled out; nothing
  * else is spread onto the underlying `View`.
  */
-export function VideoView(props: MockVideoViewProps) {
+export const VideoView = React.forwardRef<
+  {
+    enterFullscreen: () => Promise<void>;
+    exitFullscreen: () => Promise<void>;
+    startPictureInPicture: () => Promise<void>;
+    stopPictureInPicture: () => Promise<void>;
+  },
+  MockVideoViewProps
+>(function VideoView(props, ref) {
+  useImperativeHandle(ref, () => ({
+    enterFullscreen: __enterFullscreen,
+    exitFullscreen: __exitFullscreen,
+    startPictureInPicture: __startPictureInPicture,
+    stopPictureInPicture: __stopPictureInPicture,
+  }));
   return <View testID="video-view" style={props.style} />;
-}
+});

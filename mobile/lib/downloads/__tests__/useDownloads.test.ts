@@ -3,6 +3,7 @@ import * as Network from 'expo-network';
 import { __resetStartupSweepForTests, useDownloads } from '../useDownloads';
 import type { DownloadManager } from '../downloadManager';
 import type { DownloadRecord } from '../types';
+import { queryClient, queryKeys } from '../../query/queryClient';
 
 /**
  * `useDownloads.ts` imports the real `downloadManager` singleton from `./downloadManager`
@@ -53,6 +54,10 @@ function record(sermonId: string, overrides: Partial<DownloadRecord> = {}): Down
   return {
     sermonId,
     title: 'Title',
+    thumbnailUrl: null,
+    thumbnailPath: null,
+    category: null,
+    mediaType: 'audio',
     state: 'ready',
     progress: 1,
     bytesTotal: 100,
@@ -68,8 +73,8 @@ function record(sermonId: string, overrides: Partial<DownloadRecord> = {}): Down
 function makeFakeManager(initial: DownloadRecord[] = []): jest.Mocked<DownloadManager> {
   let rows = [...initial];
   return {
-    enqueueDownload: jest.fn(async (sermonId: string, title: string) => {
-      rows = [...rows, record(sermonId, { title, state: 'queued', progress: 0 })];
+    enqueueDownload: jest.fn(async (sermonId: string, title: string, mediaType: DownloadRecord['mediaType']) => {
+      rows = [...rows, record(sermonId, { title, mediaType, state: 'queued', progress: 0 })];
     }),
     retryDownload: jest.fn(async () => undefined),
     deleteDownload: jest.fn(async (sermonId: string) => {
@@ -78,6 +83,9 @@ function makeFakeManager(initial: DownloadRecord[] = []): jest.Mocked<DownloadMa
     listDownloads: jest.fn(async () => rows),
     getDownload: jest.fn(async (sermonId: string) => rows.find((r) => r.sermonId === sermonId) ?? null),
     resumeQueuedDownloads: jest.fn(async () => undefined),
+    pauseIfGateClosed: jest.fn(async () => undefined),
+    getDetailSnapshot: jest.fn(async () => null),
+    backfillDetailSnapshots: jest.fn(async () => undefined),
     startupSweep: jest.fn(async () => undefined),
     preparePlaybackFile: jest.fn(async () => 'file:///playback-tmp/x'),
     cleanupPlaybackTempFile: jest.fn(async () => undefined),
@@ -119,11 +127,65 @@ describe('useDownloads', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.download('sermon-1', 'A Sermon');
+      await result.current.download('sermon-1', 'A Sermon', 'audio');
     });
 
-    expect(manager.enqueueDownload).toHaveBeenCalledWith('sermon-1', 'A Sermon');
+    expect(manager.enqueueDownload).toHaveBeenCalledWith('sermon-1', 'A Sermon', 'audio', undefined, undefined);
     expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', title: 'A Sermon' });
+  });
+
+  it('download() shows a queued record immediately, without waiting for the manager call to resolve', async () => {
+    // `enqueueDownload` doesn't resolve until the whole transfer finishes (real
+    // `downloadManager` behaviour — see `useDownloads.ts`'s own doc comment on
+    // `setOptimisticQueued`), so this fake never resolves at all: if `find()` only showed
+    // `queued` *after* `download()`'s promise settled, this assertion would hang/timeout
+    // instead of passing, proving the optimistic write happens up front.
+    const manager = makeFakeManager([]);
+    manager.enqueueDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.download('sermon-1', 'A Sermon', 'audio');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, title: 'A Sermon' });
+  });
+
+  it('retry() shows the record back in queued immediately, without waiting for the manager call to resolve', async () => {
+    const manager = makeFakeManager([record('sermon-1', { state: 'failed', failureReason: 'network' })]);
+    manager.retryDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.retry('sermon-1');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({ state: 'queued', progress: 0, failureReason: null });
+  });
+
+  it('retry()\'s optimistic queued placeholder carries the existing thumbnailPath forward, not just thumbnailUrl/category (session 2026-10-15 thumbnail fix: setOptimisticQueued must not blank out a local thumbnail copy a prior successful download already recorded)', async () => {
+    const manager = makeFakeManager([
+      record('sermon-1', {
+        state: 'failed',
+        failureReason: 'network',
+        thumbnailUrl: 'https://cdn.example.com/signed/thumb.jpg',
+        thumbnailPath: 'file:///downloads/sermon-1.thumb',
+      }),
+    ]);
+    manager.retryDownload.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      void result.current.retry('sermon-1');
+    });
+
+    expect(result.current.find('sermon-1')).toMatchObject({
+      state: 'queued',
+      thumbnailPath: 'file:///downloads/sermon-1.thumb',
+    });
   });
 
   it('retry() and remove() delegate to the manager and refresh', async () => {
@@ -148,6 +210,10 @@ describe('useDownloads', () => {
     const { result } = renderHook(() => useDownloads(manager));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.wifiOnly).toBe(true);
+    // The once-per-launch resume after the startup sweep — cleared so the assertion
+    // below is about the toggle alone.
+    await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1));
+    (manager.resumeQueuedDownloads as jest.Mock).mockClear();
 
     await act(async () => {
       await result.current.setWifiOnly(false);
@@ -155,6 +221,17 @@ describe('useDownloads', () => {
 
     expect(result.current.wifiOnly).toBe(false);
     await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalled());
+  });
+
+  it('resumes queued downloads once at launch, after the startup sweep', async () => {
+    const manager = makeFakeManager([record('sermon-1', { state: 'queued' })]);
+    renderHook(() => useDownloads(manager));
+    renderHook(() => useDownloads(manager));
+
+    await waitFor(() => expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1));
+    expect((manager.startupSweep as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      (manager.resumeQueuedDownloads as jest.Mock).mock.invocationCallOrder[0],
+    );
   });
 
   it('polls the list while a download is active, and stops once everything has settled', async () => {
@@ -206,5 +283,44 @@ describe('useDownloads', () => {
     });
 
     expect(manager.resumeQueuedDownloads).toHaveBeenCalled();
+  });
+
+  it('asks the manager to pause in-flight transfers when the device leaves Wi-Fi', async () => {
+    let listener: ((event: { type: string; isConnected: boolean }) => void) | undefined;
+    (Network.addNetworkStateListener as jest.Mock).mockImplementation((cb) => {
+      listener = cb;
+      return { remove: jest.fn() };
+    });
+
+    const manager = makeFakeManager([]);
+    const { result } = renderHook(() => useDownloads(manager));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      listener?.({ type: 'CELLULAR', isConnected: true });
+      await Promise.resolve();
+    });
+
+    expect(manager.pauseIfGateClosed).toHaveBeenCalled();
+    expect(manager.resumeQueuedDownloads).toHaveBeenCalledTimes(1); // only the launch resume
+  });
+
+  it('seeds the saved sermon detail of a ready download into the query cache, with its local thumbnail', async () => {
+    queryClient.clear();
+    const manager = makeFakeManager([record('sermon-1', { thumbnailPath: 'file:///downloads/sermon-1.thumb' })]);
+    manager.getDetailSnapshot.mockResolvedValue({ id: 'sermon-1', title: 'Saved', thumbnail_url: 'https://expired' });
+
+    renderHook(() => useDownloads(manager));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.sermons.detail('sermon-1'))).toEqual({
+        id: 'sermon-1',
+        title: 'Saved',
+        thumbnail_url: 'file:///downloads/sermon-1.thumb',
+      }),
+    );
+    // Always stale, so an online mount still refetches the live detail.
+    expect(queryClient.getQueryState(queryKeys.sermons.detail('sermon-1'))?.dataUpdatedAt).toBe(0);
+    queryClient.clear();
   });
 });

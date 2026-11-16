@@ -208,7 +208,7 @@ async def test_forgot_password_defers_dispatch_to_background_tasks(engine, monke
     """The known-email side effects (jti ledger write + SMTP send) must be queued
     on BackgroundTasks, not awaited on the response path — an awaited SMTP
     connect would make the endpoint's latency answer 'does this address exist?'."""
-    from fastapi import BackgroundTasks
+    from fastapi import BackgroundTasks, Request
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     import app.api.auth as auth_module
@@ -227,8 +227,9 @@ async def test_forgot_password_defers_dispatch_to_background_tasks(engine, monke
             db, UserRegister(email="known@example.com", password=PW)
         )
         bg = BackgroundTasks()
+        request = Request({"type": "http", "headers": [], "client": ("127.0.0.1", 1)})
         resp = await auth_module.forgot_password(
-            ForgotPasswordRequest(email="known@example.com"), bg, db
+            ForgotPasswordRequest(email="known@example.com"), request, bg, db
         )
 
     # Response is fully formed with neither seam touched...
@@ -362,3 +363,45 @@ async def test_forgot_password_generic_even_when_email_backend_raises(
     # response exists to prevent.
     assert known.status_code == unknown.status_code == 200
     assert known.json() == unknown.json()
+
+
+# ── Abuse caps on forgot-password / change-password ──────────────────────────
+async def test_forgot_password_is_capped_per_address(client, monkeypatch):
+    """Without a per-address cap anyone can flood a victim's inbox with reset
+    mail. The cap is charged before the lookup, so an unknown address hits it
+    at the same count as a known one (no enumeration signal)."""
+    from app.core import email as email_module
+
+    sender = AsyncMock()
+    monkeypatch.setattr(email_module, "send_password_reset", sender)
+    await _register(client)
+
+    for email in ("user@example.com", "nobody@example.com"):
+        statuses = [
+            (await client.post(
+                "/api/v1/auth/forgot-password", json={"email": email}
+            )).status_code
+            for _ in range(4)
+        ]
+        assert statuses == [200, 200, 200, 429]
+    # Only the three allowed requests for the known address sent mail.
+    assert sender.await_count == 3
+
+
+async def test_change_password_wrong_guesses_are_capped(client):
+    await _register(client)
+    tokens = (await _login(client)).json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    from app.core.config import get_settings
+
+    limit = get_settings().login_rate_limit
+    statuses = [
+        (await client.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": f"wrong-guess-{i}", "new_password": NEW_PW},
+            headers=headers,
+        )).status_code
+        for i in range(limit + 1)
+    ]
+    assert statuses[:limit] == [400] * limit
+    assert statuses[limit] == 429

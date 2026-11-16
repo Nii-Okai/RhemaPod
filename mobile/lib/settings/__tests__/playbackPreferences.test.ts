@@ -42,9 +42,9 @@ describe('playbackPreferences', () => {
   });
 
   it('round-trips a saved value', async () => {
-    await savePlaybackPreferences({ defaultSpeed: 1.5, autoplayNextInSeries: false });
+    await savePlaybackPreferences({ defaultSpeed: 1.5, autoplayNextInSeries: false, captionLanguage: 'fr' });
     const loaded = await loadPlaybackPreferences();
-    expect(loaded).toEqual({ defaultSpeed: 1.5, autoplayNextInSeries: false });
+    expect(loaded).toEqual({ defaultSpeed: 1.5, autoplayNextInSeries: false, captionLanguage: 'fr' });
   });
 
   it('falls back to defaults field-by-field on a corrupted payload rather than throwing', async () => {
@@ -59,12 +59,25 @@ describe('playbackPreferences', () => {
       JSON.stringify({ defaultSpeed: 99, autoplayNextInSeries: false }),
     );
     const loaded = await loadPlaybackPreferences();
-    expect(loaded).toEqual({ defaultSpeed: DEFAULT_PLAYBACK_PREFERENCES.defaultSpeed, autoplayNextInSeries: false });
+    expect(loaded).toEqual({
+      defaultSpeed: DEFAULT_PLAYBACK_PREFERENCES.defaultSpeed,
+      autoplayNextInSeries: false,
+      captionLanguage: 'off',
+    });
+  });
+
+  it('drops an unknown caption language back to off', async () => {
+    mockedStorage().__setRaw(
+      'rhemapod-playback-preferences',
+      JSON.stringify({ defaultSpeed: 1, autoplayNextInSeries: true, captionLanguage: 'klingon' }),
+    );
+    const loaded = await loadPlaybackPreferences();
+    expect(loaded.captionLanguage).toBe('off');
   });
 
   it('propagates a storage write failure to the caller', async () => {
     mockedStorage().setItem.mockRejectedValueOnce(new Error('disk full'));
-    await expect(savePlaybackPreferences({ defaultSpeed: 2, autoplayNextInSeries: true })).rejects.toThrow(
+    await expect(savePlaybackPreferences({ defaultSpeed: 2, autoplayNextInSeries: true, captionLanguage: 'off' })).rejects.toThrow(
       'disk full',
     );
   });

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { Animated, View } from 'react-native';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 
 export interface ProgressBarProps {
@@ -26,6 +26,7 @@ const ANIMATION_DURATION_MS = 250;
  * progress rows, confirmed by the spec as the same visual pattern in both places.
  */
 export function ProgressBar({ progress, accessibilityLabel, height = 4, animated = false }: ProgressBarProps) {
+  const styles = useStyles();
   const clamped = Math.min(1, Math.max(0, progress));
   const widthPercent = useRef(new Animated.Value(clamped * 100)).current;
   // Skip animating the very first render — there's nothing to ease from yet, and a
@@ -63,7 +64,7 @@ export function ProgressBar({ progress, accessibilityLabel, height = 4, animated
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   track: {
     width: '100%',
     backgroundColor: colors.track.default,
@@ -74,4 +75,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.gold,
     borderRadius: radius.pill,
   },
-});
+}));

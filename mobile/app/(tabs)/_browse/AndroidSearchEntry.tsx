@@ -1,8 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AppText } from '../../../components';
-import { colors } from '../../../theme/colors';
+import { Pressable } from 'react-native';
+import { AppText, PlatformIcon } from '../../../components';
+import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 
@@ -18,6 +17,8 @@ export interface AndroidSearchEntryProps {
  * flow; nothing here talks to `/search` directly.
  */
 export function AndroidSearchEntry({ onPress }: AndroidSearchEntryProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -25,7 +26,7 @@ export function AndroidSearchEntry({ onPress }: AndroidSearchEntryProps) {
       accessibilityLabel="Search sermons, series, speakers"
       style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
     >
-      <Ionicons name="search" size={18} color={colors.text.tertiary} />
+      <PlatformIcon name="search" size={18} color={colors.text.tertiary} />
       <AppText variant="ui.body" tone="tertiary" style={styles.placeholder}>
         Search sermons, series, speakers
       </AppText>
@@ -33,7 +34,7 @@ export function AndroidSearchEntry({ onPress }: AndroidSearchEntryProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -50,4 +51,4 @@ const styles = StyleSheet.create({
   placeholder: {
     flex: 1,
   },
-});
+}));

@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { clientIpFrom } from "@/lib/auth/client-ip";
 import { csrfGuard } from "@/lib/auth/csrf";
 import { postUpstream, relayUpstreamError } from "@/lib/auth/upstream";
+import { userAgentFrom } from "@/lib/auth/user-agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     "/auth/reset-password",
     { token, new_password: password },
     clientIpFrom(req),
+    userAgentFrom(req.headers),
   );
   if (!upstream.ok) {
     return relayUpstreamError(upstream);

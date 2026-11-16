@@ -1,0 +1,23 @@
+{
+  "routes": [
+    { "route": "/sermon/*", "rewrite": "/open.html", "headers": { "X-Robots-Tag": "noindex" } },
+    { "route": "/series/*", "rewrite": "/open.html", "headers": { "X-Robots-Tag": "noindex" } },
+    { "route": "/playlist/*", "rewrite": "/open.html", "headers": { "X-Robots-Tag": "noindex" } },
+    { "route": "/privacy", "redirect": "https://admin.rhemapod.com/privacy", "statusCode": 301 },
+    { "route": "/terms", "redirect": "https://admin.rhemapod.com/terms", "statusCode": 301 },
+    { "route": "/support", "redirect": "https://admin.rhemapod.com/support", "statusCode": 301 },
+    { "route": "/delete-account", "redirect": "https://admin.rhemapod.com/delete-account", "statusCode": 301 },
+    { "route": "/guidelines", "redirect": "https://admin.rhemapod.com/guidelines", "statusCode": 301 },
+    { "route": "/.well-known/apple-app-site-association", "headers": { "Content-Type": "application/json" } },
+    { "route": "/.well-known/assetlinks.json", "headers": { "Content-Type": "application/json" } }
+  ],
+  "mimeTypes": {
+    ".json": "application/json"
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'",
+    "Strict-Transport-Security": "max-age=31536000"
+  }
+}

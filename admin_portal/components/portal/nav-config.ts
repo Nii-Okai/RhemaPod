@@ -16,17 +16,20 @@
    ========================================================================== */
 
 /** Which live count (if any) a nav item shows on its trailing edge. */
-export type NavCountKey = "sermons" | "series" | "reviewQueue";
+export type NavCountKey = "sermons" | "series" | "reviewQueue" | "comments";
 
 export interface NavItem {
   label: string;
   href: string;
-  /** Trailing count source. `reviewQueue` renders as the clay-600 pill. */
+  /** Trailing count source. `reviewQueue` and `comments` render as the clay-600 pill. */
   count?: NavCountKey;
   /** Hidden from an Editor — manager/admin only (same role check as
       `roleSeesCommunity`). Cosmetic, like the group-level filter below: the
       route itself is the real gate (`requireRole()`, 404 not redirect). */
   managerOnly?: boolean;
+  /** Hidden from everyone but admins. Cosmetic, like `managerOnly`: the page
+      itself 404s below admin (`requireRole("admin")`). */
+  adminOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -50,6 +53,7 @@ const LIBRARY: NavGroup = {
     { label: "Sermons", href: "/sermons", count: "sermons" },
     { label: "Sermon editor", href: "/sermons/new" },
     { label: "Series", href: "/series", count: "series" },
+    { label: "Devotionals", href: "/devotionals" },
     { label: "Speakers & categories", href: "/people" },
   ],
 };
@@ -64,6 +68,9 @@ const WORKFLOW: NavGroup = {
       count: "reviewQueue",
       managerOnly: true,
     },
+    // Visible to every staff role: an Editor gets a read view of comments on
+    // their own sermons (server-scoped), so this is NOT `managerOnly`.
+    { label: "Comments", href: "/comments", count: "comments" },
     { label: "Announcements", href: "/announcements" },
   ],
 };
@@ -74,6 +81,7 @@ const COMMUNITY: NavGroup = {
   items: [
     { label: "Subscriptions", href: "/subscriptions" },
     { label: "Users & roles", href: "/users" },
+    { label: "Mobile users", href: "/members", adminOnly: true },
   ],
 };
 
@@ -128,7 +136,9 @@ export function navGroupsForRole(role: string): NavGroup[] {
   ).map((group) => ({
     ...group,
     items: group.items.filter(
-      (item) => seesManagerOnly || !item.managerOnly,
+      (item) =>
+        (seesManagerOnly || !item.managerOnly) &&
+        (role === "admin" || !item.adminOnly),
     ),
   }));
 }

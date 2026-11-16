@@ -16,6 +16,13 @@ export type StreamVariant = components['schemas']['StreamVariant'];
  * (`expires_in`, ~6h default, `settings.stream_url_expire_seconds`) well past any single
  * playback session, so the default query staleness is fine — a remount fetching a fresh
  * signed URL is harmless, not a sign of over-fetching.
+ *
+ * `staleTime: 0` and `refetchOnMount: 'always'` (S8/S9 review, finding B1/D11/D2): the
+ * media cache's "every hit re-validates entitlement" guarantee needs a genuinely fresh
+ * `/stream` success every mount, not the client defaults' 5-minute staleness window —
+ * `useCachedSource` in `app/player/[id].tsx` gates on `isFetchedAfterMount`, which these
+ * two options make meaningful (otherwise cached-but-stale data would already count as
+ * "fetched" and never trigger the confirming re-fetch at all).
  */
 export function useStream(sermonId: string, options: { enabled?: boolean } = {}) {
   return useQuery({
@@ -23,6 +30,8 @@ export function useStream(sermonId: string, options: { enabled?: boolean } = {})
     queryFn: ({ signal }) =>
       api.get('/sermons/{sermon_id}/stream', { params: { path: { sermon_id: sermonId } }, init: { signal } }),
     enabled: options.enabled ?? true,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
@@ -32,4 +41,14 @@ export function useStream(sermonId: string, options: { enabled?: boolean } = {})
  * checks anyway rather than assuming). */
 export function selectPlaybackVariant(variants: StreamVariant[]): StreamVariant | null {
   return variants.find((v) => v.type === 'video') ?? variants.find((v) => v.type === 'audio') ?? null;
+}
+
+/** The opposite preference from `selectPlaybackVariant` above — audio first, falling
+ * back to the video rendition (whose own muxed audio track still plays fine with no
+ * `VideoView` mounted to show it). For `usePlaylistPreview`'s inline "tap to hear a bit
+ * of this" affordance (Isaac's ask, session 2026-10-10), which is sound-only by design —
+ * there's no surface in a playlist row's 48px thumbnail worth rendering actual video
+ * into. */
+export function selectAudioVariant(variants: StreamVariant[]): StreamVariant | null {
+  return variants.find((v) => v.type === 'audio') ?? variants.find((v) => v.type === 'video') ?? null;
 }

@@ -64,6 +64,7 @@ export interface SermonFormValues {
   episode_number: number | null;
   tier: SermonTier;
   tags: string[];
+  is_prophets_catalog: boolean;
 }
 
 export type SermonPatch = Partial<SermonFormValues>;
@@ -202,6 +203,13 @@ export function useAutosaveSermon(
         const body: SermonCreateBody = {
           ...payload,
           title: (payload.title ?? "").trim(),
+          // openapi-typescript's `defaultNonNullable` treats any schema field
+          // carrying a plain (non-factory) default — `is_prophets_catalog:
+          // bool = False` — as required in the generated request type, even
+          // though the backend itself defaults it. Same defensive-default
+          // pattern as `title` above, not a real behavior change: the server
+          // would apply `False` anyway if this key were simply omitted.
+          is_prophets_catalog: payload.is_prophets_catalog ?? false,
         };
         const created = await unwrap(api.POST("/api/v1/sermons", { body }));
         idRef.current = created.id;

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { Pressable, View } from 'react-native';
+import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 
 export interface ToggleProps {
@@ -29,6 +29,7 @@ const THUMB_INSET = 3;
  * layer" posture (design spec §3's closing note on 2a/2b/2d).
  */
 export function Toggle({ value, onValueChange, disabled = false, accessibilityLabel }: ToggleProps) {
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="switch"
@@ -44,7 +45,7 @@ export function Toggle({ value, onValueChange, disabled = false, accessibilityLa
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   track: {
     width: TRACK_WIDTH,
     height: TRACK_HEIGHT,
@@ -73,4 +74,4 @@ const styles = StyleSheet.create({
   thumbOff: {
     alignSelf: 'flex-start',
   },
-});
+}));

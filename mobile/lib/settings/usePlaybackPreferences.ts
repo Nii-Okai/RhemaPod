@@ -3,6 +3,7 @@ import {
   DEFAULT_PLAYBACK_PREFERENCES,
   loadPlaybackPreferences,
   savePlaybackPreferences,
+  type CaptionPreference,
   type PlaybackPreferences,
   type PlaybackSpeed,
 } from './playbackPreferences';
@@ -14,6 +15,7 @@ export interface UsePlaybackPreferencesResult {
   isSaving: boolean;
   setDefaultSpeed: (speed: PlaybackSpeed) => Promise<void>;
   setAutoplayNextInSeries: (enabled: boolean) => Promise<void>;
+  setCaptionLanguage: (language: CaptionPreference) => Promise<void>;
 }
 
 /**
@@ -79,5 +81,13 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesResult {
     [preferences, applyAndPersist],
   );
 
-  return { preferences, isLoading, isSaving, setDefaultSpeed, setAutoplayNextInSeries };
+  const setCaptionLanguage = useCallback(
+    (language: CaptionPreference) => {
+      const previous = preferences;
+      return applyAndPersist({ ...previous, captionLanguage: language }, previous);
+    },
+    [preferences, applyAndPersist],
+  );
+
+  return { preferences, isLoading, isSaving, setDefaultSpeed, setAutoplayNextInSeries, setCaptionLanguage };
 }

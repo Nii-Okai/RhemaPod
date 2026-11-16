@@ -19,15 +19,15 @@ describe("navGroupsForRole — role gating", () => {
     expect(ids).toEqual(["overview", "library", "workflow"]);
   });
 
-  it("drops 'Review queue' but keeps 'Announcements' in Workflow for an editor", () => {
+  it("drops 'Review queue' but keeps 'Comments' and 'Announcements' in Workflow for an editor", () => {
     const workflow = navGroupsForRole("editor").find(
       (g) => g.id === "workflow",
     );
-    expect(workflow?.items.map((i) => i.label)).toEqual(["Announcements"]);
+    expect(workflow?.items.map((i) => i.label)).toEqual(["Comments", "Announcements"]);
   });
 
   it.each(["manager", "admin"])(
-    "shows every group, and both Workflow items, for %s",
+    "shows every group, and every Workflow item, for %s",
     (role) => {
       const groups = navGroupsForRole(role);
       expect(groups.map((g) => g.id)).toEqual([
@@ -40,6 +40,7 @@ describe("navGroupsForRole — role gating", () => {
       const workflow = groups.find((g) => g.id === "workflow");
       expect(workflow?.items.map((i) => i.label)).toEqual([
         "Review queue",
+        "Comments",
         "Announcements",
       ]);
     },
@@ -51,7 +52,7 @@ describe("navGroupsForRole — role gating", () => {
     expect(editorish.map((g) => g.id)).not.toContain("account");
     expect(
       editorish.find((g) => g.id === "workflow")?.items.map((i) => i.label),
-    ).toEqual(["Announcements"]);
+    ).toEqual(["Comments", "Announcements"]);
     expect(roleSeesCommunity("editor")).toBe(false);
     expect(roleSeesCommunity("admin")).toBe(true);
   });
@@ -67,7 +68,7 @@ describe("navGroupsForRole — role gating", () => {
     workflow?.items.pop();
     expect(
       navGroupsForRole("admin").find((g) => g.id === "workflow")?.items,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });
 

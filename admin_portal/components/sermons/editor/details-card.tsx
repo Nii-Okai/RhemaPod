@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tag } from "@/components/ui/tag";
 import { EditorField } from "@/components/sermons/editor/field";
@@ -202,6 +203,22 @@ export function DetailsCard({
           />
         </EditorField>
       </div>
+
+      <label
+        htmlFor="sermon-prophets-catalog"
+        className="flex items-center gap-9 text-[14px]"
+      >
+        <Switch
+          id="sermon-prophets-catalog"
+          checked={values.is_prophets_catalog}
+          disabled={disabled}
+          onCheckedChange={(checked) => {
+            onChange({ is_prophets_catalog: checked });
+            onCommit();
+          }}
+        />
+        <span className="text-ink">Prophet&rsquo;s Catalog</span>
+      </label>
 
       <EditorField label="Tags">
         <div className="flex flex-wrap items-center gap-8">

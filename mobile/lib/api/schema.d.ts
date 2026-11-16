@@ -46,6 +46,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/analytics/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage Report
+         * @description KPIs, a bucketed series and top sermons for `[from, to)`. Managers
+         *     may view; only admins may export (D1).
+         */
+        get: operations["usage_report_api_v1_admin_analytics_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/analytics/report/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Usage Report
+         * @description The report as CSV, admin only. Fail-closed: the `report.exported`
+         *     audit row is committed before the file is returned, so a failed audit
+         *     insert means no file. Every cell passes the spreadsheet formula guard
+         *     (sermon titles are editor-controlled).
+         */
+        get: operations["export_usage_report_api_v1_admin_analytics_report_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/analytics/top-sermons": {
         parameters: {
             query?: never;
@@ -57,6 +101,337 @@ export interface paths {
         get: operations["top_sermons_api_v1_admin_analytics_top_sermons_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description Newest first, `(created_at DESC, id DESC)`. `from`/`to` are half-open
+         *     `[from, to)`. `total` is the filtered count before paging.
+         */
+        get: operations["list_audit_api_v1_admin_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Audit Entries
+         * @description Delete chosen audit entries. One `data.audit_deleted` row records it.
+         */
+        post: operations["delete_audit_entries_api_v1_admin_audit_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/wipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wipe Audit Trail
+         * @description Delete every audit entry. Needs the typed phrase and the admin's
+         *     password. A `data.audit_wiped` row is written after, so the trail is
+         *     never silently empty.
+         */
+        post: operations["wipe_audit_trail_api_v1_admin_audit_wipe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admin Comments
+         * @description The moderation queue. An editor sees only comments on their own sermons
+         *     (ADR-0004) and the rows carry no author email or id.
+         */
+        get: operations["list_admin_comments_api_v1_admin_comments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Hard Delete Comment
+         * @description Admin only. The reason travels in a JSON body.
+         */
+        delete: operations["hard_delete_comment_api_v1_admin_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/dismiss-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Reports */
+        post: operations["dismiss_reports_api_v1_admin_comments__comment_id__dismiss_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide Comment */
+        post: operations["hide_comment_api_v1_admin_comments__comment_id__hide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/comments/{comment_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Comment */
+        post: operations["restore_comment_api_v1_admin_comments__comment_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Data */
+        get: operations["export_data_api_v1_admin_data_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Data
+         * @description Destructive when `dry_run` is false. Always preview first: the dry run
+         *     performs the whole import inside a transaction and rolls it back.
+         */
+        post: operations["import_data_api_v1_admin_data_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Data
+         * @description Destructive when `dry_run` is false. Preview first: the dry run does
+         *     the whole reset inside a transaction and rolls it back.
+         */
+        post: operations["reset_data_api_v1_admin_data_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/data/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tables */
+        get: operations["list_tables_api_v1_admin_data_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_admin_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description Send only the fields you changed, plus the `version` you loaded. A
+         *     409 means someone else saved first: reload and reapply.
+         */
+        patch: operations["update_settings_api_v1_admin_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/settings/devotionals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Devotional Settings */
+        get: operations["get_devotional_settings_api_v1_admin_settings_devotionals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Devotional Settings */
+        patch: operations["update_devotional_settings_api_v1_admin_settings_devotionals_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Sign In Image
+         * @description Go back to the portal's built-in sign-in artwork.
+         */
+        delete: operations["remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign In Image Url
+         * @description A pre-signed PUT for a new sign-in screen image (JPEG, PNG or WebP).
+         */
+        post: operations["sign_in_image_url_api_v1_admin_settings_sign_in_image_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/sign-in-image/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Sign In Image
+         * @description Use the uploaded image on the sign-in screen.
+         */
+        post: operations["confirm_sign_in_image_api_v1_admin_settings_sign_in_image_confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -382,6 +757,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/approvals/devotionals/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional Review Queue */
+        get: operations["devotional_review_queue_api_v1_approvals_devotionals_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Devotional */
+        post: operations["approve_devotional_api_v1_approvals_devotionals__devotional_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Devotional */
+        post: operations["archive_devotional_api_v1_approvals_devotionals__devotional_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Devotional */
+        post: operations["reject_devotional_api_v1_approvals_devotionals__devotional_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/devotionals/{devotional_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Devotional */
+        post: operations["restore_devotional_api_v1_approvals_devotionals__devotional_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approvals/sermons/review-queue": {
         parameters: {
             query?: never;
@@ -558,6 +1018,8 @@ export interface paths {
         /**
          * Change Password
          * @description Requires the current password — an access token alone is not enough.
+         *     Wrong guesses are capped per account like login, so a stolen access token
+         *     can't be used to brute-force the current password.
          */
         post: operations["change_password_api_v1_auth_change_password_post"];
         delete?: never;
@@ -637,6 +1099,133 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Update Me
+         * @description Self-edit of `full_name`, the only self-editable field. It is shown to
+         *     other viewers as "First L." on comments, so it goes through the same
+         *     normalisation, URL, contact and blocklist rules as a comment body, plus
+         *     reserved titles. Limited to 5 changes per hour per user (429 + Retry-After);
+         *     a rejected name returns one generic message. The comments flow's own name
+         *     prompt is the one remaining caller — the Me page's own profile editor uses
+         *     `PATCH /me/profile` below instead.
+         */
+        patch: operations["update_me_api_v1_auth_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/me/avatar/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avatar Confirm */
+        post: operations["avatar_confirm_api_v1_auth_me_avatar_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/avatar/upload-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avatar Upload Ticket */
+        post: operations["avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Me
+         * @description Delete the caller's own account (viewers only). One fresh proof goes in
+         *     the same request: password, a fresh Google token, or a fresh Apple token
+         *     plus its authorization code (revoked at Apple before anything is erased).
+         *     Errors: 403 staff or failed re-auth (one generic message), 409 Apple
+         *     re-auth required / Apple-only account / authored history, 400 Apple code
+         *     rejected, 429 limiter, 503 Apple or the limiter store unavailable.
+         */
+        post: operations["delete_me_api_v1_auth_me_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Me Profile
+         * @description Me page profile edit (Isaac's ask, session 2026-10-09): first/last name
+         *     and gender, independent of `PATCH /me`'s `full_name` field and of avatar
+         *     upload. A name change goes through the exact same moderation and rate
+         *     limit `PATCH /me` already has (`comments_service.update_profile_name`) —
+         *     it still recomputes and publicly displays as `full_name`.
+         */
+        patch: operations["update_me_profile_api_v1_auth_me_profile_patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/apple": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Oauth Apple */
+        post: operations["oauth_apple_api_v1_auth_oauth_apple_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Oauth Google */
+        post: operations["oauth_google_api_v1_auth_oauth_google_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -666,8 +1255,34 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register */
+        /**
+         * Register
+         * @description Creates the account. While email verification is on, it cannot sign in
+         *     until the 6-digit code emailed here is entered at `/auth/verify-email`.
+         */
         post: operations["register_api_v1_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/resend-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Verification
+         * @description Email a fresh code. Same generic answer whether or not the address
+         *     exists or still needs verifying — not an enumeration oracle — and the send
+         *     happens off the response path, as in `forgot_password`.
+         */
+        post: operations["resend_verification_api_v1_auth_resend_verification_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -685,6 +1300,28 @@ export interface paths {
         put?: never;
         /** Reset Password */
         post: operations["reset_password_api_v1_auth_reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Email
+         * @description Confirm a self-registered account with its emailed 6-digit code and
+         *     sign it in. Wrong guesses are capped per code (see
+         *     `token_store.consume_email_code`) and per client IP here.
+         */
+        post: operations["verify_email_api_v1_auth_verify_email_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -732,6 +1369,122 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/sermons/hero": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hero Sermons
+         * @description Home's hero carousel — up to 3 newest-published sermons, capped to one per
+         *     series. Public, like every other `/catalog` read. Registered ahead of
+         *     `/sermons/{sermon_id}` so "hero" is never captured as a sermon-id path parameter.
+         */
+        get: operations["hero_sermons_api_v1_catalog_sermons_hero_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/new-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * New Release Sermons
+         * @description Newest-published sermons (Home's "New Releases" shelf) — same ordering as the
+         *     hero, capped to shelf size, NOT capped to one-per-series (see
+         *     `list_new_release_sermons`'s own docstring). Public, like every other `/catalog`
+         *     read. Registered ahead of `/sermons/{sermon_id}` so "new-releases" is never
+         *     captured as a sermon-id path parameter.
+         */
+        get: operations["new_release_sermons_api_v1_catalog_sermons_new_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/prophets-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prophets Catalog Sermons
+         * @description Sermons an editor has manually flagged as part of the "Prophet's Catalog"
+         *     (Home's shelf of the same name) via the admin editor's switch. Public, like
+         *     every other `/catalog` read. Registered ahead of `/sermons/{sermon_id}` so
+         *     "prophets-catalog" is never captured as a sermon-id path parameter.
+         */
+        get: operations["prophets_catalog_sermons_api_v1_catalog_sermons_prophets_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/trending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trending Sermons
+         * @description Most-played published sermons over the last 30 days (Home's "Trending"
+         *     shelf) — public, like every other `/catalog` read; no sign-in required to
+         *     see what's trending. Registered ahead of `/sermons/{sermon_id}` below so
+         *     "trending" is never captured as a sermon-id path parameter.
+         */
+        get: operations["trending_sermons_api_v1_catalog_sermons_trending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming Sermon
+         * @description The next scheduled sermon (Home's "next message" countdown), or null when
+         *     nothing is scheduled. Public, like every other `/catalog` read, and carries only
+         *     the title, release time and names — see `UpcomingSermon`. Registered ahead of
+         *     `/sermons/{sermon_id}` so "upcoming" is never captured as a sermon-id path
+         *     parameter.
+         */
+        get: operations["upcoming_sermon_api_v1_catalog_sermons_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/sermons/{sermon_id}": {
         parameters: {
             query?: never;
@@ -744,6 +1497,31 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/sermons/{sermon_id}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Like Sermon
+         * @description Idempotent — liking an already-liked sermon is a 200 no-op, not a 409
+         *     (see `likes_service`'s own doc comment). 404 if the sermon doesn't exist
+         *     or isn't visible to this viewer — the same `get_sermon_detail` visibility
+         *     check `get_sermon` above uses, so liking never leaks whether an invisible
+         *     sermon id is real.
+         */
+        put: operations["like_sermon_api_v1_catalog_sermons__sermon_id__like_put"];
+        post?: never;
+        /** Unlike Sermon */
+        delete: operations["unlike_sermon_api_v1_catalog_sermons__sermon_id__like_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -786,6 +1564,400 @@ export interface paths {
         patch: operations["update_category_api_v1_categories__category_id__patch"];
         trace?: never;
     };
+    "/api/v1/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Own Comment */
+        delete: operations["delete_own_comment_api_v1_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comments/{comment_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block Comment Author */
+        post: operations["block_comment_author_api_v1_comments__comment_id__block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comments/{comment_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Comment */
+        post: operations["report_comment_api_v1_comments__comment_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Devotional
+         * @description Create a draft. `date` null puts it in the evergreen pool.
+         */
+        post: operations["create_devotional_api_v1_devotionals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devotionals */
+        get: operations["list_devotionals_api_v1_devotionals_admin_all_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional Calendar */
+        get: operations["devotional_calendar_api_v1_devotionals_admin_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Devotionals
+         * @description Import devotionals from a CSV body (`Content-Type: text/csv`). Run with
+         *     `dry_run=true` (the default) to check every row, then `dry_run=false` to
+         *     save. Rows with errors are never saved.
+         */
+        post: operations["import_devotionals_api_v1_devotionals_admin_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/import/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Template */
+        get: operations["import_template_api_v1_devotionals_admin_import_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/passage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Passage
+         * @description Fill the passage text from a reference (KJV/WEB, via bible-api.com).
+         */
+        get: operations["lookup_passage_api_v1_devotionals_admin_passage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/{devotional_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Devotional */
+        get: operations["get_devotional_api_v1_devotionals_admin__devotional_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/admin/{devotional_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devotional History */
+        get: operations["devotional_history_api_v1_devotionals_admin__devotional_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/day/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devotional For Day
+         * @description The devotional for the caller's local `day` (YYYY-MM-DD): the one
+         *     scheduled for that date, else one from the evergreen pool.
+         */
+        get: operations["devotional_for_day_api_v1_devotionals_day__day__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devotionals For Days
+         * @description Consecutive days from `from` for offline prefetch. Days with nothing to
+         *     show (no dated devotional and an empty evergreen pool) are left out.
+         */
+        get: operations["devotionals_for_days_api_v1_devotionals_days_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Devotional */
+        delete: operations["delete_devotional_api_v1_devotionals__devotional_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Devotional */
+        patch: operations["update_devotional_api_v1_devotionals__devotional_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Reading Remove */
+        delete: operations["reading_remove_api_v1_devotionals__devotional_id__reading_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reading Upload Url */
+        post: operations["reading_upload_url_api_v1_devotionals__devotional_id__reading_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/reading/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reading Confirm */
+        post: operations["reading_confirm_api_v1_devotionals__devotional_id__reading_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Devotional */
+        post: operations["submit_devotional_api_v1_devotionals__devotional_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devotionals/{devotional_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Devotional */
+        post: operations["withdraw_devotional_api_v1_devotionals__devotional_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Blocks */
+        get: operations["list_my_blocks_api_v1_me_blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete My Block */
+        delete: operations["delete_my_block_api_v1_me_blocks__block_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/comments-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Comments Terms */
+        post: operations["accept_comments_terms_api_v1_me_comments_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/continue-watching": {
         parameters: {
             query?: never;
@@ -815,15 +1987,10 @@ export interface paths {
         };
         /**
          * Watch History
-         * @description Caller's own playback history, most-recently-played first.
-         *
-         *     With no `series_id`, the existing app-wide reading: capped at `limit`
-         *     (<=100). With `series_id`, every one of the caller's progress rows for
-         *     sermons in that series — `limit` is ignored, since the series screen
-         *     needs every episode's real status and a 100-row app-wide cap can hide an
-         *     old episode's completed watch behind the cap. See
-         *     `analytics_service.history` for the (much higher) safety ceiling that
-         *     still applies.
+         * @description Unscoped: the caller's `limit`-capped history. `?series_id=<id>` (Decision
+         *     6, `app/series/[id].tsx`'s per-episode status): every progress row for that
+         *     series instead, `limit` ignored — see `analytics_service.history`'s own
+         *     docstring for why.
          */
         get: operations["watch_history_api_v1_me_history_get"];
         put?: never;
@@ -834,7 +2001,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/notes": {
+    "/api/v1/me/push-devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Register Push Device
+         * @description Register (or refresh) this install's push token and its preferences.
+         *     The app calls this on every sign-in and whenever the settings change.
+         */
+        put: operations["register_push_device_api_v1_me_push_devices_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/push-devices/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unregister Push Device
+         * @description Stop pushing to this install (the app calls this when signing out).
+         *     A POST with a body rather than DELETE with the token in the path, so the
+         *     token never lands in access logs.
+         */
+        post: operations["unregister_push_device_api_v1_me_push_devices_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/recommended": {
         parameters: {
             query?: never;
             header?: never;
@@ -842,11 +2052,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List My Notes
-         * @description Every note the caller has ever taken, across all sermons, most recent
-         *     first.
+         * Recommended For You
+         * @description Home's "Recommended for you" shelf — category/speaker affinity derived
+         *     from the caller's own playback history (falls back to Trending when that
+         *     history has nothing to work with; see
+         *     `content_service.list_recommended_sermons`'s own docstring).
          */
-        get: operations["list_my_notes_api_v1_me_notes_get"];
+        get: operations["recommended_for_you_api_v1_me_recommended_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -855,7 +2067,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notes/{note_id}": {
+    "/api/v1/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Playlists */
+        get: operations["list_playlists_api_v1_playlists_get"];
+        put?: never;
+        /** Create Playlist */
+        post: operations["create_playlist_api_v1_playlists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Playlist */
+        get: operations["get_playlist_api_v1_playlists__playlist_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Playlist */
+        delete: operations["delete_playlist_api_v1_playlists__playlist_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Playlist */
+        patch: operations["update_playlist_api_v1_playlists__playlist_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/cover/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cover Confirm */
+        post: operations["cover_confirm_api_v1_playlists__playlist_id__cover_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/cover/upload-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cover Upload Ticket */
+        post: operations["cover_upload_ticket_api_v1_playlists__playlist_id__cover_upload_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Item */
+        post: operations["add_item_api_v1_playlists__playlist_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Items */
+        put: operations["reorder_items_api_v1_playlists__playlist_id__items_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/items/{item_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -865,19 +2182,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /**
-         * Delete Note
-         * @description Ownership-only: same 404-not-403 rule as update_note.
-         */
-        delete: operations["delete_note_api_v1_notes__note_id__delete"];
+        /** Remove Item */
+        delete: operations["remove_item_api_v1_playlists__playlist_id__items__item_id__delete"];
         options?: never;
         head?: never;
-        /**
-         * Update Note
-         * @description Ownership-only: a note that doesn't belong to the caller 404s, the
-         *     same as one that doesn't exist — no staff bypass, see notes_service.
-         */
-        patch: operations["update_note_api_v1_notes__note_id__patch"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/search": {
@@ -1024,6 +2333,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/series/{series_id}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Like Series
+         * @description Idempotent — liking an already-liked series is a 200 no-op, not a 409
+         *     (see `likes_service`'s own doc comment). 404 if the series doesn't exist
+         *     or isn't visible to this viewer, same existence check `get_series` itself
+         *     uses, so liking never leaks whether an invisible series id is real.
+         */
+        put: operations["like_series_api_v1_series__series_id__like_put"];
+        post?: never;
+        /** Unlike Series */
+        delete: operations["unlike_series_api_v1_series__series_id__like_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/series/{series_id}/thumbnail-url": {
         parameters: {
             query?: never;
@@ -1083,6 +2416,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sermons/status-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sermon Status Counts
+         * @description How many sermons sit in each workflow status. Editors count their own
+         *     sermons; managers and admins count everyone's (or their own with
+         *     `created_by=me`). Powers the Dashboard's content pipeline.
+         */
+        get: operations["sermon_status_counts_api_v1_sermons_status_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}": {
         parameters: {
             query?: never;
@@ -1116,6 +2471,109 @@ export interface paths {
         patch: operations["update_sermon_api_v1_sermons__sermon_id__patch"];
         trace?: never;
     };
+    "/api/v1/sermons/{sermon_id}/captions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Captions
+         * @description Caption tracks (English, French) on the sermon's video and where each
+         *     one is in the pipeline: generating, ready, or error.
+         */
+        get: operations["list_captions_api_v1_sermons__sermon_id__captions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Caption
+         * @description Replace one language's captions with a staff-supplied WebVTT file.
+         *     Uploaded tracks are never overwritten automatically. Uploading English
+         *     re-translates a machine-translated French track from the new English.
+         */
+        put: operations["upload_caption_api_v1_sermons__sermon_id__captions__language__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Caption
+         * @description Discard a track and redo it automatically (English: re-transcribe;
+         *     French: re-translate from English). Also the retry for a failed track.
+         */
+        post: operations["regenerate_caption_api_v1_sermons__sermon_id__captions__language__regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/captions/{language}/vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Caption Vtt
+         * @description The current WebVTT text for one language, so staff can download,
+         *     correct and re-upload it.
+         */
+        get: operations["get_caption_vtt_api_v1_sermons__sermon_id__captions__language__vtt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sermon Comments */
+        get: operations["list_sermon_comments_api_v1_sermons__sermon_id__comments_get"];
+        put?: never;
+        /** Post Sermon Comment */
+        post: operations["post_sermon_comment_api_v1_sermons__sermon_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sermons/{sermon_id}/download/audio": {
         parameters: {
             query?: never;
@@ -1130,6 +2588,30 @@ export interface paths {
          *     authorization as get_stream; 409 if the sermon has no audio rendition.
          */
         get: operations["download_audio_api_v1_sermons__sermon_id__download_audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sermons/{sermon_id}/download/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Video
+         * @description Short-lived signed URL for the video rendition only — offline video
+         *     downloads (Isaac's ask, session 2026-10-08, revisiting L6). Same
+         *     authorization as get_stream; 409 if the sermon has no video rendition.
+         *     See `media_service.get_video_download` for the at-rest protection
+         *     tradeoff this path accepts versus the audio download's encryption.
+         */
+        get: operations["download_video_api_v1_sermons__sermon_id__download_video_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1177,28 +2659,6 @@ export interface paths {
          * @description Detach one rendition. The sermon must not be published.
          */
         delete: operations["delete_media_api_v1_sermons__sermon_id__media__media_ref_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sermons/{sermon_id}/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Sermon Notes
-         * @description The caller's own notes on one sermon. Strictly user-owned — this never
-         *     returns anyone else's notes, staff included.
-         */
-        get: operations["list_sermon_notes_api_v1_sermons__sermon_id__notes_get"];
-        put?: never;
-        /** Create Sermon Note */
-        post: operations["create_sermon_note_api_v1_sermons__sermon_id__notes_post"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1362,6 +2822,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public Settings */
+        get: operations["public_settings_api_v1_settings_public_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/speakers": {
         parameters: {
             query?: never;
@@ -1399,27 +2876,6 @@ export interface paths {
         patch: operations["update_speaker_api_v1_speakers__speaker_id__patch"];
         trace?: never;
     };
-    "/api/v1/subscriptions/checkout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start Checkout
-         * @description Begin a subscription. Returns a hosted checkout URL — card details never
-         *     touch this API.
-         */
-        post: operations["start_checkout_api_v1_subscriptions_checkout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/subscriptions/me": {
         parameters: {
             query?: never;
@@ -1431,30 +2887,6 @@ export interface paths {
         get: operations["my_subscription_api_v1_subscriptions_me_get"];
         put?: never;
         post?: never;
-        /**
-         * Cancel Subscription
-         * @description Cancel at period end — access continues until what's been paid for runs out.
-         */
-        delete: operations["cancel_subscription_api_v1_subscriptions_me_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/subscriptions/portal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Billing Portal
-         * @description Hosted billing portal for changing plan or payment method.
-         */
-        post: operations["billing_portal_api_v1_subscriptions_portal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1558,6 +2990,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description Mobile app accounts (role `viewer`), newest first. Admin only: the
+         *     staff directory above never lists viewers, and this list exists so an
+         *     admin can deactivate or remove one (`PATCH /users/{id}/active`,
+         *     `DELETE /users/{id}`).
+         */
+        get: operations["list_members_api_v1_users_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/role-counts": {
         parameters: {
             query?: never;
@@ -1576,6 +3031,29 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User
+         * @description Permanently remove a staff or mobile account. Admin only (a manager gets 403).
+         *     The account must already be deactivated (409 otherwise), can't be your
+         *     own, and can't have authored content or review history (409, with what
+         *     it is linked to — keep such accounts deactivated).
+         */
+        delete: operations["delete_user_api_v1_users__user_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1646,6 +3124,75 @@ export interface paths {
         head?: never;
         /** Change Role */
         patch: operations["change_role_api_v1_users__user_id__role_patch"];
+        trace?: never;
+    };
+    "/api/v1/verses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Verse */
+        post: operations["create_verse_api_v1_verses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/admin/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Verses */
+        get: operations["list_verses_api_v1_verses_admin_all_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Verse Of The Day */
+        get: operations["verse_of_the_day_api_v1_verses_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verses/{verse_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Verse */
+        delete: operations["delete_verse_api_v1_verses__verse_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Verse */
+        patch: operations["update_verse_api_v1_verses__verse_id__patch"];
         trace?: never;
     };
     "/health/live": {
@@ -1873,6 +3420,51 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** AppleDeletionRequest */
+        AppleDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /** Authorization Code */
+            authorization_code: string;
+            /** Identity Token */
+            identity_token: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "apple";
+            /** Raw Nonce */
+            raw_nonce: string;
+        };
+        /**
+         * AppleSignInRequest
+         * @description Apple's signed identity token plus the raw nonce the client generated
+         *     for this attempt (ADR 0015) — the server re-derives `sha256(raw_nonce)`
+         *     and checks it against the token's own `nonce` claim. `given_name`/
+         *     `family_name` are Apple's one-time-only name delivery: Apple's identity
+         *     token never carries a name, so the client forwards whatever
+         *     `ASAuthorizationAppleIDCredential.fullName` returned on the FIRST
+         *     authorization only (it's None on every subsequent sign-in) — used only to
+         *     prefill a brand-new account's profile, dropped otherwise.
+         *     `authorization_code` is accepted for forward-compatibility (a future
+         *     server-side revocation flow, ADR 0015 §"Apple token revocation deferred")
+         *     but is not exchanged or used anywhere in this phase.
+         */
+        AppleSignInRequest: {
+            /** Authorization Code */
+            authorization_code?: string | null;
+            /** Family Name */
+            family_name?: string | null;
+            /** Given Name */
+            given_name?: string | null;
+            /** Identity Token */
+            identity_token: string;
+            /** Raw Nonce */
+            raw_nonce: string;
+        };
         /** ApprovalLogItem */
         ApprovalLogItem: {
             /**
@@ -1912,6 +3504,218 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AuditDeleteRequest */
+        AuditDeleteRequest: {
+            /**
+             * Ids
+             * @description `audit_log` row ids. Ids from the review or moderation history are ignored: those rows can't be deleted here.
+             */
+            ids: string[];
+        };
+        /** AuditDeleteResponse */
+        AuditDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+        };
+        /**
+         * AuditEntry
+         * @description One row of the unified audit feed (`GET /admin/audit`,
+         *     plan-admin-settings §A.5, D9): `audit_log` plus the three domain logs
+         *     that predate it, in one shape.
+         *
+         *     `source` names the table a row came from. Legacy rows report `outcome`
+         *     `success`, carry no `ip`/`user_agent`, and resolve `actor_label` from
+         *     the actor's current account ("Deleted account" once it is gone,
+         *     "System" for automatic comment hides); `audit_log` rows carry the email
+         *     snapshot taken at write time. `summary` is a server-built sentence.
+         */
+        AuditEntry: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Label */
+            actor_label: string;
+            /** Actor Role */
+            actor_role: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip */
+            ip: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "audit_log" | "approval_log" | "announcement_approval_log" | "comment_moderation_log";
+            /** Summary */
+            summary: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Label */
+            target_label: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /**
+         * AuditOutcome
+         * @enum {string}
+         */
+        AuditOutcome: "success" | "failure";
+        /** AuditWipeRequest */
+        AuditWipeRequest: {
+            /**
+             * Confirm
+             * @description Must be `WIPE AUDIT TRAIL`.
+             */
+            confirm: string;
+            /**
+             * Password
+             * @description The signed-in admin's password.
+             */
+            password: string;
+        };
+        /**
+         * AuthProvider
+         * @description OAuth identity provider a `UserIdentity` row is linked against. Only
+         *     ``viewer``-role accounts ever gain one (ADR 0015) — staff always sign in
+         *     via `/auth/login`.
+         * @enum {string}
+         */
+        AuthProvider: "google" | "apple";
+        /** AvatarResponse */
+        AvatarResponse: {
+            /** Avatar Url */
+            avatar_url: string | null;
+        };
+        /**
+         * AvatarTicket
+         * @description Pre-signed PUT for a profile picture — same direct-to-storage pattern
+         *     sermon/series thumbnails already use.
+         */
+        AvatarTicket: {
+            /** Avatar Key */
+            avatar_key: string;
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @default PUT
+             */
+            method: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** AvatarUploadRequest */
+        AvatarUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
+        /**
+         * BlockCreated
+         * @description Result of blocking by comment id. `id` is null only when there was
+         *     nothing to block (the caller's own comment, or a block removed
+         *     concurrently).
+         */
+        BlockCreated: {
+            /** Id */
+            id?: string | null;
+        };
+        /**
+         * BlockPublic
+         * @description `id` is the block row's own id, never the blocked user's.
+         */
+        BlockPublic: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * CaptionListResponse
+         * @description GET /sermons/{id}/captions. `available` is false when the sermon has no
+         *     processed Stream video (audio-only, still processing, or a pre-Stream
+         *     video not yet backfilled) — captions can't be added until it does.
+         */
+        CaptionListResponse: {
+            /** Available */
+            available: boolean;
+            /** Captions */
+            captions: components["schemas"]["CaptionPublic"][];
+            /** Default Language */
+            default_language: string;
+        };
+        /**
+         * CaptionPublic
+         * @description One caption language on a sermon's video, as the admin portal shows it.
+         */
+        CaptionPublic: {
+            /** Error Message */
+            error_message: string | null;
+            /** Language */
+            language: string;
+            source: components["schemas"]["CaptionSource"];
+            status: components["schemas"]["CaptionStatus"];
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * CaptionSource
+         * @enum {string}
+         */
+        CaptionSource: "generated" | "translated" | "uploaded";
+        /**
+         * CaptionStatus
+         * @enum {string}
+         */
+        CaptionStatus: "pending" | "generating" | "ready" | "error";
+        /**
+         * CaptionUpload
+         * @description PUT /sermons/{id}/captions/{language}: a WebVTT file's text.
+         */
+        CaptionUpload: {
+            /** Vtt */
+            vtt: string;
+        };
+        /** CaptionVtt */
+        CaptionVtt: {
+            /** Language */
+            language: string;
+            /** Vtt */
+            vtt: string;
+        };
         /** CategoryCreate */
         CategoryCreate: {
             /** Name */
@@ -1947,18 +3751,279 @@ export interface components {
             /** New Password */
             new_password: string;
         };
-        /** CheckoutRequest */
-        CheckoutRequest: {
-            /** @default monthly */
-            tier: components["schemas"]["SubscriptionTier"];
+        /**
+         * ChurchSettingsAdmin
+         * @description `GET/PATCH /admin/settings` — the public fields plus who last saved
+         *     and when. `updated_by` is that account's email, `"Deleted account"` once
+         *     it is gone, or null before the first edit.
+         */
+        ChurchSettingsAdmin: {
+            /** About */
+            about: string | null;
+            /** Address */
+            address: string | null;
+            /** App Display Name */
+            app_display_name: string | null;
+            /** Church Name */
+            church_name: string | null;
+            /** Comment Guidelines */
+            comment_guidelines: string;
+            /** Contact Email */
+            contact_email: string;
+            /** Contact Phone */
+            contact_phone: string | null;
+            /** Copyright Notice */
+            copyright_notice: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url: string | null;
+            /** Sign In Image Url */
+            sign_in_image_url?: string | null;
+            /** Tagline */
+            tagline: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url: string | null;
         };
-        /** CheckoutResponse */
-        CheckoutResponse: {
-            /** Checkout Url */
-            checkout_url: string;
-            /** Session Id */
-            session_id: string;
+        /**
+         * ChurchSettingsPublic
+         * @description `GET /settings/public` — what the mobile app reads, unauthenticated.
+         *     No `updated_by_id` or `updated_at`. `version` plus the guidelines digest
+         *     form the weak ETag. `comment_guidelines` comes from the static
+         *     file `app/content/comment_guidelines.txt`, not from the row. The mobile
+         *     app renders contact email, comment guidelines and the two legal URLs in
+         *     v1; the other fields are returned but not yet shown.
+         */
+        ChurchSettingsPublic: {
+            /** About */
+            about: string | null;
+            /** Address */
+            address: string | null;
+            /** App Display Name */
+            app_display_name: string | null;
+            /** Church Name */
+            church_name: string | null;
+            /** Comment Guidelines */
+            comment_guidelines: string;
+            /** Contact Email */
+            contact_email: string;
+            /** Contact Phone */
+            contact_phone: string | null;
+            /** Copyright Notice */
+            copyright_notice: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url: string | null;
+            /** Sign In Image Url */
+            sign_in_image_url?: string | null;
+            /** Tagline */
+            tagline: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url: string | null;
         };
+        /**
+         * ChurchSettingsUpdate
+         * @description Partial update. Omit a field to leave it unchanged; send `null` to
+         *     clear an optional one (`contact_email` can be changed but never cleared;
+         *     the comment guidelines are not editable and a body carrying them is a
+         *     422). `version` must be the one the editor loaded: a stale value is a
+         *     409, never a silent overwrite.
+         *
+         *     Text is normalised like comments (NFC, control characters stripped,
+         *     whitespace trimmed); an optional field left empty after that is stored
+         *     as null. URLs must be absolute `https`.
+         */
+        ChurchSettingsUpdate: {
+            /** About */
+            about?: string | null;
+            /** Address */
+            address?: string | null;
+            /** App Display Name */
+            app_display_name?: string | null;
+            /** Church Name */
+            church_name?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+            /** Copyright Notice */
+            copyright_notice?: string | null;
+            /** Privacy Policy Url */
+            privacy_policy_url?: string | null;
+            /** Tagline */
+            tagline?: string | null;
+            /** Terms Of Use Url */
+            terms_of_use_url?: string | null;
+            /** Version */
+            version: number;
+            /** Website Url */
+            website_url?: string | null;
+        };
+        /**
+         * CommentAdmin
+         * @description Moderation-queue row for MANAGER and ADMIN: adds who wrote it and who
+         *     hid it (the moderator's id is not shown to EDITORs).
+         */
+        CommentAdmin: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Author Email */
+            author_email: string;
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden At */
+            hidden_at?: string | null;
+            /** Hidden Auto */
+            hidden_auto: boolean;
+            /** Hidden By Id */
+            hidden_by_id?: string | null;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /** Hidden Reason */
+            hidden_reason?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Report Count */
+            report_count: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Sermon Title */
+            sermon_title: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /**
+         * CommentAdminForEditor
+         * @description Moderation-queue row as an EDITOR sees it. A separate schema (not a
+         *     nullable field) so the author's email and id are absent from the payload,
+         *     per Isaac's C1 decision 3.
+         */
+        CommentAdminForEditor: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden At */
+            hidden_at?: string | null;
+            /** Hidden Auto */
+            hidden_auto: boolean;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /** Hidden Reason */
+            hidden_reason?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Report Count */
+            report_count: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Sermon Title */
+            sermon_title: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /**
+         * CommentCreate
+         * @description Only `body` is accepted. `sermon_id` comes from the URL path and the
+         *     author from the token; any other key is a 422.
+         *
+         *     Length, URL and blocklist rules are enforced in the service, after the
+         *     rate-limit budget is charged, so a rejected attempt still costs budget
+         *     (plan pin A6).
+         */
+        CommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /**
+         * CommentPublic
+         * @description What a viewer sees. Deliberately carries no user id, email or role:
+         *     the author is only ever "First L."; `is_mine` marks the caller's own rows.
+         *     `status` and `hidden_label` are meaningful only when `is_mine`.
+         */
+        CommentPublic: {
+            /** Author Display Name */
+            author_display_name: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hidden Label */
+            hidden_label?: ("under_review" | "removed_by_moderator") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            status: components["schemas"]["CommentStatus"];
+        };
+        /** CommentReportCreate */
+        CommentReportCreate: {
+            /** Detail */
+            detail?: string | null;
+            reason: components["schemas"]["CommentReportReason"];
+        };
+        /**
+         * CommentReportReason
+         * @enum {string}
+         */
+        CommentReportReason: "spam" | "harassment" | "hate" | "sexual" | "self_harm" | "other";
+        /**
+         * CommentStatus
+         * @enum {string}
+         */
+        CommentStatus: "VISIBLE" | "HIDDEN";
         /**
          * ContentTier
          * @enum {string}
@@ -1988,6 +4053,8 @@ export interface components {
             last_played_at: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Percent Complete */
             percent_complete: number | null;
             /** Position Seconds */
@@ -2007,6 +4074,530 @@ export interface components {
             tier: components["schemas"]["ContentTier"];
             /** Title */
             title: string;
+        };
+        /** DataImportRequest */
+        DataImportRequest: {
+            /**
+             * Confirm
+             * @description Required when `dry_run` is false: `IMPORT` for merge, `REPLACE` for replace.
+             */
+            confirm?: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Mode
+             * @default merge
+             * @enum {string}
+             */
+            mode: "merge" | "replace";
+            /**
+             * Tables
+             * @description Tables to import from the file; all of them when omitted.
+             */
+            tables?: string[] | null;
+        };
+        /** DataImportResponse */
+        DataImportResponse: {
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "merge" | "replace";
+            /** Tables */
+            tables: components["schemas"]["DataImportTableResult"][];
+        };
+        /** DataImportTableResult */
+        DataImportTableResult: {
+            /** Deleted */
+            deleted: number;
+            /** Inserted */
+            inserted: number;
+            /** Name */
+            name: string;
+            /** Skipped */
+            skipped: number;
+            /** Updated */
+            updated: number;
+        };
+        /** DataResetRequest */
+        DataResetRequest: {
+            /**
+             * Confirm
+             * @description Required when `dry_run` is false: `RESET` for chosen tables, `WIPE DATABASE` for everything.
+             */
+            confirm?: string | null;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Password
+             * @description Required when `dry_run` is false: the signed-in admin's password.
+             */
+            password?: string | null;
+            /**
+             * Tables
+             * @description Tables to empty. Omit (or send an empty list) to wipe every table.
+             */
+            tables?: string[] | null;
+        };
+        /** DataResetResponse */
+        DataResetResponse: {
+            /** All Tables */
+            all_tables: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Tables */
+            tables: components["schemas"]["DataResetTableResult"][];
+        };
+        /** DataResetTableResult */
+        DataResetTableResult: {
+            /** Deleted */
+            deleted: number;
+            /** Name */
+            name: string;
+            /** Unlinked */
+            unlinked: number;
+        };
+        /** DataTable */
+        DataTable: {
+            /** Importable */
+            importable: boolean;
+            /** Name */
+            name: string;
+            /** Referenced By */
+            referenced_by: string[];
+            /** Replaceable */
+            replaceable: boolean;
+            /**
+             * Reset With
+             * @description Tables a reset of this one also empties (they point at it with ON DELETE CASCADE or RESTRICT).
+             */
+            reset_with: string[];
+            /** Resettable */
+            resettable: boolean;
+            /** Rows */
+            rows: number;
+        };
+        /** DataTablesResponse */
+        DataTablesResponse: {
+            /** Schema Revision */
+            schema_revision: string | null;
+            /** Tables */
+            tables: components["schemas"]["DataTable"][];
+        };
+        /** DevotionalAdminItem */
+        DevotionalAdminItem: {
+            /** Author Name */
+            author_name: string | null;
+            /** Author Speaker Id */
+            author_speaker_id: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Date */
+            date: string | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "draft" | "pending_review" | "rejected" | "archived" | "scheduled" | "published" | "evergreen";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Evergreen */
+            is_evergreen: boolean;
+            /** Moment End S */
+            moment_end_s: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id: string | null;
+            /** Moment Sermon Title */
+            moment_sermon_title: string | null;
+            /** Moment Start S */
+            moment_start_s: number | null;
+            /** Passage Ref */
+            passage_ref: string;
+            /** Passage Text */
+            passage_text: string;
+            /** Passage Translation */
+            passage_translation: string;
+            /** Pray Question */
+            pray_question: string;
+            /** Pray Text */
+            pray_text: string;
+            /** Reading Duration S */
+            reading_duration_s: number | null;
+            reading_fallback: components["schemas"]["ReadingFallback"] | null;
+            /** Reading Url */
+            reading_url: string | null;
+            /** Reflection Md */
+            reflection_md: string;
+            status: components["schemas"]["DevotionalStatus"];
+            /** Still Breath In */
+            still_breath_in: string | null;
+            /** Still Breath Out */
+            still_breath_out: string | null;
+            /** Still Seconds */
+            still_seconds: number | null;
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** DevotionalApprovalLogItem */
+        DevotionalApprovalLogItem: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** From Status */
+            from_status: string | null;
+            /** Note */
+            note: string | null;
+            /** To Status */
+            to_status: string;
+        };
+        /** DevotionalAuthor */
+        DevotionalAuthor: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** DevotionalCalendar */
+        DevotionalCalendar: {
+            /** Days */
+            days: components["schemas"]["DevotionalCalendarDay"][];
+            /** Evergreen Ready */
+            evergreen_ready: number;
+            /** Gap Alert Days */
+            gap_alert_days: number;
+            /** Ready Days Ahead */
+            ready_days_ahead: number;
+        };
+        /** DevotionalCalendarDay */
+        DevotionalCalendarDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            devotional: components["schemas"]["DevotionalListItem"] | null;
+        };
+        /**
+         * DevotionalCreate
+         * @description A new draft. `date` null = the evergreen pool.
+         */
+        DevotionalCreate: {
+            /** Author Speaker Id */
+            author_speaker_id?: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Moment End S */
+            moment_end_s?: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id?: string | null;
+            /** Moment Start S */
+            moment_start_s?: number | null;
+            /** Passage Ref */
+            passage_ref: string;
+            /** Passage Text */
+            passage_text: string;
+            /** Passage Translation */
+            passage_translation: string;
+            /** Pray Question */
+            pray_question: string;
+            /** Pray Text */
+            pray_text: string;
+            reading_fallback?: components["schemas"]["ReadingFallback"] | null;
+            /** Reflection Md */
+            reflection_md: string;
+            /** Still Breath In */
+            still_breath_in?: string | null;
+            /** Still Breath Out */
+            still_breath_out?: string | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Suggested Word */
+            suggested_word?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DevotionalListItem */
+        DevotionalListItem: {
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Date */
+            date: string | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "draft" | "pending_review" | "rejected" | "archived" | "scheduled" | "published" | "evergreen";
+            /** Has Reading */
+            has_reading: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Evergreen */
+            is_evergreen: boolean;
+            /** Passage Ref */
+            passage_ref: string;
+            status: components["schemas"]["DevotionalStatus"];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** DevotionalMoment */
+        DevotionalMoment: {
+            /** Cover Url */
+            cover_url: string | null;
+            /** End S */
+            end_s: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Start S */
+            start_s: number;
+            /** Title */
+            title: string;
+        };
+        /** DevotionalPassage */
+        DevotionalPassage: {
+            /** Ref */
+            ref: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+            /** Verses */
+            verses: components["schemas"]["DevotionalVerse"][];
+        };
+        /** DevotionalPray */
+        DevotionalPray: {
+            /** Question */
+            question: string;
+            /** Text */
+            text: string;
+        };
+        /** DevotionalPublic */
+        DevotionalPublic: {
+            author: components["schemas"]["DevotionalAuthor"] | null;
+            /** Carry Verse Ref */
+            carry_verse_ref: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            moment: components["schemas"]["DevotionalMoment"] | null;
+            passage: components["schemas"]["DevotionalPassage"];
+            pray: components["schemas"]["DevotionalPray"];
+            /** Publish Hour */
+            publish_hour: number;
+            reading: components["schemas"]["DevotionalReading"] | null;
+            /**
+             * Reading Fallback
+             * @enum {string}
+             */
+            reading_fallback: "text" | "tts";
+            /** Reflection Md */
+            reflection_md: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "dated" | "evergreen";
+            still: components["schemas"]["DevotionalStill"];
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string;
+            tts: components["schemas"]["DevotionalTts"] | null;
+        };
+        /** DevotionalReading */
+        DevotionalReading: {
+            /** Duration S */
+            duration_s: number | null;
+            /** Url */
+            url: string;
+        };
+        /** DevotionalRejectRequest */
+        DevotionalRejectRequest: {
+            /** Note */
+            note: string;
+        };
+        /** DevotionalSettings */
+        DevotionalSettings: {
+            /** Allow Override */
+            allow_override: boolean;
+            /** Default Translation */
+            default_translation: string;
+            /** Gap Alert Days */
+            gap_alert_days: number;
+            /** Publish Hour */
+            publish_hour: number;
+            /**
+             * Reading Fallback
+             * @enum {string}
+             */
+            reading_fallback: "text" | "tts";
+            /** Still Seconds */
+            still_seconds: number;
+            /** Tts Rate Pct */
+            tts_rate_pct: number;
+            /** Tts Voice */
+            tts_voice: string | null;
+            /** Version */
+            version: number;
+        };
+        /** DevotionalSettingsUpdate */
+        DevotionalSettingsUpdate: {
+            /** Allow Override */
+            allow_override?: boolean | null;
+            /** Default Translation */
+            default_translation?: string | null;
+            /** Gap Alert Days */
+            gap_alert_days?: number | null;
+            /** Publish Hour */
+            publish_hour?: number | null;
+            /** Reading Fallback */
+            reading_fallback?: ("text" | "tts") | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Tts Rate Pct */
+            tts_rate_pct?: number | null;
+            /** Tts Voice */
+            tts_voice?: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * DevotionalStatus
+         * @enum {string}
+         */
+        DevotionalStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
+        /** DevotionalStatusResponse */
+        DevotionalStatusResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["DevotionalStatus"];
+        };
+        /** DevotionalStill */
+        DevotionalStill: {
+            /** Breath In */
+            breath_in: string | null;
+            /** Breath Out */
+            breath_out: string | null;
+            /** Seconds */
+            seconds: number;
+        };
+        /** DevotionalTts */
+        DevotionalTts: {
+            /** Rate */
+            rate: number;
+            /** Voice */
+            voice: string | null;
+        };
+        /**
+         * DevotionalUpdate
+         * @description Partial update; send `date: null` to move a devotional to the evergreen pool.
+         */
+        DevotionalUpdate: {
+            /** Author Speaker Id */
+            author_speaker_id?: string | null;
+            /** Carry Verse Ref */
+            carry_verse_ref?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Moment End S */
+            moment_end_s?: number | null;
+            /** Moment Sermon Id */
+            moment_sermon_id?: string | null;
+            /** Moment Start S */
+            moment_start_s?: number | null;
+            /** Passage Ref */
+            passage_ref?: string | null;
+            /** Passage Text */
+            passage_text?: string | null;
+            /** Passage Translation */
+            passage_translation?: string | null;
+            /** Pray Question */
+            pray_question?: string | null;
+            /** Pray Text */
+            pray_text?: string | null;
+            reading_fallback?: components["schemas"]["ReadingFallback"] | null;
+            /** Reflection Md */
+            reflection_md?: string | null;
+            /** Still Breath In */
+            still_breath_in?: string | null;
+            /** Still Breath Out */
+            still_breath_out?: string | null;
+            /** Still Seconds */
+            still_seconds?: number | null;
+            /** Suggested Word */
+            suggested_word?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** DevotionalVerse */
+        DevotionalVerse: {
+            /** Number */
+            number: number | null;
+            /** Text */
+            text: string;
         };
         /**
          * EpisodeOrderItem
@@ -2046,10 +4637,111 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * Gender
+         * @enum {string}
+         */
+        Gender: "male" | "female";
+        /** GoogleDeletionRequest */
+        GoogleDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /** Id Token */
+            id_token?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "google";
+            /** Server Auth Code */
+            server_auth_code?: string | null;
+        };
+        /**
+         * GoogleSignInRequest
+         * @description Google sign-in proof from the mobile app's native flow (ADR 0015).
+         */
+        GoogleSignInRequest: {
+            /** Id Token */
+            id_token?: string | null;
+            /** Server Auth Code */
+            server_auth_code?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportResult */
+        ImportResult: {
+            /** Clashes */
+            clashes: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors: number;
+            /**
+             * Pooled
+             * @default 0
+             */
+            pooled: number;
+            /** Ready */
+            ready: number;
+            /**
+             * Replaced
+             * @default 0
+             */
+            replaced: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowResult"][];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Warnings */
+            warnings: number;
+        };
+        /** ImportRowResult */
+        ImportRowResult: {
+            /** Clash With */
+            clash_with?: string | null;
+            /** Date */
+            date: string | null;
+            /** Messages */
+            messages: string[];
+            /** Passage Ref */
+            passage_ref: string | null;
+            /** Row */
+            row: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "warning" | "error" | "clash";
+            /** Suggested Word */
+            suggested_word: string | null;
+            /** Title */
+            title: string | null;
+        };
+        /**
+         * LikeState
+         * @description Response for a like/unlike action — the caller's own `ActionButton`
+         *     reflects both halves (the glyph from `liked`, the number from
+         *     `like_count`) off one response, not a second round trip.
+         */
+        LikeState: {
+            /** Like Count */
+            like_count: number;
+            /** Liked */
+            liked: boolean;
         };
         /**
          * LogoutRequest
@@ -2088,6 +4780,16 @@ export interface components {
             message: string;
         };
         /**
+         * ModerationReason
+         * @description Request body for hide, hard delete and dismiss-reports. The reason is required, trimmed,
+         *     normalised like any user text, and capped at 300 characters. It is stored
+         *     in the moderation log and is never written to application logs.
+         */
+        ModerationReason: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * NewListenersBucket
          * @description One week in the "New listeners" series (plan §A.2, M1).
          *
@@ -2105,52 +4807,29 @@ export interface components {
              */
             week_start: string;
         };
-        /** NoteCreate */
-        NoteCreate: {
-            /** Body */
-            body: string;
-            /** Position Seconds */
-            position_seconds: number;
-        };
-        /** NotePublic */
-        NotePublic: {
-            /** Body */
-            body: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Position Seconds */
-            position_seconds: number;
-            /**
-             * Sermon Id
-             * Format: uuid
-             */
-            sermon_id: string;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /** NoteUpdate */
-        NoteUpdate: {
-            /** Body */
-            body?: string | null;
-            /** Position Seconds */
-            position_seconds?: number | null;
-        };
-        /** OverviewStats */
+        /**
+         * OverviewStats
+         * @description All-time platform figures for the Dashboard. Every number is a count
+         *     over the live tables at request time (not the daily rollups), so it
+         *     covers history from before the rollups existed.
+         */
         OverviewStats: {
+            /**
+             * Active Members
+             * @default 0
+             */
+            active_members: number;
             /** Active Subscribers */
             active_subscribers: number;
             /** Completion Rate */
             completion_rate: number;
             /** Completions */
             completions: number;
+            /**
+             * Members
+             * @default 0
+             */
+            members: number;
             /** Plays Last 7 Days */
             plays_last_7_days: number;
             /** Published Sermons */
@@ -2161,11 +4840,71 @@ export interface components {
             total_users: number;
             /** Unique Viewers */
             unique_viewers: number;
+            /**
+             * Watch Hours
+             * @default 0
+             */
+            watch_hours: number;
         };
         /** Page[AnnouncementAdminItem] */
         Page_AnnouncementAdminItem_: {
             /** Items */
             items: components["schemas"]["AnnouncementAdminItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[AuditEntry] */
+        Page_AuditEntry_: {
+            /** Items */
+            items: components["schemas"]["AuditEntry"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentAdminForEditor] */
+        Page_CommentAdminForEditor_: {
+            /** Items */
+            items: components["schemas"]["CommentAdminForEditor"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentAdmin] */
+        Page_CommentAdmin_: {
+            /** Items */
+            items: components["schemas"]["CommentAdmin"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CommentPublic] */
+        Page_CommentPublic_: {
+            /** Items */
+            items: components["schemas"]["CommentPublic"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[DevotionalListItem] */
+        Page_DevotionalListItem_: {
+            /** Items */
+            items: components["schemas"]["DevotionalListItem"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -2217,10 +4956,229 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** PortalResponse */
-        PortalResponse: {
-            /** Portal Url */
-            portal_url: string;
+        /** PassageLookup */
+        PassageLookup: {
+            /** Ref */
+            ref: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+        };
+        /** PasswordDeletionRequest */
+        PasswordDeletionRequest: {
+            /**
+             * Apple Unavailable
+             * @default false
+             */
+            apple_unavailable: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            method: "password";
+            /** Password */
+            password: string;
+        };
+        /** PlaylistCoverResponse */
+        PlaylistCoverResponse: {
+            /** Cover Url */
+            cover_url: string | null;
+        };
+        /**
+         * PlaylistCoverTicket
+         * @description Pre-signed PUT for a playlist cover image — same direct-to-storage
+         *     pattern the profile avatar and sermon/series thumbnails already use.
+         */
+        PlaylistCoverTicket: {
+            /** Cover Key */
+            cover_key: string;
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @default PUT
+             */
+            method: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** PlaylistCoverUploadRequest */
+        PlaylistCoverUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
+        /** PlaylistCreate */
+        PlaylistCreate: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Is Public
+             * @default false
+             */
+            is_public: boolean;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PlaylistDetail
+         * @description Items are pre-filtered to what's currently visible to the viewer —
+         *     a sermon unpublished after being added just quietly drops out of the
+         *     list (same "invisible content never renders" rule every other catalog
+         *     read follows), without deleting the underlying `PlaylistItem` row, so it
+         *     reappears if the sermon is republished.
+         */
+        PlaylistDetail: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Owner */
+            is_owner: boolean;
+            /** Is Public */
+            is_public: boolean;
+            /** Item Count */
+            item_count: number;
+            /** Items */
+            items: components["schemas"]["PlaylistItemPublic"][];
+            /** Name */
+            name: string;
+            /** Owner Name */
+            owner_name: string | null;
+            /** Total Duration Seconds */
+            total_duration_seconds: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** PlaylistItemAdd */
+        PlaylistItemAdd: {
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+        };
+        /**
+         * PlaylistItemOrderRequest
+         * @description Every current item id, in the caller's desired order — same
+         *     all-or-nothing shape `EpisodeOrderRequest` uses for episode reordering.
+         */
+        PlaylistItemOrderRequest: {
+            /** Item Ids */
+            item_ids: string[];
+        };
+        /** PlaylistItemPublic */
+        PlaylistItemPublic: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            sermon: components["schemas"]["SermonListItem"];
+        };
+        /** PlaylistPublic */
+        PlaylistPublic: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Item Count */
+            item_count: number;
+            /** Name */
+            name: string;
+            /** Owner Name */
+            owner_name: string | null;
+            /** Total Duration Seconds */
+            total_duration_seconds: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * PlaylistUpdate
+         * @description Every field optional — a PATCH only touches what the client sends,
+         *     same convention `SeriesUpdate`/`ProfileDetailsUpdate` already use.
+         */
+        PlaylistUpdate: {
+            /** Cover Color */
+            cover_color?: ("navy" | "teal" | "gold" | "berry" | "sage" | "ink") | null;
+            /** Description */
+            description?: string | null;
+            /** Is Public */
+            is_public?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * ProfileDetailsUpdate
+         * @description Me-page profile edit (Isaac's ask, session 2026-10-09): first/last
+         *     name and gender, independent of `ProfileUpdate`'s single `full_name`
+         *     field above and of avatar upload (its own ticket/confirm pair below).
+         *     `first_name`/`last_name` must be given together or not at all — the
+         *     service rejects one without the other (a name can't be half-updated);
+         *     `gender` can be set on its own. Saving a name goes through the same
+         *     content-moderation rules `full_name` always has
+         *     (`comments_service.update_profile_name`), since it still recomputes and
+         *     publicly displays as `full_name`.
+         */
+        ProfileDetailsUpdate: {
+            /** First Name */
+            first_name?: string | null;
+            gender?: components["schemas"]["Gender"] | null;
+            /** Last Name */
+            last_name?: string | null;
+        };
+        /**
+         * ProfileUpdate
+         * @description Self-edit of the caller's profile via `full_name` directly — unchanged,
+         *     still used by the comments flow's own name prompt (`comments_service.
+         *     update_full_name`). Role, email and activation are never self-editable
+         *     (extra keys are a 422). Normalisation and the URL/blocklist checks live in
+         *     the service.
+         */
+        ProfileUpdate: {
+            /** Full Name */
+            full_name: string;
         };
         /** ProgressPublic */
         ProgressPublic: {
@@ -2275,6 +5233,68 @@ export interface components {
             notified_subscriber_count: number;
             status: components["schemas"]["SermonStatus"];
         };
+        /** PushDevicePublic */
+        PushDevicePublic: {
+            /** New Sermons */
+            new_sermons: boolean;
+            /** Platform */
+            platform: string;
+            /** Token */
+            token: string;
+        };
+        /** PushDeviceRegister */
+        PushDeviceRegister: {
+            /**
+             * New Sermons
+             * @default true
+             */
+            new_sermons: boolean;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "ios" | "android";
+            /** Token */
+            token: string;
+        };
+        /** PushDeviceUnregister */
+        PushDeviceUnregister: {
+            /** Token */
+            token: string;
+        };
+        /** ReadingConfirm */
+        ReadingConfirm: {
+            /** Duration S */
+            duration_s?: number | null;
+            /** Reading Key */
+            reading_key: string;
+        };
+        /**
+         * ReadingFallback
+         * @description What the Hear step does when no pastor's reading was uploaded.
+         * @enum {string}
+         */
+        ReadingFallback: "text" | "tts";
+        /** ReadingTicket */
+        ReadingTicket: {
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers: {
+                [key: string]: string;
+            };
+            /** Reading Key */
+            reading_key: string;
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** ReadingUploadRequest */
+        ReadingUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
@@ -2284,6 +5304,99 @@ export interface components {
         RejectRequest: {
             /** Note */
             note: string;
+        };
+        /**
+         * ReportBucket
+         * @description One bucket, half-open `[start, end)`. Weekly buckets cut at ISO
+         *     Mondays and monthly at the 1st; the first and last are clipped to the
+         *     period.
+         */
+        ReportBucket: {
+            /** Completions */
+            completions: number;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Listeners */
+            listeners: number;
+            /** New Listeners */
+            new_listeners: number;
+            /** Plays */
+            plays: number;
+            /** Signups */
+            signups: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Watch Hours */
+            watch_hours: number;
+        };
+        /**
+         * ReportKpis
+         * @description Period totals. `listeners` is distinct accounts over the whole period
+         *     (not a sum of bucket counts). `new_listeners` and `signups` (viewer
+         *     accounts created) are accurate for any period; the other measures exist
+         *     only from `data_available_from` on.
+         */
+        ReportKpis: {
+            /** Completions */
+            completions: number;
+            /** Listeners */
+            listeners: number;
+            /** New Listeners */
+            new_listeners: number;
+            /** Plays */
+            plays: number;
+            /** Signups */
+            signups: number;
+            /** Watch Hours */
+            watch_hours: number;
+        };
+        /** ReportPeriod */
+        ReportPeriod: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Granularity
+             * @enum {string}
+             */
+            granularity: "day" | "week" | "month";
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /** ReportTopSermon */
+        ReportTopSermon: {
+            /** Completions */
+            completions: number;
+            /** Plays */
+            plays: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Title */
+            title: string;
+            /** Watch Hours */
+            watch_hours: number;
+        };
+        /** ResendVerificationRequest */
+        ResendVerificationRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -2422,6 +5535,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             status: components["schemas"]["SermonStatus"];
             /** Thumbnail Url */
             thumbnail_url?: string | null;
@@ -2476,10 +5599,27 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Prophets Catalog
+             * @default false
+             */
+            is_prophets_catalog: boolean;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             /** Locked */
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Published At */
@@ -2537,6 +5677,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Series Id */
@@ -2567,6 +5709,11 @@ export interface components {
              * @description Leave unset and the next number in the series is assigned automatically. Set it explicitly only when reordering.
              */
             episode_number?: number | null;
+            /**
+             * Is Prophets Catalog
+             * @default false
+             */
+            is_prophets_catalog: boolean;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -2599,10 +5746,22 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             /** Locked */
             locked: boolean;
             /** Media Refs */
             media_refs: components["schemas"]["MediaRefPublic"][];
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Published At */
@@ -2649,6 +5808,8 @@ export interface components {
             id: string;
             /** Locked */
             locked: boolean;
+            /** Media Type */
+            media_type?: ("audio" | "video") | null;
             /** Publish At */
             publish_at?: string | null;
             /** Series Id */
@@ -2670,6 +5831,53 @@ export interface components {
          * @enum {string}
          */
         SermonStatus: "draft" | "pending_review" | "under_review" | "approved" | "published" | "rejected" | "unpublished";
+        /**
+         * SermonStatusCounts
+         * @description Sermons per workflow status, in the caller's scope (an editor's own
+         *     sermons; everyone's for a manager/admin). Zero-filled.
+         */
+        SermonStatusCounts: {
+            /**
+             * Approved
+             * @default 0
+             */
+            approved: number;
+            /**
+             * Draft
+             * @default 0
+             */
+            draft: number;
+            /**
+             * Pending Review
+             * @default 0
+             */
+            pending_review: number;
+            /**
+             * Published
+             * @default 0
+             */
+            published: number;
+            /**
+             * Rejected
+             * @default 0
+             */
+            rejected: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Under Review
+             * @default 0
+             */
+            under_review: number;
+            /**
+             * Unpublished
+             * @default 0
+             */
+            unpublished: number;
+        };
         /** SermonUpdate */
         SermonUpdate: {
             /** Category Id */
@@ -2678,6 +5886,8 @@ export interface components {
             description?: string | null;
             /** Episode Number */
             episode_number?: number | null;
+            /** Is Prophets Catalog */
+            is_prophets_catalog?: boolean | null;
             /** Series Id */
             series_id?: string | null;
             /** Speaker Id */
@@ -2776,11 +5986,10 @@ export interface components {
          *
          *     Deliberately carries **no** monetary field — no `amount`, `price`,
          *     `currency` or MRR (resolved decision 2). No amount is stored on
-         *     `Subscription` and the webhook never parses one; there is nothing truthful
-         *     to put here and Phase 2 shows no dollar figure anywhere in the portal.
-         *     `current_period_end` is the model's `valid_until` column (null on free /
-         *     fully-lapsed rows). `provider_customer_id` is null until the member's first
-         *     payment lands via webhook — the frontend hides "Open in Stripe" when it is.
+         *     `Subscription`; there is nothing truthful to put here and Phase 2 shows no
+         *     dollar figure anywhere in the portal. `current_period_end` is the model's
+         *     `valid_until` column (null on free / fully-lapsed rows).
+         *     `provider_customer_id` is null until a payment provider populates it.
          */
         SubscriptionAdminItem: {
             /**
@@ -2917,6 +6126,36 @@ export interface components {
             unique_viewers: number;
         };
         /**
+         * UpcomingSermon
+         * @description The next scheduled sermon — PUBLISHED with a future `publish_at` — for Home's
+         *     "next message" countdown. Deliberately thin: the title, its cover art (Nii's call,
+         *     2026-10-21: the countdown shows the sermon's own art), when it goes live, and the
+         *     names a card needs. No description or media, so nothing playable leaks ahead of
+         *     the release.
+         */
+        UpcomingSermon: {
+            /** Episode Number */
+            episode_number?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Publish At
+             * Format: date-time
+             */
+            publish_at: string;
+            /** Series Title */
+            series_title?: string | null;
+            /** Speaker Name */
+            speaker_name?: string | null;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
          * UploadConfirm
          * @description Sent when the client finishes its PUT.
          *
@@ -2999,6 +6238,23 @@ export interface components {
             upload_url: string;
         };
         /**
+         * UsageReport
+         * @description `GET /admin/analytics/report` (plan-admin-settings §A.5).
+         *     `data_available_from` is the earliest day with any rollup data: plays,
+         *     completions and watch time are forward-only from then (§A.2). Null when
+         *     there is no rollup data yet.
+         */
+        UsageReport: {
+            /** Data Available From */
+            data_available_from: string | null;
+            kpis: components["schemas"]["ReportKpis"];
+            period: components["schemas"]["ReportPeriod"];
+            /** Series */
+            series: components["schemas"]["ReportBucket"][];
+            /** Top Sermons */
+            top_sermons: components["schemas"]["ReportTopSermon"][];
+        };
+        /**
          * UserActiveResponse
          * @description The updated account, plus a flag set when a Redis outage forced
          *     refresh-token revocation to be deferred (plan §W18, GATE 6 = commit-first).
@@ -3030,6 +6286,10 @@ export interface components {
         UserPublic: {
             /** Activated At */
             activated_at?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Comments Terms Accepted At */
+            comments_terms_accepted_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3040,8 +6300,16 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** First Name */
+            first_name?: string | null;
             /** Full Name */
             full_name?: string | null;
+            gender?: components["schemas"]["Gender"] | null;
+            /**
+             * Has Password
+             * @default false
+             */
+            has_password: boolean;
             /**
              * Id
              * Format: uuid
@@ -3049,6 +6317,10 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Last Name */
+            last_name?: string | null;
+            /** Linked Providers */
+            linked_providers?: components["schemas"]["AuthProvider"][];
             role: components["schemas"]["UserRole"];
         };
         /** UserRegister */
@@ -3078,6 +6350,109 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerifyEmailRequest */
+        VerifyEmailRequest: {
+            /** Code */
+            code: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /** VerseAdminItem */
+        VerseAdminItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** VerseCreate */
+        VerseCreate: {
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /**
+             * Translation
+             * @default kjv
+             */
+            translation: string;
+        };
+        /**
+         * VersePublic
+         * @description What `GET /verses/today` returns — no `is_active`/`created_by`/timestamps,
+         *     same split Announcements draws between its public and staff shapes.
+         */
+        VersePublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Text */
+            text: string;
+            /** Translation */
+            translation: string;
+        };
+        /** VerseUpdate */
+        VerseUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Translation */
+            translation?: string | null;
+        };
+        /**
+         * VideoDownloadResponse
+         * @description GET .../download/video — a short-lived signed URL for the video
+         *     rendition only, for offline download (L6's "audio-only, ever" revisited:
+         *     Isaac's ask, session 2026-10-08 — video downloads now ship, with weaker
+         *     at-rest protection than audio's own JS-level encryption gets; see
+         *     `media_service.get_video_download`'s own docstring). Same minimal shape
+         *     as `AudioDownloadResponse` deliberately — each sermon carries exactly one
+         *     rendition, never both, so no caller ever needs the two responses to
+         *     disagree in shape.
+         */
+        VideoDownloadResponse: {
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Sermon Id
+             * Format: uuid
+             */
+            sermon_id: string;
+            /** Url */
+            url: string;
         };
     };
     responses: never;
@@ -3128,6 +6503,77 @@ export interface operations {
             };
         };
     };
+    usage_report_api_v1_admin_analytics_report_get: {
+        parameters: {
+            query: {
+                /** @description First day of the period (UTC), inclusive. */
+                from: string;
+                /** @description Day after the period ends (UTC), exclusive. At most 366 days after `from`. */
+                to: string;
+                granularity?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_usage_report_api_v1_admin_analytics_report_export_get: {
+        parameters: {
+            query: {
+                /** @description First day of the period (UTC), inclusive. */
+                from: string;
+                /** @description Day after the period ends (UTC), exclusive. At most 366 days after `from`. */
+                to: string;
+                kind: "timeseries" | "top_sermons";
+                granularity?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description UTF-8 CSV with BOM. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     top_sermons_api_v1_admin_analytics_top_sermons_get: {
         parameters: {
             query?: {
@@ -3146,6 +6592,596 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopSermonStat"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_api_v1_admin_audit_get: {
+        parameters: {
+            query?: {
+                actor_id?: string | null;
+                /** @description Repeatable. Exact action names, e.g. `auth.login`, `sermon.status_changed`, `comment.hide`. */
+                action?: string[];
+                category?: ("auth" | "users" | "settings" | "reports" | "data" | "sermons" | "announcements" | "moderation") | null;
+                /** @description Only actions taken by staff accounts. Viewer sign-ins and a viewer deleting their own comment drop out; staff and system moderation stay. */
+                staff_only?: boolean;
+                target_type?: string | null;
+                target_id?: string | null;
+                outcome?: components["schemas"]["AuditOutcome"] | null;
+                /** @description Inclusive lower bound (UTC). */
+                from?: string | null;
+                /** @description Exclusive upper bound (UTC). */
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditEntry_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_audit_entries_api_v1_admin_audit_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wipe_audit_trail_api_v1_admin_audit_wipe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditWipeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_comments_api_v1_admin_comments_get: {
+        parameters: {
+            query?: {
+                sermon_id?: string | null;
+                status?: components["schemas"]["CommentStatus"] | null;
+                reported_only?: boolean;
+                /** @description Auto-hidden, or visible with at least one report since the last restore. `limit=1` and the returned `total` give the nav badge count. */
+                needs_review?: boolean;
+                sort?: "recent" | "most_reported";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CommentAdmin_"] | components["schemas"]["Page_CommentAdminForEditor_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hard_delete_comment_api_v1_admin_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_reports_api_v1_admin_comments__comment_id__dismiss_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_comment_api_v1_admin_comments__comment_id__hide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerationReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_comment_api_v1_admin_comments__comment_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_data_api_v1_admin_data_export_get: {
+        parameters: {
+            query?: {
+                tables?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_data_api_v1_admin_data_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_data_api_v1_admin_data_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tables_api_v1_admin_data_tables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataTablesResponse"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_admin_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_admin_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChurchSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_devotional_settings_api_v1_admin_settings_devotionals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalSettings"];
+                };
+            };
+        };
+    };
+    update_devotional_settings_api_v1_admin_settings_devotionals_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_sign_in_image_api_v1_admin_settings_sign_in_image_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
+                };
+            };
+        };
+    };
+    sign_in_image_url_api_v1_admin_settings_sign_in_image_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThumbnailUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_sign_in_image_api_v1_admin_settings_sign_in_image_confirm_post: {
+        parameters: {
+            query: {
+                thumbnail_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsAdmin"];
                 };
             };
             /** @description Validation Error */
@@ -3736,6 +7772,154 @@ export interface operations {
             };
         };
     };
+    devotional_review_queue_api_v1_approvals_devotionals_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalListItem"][];
+                };
+            };
+        };
+    };
+    approve_devotional_api_v1_approvals_devotionals__devotional_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_devotional_api_v1_approvals_devotionals__devotional_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_devotional_api_v1_approvals_devotionals__devotional_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_devotional_api_v1_approvals_devotionals__devotional_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     review_queue_api_v1_approvals_sermons_review_queue_get: {
         parameters: {
             query?: {
@@ -4145,6 +8329,233 @@ export interface operations {
             };
         };
     };
+    update_me_api_v1_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    avatar_confirm_api_v1_auth_me_avatar_confirm_post: {
+        parameters: {
+            query: {
+                avatar_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    avatar_upload_ticket_api_v1_auth_me_avatar_upload_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_me_api_v1_auth_me_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordDeletionRequest"] | components["schemas"]["GoogleDeletionRequest"] | components["schemas"]["AppleDeletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_me_profile_api_v1_auth_me_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileDetailsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_apple_api_v1_auth_oauth_apple_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_google_api_v1_auth_oauth_google_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
@@ -4211,6 +8622,39 @@ export interface operations {
             };
         };
     };
+    resend_verification_api_v1_auth_resend_verification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResendVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_password_api_v1_auth_reset_password_post: {
         parameters: {
             query?: never;
@@ -4231,6 +8675,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_email_api_v1_auth_verify_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
                 };
             };
             /** @description Validation Error */
@@ -4284,6 +8761,150 @@ export interface operations {
             };
         };
     };
+    hero_sermons_api_v1_catalog_sermons_hero_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_release_sermons_api_v1_catalog_sermons_new_releases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prophets_catalog_sermons_api_v1_catalog_sermons_prophets_catalog_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trending_sermons_api_v1_catalog_sermons_trending_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upcoming_sermon_api_v1_catalog_sermons_upcoming_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingSermon"] | null;
+                };
+            };
+        };
+    };
     get_sermon_api_v1_catalog_sermons__sermon_id__get: {
         parameters: {
             query?: never;
@@ -4302,6 +8923,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SermonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    like_sermon_api_v1_catalog_sermons__sermon_id__like_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlike_sermon_api_v1_catalog_sermons__sermon_id__like_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
                 };
             };
             /** @description Validation Error */
@@ -4463,6 +9146,706 @@ export interface operations {
             };
         };
     };
+    delete_own_comment_api_v1_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_comment_author_api_v1_comments__comment_id__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_comment_api_v1_comments__comment_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_devotional_api_v1_devotionals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devotionals_api_v1_devotionals_admin_all_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                status?: components["schemas"]["DevotionalStatus"] | null;
+                evergreen?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DevotionalListItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_calendar_api_v1_devotionals_admin_calendar_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalCalendar"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_devotionals_api_v1_devotionals_admin_import_post: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+                as?: "draft" | "approved";
+                on_clash?: "skip" | "replace_draft" | "to_pool";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_template_api_v1_devotionals_admin_import_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    lookup_passage_api_v1_devotionals_admin_passage_get: {
+        parameters: {
+            query: {
+                ref: string;
+                translation?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassageLookup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_devotional_api_v1_devotionals_admin__devotional_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_history_api_v1_devotionals_admin__devotional_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalApprovalLogItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotional_for_day_api_v1_devotionals_day__day__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    devotionals_for_days_api_v1_devotionals_days_get: {
+        parameters: {
+            query: {
+                from: string;
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_devotional_api_v1_devotionals__devotional_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_devotional_api_v1_devotionals__devotional_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevotionalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_remove_api_v1_devotionals__devotional_id__reading_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_upload_url_api_v1_devotionals__devotional_id__reading_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadingTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reading_confirm_api_v1_devotionals__devotional_id__reading_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_devotional_api_v1_devotionals__devotional_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_devotional_api_v1_devotionals__devotional_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                devotional_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevotionalStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_blocks_api_v1_me_blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockPublic"][];
+                };
+            };
+        };
+    };
+    delete_my_block_api_v1_me_blocks__block_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_comments_terms_api_v1_me_comments_terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     continue_watching_api_v1_me_continue_watching_get: {
         parameters: {
             query?: {
@@ -4526,7 +9909,102 @@ export interface operations {
             };
         };
     };
-    list_my_notes_api_v1_me_notes_get: {
+    register_push_device_api_v1_me_push_devices_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushDeviceRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushDevicePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unregister_push_device_api_v1_me_push_devices_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushDeviceUnregister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recommended_for_you_api_v1_me_recommended_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_playlists_api_v1_playlists_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -4541,17 +10019,81 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NotePublic"][];
+                    "application/json": components["schemas"]["PlaylistPublic"][];
                 };
             };
         };
     };
-    delete_note_api_v1_notes__note_id__delete: {
+    create_playlist_api_v1_playlists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_playlist_api_v1_playlists__playlist_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                note_id: string;
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_playlist_api_v1_playlists__playlist_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
             };
             cookie?: never;
         };
@@ -4575,18 +10117,18 @@ export interface operations {
             };
         };
     };
-    update_note_api_v1_notes__note_id__patch: {
+    update_playlist_api_v1_playlists__playlist_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                note_id: string;
+                playlist_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NoteUpdate"];
+                "application/json": components["schemas"]["PlaylistUpdate"];
             };
         };
         responses: {
@@ -4596,7 +10138,177 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NotePublic"];
+                    "application/json": components["schemas"]["PlaylistPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cover_confirm_api_v1_playlists__playlist_id__cover_confirm_post: {
+        parameters: {
+            query: {
+                cover_key: string;
+            };
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistCoverResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cover_upload_ticket_api_v1_playlists__playlist_id__cover_upload_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistCoverUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistCoverTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_api_v1_playlists__playlist_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_items_api_v1_playlists__playlist_id__items_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_api_v1_playlists__playlist_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlist_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetail"];
                 };
             };
             /** @description Validation Error */
@@ -4894,6 +10606,68 @@ export interface operations {
             };
         };
     };
+    like_series_api_v1_series__series_id__like_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlike_series_api_v1_series__series_id__like_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     series_thumbnail_url_api_v1_series__series_id__thumbnail_url_post: {
         parameters: {
             query?: never;
@@ -5037,6 +10811,38 @@ export interface operations {
             };
         };
     };
+    sermon_status_counts_api_v1_sermons_status_counts_get: {
+        parameters: {
+            query?: {
+                /** @description Only the caller's own sermons. */
+                created_by?: "me" | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SermonStatusCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sermon_api_v1_sermons__sermon_id__get: {
         parameters: {
             query?: never;
@@ -5132,6 +10938,206 @@ export interface operations {
             };
         };
     };
+    list_captions_api_v1_sermons__sermon_id__captions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_caption_api_v1_sermons__sermon_id__captions__language__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptionUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_caption_api_v1_sermons__sermon_id__captions__language__regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_caption_vtt_api_v1_sermons__sermon_id__captions__language__vtt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptionVtt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sermon_comments_api_v1_sermons__sermon_id__comments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CommentPublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_sermon_comment_api_v1_sermons__sermon_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_audio_api_v1_sermons__sermon_id__download_audio_get: {
         parameters: {
             query?: never;
@@ -5150,6 +11156,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AudioDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_video_api_v1_sermons__sermon_id__download_video_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sermon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoDownloadResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5246,72 +11283,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_sermon_notes_api_v1_sermons__sermon_id__notes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sermon_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_sermon_note_api_v1_sermons__sermon_id__notes_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sermon_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NoteCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotePublic"];
-                };
             };
             /** @description Validation Error */
             422: {
@@ -5617,6 +11588,44 @@ export interface operations {
             };
         };
     };
+    public_settings_api_v1_settings_public_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChurchSettingsPublic"];
+                };
+            };
+            /** @description Not modified (matching If-None-Match). */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_speakers_api_v1_speakers_get: {
         parameters: {
             query?: never;
@@ -5765,39 +11774,6 @@ export interface operations {
             };
         };
     };
-    start_checkout_api_v1_subscriptions_checkout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CheckoutRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckoutResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     my_subscription_api_v1_subscriptions_me_get: {
         parameters: {
             query?: never;
@@ -5814,46 +11790,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubscriptionPublic"];
-                };
-            };
-        };
-    };
-    cancel_subscription_api_v1_subscriptions_me_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubscriptionPublic"];
-                };
-            };
-        };
-    };
-    billing_portal_api_v1_subscriptions_portal_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalResponse"];
                 };
             };
         };
@@ -6020,6 +11956,41 @@ export interface operations {
             };
         };
     };
+    list_members_api_v1_users_members_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description Email or name contains */
+                q?: string | null;
+                status?: "all" | "active" | "deactivated";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UserPublic_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     role_counts_api_v1_users_role_counts_get: {
         parameters: {
             query?: never;
@@ -6036,6 +12007,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleCounts"];
+                };
+            };
+        };
+    };
+    delete_user_api_v1_users__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6128,6 +12128,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_verse_api_v1_verses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_verses_api_v1_verses_admin_all_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"][];
+                };
+            };
+        };
+    };
+    verse_of_the_day_api_v1_verses_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersePublic"];
+                };
+            };
+        };
+    };
+    delete_verse_api_v1_verses__verse_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verse_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_verse_api_v1_verses__verse_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verse_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerseUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerseAdminItem"];
                 };
             };
             /** @description Validation Error */

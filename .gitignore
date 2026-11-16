@@ -3,8 +3,10 @@
 .env.*
 !.env.example
 !.env.docker.example
+!.env.render.example
 *.pem
 *.key
+*.p8
 
 # Python-generated files
 __pycache__/
@@ -57,8 +59,6 @@ mobile/node_modules/
 # assumption the narrower entries below used to make).
 mobile/ios/
 mobile/android/
-mobile/spike/ios/
-mobile/spike/android/
 
 # Local Docker Compose override (auto-loaded by `docker compose`). Used on
 # machines where a host-native Postgres already holds 127.0.0.1:5432 — the
@@ -66,3 +66,11 @@ mobile/spike/android/
 # CI and other machines must use the plain compose file.
 docker-compose.override.yml
 docker-compose.override.yaml
+
+# Sentry CLI / build-plugin credentials (auth tokens) never belong in the repo.
+.sentryclirc
+sentry.properties
+
+# Firebase config for Android push: supplied by EAS as a secret file variable.
+google-services.json
+GoogleService-Info.plist

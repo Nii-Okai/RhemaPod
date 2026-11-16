@@ -10,7 +10,8 @@ import { cn } from "cn";
 
 export interface PageHeaderProps {
   title: ReactNode;
-  subhead: ReactNode;
+  /** Optional one-line description under the title. */
+  subhead?: ReactNode;
   /** Right-aligned actions (e.g. a "New sermon" button). */
   actions?: ReactNode;
   className?: string;
@@ -26,7 +27,7 @@ export function PageHeader({
     <div className={cn("flex items-start justify-between gap-16", className)}>
       <div className="flex flex-col gap-6">
         <h1 className="text-page-title text-ink">{title}</h1>
-        <p className="text-[14.5px] text-ink-muted">{subhead}</p>
+        {subhead ? <p className="text-[14.5px] text-ink-muted">{subhead}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-8">{actions}</div> : null}
     </div>

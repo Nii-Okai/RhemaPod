@@ -96,12 +96,7 @@ export default function DevGalleryScreen() {
         <SwatchRow>
           {(Object.keys(radius) as (keyof typeof radius)[]).map((token) => (
             <View key={token} style={styles.spacingItem}>
-              <View
-                style={[
-                  styles.radiusBox,
-                  { borderRadius: token === 'pill' ? 24 : radius[token] },
-                ]}
-              />
+              <View style={[styles.radiusBox, { borderRadius: token === 'pill' ? 24 : radius[token] }]} />
               <AppText variant="mono.meta" tone="tertiary">
                 {token}
               </AppText>
@@ -110,15 +105,15 @@ export default function DevGalleryScreen() {
         </SwatchRow>
       </Section>
 
-      <Section title="Typography — display (Newsreader, 400 only)">
-        {(['hero', 'title', 'section', 'row', 'compact'] as DisplayVariant[]).map((variant) => (
+      <Section title="Typography — display (Fraunces, 400 only)">
+        {(['hero', 'title', 'section', 'row', 'compact', 'scripture'] as DisplayVariant[]).map((variant) => (
           <AppText key={variant} variant={`display.${variant}`} style={styles.stack}>
             {variant} — The kingdom of heaven
           </AppText>
         ))}
       </Section>
 
-      <Section title="Typography — UI (Figtree)">
+      <Section title="Typography — UI (Plus Jakarta Sans)">
         {(['bodyLarge', 'body', 'label', 'button', 'badge', 'avatarInitials'] as UiVariant[]).map((variant) => (
           <AppText key={variant} variant={`ui.${variant}`} style={styles.stack}>
             {variant} — Sign in to continue
@@ -127,7 +122,7 @@ export default function DevGalleryScreen() {
       </Section>
 
       <Section title="Typography — mono (IBM Plex Mono, numeric/temporal only)">
-        {(['meta', 'tight'] as MonoVariant[]).map((variant) => (
+        {(['meta', 'tight', 'counter'] as MonoVariant[]).map((variant) => (
           <AppText key={variant} variant={`mono.${variant}`} tone="tertiary" style={styles.stack}>
             {variant} — 42:18 · Sep 4 · Ep. 05
           </AppText>

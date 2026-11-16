@@ -60,6 +60,10 @@ const eslintConfig = defineConfig([
         // `useDownloads.ts` list-refresh poll.
         setInterval: "readonly",
         clearInterval: "readonly",
+        // Metro provides CommonJS `require` at runtime; it is how React Native loads
+        // static assets (`source={require('./icon.png')}`) — there is no `import` form
+        // Metro resolves to an asset reference.
+        require: "readonly",
       },
     },
     plugins: {
@@ -67,11 +71,29 @@ const eslintConfig = defineConfig([
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
+      // Allow `require()` for static assets only (images, fonts, media). Any other
+      // `require()` in app code still needs a justified inline disable, as
+      // `lib/auth/session.ts` has.
+      "@typescript-eslint/no-require-imports": [
+        "error",
+        { allow: ["\\.(png|jpe?g|gif|webp|svg|ttf|otf|mp3|mp4|m4a|wav)$"] },
+      ],
     },
   },
   {
-    files: ["**/*.config.{js,mjs,ts}"],
+    // Expo config plugins run in Node at prebuild time, as CommonJS.
+    files: ["**/*.config.{js,mjs,ts}", "plugins/**/*.js"],
     languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    // Release tooling run with Node from the command line (e.g. `npm run update`).
+    files: ["scripts/**/*.js"],
+    languageOptions: {
+      sourceType: "commonjs",
       globals: {
         ...globals.node,
       },
@@ -88,6 +110,11 @@ const eslintConfig = defineConfig([
         ...globals.node,
         ...globals.jest,
       },
+    },
+    rules: {
+      // `jest.mock()` factories are hoisted above imports and may not close over
+      // module-scope bindings, so `require()` inside them is the Jest idiom.
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   {

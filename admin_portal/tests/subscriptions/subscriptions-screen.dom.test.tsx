@@ -13,10 +13,10 @@ import type { SubscriptionAdminItem } from "@/lib/query/hooks/use-subscriptions"
 /* W21 — the Subscriptions screen, rendered (happy-dom). Every backend call is
    MSW, never a mocked fetch (§A.11). Proves the acceptance list: tiles from
    `/counts`, `?status=`/`?tier=` on the wire, a past-due row that reads exactly
-   "Past due" with no date, "Open in Stripe" present-with-href / absent on a
-   null customer id, a client CSV that matches the visible filtered set with no
-   amount and no customer-id column, no dollar sign anywhere, and no non-GET
-   request from any interaction. */
+   "Past due" with no date, no row rendering an external dashboard link, a
+   client CSV that matches the visible filtered set with no amount and no
+   customer-id column, no dollar sign anywhere, and no non-GET request from
+   any interaction. */
 
 const nav = vi.hoisted(() => ({
   replace: vi.fn<(href: string) => void>(),
@@ -228,34 +228,17 @@ describe("SubscriptionsScreen — past-due row", () => {
   });
 });
 
-/* --- Open in Stripe --------------------------------------------- */
+/* --- no external dashboard link --------------------------------- */
 
-describe("SubscriptionsScreen — Open in Stripe", () => {
-  it("renders a link with the customer href when provider_customer_id is set", async () => {
+describe("SubscriptionsScreen — no external dashboard link", () => {
+  it("renders no row with a link out to an external payment-provider dashboard, even with a provider_customer_id set", async () => {
     backend();
     renderScreen();
 
     const row = (await screen.findByText("Ada Nwosu")).closest('[role="row"]')!;
-    const link = within(row as HTMLElement).getByRole("link", {
-      name: "Open in Stripe",
-    });
-    expect(link).toHaveAttribute(
-      "href",
-      "https://dashboard.stripe.com/customers/cus_ADA",
-    );
-    expect(link).toHaveAttribute("target", "_blank");
-  });
-
-  it("is absent from the DOM entirely for a row with provider_customer_id: null", async () => {
-    backend();
-    renderScreen();
-
-    const row = (await screen.findByText("Cy Park")).closest('[role="row"]')!;
     expect(
-      within(row as HTMLElement).queryByRole("link", { name: "Open in Stripe" }),
-    ).not.toBeInTheDocument();
-    // Not merely hidden/disabled — the text is nowhere in the row.
-    expect(row.textContent).not.toContain("Open in Stripe");
+      within(row as HTMLElement).queryAllByRole("link"),
+    ).toHaveLength(0);
   });
 });
 

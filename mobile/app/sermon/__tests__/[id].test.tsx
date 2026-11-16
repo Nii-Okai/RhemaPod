@@ -1,40 +1,24 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { PixelRatio } from 'react-native';
+import RNShare from 'react-native-share';
 import { QueryClientProvider } from '@tanstack/react-query';
 import SermonDetailScreen from '../[id]';
+import { ApiError } from '../../../lib/api/errors';
 import { api } from '../../../lib/api/typedClient';
-import { usePlatformOS } from '../../../components/navigation/platform';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 
 jest.mock('../../../lib/api/typedClient', () => ({
-  api: { get: jest.fn() },
-}));
-
-jest.mock('../../../components/navigation/platform', () => ({
-  usePlatformOS: jest.fn(() => 'ios'),
+  api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 jest.mock('@expo/vector-icons');
 
-// Explicit factory (not a bare automock) — an automock still has to `require()` the real
-// module first, which pulls in `downloadManager.ts` -> `modules/rpa-crypto`'s real native
-// module resolution (unavailable under Jest). This screen's own download-affordance
-// coverage lives in `_detail/__tests__/DownloadButton.test.tsx`; here it's enough that
-// `useDownloads()` returns a harmless "nothing downloaded yet" shape.
-jest.mock('../../../lib/downloads/useDownloads', () => ({
-  useDownloads: jest.fn(() => ({
-    downloads: [],
-    isLoading: false,
-    wifiOnly: true,
-    isSavingWifiOnly: false,
-    setWifiOnly: jest.fn(),
-    download: jest.fn(),
-    retry: jest.fn(),
-    remove: jest.fn(),
-    find: jest.fn(() => undefined),
-  })),
-}));
+// `react-native-share` resolves its real native module (`RNShare`) at import time —
+// unavailable under Jest, same gap as every other native module this app mocks. This
+// screen's own Share-button coverage only needs the call to go somewhere; the actual
+// composed-message/thumbnail-download logic is `lib/share/__tests__/shareContent.test.ts`'s.
+jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -42,13 +26,20 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
+const mockDismissAll = jest.fn();
+let mockParams: Record<string, string | undefined> = { id: 'sermon-1' };
+let mockPathname = '/sermon/sermon-1';
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ id: 'sermon-1' }),
-  useRouter: () => ({ back: mockBack, push: mockPush }),
+  useLocalSearchParams: () => mockParams,
+  useRouter: () => ({ back: mockBack, push: mockPush, replace: mockReplace, dismissAll: mockDismissAll }),
+  usePathname: () => mockPathname,
 }));
 
 const mockedGet = api.get as jest.Mock;
-const mockedUsePlatformOS = usePlatformOS as jest.Mock;
+const mockedPost = api.post as jest.Mock;
+const mockedPut = api.put as jest.Mock;
+const mockedDelete = api.delete as jest.Mock;
 
 const baseDetail = {
   id: 'sermon-1',
@@ -60,22 +51,52 @@ const baseDetail = {
   category_name: 'Teaching',
   speaker_id: 'sp1',
   speaker_name: 'Ada Nwosu',
-  series_id: null,
-  series_title: null,
+  series_id: 's1',
+  series_title: 'A Series',
   episode_number: null,
   tier: 'free',
-  locked: false,
+  // Locked, not playable — every playable sermon (standalone or series episode) now
+  // redirects straight to the player instead of rendering this page at all (see
+  // `[id].tsx`'s own `opensPlayer` doc comment; that redirect path has its own
+  // dedicated coverage in `signaturePlayer.test.tsx`). Locked is the one remaining
+  // reason this screen renders its main content — Like / My List / Share / Related
+  // still work the same for a locked preview, which is what most of this file covers.
+  locked: true,
   tags: ['grief', 'hope'],
+  media_type: 'video',
   media_refs: [{ id: 'm1', type: 'video', quality: '720p', s3_key: 'x', hls_manifest_key: 'y' }],
   published_at: '2026-09-04T12:00:00Z',
   status: 'published',
   created_at: '2026-09-01T00:00:00Z',
+  like_count: 0,
+  liked_by_me: false,
 };
 
-function mockDetailAndProgress(detail: unknown, progress: unknown = null) {
+const emptySearchResults = {
+  query: null,
+  total: 0,
+  limit: 20,
+  offset: 0,
+  series: [],
+  series_total: 0,
+  speakers: [],
+  speakers_total: 0,
+  results: [],
+};
+
+function mockDetailAndProgress(
+  detail: unknown,
+  progress: unknown = null,
+  searchResults: unknown = emptySearchResults,
+  playlists: unknown[] = [],
+) {
   mockedGet.mockImplementation((path: string) => {
     if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(detail);
     if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(progress);
+    if (path === '/search') return Promise.resolve(searchResults);
+    // No "My List" playlist yet by default — `useAddToDefaultLibrary`'s own
+    // "create on first add".
+    if (path === '/playlists') return Promise.resolve(playlists);
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -91,9 +112,12 @@ function renderDetail() {
 
 beforeEach(() => {
   mockedGet.mockReset();
+  mockedPost.mockReset();
   mockBack.mockClear();
   mockPush.mockClear();
-  mockedUsePlatformOS.mockReturnValue('ios');
+  mockDismissAll.mockClear();
+  mockParams = { id: 'sermon-1' };
+  mockPathname = '/sermon/sermon-1';
 });
 
 describe('SermonDetailScreen — loading', () => {
@@ -102,6 +126,26 @@ describe('SermonDetailScreen — loading', () => {
     const { getByLabelText } = renderDetail();
 
     expect(getByLabelText('Loading sermon')).toBeTruthy();
+  });
+});
+
+describe('SermonDetailScreen — not available', () => {
+  it('shows the calm not-available state on a 404, and Go home navigates to /', async () => {
+    mockedGet.mockRejectedValue(new ApiError(404, 'Sermon not found'));
+    const { findByText, queryByText } = renderDetail();
+
+    expect(await findByText("This sermon isn't available")).toBeTruthy();
+    expect(queryByText('Try again')).toBeNull();
+    expect(queryByText('Something went wrong loading this sermon.')).toBeNull();
+    fireEvent.press(await findByText('Go to Home'));
+    expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the retryable error state for a non-404 failure', async () => {
+    mockedGet.mockRejectedValue(new ApiError(500, 'boom'));
+    const { findByText, queryByText } = renderDetail();
+    expect(await findByText('Something went wrong loading this sermon.')).toBeTruthy();
+    expect(queryByText("This sermon isn't available")).toBeNull();
   });
 });
 
@@ -119,42 +163,7 @@ describe('SermonDetailScreen — error', () => {
   });
 });
 
-describe('SermonDetailScreen — fresh', () => {
-  it('renders Play (has video), full duration, tags, and synopsis', async () => {
-    mockDetailAndProgress(baseDetail, null);
-    const { findByText, getByText, getByLabelText } = renderDetail();
-
-    await findByText('Anchored in the Storm');
-    expect(getByText('Teaching · Ada Nwosu')).toBeTruthy();
-    expect(getByText('Standalone · 31:02 · video')).toBeTruthy();
-    expect(getByText('published Sep 4 · 1 rendition')).toBeTruthy();
-    expect(getByText('A word for the weary.')).toBeTruthy();
-    expect(getByText('grief')).toBeTruthy();
-    expect(getByText('hope')).toBeTruthy();
-
-    const cta = getByLabelText('Play sermon');
-    expect(cta).toBeTruthy();
-    expect(getByText('31:02')).toBeTruthy();
-  });
-
-  it('renders Listen when no video rendition exists', async () => {
-    mockDetailAndProgress({
-      ...baseDetail,
-      media_refs: [{ id: 'm1', type: 'audio', quality: null, s3_key: 'x', hls_manifest_key: null }],
-    });
-    const { findByLabelText } = renderDetail();
-
-    await findByLabelText('Listen to sermon');
-  });
-
-  it('navigates to the player route when the CTA is pressed', async () => {
-    mockDetailAndProgress(baseDetail, null);
-    const { findByLabelText } = renderDetail();
-
-    fireEvent.press(await findByLabelText('Play sermon'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'sermon-1' } });
-  });
-
+describe('SermonDetailScreen — hero', () => {
   it('renders a flat fallback hero (no icon) when thumbnail_url is null (§8.3)', async () => {
     mockDetailAndProgress({ ...baseDetail, thumbnail_url: null });
     const { findByText, queryByRole } = renderDetail();
@@ -165,46 +174,76 @@ describe('SermonDetailScreen — fresh', () => {
   });
 });
 
-describe('SermonDetailScreen — resume', () => {
-  it('renders Resume with remaining time when progress exists and is incomplete', async () => {
-    mockDetailAndProgress(baseDetail, {
-      sermon_id: 'sermon-1',
-      position_seconds: 600,
-      completed: false,
-      play_count: 2,
-      watched_seconds: 600,
-      last_played_at: '2026-09-10T00:00:00Z',
-    });
-    const { findByLabelText, getByText } = renderDetail();
-
-    await findByLabelText('Resume sermon, 21:02 remaining');
-    expect(getByText('21:02')).toBeTruthy();
-  });
-
-  it('falls back to Fresh (Play) when the sermon is already completed', async () => {
-    mockDetailAndProgress(baseDetail, {
-      sermon_id: 'sermon-1',
-      position_seconds: 1862,
-      completed: true,
-      play_count: 3,
-      watched_seconds: 1862,
-      last_played_at: '2026-09-10T00:00:00Z',
-    });
+describe('SermonDetailScreen — Share', () => {
+  it('shares the sermon title, description, and deep link via react-native-share', async () => {
+    mockDetailAndProgress(baseDetail, null);
+    const openSpy = RNShare.open as jest.Mock;
     const { findByLabelText } = renderDetail();
 
-    await findByLabelText('Play sermon');
+    fireEvent.press(await findByLabelText('Share this sermon'));
+
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Anchored in the Storm',
+          message: expect.stringContaining('Anchored in the Storm'),
+        }),
+      ),
+    );
+    const call = openSpy.mock.calls[0][0];
+    expect(call.message).toContain('A word for the weary.');
+    expect(call.message.endsWith('https://open.rhemapod.com/sermon/sermon-1')).toBe(true);
+    expect(call.url).toBeUndefined();
+  });
+});
+
+describe('SermonDetailScreen — Like', () => {
+  it('shows the real like count and an unselected heart when the viewer has not liked it', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 3, liked_by_me: false });
+    const { findByText, getByLabelText } = renderDetail();
+
+    await findByText('Anchored in the Storm');
+    expect(getByLabelText('Like, 3 likes')).toBeTruthy();
+  });
+
+  it('likes via PUT and updates the count/heart from the response, no refetch', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 3, liked_by_me: false });
+    mockedPut.mockResolvedValue({ liked: true, like_count: 4 });
+    const { findByLabelText, getByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Like, 3 likes'));
+
+    await waitFor(() =>
+      expect(mockedPut).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}/like', {
+        params: { path: { sermon_id: 'sermon-1' } },
+      }),
+    );
+    await waitFor(() => expect(getByLabelText('Unlike, 4 likes')).toBeTruthy());
+  });
+
+  it('unlikes via DELETE when already liked', async () => {
+    mockDetailAndProgress({ ...baseDetail, like_count: 4, liked_by_me: true });
+    mockedDelete.mockResolvedValue({ liked: false, like_count: 3 });
+    const { findByLabelText, getByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Unlike, 4 likes'));
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}/like', {
+        params: { path: { sermon_id: 'sermon-1' } },
+      }),
+    );
+    await waitFor(() => expect(getByLabelText('Like, 3 likes')).toBeTruthy());
   });
 });
 
 describe('SermonDetailScreen — no-media', () => {
-  it('renders the disabled "Not available yet" state and omits the format/renditions segments', async () => {
-    mockDetailAndProgress({ ...baseDetail, media_refs: [] });
+  it('renders the disabled "Not available yet" state with the same single meta line', async () => {
+    mockDetailAndProgress({ ...baseDetail, locked: false, media_refs: [] });
     const { findByText, getByText, getByLabelText, queryByText } = renderDetail();
 
     await findByText('Anchored in the Storm');
-    expect(getByText('Standalone · 31:02')).toBeTruthy();
-    expect(getByText('published Sep 4')).toBeTruthy();
-    expect(queryByText(/renditions?/)).toBeNull();
+    expect(getByText('2026 · Teaching')).toBeTruthy();
     expect(getByText('Video is still processing — check back soon.')).toBeTruthy();
 
     const cta = getByLabelText('Not available yet');
@@ -232,36 +271,67 @@ describe('SermonDetailScreen — locked (interim: same as no-media, L1)', () => 
   });
 });
 
-describe('SermonDetailScreen — back control', () => {
-  it('fires router.back() from the back IconButton', async () => {
+describe('SermonDetailScreen — header', () => {
+  it('fires router.dismissAll() when the close control is pressed — closes every page, not just one level', async () => {
     mockDetailAndProgress(baseDetail);
-    const { findByLabelText } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
+    fireEvent.press(await findByLabelText('Close'));
+    expect(mockDismissAll).toHaveBeenCalledTimes(1);
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('renders a disabled cast control rather than a fake working one', async () => {
+    mockDetailAndProgress(baseDetail);
+    const { findByLabelText, findByText } = renderDetail();
+
+    // Same as the Close test above: the loading state draws its own header, which the
+    // loaded screen replaces. Wait for the loaded sermon so the Cast control found is the
+    // one that stays mounted, not one about to unmount.
+    await findByText('Anchored in the Storm');
+    const cast = await findByLabelText('Cast');
+    expect(cast.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  });
+
+  it('renders no back control', async () => {
+    mockDetailAndProgress(baseDetail);
+    const { findByText, queryByLabelText } = renderDetail();
+
+    await findByText('Anchored in the Storm');
+    expect(queryByLabelText('Back')).toBeNull();
+  });
+});
+
+describe('SermonDetailScreen — opened from a Related item', () => {
+  it('renders a back control that fires router.back(), alongside Cast/Close', async () => {
+    mockParams = { id: 'sermon-1', related: '1' };
+    mockDetailAndProgress(baseDetail);
+    const { findByLabelText, findByText } = renderDetail();
+
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
     fireEvent.press(await findByLabelText('Back'));
     expect(mockBack).toHaveBeenCalledTimes(1);
+
+    expect(await findByLabelText('Cast')).toBeTruthy();
+    expect(await findByLabelText('Close')).toBeTruthy();
   });
-});
 
-describe('SermonDetailScreen — Android chrome', () => {
-  it('renders the Android top app bar chrome, not the iOS floating chrome', async () => {
-    mockedUsePlatformOS.mockReturnValue('android');
+  it('Close still dismisses every page, not just the one drill-down level Back would', async () => {
+    mockParams = { id: 'sermon-1', related: '1' };
     mockDetailAndProgress(baseDetail);
-    const { findByTestId, findByLabelText, queryByTestId } = renderDetail();
+    const { findByLabelText, findByText } = renderDetail();
 
-    expect(await findByTestId('detail-header-android')).toBeTruthy();
-    expect(await findByLabelText('Back')).toBeTruthy();
-    expect(queryByTestId('detail-header-ios')).toBeNull();
-  });
-});
-
-describe('SermonDetailScreen — iOS chrome', () => {
-  it('renders the iOS floating chrome, not the Android top app bar chrome', async () => {
-    mockDetailAndProgress(baseDetail);
-    const { findByTestId, findByLabelText, queryByTestId } = renderDetail();
-
-    expect(await findByTestId('detail-header-ios')).toBeTruthy();
-    expect(await findByLabelText('Back')).toBeTruthy();
-    expect(queryByTestId('detail-header-android')).toBeNull();
+    // The skeleton renders its own Close/Back; wait for the loaded screen so the press
+    // lands on the header that stays mounted, not one about to be replaced.
+    await findByText('Anchored in the Storm');
+    fireEvent.press(await findByLabelText('Close'));
+    expect(mockDismissAll).toHaveBeenCalledTimes(1);
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });
 
@@ -278,7 +348,7 @@ describe('SermonDetailScreen — dynamic type (largest accessibility text size)'
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(ORIGINAL_FONT_SCALE);
   });
 
-  it('never caps the title with numberOfLines, and grows its line-height under a large OS font scale', async () => {
+  it('never caps the title with numberOfLines, and grows its line-height with the OS font scale up to the display cap', async () => {
     // iOS's largest non-"larger accessibility" Dynamic Type step is ~3.11x (AX5); Android's
     // largest standard font-scale setting is 2.0x — 3.11 exercises the larger of the two.
     jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(3.11);
@@ -292,7 +362,139 @@ describe('SermonDetailScreen — dynamic type (largest accessibility text size)'
     const flatStyle = Array.isArray(title.props.style)
       ? Object.assign({}, ...title.props.style.flat(Infinity).filter(Boolean))
       : title.props.style;
-    // display.compact is fontSize 17, lineHeightRatio 1.2 — 17 * 1.2 * 3.11 ≈ 63.
-    expect(flatStyle.lineHeight).toBeGreaterThan(60);
+    // Display text stops growing at MAX_FONT_SCALE.display (1.5x): the line height still
+    // grows past the font's own size, but follows the 1.5x cap rather than the full 3.11x,
+    // and the text itself is told the same limit.
+    expect(title.props.maxFontSizeMultiplier).toBe(1.5);
+    expect(flatStyle.lineHeight).toBeGreaterThan(flatStyle.fontSize * 1.5);
+    expect(flatStyle.lineHeight).toBeLessThan(flatStyle.fontSize * 2);
   });
 });
+
+describe('SermonDetailScreen — Related', () => {
+  const relatedResults = {
+    query: null,
+    total: 2,
+    limit: 20,
+    offset: 0,
+    series: [],
+    series_total: 0,
+    speakers: [],
+    speakers_total: 0,
+    results: [
+      { ...baseDetail, id: 'sermon-1', title: 'Anchored in the Storm' }, // itself — must be excluded
+      // A different sermon from a different series — not an episode of the viewed
+      // sermon's own series, which `excludeSeriesId` would otherwise filter out too.
+      { ...baseDetail, id: 'sermon-2', title: 'Standing Firm', speaker_name: 'Pastor Grace', series_id: null, series_title: null },
+    ],
+  };
+
+  it('shows other sermons sharing the category, excluding this sermon itself', async () => {
+    mockDetailAndProgress(baseDetail, null, relatedResults);
+    const { findByLabelText, queryAllByLabelText } = renderDetail();
+
+    expect(await findByLabelText('Standing Firm')).toBeTruthy();
+    expect(mockedGet).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ params: { query: { category_id: 'c1' } } }),
+    );
+    // The screen's own title is plain text, not an accessibility-labeled control — if the
+    // self-referencing related card weren't excluded, this would find exactly one (the
+    // card), since `AppText` never sets `accessibilityLabel` on its own.
+    expect(queryAllByLabelText('Anchored in the Storm')).toHaveLength(0);
+  });
+
+  it('navigates to /sermon/[id] when a related sermon is pressed', async () => {
+    mockDetailAndProgress(baseDetail, null, relatedResults);
+    const { findByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Standing Firm'));
+    // Pushes the *second* route (`sermon/related/[id]`, not this screen's own
+    // `sermon/[id]`) so the regular horizontal push applies — see
+    // `app/sermon/related/[id].tsx`'s own doc comment. `related: '1'` still rides along
+    // so the screen itself shows a back chevron alongside Cast/Close.
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/sermon/related/[id]',
+      params: { id: 'sermon-2', related: '1' },
+    });
+  });
+
+  it('alternates to the second Related route when already on a Related screen (two consecutive taps must not repeat the same route name)', async () => {
+    mockPathname = '/sermon/related/sermon-1';
+    mockDetailAndProgress(baseDetail, null, relatedResults);
+    const { findByLabelText } = renderDetail();
+
+    fireEvent.press(await findByLabelText('Standing Firm'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/sermon/related2/[id]',
+      params: { id: 'sermon-2', related: '1' },
+    });
+  });
+
+  it('shows an honest empty state when nothing else shares the category', async () => {
+    mockDetailAndProgress(baseDetail);
+    const { findByText } = renderDetail();
+
+    await findByText('No related sermons yet.');
+  });
+});
+
+describe('SermonDetailScreen — My List', () => {
+  it('adds this sermon to a "My List" playlist, creating it on the first-ever add', async () => {
+    mockDetailAndProgress(baseDetail);
+    mockedPost.mockImplementation((path: string) => {
+      if (path === '/playlists') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 0 });
+      if (path === '/playlists/{playlist_id}/items') return Promise.resolve({ id: 'p1', name: 'My List', item_count: 1, items: [] });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    const { findByLabelText } = renderDetail();
+
+    const addButton = await findByLabelText('Add to My List');
+    expect(addButton.props.accessibilityState).toEqual({ selected: false });
+
+    fireEvent.press(addButton);
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith('/playlists', { body: { name: 'My List', description: null, is_public: false } }),
+    );
+    expect(mockedPost).toHaveBeenCalledWith('/playlists/{playlist_id}/items', {
+      params: { path: { playlist_id: 'p1' } },
+      body: { sermon_id: 'sermon-1' },
+    });
+  });
+
+  it('shows "Remove from My List" when this sermon is already there, and removes it on press', async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === '/catalog/sermons/{sermon_id}') return Promise.resolve(baseDetail);
+      if (path === '/sermons/{sermon_id}/progress') return Promise.resolve(null);
+      if (path === '/search') return Promise.resolve(emptySearchResults);
+      if (path === '/playlists') return Promise.resolve([{ id: 'p1', name: 'My List', item_count: 1 }]);
+      if (path === '/playlists/{playlist_id}')
+        return Promise.resolve({
+          id: 'p1',
+          name: 'My List',
+          item_count: 1,
+          items: [{ id: 'item-1', position: 0, added_at: '2026-10-11T00:00:00Z', sermon: baseDetail }],
+        });
+      throw new Error(`unexpected path: ${path}`);
+    });
+    mockedDelete.mockResolvedValue({ id: 'p1', name: 'My List', item_count: 0, items: [] });
+    const { findByLabelText } = renderDetail();
+
+    const removeButton = await findByLabelText('Remove from My List');
+    expect(removeButton.props.accessibilityState).toEqual({ selected: true });
+
+    fireEvent.press(removeButton);
+
+    await waitFor(() =>
+      expect(mockedDelete).toHaveBeenCalledWith('/playlists/{playlist_id}/items/{item_id}', {
+        params: { path: { playlist_id: 'p1', item_id: 'item-1' } },
+      }),
+    );
+  });
+});
+
+// Pull-to-dismiss is the Stack screen's own native gesture now (`app/_layout.tsx`'s
+// `gestureDirection: 'vertical'`), not a hand-rolled scroll/animation handler this
+// screen owns — it has no component-level behavior left to unit test here. See
+// `app/_layout.tsx`'s doc comment on `sermon/[id]`'s `Stack.Screen` for why.

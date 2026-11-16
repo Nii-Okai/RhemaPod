@@ -1,8 +1,14 @@
 /**
- * Color design tokens.
+ * Color design tokens — two palettes with one shape: `darkColors` (the original design)
+ * and `lightColors` (the light-mode design review, Isaac's artifact 2026-10-21).
  *
- * Source: docs/design_mobile_app/mobile-design-spec.md §1.1 — values pulled from the
+ * Dark source: docs/design_mobile_app/mobile-design-spec.md §1.1 — values pulled from the
  * original design-canvas export's raw hex declarations, not approximated.
+ *
+ * Screens read the active palette with `useTheme()` / `createThemedStyles()`
+ * (`theme/ThemeContext.tsx`). `colors` (bottom of this file) is the dark palette, kept
+ * for surfaces that are dark in BOTH themes by design (the video player surface, art
+ * overlays) and for modules not yet converted.
  *
  * This is the ONLY file in the app allowed to contain raw hex literals — see
  * theme/__tests__/no-raw-hex.test.ts, which enforces that everywhere else consumes
@@ -68,14 +74,41 @@ export const status = {
 } as const;
 
 /**
+ * Translucent chip surfaces for controls drawn over photographic art (hero eyebrow
+ * badge, secondary circular button) — `surface.app` and `text.primary` at low alpha
+ * rather than a solid fill, so they hold up over any thumbnail's color/brightness.
+ */
+export const overlay = {
+  chipFill: 'rgba(13, 17, 26, 0.55)',
+  chipBorder: 'rgba(238, 241, 246, 0.22)',
+} as const;
+
+/**
+ * Right-edge fade mask for a clipped single-line title (`FadeTitle`) — a "fade to the
+ * card's own background" instead of an ellipsis. No gradient-library dependency — flat
+ * bands of `surface.raised` (#131926 → rgb(19,25,38), the shelf cards' own bg) at
+ * increasing alpha, stacked left-to-right, eased (not linear) so the bands don't read as
+ * visible steps.
+ */
+export const fade = {
+  layers: [
+    'rgba(19, 25, 38, 0)',
+    'rgba(19, 25, 38, 0.3)',
+    'rgba(19, 25, 38, 0.65)',
+    'rgba(19, 25, 38, 0.88)',
+    'rgba(19, 25, 38, 1)',
+  ],
+} as const;
+
+/**
  * Primary button surface — the only filled non-gold primary action (white pill). Note:
  * `primaryButton.text` and `surface.sunken` share the same hex (#101520) but are kept as
  * separate tokens on purpose — same value, two unrelated roles, per the spec's own
  * caution against conflating them.
  */
 export const primaryButton = {
-  bg: '#EEF1F6',
-  text: '#101520',
+  bg: '#D9A947',
+  text: '#1A1406',
 } as const;
 
 /**
@@ -85,14 +118,281 @@ export const primaryButton = {
  */
 export const avatarPalette = [status.slate.bg, status.sage.bg, chip.circle] as const;
 
-export const colors = {
+/**
+ * Drop shadow for a light surface raised over photographic art — `surface.app`'s own rgb
+ * at opacity (not generic black), so it reads as "shadow into this screen's own
+ * background" rather than an unrelated color. First use: onboarding's bottom card
+ * (Isaac's ask, 2026-10-16: "the bottom parts looks too flat").
+ */
+export const shadow = {
+  card: 'rgba(13, 17, 26, 0.45)',
+} as const;
+
+/**
+ * Daybreak redesign (2026-11, Nii's approved canvas). Navy and gold stay the brand; these
+ * are the new surfaces the redesign adds, one group per surface so a later tweak to one
+ * can't leak into another.
+ */
+/** The animated launch screen (`components/splash/AnimatedSplash.tsx`). */
+export const splash = {
+  ground: surface.app,
+  orbOuter: surface.raised,
+  orbInner: surface.nav,
+  glow: '#D9A947',
+  shine: '#FFF0C8',
+  tagline: text.secondary,
+} as const;
+
+/** The floating tab dock and its raised gold Today button. Navy in both themes. */
+export const dock = {
+  bg: surface.nav,
+  border: border.card,
+  icon: text.secondary,
+  iconActive: '#FFFFFF',
+  dot: '#D9A947',
+  todayBg: '#D9A947',
+  todayIcon: '#2A1B00',
+  /** The ring that cuts the Today button out of the page behind it. */
+  todayRing: surface.app,
+  shadow: 'rgba(0, 0, 0, 0.45)',
+} as const;
+
+/**
+ * Frosted chrome: the tab dock, the tab screens' headers and the mini player card, which
+ * let the page blur through as it scrolls under them. `*Tint` is the native blur's own
+ * tint, `*` the colour laid over the blur, and `*Solid` the near-opaque colour used where
+ * there is no blur (Android, and iOS with Reduce Transparency on). The dock is navy in
+ * both themes, so it keeps a dark blur on the light ground too. `scrim` is the page
+ * colour the bottom chrome fades the content into, under the dock.
+ */
+export const frost = {
+  dockTint: 'dark',
+  dock: 'rgba(24, 32, 48, 0.74)',
+  dockSolid: 'rgba(24, 32, 48, 0.96)',
+  headerTint: 'dark',
+  header: 'rgba(13, 17, 26, 0.72)',
+  headerSolid: 'rgba(13, 17, 26, 0.96)',
+  // The mini player card: a lifted navy, a clear step above the page and the dock, nearly
+  // opaque so it never melts into what scrolls under it (`miniPlayer` below).
+  cardTint: 'dark',
+  card: 'rgba(42, 58, 88, 0.93)',
+  cardSolid: 'rgba(42, 58, 88, 0.98)',
+  scrim: surface.app,
+  hairline: border.default,
+} as const;
+
+/** The navy feature card (Home's Daily Rhema). Navy in both themes. */
+export const feature = {
+  bg: surface.raised,
+  border: border.card,
+  orb: surface.nav,
+  sun: '#D9A947',
+  // Daily Rhema's "glass sun" (Nii, 2026-11-12, canvas D7 option A): a see-through gold
+  // disc with a rim and a soft glow, over a big circle a touch lighter than `orb` so it
+  // reads through the sun. The sun's colours are solid; how see-through each part is
+  // lives in `sunGlassOpacity`, because SVG gradient stops drop an rgba alpha on device
+  // (the first build rendered near-solid gold, Nii 2026-11-12: "too bright").
+  orbSoft: '#1C2538',
+  orbEdge: 'rgba(224, 180, 92, 0.10)',
+  sunGlassLight: '#F0C878',
+  sunGlassGold: '#E0B45C',
+  text: text.primary,
+  muted: text.secondary,
+  eyebrow: accent.goldText,
+  track: track.default,
+} as const;
+
+/** Home's Verse of the Day card. */
+export const verse = {
+  bg: surface.raised,
+  border: border.card,
+  eyebrow: accent.goldText,
+  icon: accent.goldText,
+} as const;
+
+/**
+ * Cover colours a playlist without a photo can pick (Daybreak canvas E3). The same in
+ * both themes, like any cover art: `bg` fills the square, `ink` is its initial.
+ */
+export const playlistCover = {
+  navy: { bg: '#1F3A66', ink: '#F4EBDA' },
+  teal: { bg: '#0F4A48', ink: '#F4EBDA' },
+  gold: { bg: '#D9A947', ink: '#1A1406' },
+  berry: { bg: '#7E2440', ink: '#F4EBDA' },
+  sage: { bg: '#2E6B55', ink: '#F4EBDA' },
+  ink: { bg: '#131926', ink: '#E0B45C' },
+} as const;
+
+/** The bright gold "sun" pill used for the one main action on a navy card. */
+export const sunButton = {
+  bg: '#D9A947',
+  text: '#2A1B00',
+} as const;
+
+/**
+ * The mini player (Nii, 2026-11-15: "easy to confuse and overlook"). A navy card in both
+ * themes, like the dock: lifted above the dark page, the one dark object on the light
+ * one. A gold rim, a gold play disc and a gold progress line on a visible track mark it
+ * as the thing that is playing. Its background is the frost `card` colour.
+ */
+export const miniPlayer = {
+  bg: '#2A3A58',
+  rim: 'rgba(224, 180, 92, 0.45)',
+  title: text.primary,
+  subtitle: text.secondary,
+  icon: text.primary,
+  iconMuted: text.secondary,
+  playBg: sunButton.bg,
+  playIcon: sunButton.text,
+  track: '#3E4D6C',
+  progress: accent.goldText,
+  shadow: 'rgba(0, 0, 0, 0.6)',
+} as const;
+
+/**
+ * Daybreak's quiet blue: the topic header wash, the "Series" and "Free, always" pills,
+ * the focus ring round an input and the speaker avatar. `fill` is the solid, `soft` the
+ * wash, `ink` text set on the wash.
+ */
+export const iris = {
+  fill: '#7FA0C4',
+  soft: '#1F3255',
+  ink: '#A9BEDA',
+} as const;
+
+/** The original dark palette. */
+export const darkColors = {
   surface,
   border,
   track,
   chip,
   text,
   accent,
+  overlay,
+  fade,
   status,
   primaryButton,
   avatarPalette,
+  shadow,
+  splash,
+  dock,
+  frost,
+  feature,
+  verse,
+  sunButton,
+  miniPlayer,
+  iris,
+  playlistCover,
 } as const;
+
+/** Same shape as the dark palette, with every leaf widened to `string`. */
+type Widen<T> = T extends string
+  ? string
+  : T extends readonly (infer U)[]
+    ? readonly Widen<U>[]
+    : { readonly [K in keyof T]: Widen<T[K]> };
+export type ColorTokens = Widen<typeof darkColors>;
+
+/**
+ * Light palette — from the light-mode design review. Every text/icon pairing re-verified
+ * against WCAG AA (theme/__tests__/contrast.test.ts), not inverted by eye. Notes on the
+ * values that are not a straight inversion:
+ *
+ * - surface: raised and nav are both pure white (nothing is lighter than white), so
+ *   elevation comes from border + shadow; only `sunken` steps, and it steps DOWN.
+ * - text.tertiary: #6E6858, one step darker than the review's #716B5A, which measured
+ *   4.31:1 on `surface.sunken` (below AA). Now ≥4.5:1 on app, raised and sunken.
+ * - accent: the gold ramp flips DIRECTION, not hue — `goldText` is the darkest shade on a
+ *   light field and hover darkens further. `gold` is deepened so the progress fill clears
+ *   3:1 on the light track.
+ * - chip: warm gold-tinted washes rather than a pale blue inversion of the navy chips.
+ * - overlay: unchanged — it sits on sermon art, whose brightness the theme doesn't change.
+ * - fade: same alpha stops, base rgb swapped to the light card (`surface.raised`, white).
+ * - primaryButton: Daybreak's navy pill (gold in dark). Where a primary pill sits ON art
+ *   (the hero "Watch" pill, the onboarding card) it uses the dark palette's pill in both
+ *   themes instead (Isaac's decision, 2026-10-21).
+ * - shadow.card: a warm near-black at low opacity; a shadow in the surface's own (near
+ *   white) colour wouldn't read as a shadow.
+ */
+const lightStatus = {
+  sage: { bg: '#DCEEDF', text: '#2E6B47' },
+  rose: { bg: '#F7DCE2', border: '#E7B9C6', text: '#A8324A' },
+  slate: { bg: '#DDE8F5', text: '#2F5A8A' },
+  wheat: { bg: '#F7EFD9', border: '#E6D7A6', dot: '#85600F' },
+} as const;
+const lightChip = { circle: '#F8ECC7', square: '#F2E7D2' } as const;
+
+export const lightColors: ColorTokens = {
+  surface: { app: '#F7F4EF', raised: '#FFFFFF', nav: '#FFFFFF', sunken: '#ECE7DD' },
+  border: { default: '#E4DFD3', card: '#D8CFBE' },
+  track: { default: '#F0EADD' },
+  chip: lightChip,
+  text: { primary: '#16140F', secondary: '#5B5648', tertiary: '#6E6858' },
+  accent: { gold: '#A87A22', goldText: '#85600F', goldHover: '#6E4E0C', goldHoverFilled: '#966B12' },
+  overlay,
+  fade: {
+    layers: [
+      'rgba(255, 255, 255, 0)',
+      'rgba(255, 255, 255, 0.3)',
+      'rgba(255, 255, 255, 0.65)',
+      'rgba(255, 255, 255, 0.88)',
+      'rgba(255, 255, 255, 1)',
+    ],
+  },
+  status: lightStatus,
+  primaryButton: { bg: '#1F4276', text: '#FFFFFF' },
+  avatarPalette: [lightStatus.slate.bg, lightStatus.sage.bg, lightChip.circle],
+  shadow: { card: 'rgba(22, 20, 15, 0.16)' },
+  splash: {
+    ground: '#F7F4EF',
+    orbOuter: '#ECE7DD',
+    orbInner: '#FFFFFF',
+    glow: '#E9D4A6',
+    shine: '#FFF6DF',
+    tagline: '#5B5648',
+  },
+  // The dock stays navy on the light ground: it is the one dark anchor on a light page.
+  dock: { ...dock, bg: surface.raised, border: surface.raised, todayRing: '#F7F4EF', shadow: 'rgba(13, 17, 26, 0.28)' },
+  // The dock and the mini player stay a navy blur; the headers frost in the light page
+  // colour (#F7F4EF).
+  frost: {
+    dockTint: 'dark',
+    dock: 'rgba(19, 25, 38, 0.76)',
+    dockSolid: 'rgba(19, 25, 38, 0.96)',
+    headerTint: 'light',
+    header: 'rgba(247, 244, 239, 0.72)',
+    headerSolid: 'rgba(247, 244, 239, 0.96)',
+    // The mini player: the dock's navy, so it reads as the dark anchor's companion.
+    cardTint: 'dark',
+    card: 'rgba(24, 32, 48, 0.94)',
+    cardSolid: 'rgba(24, 32, 48, 0.98)',
+    scrim: '#F7F4EF',
+    hairline: '#E4DFD3',
+  },
+  feature: { ...feature, border: surface.raised },
+  verse: { bg: '#F6EBD3', border: '#E9D4A6', eyebrow: '#85600F', icon: '#6E4E0C' },
+  sunButton,
+  miniPlayer: {
+    ...miniPlayer,
+    bg: '#182030',
+    rim: 'rgba(217, 169, 71, 0.6)',
+    track: '#2E3A52',
+    shadow: 'rgba(13, 17, 26, 0.35)',
+  },
+  iris: { fill: '#1F4276', soft: '#E3EAF4', ink: '#18355F' },
+  playlistCover,
+};
+
+export type ColorScheme = 'light' | 'dark';
+
+export const palettes: Record<ColorScheme, ColorTokens> = {
+  dark: darkColors,
+  light: lightColors,
+};
+
+/**
+ * The dark palette under its original name. Use it directly ONLY for surfaces that stay
+ * dark in both themes by design (video player surface, controls over sermon art). Every
+ * other screen should read the active palette from `useTheme()`.
+ */
+export const colors = darkColors;

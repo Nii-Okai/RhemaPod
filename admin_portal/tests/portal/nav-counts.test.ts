@@ -26,6 +26,12 @@ const reviewQueue = (status: number, body: unknown) =>
     HttpResponse.json(body as never, { status }),
   );
 
+const comments = (status: number, body: unknown) =>
+  http.get(`${ORIGIN}/api/bff/admin/comments`, () =>
+    HttpResponse.json(body as never, { status }),
+  );
+const NO_COMMENTS = { items: [], total: 0, limit: 1, offset: 0 };
+
 const FORBIDDEN = { detail: "Forbidden", correlation_id: "test-cid" };
 
 describe("loadNavCounts", () => {
@@ -34,12 +40,14 @@ describe("loadNavCounts", () => {
       sermons(200, { items: [], total: 128, limit: 1, offset: 0 }),
       series(200, new Array(14).fill({ id: "x" })),
       reviewQueue(200, { items: [], total: 3, limit: 1, offset: 0 }),
+      comments(200, { items: [], total: 7, limit: 1, offset: 0 }),
     );
 
     await expect(loadNavCounts(client)).resolves.toEqual({
       sermons: 128,
       series: 14,
       reviewQueue: 3,
+      comments: 7,
     });
   });
 
@@ -48,12 +56,14 @@ describe("loadNavCounts", () => {
       sermons(200, { items: [], total: 128, limit: 1, offset: 0 }),
       series(200, new Array(14).fill({ id: "x" })),
       reviewQueue(403, FORBIDDEN),
+      comments(200, NO_COMMENTS),
     );
 
     await expect(loadNavCounts(client)).resolves.toEqual({
       sermons: 128,
       series: 14,
       reviewQueue: null,
+      comments: 0,
     });
   });
 
@@ -62,12 +72,14 @@ describe("loadNavCounts", () => {
       sermons(403, FORBIDDEN),
       series(200, []),
       reviewQueue(200, { items: [], total: 0, limit: 1, offset: 0 }),
+      comments(200, NO_COMMENTS),
     );
 
     await expect(loadNavCounts(client)).resolves.toEqual({
       sermons: null,
       series: 0,
       reviewQueue: 0,
+      comments: 0,
     });
   });
 
@@ -76,8 +88,41 @@ describe("loadNavCounts", () => {
       sermons(500, { detail: "boom", correlation_id: "c" }),
       series(200, []),
       reviewQueue(200, { items: [], total: 0, limit: 1, offset: 0 }),
+      comments(200, NO_COMMENTS),
     );
 
     await expect(loadNavCounts(client)).rejects.toMatchObject({ status: 500 });
+  });
+
+  it("asks for the needs_review total with limit=1 and reads `total`", async () => {
+    let query: URLSearchParams | undefined;
+    server.use(
+      sermons(200, { items: [], total: 1, limit: 1, offset: 0 }),
+      series(200, []),
+      reviewQueue(200, NO_COMMENTS),
+      http.get(`${ORIGIN}/api/bff/admin/comments`, ({ request }) => {
+        query = new URL(request.url).searchParams;
+        return HttpResponse.json({ items: [], total: 12, limit: 1, offset: 0 });
+      }),
+    );
+
+    const counts = await loadNavCounts(client);
+    expect(counts.comments).toBe(12);
+    expect(query?.get("needs_review")).toBe("true");
+    expect(query?.get("limit")).toBe("1");
+  });
+
+  it("hides only the comments count when it 403s", async () => {
+    server.use(
+      sermons(200, { items: [], total: 1, limit: 1, offset: 0 }),
+      series(200, []),
+      reviewQueue(200, NO_COMMENTS),
+      comments(403, FORBIDDEN),
+    );
+
+    await expect(loadNavCounts(client)).resolves.toMatchObject({
+      sermons: 1,
+      comments: null,
+    });
   });
 });

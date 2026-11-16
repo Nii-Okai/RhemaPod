@@ -1,8 +1,8 @@
 import * as React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
-import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
+import { BarChart, niceAxis, type BarChartDatum } from "@/components/charts/BarChart";
 
 /* Plan §W22 — the hand-rolled SVG bar chart. Presentational only: no backend,
    no router, so a bare render is enough. Assertions are on structure and the
@@ -30,7 +30,7 @@ describe("BarChart", () => {
     expect(bars(container)).toHaveLength(8);
   });
 
-  it("scales bar heights linearly against the series max", () => {
+  it("scales bar heights linearly, the tallest reaching the top gridline", () => {
     const { container } = render(
       <BarChart
         title="New listeners"
@@ -40,12 +40,55 @@ describe("BarChart", () => {
     );
     const rendered = bars(container);
 
-    // Tallest bar (value 80 == max) fills the 200px plot area.
-    expect(heightOf(rendered[7])).toBeCloseTo(200, 5);
-    // Half the max value -> half the height.
-    expect(heightOf(rendered[3])).toBeCloseTo(100, 5);
-    // Linear: value 20 is a quarter of the max -> a quarter of the height.
-    expect(heightOf(rendered[1]) / heightOf(rendered[7])).toBeCloseTo(0.25, 5);
+    // 80 is already a round axis top, so the tallest bar fills the plot
+    // below the room kept for the value labels.
+    const tallest = heightOf(rendered[7]);
+    expect(tallest).toBeGreaterThan(170);
+    expect(tallest).toBeLessThanOrEqual(200);
+    // Half the max value -> half the height; a quarter -> a quarter.
+    expect(heightOf(rendered[3]) / tallest).toBeCloseTo(0.5, 5);
+    expect(heightOf(rendered[1]) / tallest).toBeCloseTo(0.25, 5);
+  });
+
+  it("draws round y-axis ticks from zero to at least the max", () => {
+    const { container } = render(
+      <BarChart title="Plays" data={series([3, 7, 0, 11, 2, 0, 1, 4])} />,
+    );
+    const ticks = Array.from(container.querySelectorAll('[data-slot="bar-chart-tick"] text')).map(
+      (el) => el.textContent,
+    );
+    expect(ticks).toEqual(["0", "5", "10", "15"]);
+  });
+
+  it("prints values above the bars while they are wide enough", () => {
+    const { container } = render(<BarChart title="Plays" data={series([1, 0, 3, 0, 0, 0, 0, 9])} />);
+    const values = Array.from(container.querySelectorAll('[data-slot="bar-chart-value"]')).map(
+      (el) => el.textContent,
+    );
+    expect(values).toEqual(["1", "3", "9"]);
+  });
+
+  it("shows a tooltip with the full label and unit on hover, and on keyboard focus", () => {
+    const data = series([1, 2, 3, 4, 5, 6, 7, 8]).map((d, i) => ({
+      ...d,
+      tooltip: `Week ${i + 1}`,
+    }));
+    const { container } = render(
+      <BarChart title="Plays" data={data} unit={["play", "plays"]} />,
+    );
+    const hits = container.querySelectorAll('[data-slot="bar-chart-hit"]');
+    fireEvent.pointerEnter(hits[0]);
+    expect(screen.getByRole("status")).toHaveTextContent("Week 1: 1 play");
+    fireEvent.pointerEnter(hits[2]);
+    expect(screen.getByRole("status")).toHaveTextContent("Week 3: 3 plays");
+
+    const svg = container.querySelector("svg")!;
+    fireEvent.keyDown(svg, { key: "Home" });
+    expect(screen.getByRole("status")).toHaveTextContent("Week 1: 1 play");
+    fireEvent.keyDown(svg, { key: "ArrowRight" });
+    expect(screen.getByRole("status")).toHaveTextContent("Week 2: 2 plays");
+    fireEvent.keyDown(svg, { key: "Escape" });
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("renders week labels in order", () => {
@@ -74,7 +117,7 @@ describe("BarChart", () => {
     expect(screen.getByText("No data yet")).toBeInTheDocument();
   });
 
-  it("renders the single non-zero bucket at full height with the rest on the baseline (n=1)", () => {
+  it("renders a single non-zero bucket with the rest flat on the baseline (n=1)", () => {
     const { container } = render(
       <BarChart
         title="New listeners"
@@ -85,10 +128,10 @@ describe("BarChart", () => {
     const rendered = bars(container);
     expect(rendered).toHaveLength(8);
 
-    const full = rendered.filter((el) => heightOf(el) > 0);
-    expect(full).toHaveLength(1);
-    expect(heightOf(full[0])).toBeCloseTo(150, 5);
-    expect(rendered[3]).toBe(full[0]);
+    const drawn = rendered.filter((el) => heightOf(el) > 0);
+    expect(drawn).toHaveLength(1);
+    expect(rendered[3]).toBe(drawn[0]);
+    expect(heightOf(drawn[0])).toBeGreaterThan(75);
 
     // Every other bucket is flat on the baseline and paints nothing.
     rendered
@@ -124,5 +167,15 @@ describe("BarChart", () => {
     render(<BarChart title="New listeners" data={[]} height={150} />);
     const empty = screen.getByRole("img", { name: /New listeners/ });
     expect(empty).toHaveStyle({ height: "150px" });
+  });
+});
+
+describe("niceAxis", () => {
+  it("picks whole, round steps", () => {
+    expect(niceAxis(1)).toEqual({ step: 1, top: 1 });
+    expect(niceAxis(5)).toEqual({ step: 2, top: 6 });
+    expect(niceAxis(80)).toEqual({ step: 20, top: 80 });
+    expect(niceAxis(1234)).toEqual({ step: 500, top: 1500 });
+    expect(niceAxis(0)).toEqual({ step: 1, top: 1 });
   });
 });

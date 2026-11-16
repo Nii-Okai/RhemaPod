@@ -161,6 +161,37 @@ async def test_free_sermon_not_locked(client, engine):
     assert item["locked"] is False
 
 
+# ── category_name resolution (regression: `to_list_item` called with no
+# `names`, so category_name/speaker_name/series_title always came back None
+# regardless of actual data — same bug class as the `/series/{id}/episodes`
+# fix, found in three more places: catalog list, catalog detail, /search) ──
+async def test_catalog_list_and_detail_resolve_category_name(client, engine):
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+
+    category = (await client.post(
+        "/api/v1/categories", json={"name": "Teaching", "slug": "teaching"}, headers=editor,
+    )).json()
+
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={"title": "Anchored", "category_id": category["id"]},
+        headers=editor,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+
+    listing = (await client.get("/api/v1/catalog/sermons")).json()
+    assert listing[0]["category_name"] == "Teaching"
+
+    detail = (await client.get(f"/api/v1/catalog/sermons/{sid}")).json()
+    assert detail["category_name"] == "Teaching"
+
+    search_results = (await client.get("/api/v1/search", params={"category_id": category["id"]})).json()
+    assert search_results["results"][0]["category_name"] == "Teaching"
+
+
 # ── tier inheritance from series ──────────────────────────────────────────────
 async def test_episode_inherits_series_tier(client, engine):
     editor = await make_user(client, engine, "editor@example.com", "editor")
@@ -271,7 +302,8 @@ async def test_patch_published_sermon_is_locked_not_silently_stale(client, engin
     field-lock guard) — a direct PATCH is refused 409, so the pre-lock finding
     ("a tier PATCH on a published sermon left the catalog cache stale") can no
     longer happen via this path at all. The only legal way to change a live
-    sermon's fields is unpublish -> edit -> publish, and that cycle must still
+    sermon's fields is unpublish -> edit -> (back to draft) review -> publish,
+    and that cycle must still
     leave /catalog/sermons agreeing with the live detail/stream endpoints —
     checked here via the same cache-priming shape the original regression
     test used.
@@ -303,13 +335,17 @@ async def test_patch_published_sermon_is_locked_not_silently_stale(client, engin
     row = next(i for i in unchanged if i["id"] == sid)
     assert row["tier"] == "free" and row["locked"] is False
 
-    # The real path: unpublish (unlocks it), edit, republish.
+    # The real path: unpublish (unlocks it), edit — which sends it back to
+    # draft — then review it again and republish.
     await client.post(f"/api/v1/approvals/sermons/{sid}/unpublish", headers=manager)
     r = await client.patch(
         f"/api/v1/sermons/{sid}", json={"tier": "paid"}, headers=editor
     )
     assert r.status_code == 200
-    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    r = await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+    assert r.status_code == 200
 
     # Immediately re-read: the cache must reflect the new tier, not the stale
     # pre-edit row.
@@ -342,3 +378,64 @@ async def test_patch_draft_sermon_does_not_touch_catalog_cache(client, engine):
     assert r.status_code == 200
     listing = (await client.get("/api/v1/catalog/sermons")).json()
     assert [i["id"] for i in listing] == [published]
+
+
+# ── catalog cache invalidation on reference renames ───────────────────────────
+async def test_renames_are_reflected_in_cached_catalog(client, engine):
+    """The cached catalog card denormalises speaker/category/series names, so
+    renaming any of them must bust the cache instead of serving the old name
+    for up to CATALOG_TTL_SECONDS."""
+    editor = await make_user(client, engine, "editor@example.com", "editor")
+    manager = await make_user(client, engine, "manager@example.com", "manager")
+
+    category = (await client.post(
+        "/api/v1/categories", json={"name": "Teaching", "slug": "teaching"}, headers=editor,
+    )).json()
+    speaker = (await client.post(
+        "/api/v1/speakers", json={"name": "Old Speaker"}, headers=editor,
+    )).json()
+    series = (await client.post(
+        "/api/v1/series", json={"title": "Old Series", "tier": "free"}, headers=editor,
+    )).json()
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=manager,
+    )
+    assert r.status_code == 200, r.text
+    sid = (await client.post(
+        "/api/v1/sermons",
+        json={
+            "title": "Anchored",
+            "category_id": category["id"],
+            "speaker_id": speaker["id"],
+            "series_id": series["id"],
+            "episode_number": 1,
+        },
+        headers=editor,
+    )).json()["id"]
+    await client.post(f"/api/v1/sermons/{sid}/submit", headers=editor)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/approve", headers=manager)
+    await client.post(f"/api/v1/approvals/sermons/{sid}/publish", headers=manager)
+
+    # Prime the cache.
+    row = (await client.get("/api/v1/catalog/sermons")).json()[0]
+    assert (row["category_name"], row["speaker_name"], row["series_title"]) == (
+        "Teaching", "Old Speaker", "Old Series",
+    )
+
+    r = await client.patch(
+        f"/api/v1/categories/{category['id']}", json={"name": "Worship"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+    r = await client.patch(
+        f"/api/v1/speakers/{speaker['id']}", json={"name": "New Speaker"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"title": "New Series"}, headers=editor,
+    )
+    assert r.status_code == 200, r.text
+
+    row = (await client.get("/api/v1/catalog/sermons")).json()[0]
+    assert (row["category_name"], row["speaker_name"], row["series_title"]) == (
+        "Worship", "New Speaker", "New Series",
+    )

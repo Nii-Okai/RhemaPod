@@ -1,0 +1,6 @@
+# Reviewed false positives (gitleaks fingerprints). Add an entry only after confirming
+# the match is a test fixture or placeholder, never to silence a real credential.
+# mediaCache test marker: dummy X-Amz-Signature used to assert URLs are never logged
+40e08d449069430834c830ed90ef0f231d560c33:mobile/lib/mediaCache/__tests__/helpers.ts:generic-api-key:3
+# rate-limit test: deliberately wrong JWT secret for the tampered-signature case
+b8ac9995b8e5ac7c445405090759eef93698bdeb:tests/test_rate_limit.py:generic-api-key:263

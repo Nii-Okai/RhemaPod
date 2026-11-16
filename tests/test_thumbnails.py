@@ -217,10 +217,15 @@ async def test_confirm_thumbnail_on_published_series_still_allowed(client, engin
 
 async def test_series_thumbnail_roundtrip(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
     series = (await client.post(
         "/api/v1/series", json={"title": "Faith"}, headers=ed
     )).json()
     assert series["thumbnail_url"] is None
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
 
     ticket, confirm = await upload_thumbnail(client, ed, "series", series["id"])
     assert ticket.status_code == 201
@@ -233,9 +238,14 @@ async def test_series_thumbnail_roundtrip(client, engine):
 
 async def test_series_list_includes_thumbnail(client, engine):
     ed = await make_user(client, engine, "e@example.com", "editor")
+    mgr = await make_user(client, engine, "m@example.com", "manager")
     series = (await client.post(
         "/api/v1/series", json={"title": "Hope"}, headers=ed
     )).json()
+    r = await client.patch(
+        f"/api/v1/series/{series['id']}", json={"status": "published"}, headers=mgr
+    )
+    assert r.status_code == 200, r.text
     await upload_thumbnail(client, ed, "series", series["id"])
 
     rows = (await client.get("/api/v1/series")).json()

@@ -1,8 +1,7 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { useRouter } from 'expo-router';
-import { PhoneTabBarAndroid } from '../PhoneTabBarAndroid';
-import { PhoneTabBarIOS } from '../PhoneTabBarIOS';
+import { FloatingDock, TODAY_HREF } from '../FloatingDock';
 import { TabletRail } from '../TabletRail';
 
 jest.mock('expo-router', () => ({
@@ -18,6 +17,12 @@ jest.mock('react-native-safe-area-context', () => ({
 // machinery `jest-expo` doesn't stand up in this test environment.
 jest.mock('@expo/vector-icons');
 
+// `NavIcon` (every chrome's icon renderer, since the "You" tab needs profile data for
+// its avatar) calls `useCurrentUser`, a react-query hook — mocked directly rather than
+// wrapping every render here in a `QueryClientProvider`, same reasoning `useDownloads`
+// gets mocked directly elsewhere: these tests care about nav structure, not profile data.
+jest.mock('../../../lib/query/hooks/useProfile', () => ({ useCurrentUser: () => ({ data: undefined }) }));
+
 const push = jest.fn();
 let mockPathname = '/home';
 
@@ -29,49 +34,49 @@ beforeEach(() => {
   mockPathname = '/home';
 });
 
-describe('PhoneTabBarIOS', () => {
-  it('shows the five P1-resolved, text-only labels and navigates on press', () => {
-    const { getByText, queryByText } = render(<PhoneTabBarIOS />);
+describe('FloatingDock', () => {
+  it('shows the four destinations plus the raised Today button, and navigates on press', () => {
+    const { getByText, queryByText, getByRole } = render(<FloatingDock />);
 
-    for (const label of ['Home', 'Browse', 'Search', 'Downloads', 'Me']) {
+    for (const label of ['Home', 'Discover', 'Library', 'You']) {
       expect(getByText(label)).toBeTruthy();
     }
     expect(queryByText('Saved')).toBeNull();
+    expect(queryByText('Search')).toBeNull();
 
-    fireEvent.press(getByText('Browse'));
+    fireEvent.press(getByText('Discover'));
     expect(push).toHaveBeenCalledWith('/(tabs)/browse');
+
+    fireEvent.press(getByRole('button', { name: 'Today, Daily Rhema' }));
+    expect(push).toHaveBeenCalledWith(TODAY_HREF);
+    expect(TODAY_HREF).toBe('/devotional/today');
   });
 
   it('marks the tab matching the current route as selected', () => {
-    mockPathname = '/downloads';
-    const { getByRole } = render(<PhoneTabBarIOS />);
+    mockPathname = '/library';
+    const { getByRole } = render(<FloatingDock />);
 
-    expect(getByRole('button', { name: 'Downloads' }).props.accessibilityState).toEqual({ selected: true });
+    expect(getByRole('button', { name: 'Library' }).props.accessibilityState).toEqual({ selected: true });
     expect(getByRole('button', { name: 'Home' }).props.accessibilityState).toEqual({ selected: false });
+    expect(getByRole('button', { name: 'Today, Daily Rhema' }).props.accessibilityState).toEqual({ selected: false });
   });
-});
 
-describe('PhoneTabBarAndroid', () => {
-  it('shows the same five destinations as iOS and navigates on press', () => {
-    const { getByText } = render(<PhoneTabBarAndroid />);
+  it('marks Today as selected inside the Daily Rhema flow', () => {
+    mockPathname = '/devotional/today';
+    const { getByRole } = render(<FloatingDock />);
 
-    for (const label of ['Home', 'Browse', 'Search', 'Downloads', 'Me']) {
-      expect(getByText(label)).toBeTruthy();
-    }
-
-    fireEvent.press(getByText('Search'));
-    expect(push).toHaveBeenCalledWith('/(tabs)/search');
+    expect(getByRole('button', { name: 'Today, Daily Rhema' }).props.accessibilityState).toEqual({ selected: true });
   });
 });
 
 describe('TabletRail', () => {
-  it('shows Series and Announcements (P3), omits a dedicated Me item, and navigates on press', () => {
+  it('shows Series and Announcements (P3), omits a dedicated You item, and navigates on press', () => {
     const { getByText, queryByText, getByLabelText } = render(<TabletRail />);
 
-    for (const label of ['Home', 'Series', 'Browse', 'Search', 'Downloads', 'Announcements']) {
+    for (const label of ['Home', 'Series', 'Discover', 'Library', 'Announcements']) {
       expect(getByText(label)).toBeTruthy();
     }
-    expect(queryByText('Me')).toBeNull();
+    expect(queryByText('You')).toBeNull();
 
     fireEvent.press(getByText('Series'));
     expect(push).toHaveBeenCalledWith('/(tabs)/series');

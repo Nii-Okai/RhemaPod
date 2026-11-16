@@ -11,11 +11,12 @@ Design notes
 """
 from __future__ import annotations
 
+import random
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import case, func, literal_column, nullslast, or_, select
+from sqlalchemy import String, case, func, literal_column, nullslast, or_, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,20 +36,24 @@ from app.models.content_schemas import (
     SermonDetail,
     SermonListItem,
     SermonUpdate,
+    UpcomingSermon,
 )
 from app.models.models import (
     VIEWER_VISIBLE_STATUSES,
     ApprovalLog,
     Category,
     ContentTier,
+    PlaybackSession,
     Sermon,
     Speaker,
     SermonStatus,
     SermonTag,
     Series,
+    SeriesLike,
     User,
     UserRole,
 )
+from app.services import likes_service
 from app.services.approval import resolve_transition
 
 settings = get_settings()
@@ -150,6 +155,25 @@ def display_name(full_name: str | None) -> str | None:
     return None
 
 
+def public_display_name(full_name: str | None) -> str | None:
+    """The name a comment shows to other viewers: first token of `full_name`,
+    a space, and the first character of the last token plus a period
+    ("Nii Kwame Okai" -> "Nii O."). A single token is returned as-is. Blank or
+    None -> None (callers refuse to post before reaching this).
+
+    Never reads email, and computed at read time so a rename applies to
+    existing comments. `display_name()` above is a different, unchanged
+    contract (full name for staff-facing DTOs)."""
+    if not full_name:
+        return None
+    tokens = full_name.split()
+    if not tokens:
+        return None
+    if len(tokens) == 1:
+        return tokens[0]
+    return f"{tokens[0]} {tokens[-1][0]}."
+
+
 # ── Tier & locked resolution ──────────────────────────────────────────────────
 def effective_tier(sermon: Sermon, series: Series | None) -> ContentTier:
     if sermon.tier is not None:
@@ -190,23 +214,20 @@ def sermon_visibility_clause(at: datetime | None = None):
 def _thumbnail_url(key: str | None) -> str | None:
     """Turn a stored thumbnail key into a fetchable URL.
 
-    Always signs a time-limited URL against the media bucket, then defers to
-    `storage_module.cdn_url_for` to decide whether a CDN URL can safely
-    replace it (today it never can — see that function's docstring). Buckets
-    stay private either way — we never expose a raw object URL.
+    Always a time-limited signed URL against the media bucket, signed at the
+    start of a fixed window so it stays identical across requests and the
+    app's image cache keeps hitting (`storage_module.stable_image_url`).
+    Buckets stay private either way — we never expose a raw object URL.
     """
     if not key:
         return None
     from app.core import storage as storage_module
 
     try:
-        presigned = storage_module.get_storage().presigned_download_url(
-            settings.s3_media_bucket, key, settings.stream_url_expire_seconds
-        )
+        return storage_module.stable_image_url(key)
     except Exception:
         log.warning("thumbnail_url_failed", key=key)
         return None
-    return storage_module.cdn_url_for(key, presigned_fallback=presigned)
 
 
 def to_list_item(
@@ -214,6 +235,7 @@ def to_list_item(
     tier: ContentTier,
     has_subscription: bool,
     names: "RefNames | None" = None,
+    media_type: str | None = None,
 ) -> SermonListItem:
     names = names or RefNames()
     return SermonListItem(
@@ -226,12 +248,13 @@ def to_list_item(
         speaker_name=names.speakers.get(sermon.speaker_id),
         category_id=sermon.category_id,
         category_name=names.categories.get(sermon.category_id),
-        series_id=sermon.series_id,
+        series_id=None if sermon.series_id in names.hidden_series else sermon.series_id,
         series_title=names.series.get(sermon.series_id),
         episode_number=sermon.episode_number,
         tier=tier,
         locked=(tier == ContentTier.PAID and not has_subscription),
         publish_at=sermon.publish_at,
+        media_type=media_type,
     )
 
 
@@ -276,9 +299,16 @@ class RefNames:
     speakers: dict = field(default_factory=dict)
     categories: dict = field(default_factory=dict)
     series: dict = field(default_factory=dict)
+    # Series ids referenced by the batch that this viewer must not see (draft
+    # series for non-staff). `to_list_item` nulls series_id/series_title for them.
+    hidden_series: set = field(default_factory=set)
 
 
-async def load_ref_names(db: AsyncSession, sermons: list[Sermon]) -> RefNames:
+async def load_ref_names(
+    db: AsyncSession, sermons: list[Sermon], *, include_draft_series: bool = False
+) -> RefNames:
+    """`include_draft_series` is True only for staff reads; everyone else
+    (viewers, anonymous, cached public catalog) gets draft series suppressed."""
     speaker_ids = {s.speaker_id for s in sermons if s.speaker_id}
     category_ids = {s.category_id for s in sermons if s.category_id}
     series_ids = {s.series_id for s in sermons if s.series_id}
@@ -295,10 +325,13 @@ async def load_ref_names(db: AsyncSession, sermons: list[Sermon]) -> RefNames:
         )).all()
         names.categories = {i: n for i, n in rows}
     if series_ids:
-        rows = (await db.execute(
-            select(Series.id, Series.title).where(Series.id.in_(series_ids))
-        )).all()
+        series_stmt = select(Series.id, Series.title).where(Series.id.in_(series_ids))
+        if not include_draft_series:
+            series_stmt = series_stmt.where(Series.status == SermonStatus.PUBLISHED)
+        rows = (await db.execute(series_stmt)).all()
         names.series = {i: t for i, t in rows}
+        if not include_draft_series:
+            names.hidden_series = series_ids - set(names.series)
     return names
 
 
@@ -340,11 +373,12 @@ async def list_published_sermons(
         )
         rows = (await db.execute(stmt)).scalars().all()
         series_map = await _series_map(db, rows)
+        names = await load_ref_names(db, rows)
         out = []
         for s in rows:
             tier = effective_tier(s, series_map.get(s.series_id))
             # Cache the tier-resolved shape without the user-specific lock.
-            item = to_list_item(s, tier, has_subscription=True)
+            item = to_list_item(s, tier, has_subscription=True, names=names)
             d = item.model_dump(mode="json")
             d["tier"] = tier.value
             out.append(d)
@@ -359,6 +393,313 @@ async def list_published_sermons(
         d = {**d, "locked": (tier == ContentTier.PAID and not has_sub)}
         items.append(SermonListItem.model_validate(d))
     return items
+
+
+TRENDING_WINDOW_DAYS = 30
+
+
+async def list_trending_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Published, publicly-visible sermons ranked by how many people played them in
+    the last 30 days (Isaac's call: a 30-day window), most-watched first.
+
+    Ranked by viewers, not by summed `play_count` (reviewed 2026-10-21 against Nii's
+    phone test): a `PlaybackSession` is one row per user per sermon and its
+    `play_count` is that user's lifetime restart count, so summing it let a single
+    viewer who replayed one sermon outrank a sermon many people watched, and counted
+    replays from before the window whenever the row was touched inside it. Rows whose
+    `last_played_at` falls in the window are distinct viewers active in it, which is
+    the honest "trending" signal the table holds. Summed plays, then newest-published,
+    break ties so the order is stable between refetches.
+
+    Deliberately uncached, unlike `list_published_sermons` — that function
+    caches the *entire* catalog because it's identical for everyone and
+    expensive to rebuild per request; this is a rolling-window aggregate over
+    a catalog this app's actual scale (tens, not millions, of sermons) makes
+    cheap to just query directly.
+    """
+    has_sub = await _has_subscription(db, user)
+    since = datetime.now(timezone.utc) - timedelta(days=TRENDING_WINDOW_DAYS)
+    capped_limit = max(1, min(limit, 50))
+
+    viewers = func.count(PlaybackSession.id)
+    plays = func.coalesce(func.sum(PlaybackSession.play_count), 0)
+    stmt = (
+        select(Sermon)
+        .join(PlaybackSession, PlaybackSession.sermon_id == Sermon.id)
+        .where(*sermon_visibility_clause(), PlaybackSession.last_played_at >= since)
+        .group_by(Sermon.id)
+        .order_by(viewers.desc(), plays.desc(), Sermon.published_at.desc().nullslast(), Sermon.id)
+        .limit(_over_fetch(capped_limit))
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(list(rows), capped_limit)
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+
+    return [
+        to_list_item(sermon, effective_tier(sermon, series_map.get(sermon.series_id)), has_sub, names)
+        for sermon in sermons
+    ]
+
+
+# Affinity weights: a category the viewer keeps returning to says more about taste than
+# the speaker does — the church has one main speaker, so a speaker match alone ranks
+# nearly the whole catalogue equally.
+CATEGORY_AFFINITY_WEIGHT = 2
+SPEAKER_AFFINITY_WEIGHT = 1
+# Candidate pool for recommendations — the whole visible catalogue at this app's scale.
+RECOMMENDATION_POOL = 500
+
+
+async def list_recommended_sermons(
+    db: AsyncSession, user: User, limit: int = 10
+) -> list[SermonListItem]:
+    """Published sermons the caller hasn't played yet, best match first, always
+    filled to `limit` when the catalogue has that many unplayed sermons.
+
+    Ranking (reviewed 2026-10-21 against Nii's phone test, which showed a one-card
+    shelf): each unplayed sermon scores by how often the caller has played its
+    category (weight 2) and its speaker (weight 1), from their own
+    `PlaybackSession` rows. Matches come first, highest score first, with a daily
+    seeded shuffle only among equal scores (`_daily_shuffle`, so the shelf doesn't
+    mirror New Releases yet doesn't jitter on refetch). The shelf is then topped up
+    with what's trending (itself daily-shuffled under its own salt, so it isn't a
+    one-for-one copy of the Trending shelf), then with the newest remaining unplayed
+    sermons — the old version stopped at the matches, so a viewer who had sampled most
+    of a small catalogue saw a single card. A viewer with no history gets a shuffled
+    trending, then newest.
+
+    Anything the caller has ever started is excluded: unfinished ones already sit in
+    "Pick up where you left off", finished ones aren't a recommendation. Capped to one
+    episode per series, like the other discovery shelves.
+    """
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 50))
+
+    watched = (await db.execute(
+        select(Sermon.category_id, Sermon.speaker_id, PlaybackSession.sermon_id)
+        .join(Sermon, Sermon.id == PlaybackSession.sermon_id)
+        .where(PlaybackSession.user_id == user.id)
+    )).all()
+    watched_ids = {row[2] for row in watched}
+    category_plays: dict[uuid.UUID, int] = {}
+    speaker_plays: dict[uuid.UUID, int] = {}
+    for category_id, speaker_id, _ in watched:
+        if category_id is not None:
+            category_plays[category_id] = category_plays.get(category_id, 0) + 1
+        if speaker_id is not None:
+            speaker_plays[speaker_id] = speaker_plays.get(speaker_id, 0) + 1
+
+    pool_stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast(), Sermon.id)
+        .limit(RECOMMENDATION_POOL)
+    )
+    if watched_ids:
+        pool_stmt = pool_stmt.where(Sermon.id.notin_(watched_ids))
+    pool = list((await db.execute(pool_stmt)).scalars().all())
+
+    def score(sermon: Sermon) -> int:
+        return (
+            CATEGORY_AFFINITY_WEIGHT * category_plays.get(sermon.category_id, 0)
+            + SPEAKER_AFFINITY_WEIGHT * speaker_plays.get(sermon.speaker_id, 0)
+        )
+
+    matches = sorted(
+        _daily_shuffle([s for s in pool if score(s) > 0], salt=f"recommended:{user.id}"),
+        key=score,
+        reverse=True,
+    )
+    by_id = {s.id: s for s in pool}
+    trending_ids = [item.id for item in await list_trending_sermons(db, user, 50)]
+    # Shuffled for the same reason as `matches` above, own salt so the two shuffles don't
+    # coincidentally line up: left in Trending's own rank order, a viewer with no watch
+    # history (every brand-new account) saw this shelf as a one-for-one copy of Trending,
+    # same sermons, same order (Isaac's phone-test report, 2026-10-22). Trending's own
+    # ranking is never touched — only this copy of it.
+    trending_fallback = _daily_shuffle(
+        [by_id[i] for i in trending_ids if i in by_id], salt=f"recommended-trending:{user.id}"
+    )
+    ordered: list[Sermon] = []
+    seen: set[uuid.UUID] = set()
+    for sermon in [*matches, *trending_fallback, *pool]:
+        if sermon.id not in seen:
+            seen.add(sermon.id)
+            ordered.append(sermon)
+
+    sermons = _cap_one_per_series(ordered, capped_limit)
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(sermon, effective_tier(sermon, series_map.get(sermon.series_id)), has_sub, names)
+        for sermon in sermons
+    ]
+
+
+def _over_fetch(limit: int) -> int:
+    """How many rows to pull at the SQL layer before `_cap_one_per_series` thins them out
+    — capping can drop rows (multiple episodes of one series collapse to one), so fetching
+    exactly `limit` rows up front could under-fill a shelf in a series-heavy catalog.
+    Generous but bounded: 4x the requested limit, floored at 20, capped at 100."""
+    return min(max(limit * 4, 20), 100)
+
+
+def _cap_one_per_series(sermons: list[Sermon], limit: int) -> list[Sermon]:
+    """At most one sermon per series, order preserved — otherwise a discovery shelf
+    (Trending, Recommended, Prophet's Catalog, the hero) can show 2-3 episodes of the
+    same series back to back, which reads as the shelf being short on real content
+    rather than varied. Standalone sermons (`series_id is None`) are never deduped
+    against each other. New Releases is deliberately exempt (Isaac's call, session
+    2026-09-30) — multiple fresh episodes of the same series *are* the point there.
+    Callers over-fetch via `_over_fetch` first since capping can drop rows."""
+    seen_series: set[uuid.UUID] = set()
+    out: list[Sermon] = []
+    for sermon in sermons:
+        if sermon.series_id is not None:
+            if sermon.series_id in seen_series:
+                continue
+            seen_series.add(sermon.series_id)
+        out.append(sermon)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _daily_shuffle(items: list[Sermon], salt: str) -> list[Sermon]:
+    """Seeded shuffle, stable for the whole day (changes the next). Home's shelves with no
+    intrinsic ordering signal (Prophet's Catalog; Recommended's own affinity matches, which
+    the DB otherwise ties by `published_at desc` — the same tiebreak New Releases uses for
+    its actual, meaningful ordering) were landing in the exact same order as New Releases
+    whenever their candidate sets overlapped, reading as duplicated shelves rather than
+    distinct ones (Isaac's call, session 2026-09-30). Plain `ORDER BY RANDOM()` would
+    reshuffle on every single refetch — visibly jittering mid-scroll — so the seed is
+    date-based (stable within a day) rather than per-request, and salted per shelf/user so
+    two shelves — or two different users' Prophet's Catalog — don't coincidentally land on
+    the same permutation."""
+    seed = f"{date.today().isoformat()}:{salt}"
+    shuffled = list(items)
+    random.Random(seed).shuffle(shuffled)
+    return shuffled
+
+
+async def next_scheduled_sermon(db: AsyncSession) -> UpcomingSermon | None:
+    """The soonest sermon that is PUBLISHED but not yet visible (`publish_at` still in
+    the future) — Home's "next message" countdown (Nii's ask, 2026-10-21). None when
+    nothing is scheduled. Only the fields in `UpcomingSermon` leave the server (cover
+    art included, so the countdown can show it); the sermon itself stays invisible to
+    every catalogue read until its time passes."""
+    now = datetime.now(timezone.utc)
+    stmt = (
+        select(Sermon)
+        .where(
+            Sermon.status == SermonStatus.PUBLISHED,
+            Sermon.publish_at.is_not(None),
+            Sermon.publish_at > now,
+        )
+        .order_by(Sermon.publish_at.asc(), Sermon.id)
+        .limit(1)
+    )
+    sermon = (await db.execute(stmt)).scalars().first()
+    if sermon is None or sermon.publish_at is None:
+        return None
+    names = await load_ref_names(db, [sermon])
+    return UpcomingSermon(
+        id=sermon.id,
+        title=sermon.title,
+        publish_at=sermon.publish_at,
+        thumbnail_url=_thumbnail_url(sermon.thumbnail_key),
+        speaker_name=names.speakers.get(sermon.speaker_id) if sermon.speaker_id else None,
+        series_title=names.series.get(sermon.series_id) if sermon.series_id else None,
+        episode_number=sermon.episode_number,
+    )
+
+
+async def list_new_release_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Home's "New Releases" shelf — the same newest-published-first ordering
+    `list_hero_sermons` uses, just capped to shelf size via its own query rather than
+    slicing the full catalog list client-side — matches `list_trending_sermons`/
+    `list_recommended_sermons`'s own pattern. Unlike the hero and every other
+    discovery shelf, this one is NOT capped to one-per-series (`_cap_one_per_series`)
+    — multiple fresh episodes of the same series showing up here together is exactly
+    the point of a "new releases" shelf, not noise to collapse."""
+    has_sub = await _has_subscription(db, user)
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(max(1, min(limit, 50)))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
+
+
+async def list_hero_sermons(
+    db: AsyncSession, user: User | None, limit: int = 3
+) -> list[SermonListItem]:
+    """Home's hero carousel — newest-published first (P5's original single-item rule,
+    extended to Isaac's ask for a 3-item rotating hero, session 2026-09-30), capped to
+    one sermon per series (`_cap_one_per_series`) so the carousel doesn't spend two of
+    its three slots on back-to-back episodes of the same series. A dedicated query
+    rather than reusing `list_published_sermons` — that function is cached whole-catalog
+    and used elsewhere (general browse) where every episode SHOULD appear; capping it
+    here would change that contract for every other caller too."""
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 10))
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause())
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(_over_fetch(capped_limit))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(sermons, capped_limit)
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
+
+
+async def list_prophets_catalog_sermons(
+    db: AsyncSession, user: User | None, limit: int = 10
+) -> list[SermonListItem]:
+    """Home's "Prophet's Catalog" shelf — sermons an editor has manually flagged via
+    the admin editor's "Prophet's Catalog" switch (`Sermon.is_prophets_catalog`).
+    Purely editorial curation with no inherent order of its own, so the candidate pool
+    is capped by recency (same as everywhere else) but *displayed* in a daily-shuffled
+    order (`_daily_shuffle`) rather than strict `published_at desc` — otherwise this
+    shelf reads as a duplicate of New Releases whenever the two sets overlap. Also capped
+    to one sermon per series (`_cap_one_per_series`) for the same reason New Releases is
+    exempt from that cap — multiple fresh episodes belong on New Releases, not repeated
+    here too."""
+    has_sub = await _has_subscription(db, user)
+    capped_limit = max(1, min(limit, 50))
+    stmt = (
+        select(Sermon)
+        .where(*sermon_visibility_clause(), Sermon.is_prophets_catalog.is_(True))
+        .order_by(Sermon.published_at.desc().nullslast())
+        .limit(_over_fetch(capped_limit))
+    )
+    sermons = (await db.execute(stmt)).scalars().all()
+    sermons = _cap_one_per_series(sermons, capped_limit)
+    sermons = _daily_shuffle(sermons, salt=f"prophets:{user.id if user else 'anon'}")
+    series_map = await _series_map(db, sermons)
+    names = await load_ref_names(db, sermons)
+    return [
+        to_list_item(s, effective_tier(s, series_map.get(s.series_id)), has_sub, names)
+        for s in sermons
+    ]
 
 
 async def _series_map(db: AsyncSession, sermons: list[Sermon]) -> dict[uuid.UUID, Series]:
@@ -435,8 +776,18 @@ async def _assemble_sermon_detail(
         series = await db.get(Series, sermon.series_id)
     tier = effective_tier(sermon, series)
     has_sub = await _has_subscription(db, user)
+    names = await load_ref_names(
+        db, [sermon], include_draft_series=staff_sees_full_counts(user)
+    )
 
-    base = to_list_item(sermon, tier, has_sub)
+    # A sermon carries exactly one rendition (video or audio, never both — mobile
+    # download UI's own assumption), so the first media_ref's type is the whole
+    # answer. `media_refs` is already eager-loaded for this read; no extra query.
+    media_type = sermon.media_refs[0].type.value if sermon.media_refs else None
+    base = to_list_item(sermon, tier, has_sub, names, media_type=media_type)
+    like_count, liked_by_me = await likes_service.sermon_like_state(
+        db, sermon.id, user.id if user is not None else None
+    )
     return SermonDetail(
         **base.model_dump(),
         status=sermon.status,
@@ -444,12 +795,44 @@ async def _assemble_sermon_detail(
         media_refs=sermon.media_refs,
         published_at=sermon.published_at,
         created_at=sermon.created_at,
+        like_count=like_count,
+        liked_by_me=liked_by_me,
     )
 
 
 async def _load_sermon_with_detail_rels(
     db: AsyncSession, sermon_id: uuid.UUID
 ) -> Sermon | None:
+    # Defense in depth: `Sermon.status` is validated against `SermonStatus`'s
+    # member names by the ORM Enum type (no `values_callable`), so a row
+    # whose `status` column holds a string that isn't one of those names
+    # (reachable only by writes that bypass the ORM, e.g. raw SQL — every
+    # in-app write path sets `status` via the enum member) fails Enum
+    # deserialization with a bare `LookupError` during row hydration. A
+    # targeted Core read of the raw column lets us treat *that specific,
+    # known* failure mode as "not found" before the full ORM query runs.
+    # `type_coerce(..., String)` overrides the *result* type SQLAlchemy
+    # applies to this expression without changing the SQL (no CAST
+    # emitted), so we see the literal string instead of going through the
+    # Enum type's result processor — selecting `Sermon.__table__.c.status`
+    # directly still carries that column's Enum type and raises identically,
+    # so type_coerce is what actually bypasses it. Deliberately not a
+    # blanket `except LookupError` around the ORM query below: it also
+    # catches `KeyError`/`IndexError`, and would misreport an unrelated
+    # corruption (e.g. `MediaRef.type`, eager-loaded by the same query) as
+    # "sermon not found".
+    raw_status = (await db.execute(
+        select(type_coerce(Sermon.__table__.c.status, String))
+        .where(Sermon.id == sermon_id)
+    )).scalar_one_or_none()
+    if raw_status is not None and raw_status not in SermonStatus.__members__:
+        log.error(
+            "sermon_status_unparseable",
+            sermon_id=str(sermon_id),
+            raw_status=raw_status,
+        )
+        raise ContentError("Sermon not found", status_code=404)
+
     stmt = (
         select(Sermon)
         .where(Sermon.id == sermon_id)
@@ -506,6 +889,7 @@ async def get_sermon_for_staff(
         **detail.model_dump(),
         updated_at=sermon.updated_at,
         tier_override=sermon.tier,
+        is_prophets_catalog=sermon.is_prophets_catalog,
     )
 
 
@@ -528,6 +912,7 @@ async def create_sermon(db: AsyncSession, data: SermonCreate, creator: User) -> 
         series_id=data.series_id,
         episode_number=episode_number,
         tier=data.tier,
+        is_prophets_catalog=data.is_prophets_catalog,
         status=SermonStatus.DRAFT,
         created_by=creator.id,
     )
@@ -557,15 +942,57 @@ _CONTENT_LOCKED_MESSAGES: dict[SermonStatus, str] = {
 }
 
 
+# Note on the approval-log row `reopen_unpublished_for_edit` writes.
+REOPENED_FOR_EDIT_NOTE = (
+    "Edited after unpublishing — needs review again before it can go live."
+)
+
+
+def ensure_not_content_locked(sermon: Sermon) -> None:
+    """409 if `sermon` is approved or published (see `_CONTENT_LOCKED_MESSAGES`)."""
+    if sermon.status in _CONTENT_LOCKED_MESSAGES:
+        raise ContentError(
+            _CONTENT_LOCKED_MESSAGES[sermon.status], status_code=409
+        )
+
+
+def reopen_unpublished_for_edit(sermon: Sermon, actor: User, db: AsyncSession) -> bool:
+    """Send an `unpublished` sermon back to `draft` because its content is
+    about to change. Returns True when it did.
+
+    `publish` accepts `unpublished` as a source so a pulled sermon can go
+    straight back up. That is only safe while the content is still what was
+    reviewed: without this, unpublish → edit → publish puts unreviewed content
+    live, and lets a manager publish their own edits (sidestepping the
+    self-review rule). So any real edit drops it to `draft`, and it has to be
+    submitted and approved again. Adds the ApprovalLog row; never commits —
+    the caller's commit carries it with the edit itself.
+    """
+    if sermon.status != SermonStatus.UNPUBLISHED:
+        return False
+    sermon.status = SermonStatus.DRAFT
+    db.add(ApprovalLog(
+        sermon_id=sermon.id,
+        from_status=SermonStatus.UNPUBLISHED.value,
+        to_status=SermonStatus.DRAFT.value,
+        actor_id=actor.id,
+        note=REOPENED_FOR_EDIT_NOTE,
+        created_at=datetime.now(timezone.utc),
+    ))
+    log.info("sermon_reopened_for_edit", sermon_id=str(sermon.id), by=str(actor.id))
+    return True
+
+
+def _normalised_tags(tags: list[str]) -> set[str]:
+    return {t.strip().lower() for t in tags if t.strip()}
+
+
 async def update_sermon(
     db: AsyncSession, sermon_id: uuid.UUID, data: SermonUpdate, editor: User
 ) -> Sermon:
     sermon = await _load_editable(db, sermon_id, editor)
 
-    if sermon.status in _CONTENT_LOCKED_MESSAGES:
-        raise ContentError(
-            _CONTENT_LOCKED_MESSAGES[sermon.status], status_code=409
-        )
+    ensure_not_content_locked(sermon)
 
     fields = data.model_dump(exclude_unset=True, exclude={"tags"})
 
@@ -596,15 +1023,24 @@ async def update_sermon(
             status_code=409,
         )
 
+    # Only a real change counts: the editor's autosave can PATCH back the
+    # values it loaded, and that must not reopen an unpublished sermon.
+    changed = any(getattr(sermon, key) != value for key, value in fields.items())
+    new_tags = _normalised_tags(data.tags) if data.tags is not None else None
+    if new_tags is not None and new_tags != {t.tag for t in sermon.tags}:
+        changed = True
+    if changed:
+        reopen_unpublished_for_edit(sermon, editor, db)
+
     for key, value in fields.items():
         setattr(sermon, key, value)
 
     # Tags are excluded from `fields` on purpose: they are not part of
     # SermonListItem / the cached catalog row, so a tags-only edit never needs
     # to bust a catalog cache entry.
-    if data.tags is not None:
+    if new_tags is not None:
         sermon.tags.clear()
-        for tag in {t.strip().lower() for t in data.tags if t.strip()}:
+        for tag in new_tags:
             sermon.tags.append(SermonTag(tag=tag))
 
     await db.commit()
@@ -1035,7 +1471,7 @@ async def review_queue_page(
     )).all()
 
     sermons = [row[0] for row in rows]
-    names = await load_ref_names(db, sermons)
+    names = await load_ref_names(db, sermons, include_draft_series=True)
     series_map = await series_for(db, sermons)
 
     media_counts: dict[uuid.UUID, int] = {}
@@ -1247,6 +1683,9 @@ async def update_category(
         await db.rollback()
         raise ContentError("A category with that slug already exists", status_code=409)
     await db.refresh(cat)
+    # category_name rides on every cached catalog card.
+    if name is not None:
+        await invalidate_catalog_cache()
     return cat
 
 
@@ -1325,6 +1764,9 @@ async def update_speaker(
         speaker.bio = bio
     await db.commit()
     await db.refresh(speaker)
+    # speaker_name rides on every cached catalog card.
+    if name is not None:
+        await invalidate_catalog_cache()
     return speaker
 
 
@@ -1347,11 +1789,16 @@ async def get_series(db: AsyncSession, series_id: uuid.UUID) -> Series:
 # Per-series episode count + resolved category name, computed in the read query
 # via a correlated count subquery + an outer join (same style as
 # `review_queue_page`'s per-row subqueries). One query, no round-trip per row.
-def _series_public_stmt(include_unpublished: bool):
-    """Series rows + a correlated episode count + the resolved category name.
+def _series_public_stmt(include_unpublished: bool, viewer_id: uuid.UUID | None = None):
+    """Series rows + a correlated episode count, the resolved category name,
+    and (Isaac's ask, session 2026-10-09) a correlated like count + whether
+    `viewer_id` has liked each row.
 
-    `include_unpublished=False` scopes the episode count to published sermons —
-    see `staff_sees_full_counts`.
+    `include_unpublished=False` restricts rows to published series and scopes
+    the episode count to published sermons — see `staff_sees_full_counts`. `viewer_id=None` (anonymous) still runs the
+    `liked_by_me` subquery rather than branching it away — `SeriesLike.user_id
+    == None` renders as `IS NULL`, which a NOT NULL column can never match, so
+    it already always resolves to `false` without a second code path.
     """
     episode_count = (
         select(func.count(Sermon.id))
@@ -1363,23 +1810,42 @@ def _series_public_stmt(include_unpublished: bool):
         .scalar_subquery()
         .label("episode_count")
     )
-    return select(
-        Series, episode_count, Category.name.label("category_name")
+    like_count = (
+        select(func.count(SeriesLike.id))
+        .where(SeriesLike.series_id == Series.id)
+        .correlate(Series)
+        .scalar_subquery()
+        .label("like_count")
+    )
+    liked_by_me = (
+        select(func.count(SeriesLike.id) > 0)
+        .where(SeriesLike.series_id == Series.id, SeriesLike.user_id == viewer_id)
+        .correlate(Series)
+        .scalar_subquery()
+        .label("liked_by_me")
+    )
+    stmt = select(
+        Series, episode_count, Category.name.label("category_name"), like_count, liked_by_me
     ).outerjoin(Category, Category.id == Series.category_id)
+    if not include_unpublished:
+        # Viewers/anon see published series only (same rule as sermon detail);
+        # a draft is indistinguishable from a nonexistent id.
+        stmt = stmt.where(Series.status == SermonStatus.PUBLISHED)
+    return stmt
 
 
 async def list_series(
-    db: AsyncSession, include_unpublished: bool = False
-) -> list[tuple[Series, int, str | None]]:
-    stmt = _series_public_stmt(include_unpublished).order_by(Series.title)
+    db: AsyncSession, include_unpublished: bool = False, viewer_id: uuid.UUID | None = None
+) -> list[tuple[Series, int, str | None, int, bool]]:
+    stmt = _series_public_stmt(include_unpublished, viewer_id).order_by(Series.title)
     return [tuple(row) for row in (await db.execute(stmt)).all()]
 
 
 async def get_series_public(
-    db: AsyncSession, series_id: uuid.UUID, include_unpublished: bool = False
-) -> tuple[Series, int, str | None]:
+    db: AsyncSession, series_id: uuid.UUID, include_unpublished: bool = False, viewer_id: uuid.UUID | None = None
+) -> tuple[Series, int, str | None, int, bool]:
     row = (await db.execute(
-        _series_public_stmt(include_unpublished).where(Series.id == series_id)
+        _series_public_stmt(include_unpublished, viewer_id).where(Series.id == series_id)
     )).one_or_none()
     if row is None:
         raise ContentError("Series not found", status_code=404)
@@ -1444,13 +1910,15 @@ async def update_series(
             raise ContentError("category_id does not exist", status_code=400)
 
     tier_changed = "tier" in fields and fields["tier"] != series.tier
+    title_changed = "title" in fields and fields["title"] != series.title
     for key, value in fields.items():
         setattr(series, key, value)
     await db.commit()
 
     # A tier change alters the effective tier of inheriting episodes in the
-    # public catalog, so bust the cache.
-    if tier_changed:
+    # public catalog, and series_title rides on each episode's cached card,
+    # so either one busts the cache.
+    if tier_changed or title_changed:
         await invalidate_catalog_cache()
 
 
@@ -1591,6 +2059,28 @@ async def reorder_series_episodes(
 
 
 # ── Sermons: list & delete ────────────────────────────────────────────────────
+async def sermon_status_counts(
+    db: AsyncSession, requester: User, author_id: uuid.UUID | None = None
+) -> dict[str, int]:
+    """Sermons per status in the requester's scope, zero-filled, plus `total`.
+    One GROUP BY; the same scope rules as `list_sermons_for_staff`."""
+    conditions = []
+    scope_clause = editor_scope_filter(requester)
+    if scope_clause is not None:
+        conditions.append(scope_clause)
+    if author_id is not None:
+        conditions.append(Sermon.created_by == author_id)
+    rows = (await db.execute(
+        select(Sermon.status, func.count()).where(*conditions).group_by(Sermon.status)
+    )).all()
+    counts = {st.value: 0 for st in SermonStatus}
+    for st, n in rows:
+        key = st.value if isinstance(st, SermonStatus) else str(st)
+        counts[key] = int(n or 0)
+    counts["total"] = sum(counts.values())
+    return counts
+
+
 async def list_sermons_for_staff(
     db: AsyncSession,
     requester: User,
@@ -1728,7 +2218,7 @@ async def create_thumbnail_ticket(
 
     key = storage_module.thumbnail_key(kind, entity.id, filename)
     url = storage_module.get_storage().presigned_upload_url(
-        settings.s3_media_bucket, key, content_type,
+        settings.object_store_media_bucket, key, content_type,
         settings.upload_url_expire_seconds,
     )
     return {
@@ -1754,10 +2244,8 @@ async def confirm_thumbnail(
     # Series-only: `kind == "series"` never reaches an approval workflow at
     # all (a series is draft/published only, via `update_series`, which has no
     # equivalent lock on PUBLISHED) — nothing to extend there.
-    if kind == "sermons" and entity.status in _CONTENT_LOCKED_MESSAGES:
-        raise ContentError(
-            _CONTENT_LOCKED_MESSAGES[entity.status], status_code=409
-        )
+    if kind == "sermons":
+        ensure_not_content_locked(entity)
 
     # The key is supplied by the client, so confine it to this entity's prefix —
     # otherwise a caller could point their thumbnail at any object in the bucket.
@@ -1766,7 +2254,7 @@ async def confirm_thumbnail(
         raise ContentError("Thumbnail key does not belong to this item", 400)
 
     store = storage_module.get_storage()
-    if not store.object_exists(settings.s3_media_bucket, key):
+    if not store.object_exists(settings.object_store_media_bucket, key):
         raise ContentError(
             "No uploaded image found — complete the PUT first", status_code=409
         )
@@ -1775,10 +2263,10 @@ async def confirm_thumbnail(
     # a multi-GB "image". Re-check the real object size, mirroring the Batch-2
     # media-confirm fix. `None` (stub backend / size unknowable) → proceed, as
     # the media path does; a concrete oversize → delete the object and 413.
-    size = store.object_size(settings.s3_media_bucket, key)
+    size = store.object_size(settings.object_store_media_bucket, key)
     if size is not None and size > settings.max_thumbnail_bytes:
         try:
-            store.delete_object(settings.s3_media_bucket, key)
+            store.delete_object(settings.object_store_media_bucket, key)
         except Exception:  # noqa: BLE001 - best-effort cleanup, still reject
             log.warning("oversize_thumbnail_cleanup_failed", key=key)
         raise ContentError(
@@ -1787,6 +2275,8 @@ async def confirm_thumbnail(
             status_code=413,
         )
 
+    if kind == "sermons" and entity.thumbnail_key != key:
+        reopen_unpublished_for_edit(entity, actor, db)
     entity.thumbnail_key = key
     await db.commit()
     await invalidate_catalog_cache()

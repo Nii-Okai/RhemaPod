@@ -27,35 +27,25 @@ import { subscriptionsToCsv } from "./subscriptions-csv";
    SubscriptionsScreen — Subscriptions (design Screen 9, plan W21).
 
    A pure read: three stat tiles, a status + tier filter, the W6 `DataTable` of
-   paying members, a client-built CSV of the loaded/filtered rows, and an
-   "Open in Stripe" deep link per row. URL is the state — `?status=` / `?tier=`
-   and `?page=`.
+   paying members, and a client-built CSV of the loaded/filtered rows. URL is
+   the state — `?status=` / `?tier=` and `?page=`.
 
    Read-only, and nothing here mutates a subscription (plan §A.3 / §W21). There
    is no cancel, refund, plan-change, retry or sync — every mutating operation
-   lives in the Stripe dashboard, which owns the audit trail and the permissions
-   model. The only outbound affordance is the external "Open in Stripe" link,
-   and the only write of any kind is the browser download of the CSV.
+   lives with the payment provider, which owns the audit trail and the
+   permissions model. The only write of any kind on this screen is the browser
+   download of the CSV.
 
    The subhead states the lag: this list follows the last billing update the
-   provider sent us, so a member fixed by hand in Stripe reads their old status
-   here for a few minutes.
+   provider sent us, so a member fixed by hand with the provider reads their
+   old status here for a few minutes.
 
    No dollar figure appears anywhere on this screen — no amount tile, no amount
    column, no amount in the CSV (plan decision 2).
    ========================================================================== */
 
 const SUBHEAD =
-  "This list updates when the payment provider sends us a change. If you fix a member’s card directly in Stripe, it can take a few minutes to show here. Past-due members keep access while the card is retried.";
-
-/** The Stripe dashboard deep link for a customer. `provider_customer_id` is the
-    Stripe customer id (`cus_…`); the row action is hidden entirely when it is
-    null, never rendered disabled (plan §A.3). */
-export function stripeCustomerUrl(providerCustomerId: string): string {
-  return `https://dashboard.stripe.com/customers/${encodeURIComponent(
-    providerCustomerId,
-  )}`;
-}
+  "This list updates when the payment provider sends us a change. If you fix a member’s card directly with the provider, it can take a few minutes to show here. Past-due members keep access while the card is retried.";
 
 function memberName(row: SubscriptionAdminItem): string | null {
   return row.user_name?.trim() || null;
@@ -204,27 +194,6 @@ export function SubscriptionsScreen() {
             : "—"}
         </span>
       ),
-    },
-    {
-      key: "stripe",
-      header: "",
-      gridWidth: "1fr",
-      align: "end",
-      // Hidden — not rendered — when there is no Stripe customer id (plan §A.3).
-      // Never a disabled control: a disabled link is a promise that something
-      // is temporarily unavailable, and a free / never-paid row will never
-      // acquire a customer id without also acquiring the link via webhook.
-      cell: (row) =>
-        row.provider_customer_id ? (
-          <a
-            href={stripeCustomerUrl(row.provider_customer_id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[13px] font-semibold text-clay-600 underline underline-offset-2 outline-none hover:text-clay-700 focus-visible:focus-ring-button"
-          >
-            Open in Stripe
-          </a>
-        ) : null,
     },
   ];
 

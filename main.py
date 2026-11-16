@@ -7,37 +7,60 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.sermon_approval import router as sermon_approval_router
+from app.api.admin_audit import router as admin_audit_router
 from app.api.admin_auth import router as admin_router
+from app.api.admin_data import router as admin_data_router
+from app.api.admin_settings import public_router as settings_public_router
+from app.api.admin_settings import router as admin_settings_router
+from app.api.admin_comments import router as admin_comments_router
 from app.api.admin_subscriptions import router as admin_subscriptions_router
 from app.api.announcements import router as announcements_router
 from app.api.announcement_approval import router as announcement_approvals_router
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
+from app.api.comments import router as comments_router
+from app.api.devotionals import approvals_router as devotional_approvals_router
+from app.api.devotionals import router as devotionals_router
+from app.api.devotionals import settings_router as devotional_settings_router
 from app.api.categories import router as categories_router
 from app.api.media import router as media_router
-from app.api.notes import router as notes_router
+from app.api.playlists import router as playlists_router
+from app.api.push import router as push_router
 from app.api.search import router as search_router
 from app.api.series import router as series_router
 from app.api.sermons import router as sermons_router
 from app.api.speakers import router as speakers_router
 from app.api.subscriptions import router as subscriptions_router
+from app.api.verses import router as verses_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, correlation_id, get_logger
+from app.core.observability import capture_exception, init_observability
 from app.core.middleware import (
     BodySizeLimitMiddleware,
     CorrelationIdMiddleware,
     GlobalRateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.core.payments import get_provider
+from app.core.apple_revocation import get_apple_revocation_client
 from app.core.redis import check_redis
 from app.core.storage import get_storage
 from app.core.token_store import TokenStoreUnavailable
-from app.db.database import check_db, primary_engine
+from app.db.database import PrimarySession, check_db, primary_engine
+from app.services.captions_scheduler import (
+    start_captions_scheduler,
+    stop_captions_scheduler,
+)
+from app.services.push_scheduler import start_push_scheduler, stop_push_scheduler
+from app.services.retention_scheduler import (
+    start_retention_scheduler,
+    stop_retention_scheduler,
+)
 
 settings = get_settings()
 log = get_logger("app")
+# Before the app is built, so Sentry's FastAPI integration hooks every request.
+init_observability(settings)
 
 API_PREFIX = "/api/v1"
 
@@ -50,19 +73,40 @@ async def lifespan(app: FastAPI):
     # Resolve external backends at startup rather than on the first request, so
     # a misconfiguration is a failed deploy instead of a 500 for a real user.
     storage_backend = type(get_storage()).__name__
-    payment_provider = get_provider().name
+    apple_revocation_backend = type(get_apple_revocation_client()).__name__
 
     logger.info(
         "startup",
         app=settings.app_name,
         environment=settings.environment,
         storage=storage_backend,
-        payments=payment_provider,
-        email="smtp" if settings.email_is_live else "console",
+        apple_revocation=apple_revocation_backend,
+        email=settings.email_backend_label,
     )
-    yield
-    logger.info("shutdown")
-    await primary_engine.dispose()
+    retention_task = None
+    if settings.retention_scheduler_enabled:
+        retention_task = start_retention_scheduler(session_factory=PrimarySession)
+    elif settings.environment != "test":
+        logger.warning("retention_scheduler_disabled")
+    captions_task = None
+    if settings.captions_scheduler_enabled:
+        captions_task = start_captions_scheduler(session_factory=PrimarySession)
+    push_task = None
+    if settings.push_scheduler_enabled:
+        push_task = start_push_scheduler(session_factory=PrimarySession)
+    try:
+        yield
+    finally:
+        logger.info("shutdown")
+        try:
+            if push_task is not None:
+                await stop_push_scheduler(push_task)
+            if captions_task is not None:
+                await stop_captions_scheduler(captions_task)
+            if retention_task is not None:
+                await stop_retention_scheduler(retention_task)
+        finally:
+            await primary_engine.dispose()
 
 
 app = FastAPI(
@@ -170,6 +214,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         path=request.url.path,
         error=type(exc).__name__,
     )
+    # This handler turns the error into a clean 500, so report it explicitly.
+    capture_exception(exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -187,16 +233,27 @@ for _router in (
     series_router,
     sermons_router,
     catalog_router,
+    comments_router,
     media_router,
+    playlists_router,
     announcements_router,
     subscriptions_router,
     search_router,
     analytics_router,
-    notes_router,
     admin_router,
+    admin_comments_router,
     admin_subscriptions_router,
+    admin_audit_router,
+    devotional_settings_router,
+    admin_settings_router,
+    admin_data_router,
+    settings_public_router,
     announcement_approvals_router,
     sermon_approval_router,
+    verses_router,
+    devotionals_router,
+    devotional_approvals_router,
+    push_router,
 ):
     app.include_router(_router, prefix=API_PREFIX)
 

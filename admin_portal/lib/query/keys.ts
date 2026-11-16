@@ -46,6 +46,26 @@ export type SubscriptionListParams = NonNullable<
   operations["list_subscriptions_api_v1_admin_subscriptions_get"]["parameters"]["query"]
 >;
 
+/** Query params accepted by `GET /api/v1/admin/audit` (admin-settings S10). */
+export type AuditListParams = NonNullable<
+  operations["list_audit_api_v1_admin_audit_get"]["parameters"]["query"]
+>;
+
+/** Query params accepted by `GET /api/v1/users/members` (admin only). */
+export type MemberListParams = NonNullable<
+  operations["list_members_api_v1_users_members_get"]["parameters"]["query"]
+>;
+
+/** Query params accepted by `GET /api/v1/admin/analytics/report` (S13). */
+export type UsageReportParams = NonNullable<
+  operations["usage_report_api_v1_admin_analytics_report_get"]["parameters"]["query"]
+>;
+
+/** Query params accepted by `GET /api/v1/admin/comments` (S12). */
+export type AdminCommentListParams = NonNullable<
+  operations["list_admin_comments_api_v1_admin_comments_get"]["parameters"]["query"]
+>;
+
 export const queryKeys = {
   sermons: {
     all: () => ["sermons"] as const,
@@ -59,6 +79,8 @@ export const queryKeys = {
       [...queryKeys.sermons.detail(sermonId), "media"] as const,
     uploads: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "uploads"] as const,
+    captions: (sermonId: string) =>
+      [...queryKeys.sermons.detail(sermonId), "captions"] as const,
     approvalLog: (sermonId: string) =>
       [...queryKeys.sermons.detail(sermonId), "approval-log"] as const,
     /** Signed playback URLs (`GET /sermons/{id}/stream`). Nested under
@@ -70,6 +92,10 @@ export const queryKeys = {
         Its own sub-tree, not a `list()` variant — it is four `limit=1`
         `total` probes, not a page of rows (§A.9 "Sermons list counts"). */
     counts: () => [...queryKeys.sermons.all(), "counts"] as const,
+    /** Sermons per workflow status (`GET /sermons/status-counts`), the
+        Dashboard's content pipeline. `mine` adds `created_by=me`. */
+    statusCounts: (mine = false) =>
+      [...queryKeys.sermons.all(), "status-counts", { mine }] as const,
   },
   review: {
     all: () => ["review"] as const,
@@ -115,29 +141,29 @@ export const queryKeys = {
     list: (params: AnnouncementListParams = {}) =>
       [...queryKeys.announcements.lists(), params] as const,
   },
+  /** Daily devotionals (plans/plan-daily-devotional.md, Phase 2). */
+  devotionals: {
+    all: () => ["devotionals"] as const,
+    calendar: (from: string, to: string) =>
+      [...queryKeys.devotionals.all(), "calendar", { from, to }] as const,
+    pool: () => [...queryKeys.devotionals.all(), "pool"] as const,
+    pending: () => [...queryKeys.devotionals.all(), "pending"] as const,
+    detail: (id: string) => [...queryKeys.devotionals.all(), "detail", id] as const,
+    history: (id: string) =>
+      [...queryKeys.devotionals.detail(id), "history"] as const,
+    settings: () => [...queryKeys.devotionals.all(), "settings"] as const,
+  },
   nav: {
     all: () => ["nav"] as const,
     /** Trailing counts on the sidebar (sermons total, series count, review queue). */
     counts: () => [...queryKeys.nav.all(), "counts"] as const,
   },
-  /** Upload jobs not nested under a single sermon. `inFlight()` is the
-      Dashboard "Processing" WIP card's feed (`GET /uploads/in-flight`) — every
-      still-moving job across the sermons the caller may see. Per-sermon job
-      lists stay under `sermons.uploads(id)`. */
-  uploads: {
-    all: () => ["uploads"] as const,
-    inFlight: () => [...queryKeys.uploads.all(), "in-flight"] as const,
-  },
-  /** Admin analytics reads behind the manager/admin Dashboard variant (W23).
-      Each is its own leaf — they share nothing and invalidate independently.
-      An editor session never mounts the component that runs these, so an
-      editor's cache never holds an `analytics` key. */
+  /** Admin analytics reads behind the manager/admin Dashboard. An editor
+      session never mounts the component that runs these, so an editor's
+      cache never holds an `analytics` key. */
   analytics: {
     all: () => ["analytics"] as const,
     overview: () => [...queryKeys.analytics.all(), "overview"] as const,
-    topSermons: () => [...queryKeys.analytics.all(), "top-sermons"] as const,
-    newListeners: () =>
-      [...queryKeys.analytics.all(), "new-listeners"] as const,
   },
   /** Users & roles screen (W17). Same shape as `announcements` — a domain root,
       a `list()` sub-tree keyed on `{role?, limit, offset}` (React Query hashes
@@ -151,6 +177,10 @@ export const queryKeys = {
     list: (params: UserListParams = {}) =>
       [...queryKeys.users.lists(), params] as const,
     roleCounts: () => [...queryKeys.users.all(), "role-counts"] as const,
+    /** Mobile users (viewers), admin only: `GET /users/members`. Under
+        `users.all()` so a deactivate/remove invalidates it too. */
+    members: (params: MemberListParams) =>
+      [...queryKeys.users.all(), "members", params] as const,
   },
   /** Subscriptions screen (W21). Same shape as `users` — a domain root, a
       `list()` sub-tree keyed on `{status?, tier?, limit, offset}` (React Query
@@ -163,6 +193,37 @@ export const queryKeys = {
     list: (params: SubscriptionListParams = {}) =>
       [...queryKeys.subscriptions.lists(), params] as const,
     counts: () => [...queryKeys.subscriptions.all(), "counts"] as const,
+  },
+  /** Comments moderation queue (S12). `all()` is the coarse handle every
+      moderation mutation invalidates: it prefix-matches the paged lists and
+      the per-sermon editor-card counts. */
+  comments: {
+    all: () => ["comments"] as const,
+    lists: () => [...queryKeys.comments.all(), "list"] as const,
+    list: (params: AdminCommentListParams = {}) =>
+      [...queryKeys.comments.lists(), params] as const,
+    sermonCounts: (sermonId: string) =>
+      [...queryKeys.comments.all(), "sermon-counts", sermonId] as const,
+  },
+  /** Settings (plan-admin-settings S17). The church profile is one row, so
+      `profile()` is a single key that a successful PATCH overwrites with
+      the server's response. The audit feed and usage report are read-only
+      lists keyed on their full query params. */
+  settings: {
+    all: () => ["settings"] as const,
+    profile: () => [...queryKeys.settings.all(), "profile"] as const,
+    /** The unauthenticated public read (church name for the TopBar — every
+        role, not just manager+). Separate key from `profile()`, which hits
+        the admin-only GET and would 403 for an Editor. */
+    public: () => [...queryKeys.settings.all(), "public"] as const,
+    auditLists: () => [...queryKeys.settings.all(), "audit"] as const,
+    audit: (params: AuditListParams) =>
+      [...queryKeys.settings.auditLists(), params] as const,
+    report: (params: UsageReportParams) =>
+      [...queryKeys.settings.all(), "report", params] as const,
+    /** Settings › Data table list (admin only): names, row counts and what
+        each table allows. An import invalidates it. */
+    dataTables: () => [...queryKeys.settings.all(), "data-tables"] as const,
   },
   session: {
     all: () => ["session"] as const,

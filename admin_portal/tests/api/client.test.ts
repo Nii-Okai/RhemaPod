@@ -72,7 +72,7 @@ describe("API client — stripBackendMount preserves the request across the rewr
     );
 
     await api.POST("/api/v1/sermons", {
-      body: { title: "Grace" },
+      body: { title: "Grace", is_prophets_catalog: false },
       credentials: "include",
     });
 
@@ -91,7 +91,7 @@ describe("API client — stripBackendMount preserves the request across the rewr
     const controller = new AbortController();
     const pending = api
       .POST("/api/v1/sermons", {
-        body: { title: "x" },
+        body: { title: "x", is_prophets_catalog: false },
         signal: controller.signal,
       })
       .catch((e: unknown) => e);
@@ -154,7 +154,7 @@ describe("API client — error envelope", () => {
     );
 
     const err = (await api
-      .POST("/api/v1/sermons", { body: { title: "" } })
+      .POST("/api/v1/sermons", { body: { title: "", is_prophets_catalog: false } })
       .catch((e: unknown) => e)) as ApiError;
 
     expect(err.status).toBe(422);

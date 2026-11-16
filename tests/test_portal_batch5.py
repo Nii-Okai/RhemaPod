@@ -561,6 +561,11 @@ async def test_series_episode_count_scoped_to_caller(client, engine):
     assert with_cat["episode_count"] == 0
     assert with_cat["category_name"] == "Teaching"
     assert no_cat["category_name"] is None
+    for sid in (with_cat["id"], no_cat["id"]):
+        r = await client.patch(
+            f"/api/v1/series/{sid}", json={"status": "published"}, headers=mgr
+        )
+        assert r.status_code == 200, r.text
 
     e1 = await _episode(client, ed, with_cat["id"], "E1")
     await _episode(client, ed, with_cat["id"], "E2")

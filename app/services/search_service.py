@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -21,6 +21,7 @@ from app.models.content_schemas import SeriesPublic, SpeakerPublic
 from app.models.models import (
     ContentTier,
     Sermon,
+    SermonStatus,
     SermonTag,
     Series,
     Speaker,
@@ -31,6 +32,7 @@ from app.services.content_service import (
     _series_public_stmt,
     _speaker_public_stmt,
     effective_tier,
+    load_ref_names,
     series_to_public,
     sermon_visibility_clause,
     speaker_to_public,
@@ -56,11 +58,21 @@ def _is_postgres(db: AsyncSession) -> bool:
 
 def _weighted_vector(columns_weights: list[tuple]):
     """A `setweight`-combined tsvector across one or more (column, weight)
-    pairs — weight "A" ranks above "B", etc. (Postgres only.)"""
+    pairs — weight "A" ranks above "B", etc. (Postgres only.)
+
+    `setweight`'s second argument is Postgres's internal `"char"` type, which a
+    plain SQL string literal ('A') coerces to but a bound `varchar` parameter
+    does not — SQLAlchemy binds a Python str as `varchar` by default, which
+    500s with "function setweight(tsvector, character varying) does not
+    exist". `literal_column` inlines it as a raw SQL literal instead of a
+    bind parameter, sidestepping that entirely. `weight` here is always one
+    of this module's own single-char constants ("A"/"B"), never caller/user
+    input, so inlining it is safe.
+    """
     vector = None
     for column, weight in columns_weights:
         term = func.setweight(
-            func.to_tsvector("english", func.coalesce(column, "")), weight
+            func.to_tsvector("english", func.coalesce(column, "")), literal_column(f"'{weight}'")
         )
         vector = term if vector is None else vector.op("||")(term)
     return vector
@@ -177,10 +189,13 @@ async def search_sermons(
         series_map = {s.id: s for s in series_rows}
 
     has_sub = await _has_subscription(db, user)
+    names = await load_ref_names(
+        db, rows, include_draft_series=staff_sees_full_counts(user)
+    )
     items = []
     for sermon in rows:
         resolved = effective_tier(sermon, series_map.get(sermon.series_id))
-        items.append(to_list_item(sermon, resolved, has_sub))
+        items.append(to_list_item(sermon, resolved, has_sub, names))
 
     log.info("search", query=query or "", results=len(items), total=total)
     return items, total
@@ -201,23 +216,26 @@ async def search_series(
     condition = _text_search_filter(db, columns, query)
     include_unpublished = staff_sees_full_counts(user)
 
-    total = (await db.execute(
-        select(func.count()).select_from(Series).where(condition)
-    )).scalar_one()
+    count_stmt = select(func.count()).select_from(Series).where(condition)
+    if not include_unpublished:
+        count_stmt = count_stmt.where(Series.status == SermonStatus.PUBLISHED)
+    total = (await db.execute(count_stmt)).scalar_one()
 
     rank = _text_rank(db, columns, query)
     order = rank if rank is not None else Series.title.asc()
+    viewer_id = user.id if user is not None else None
     rows = (await db.execute(
-        _series_public_stmt(include_unpublished).where(condition)
+        _series_public_stmt(include_unpublished, viewer_id).where(condition)
         .order_by(order).limit(limit)
     )).all()
 
     items = [
         SeriesPublic(
             **series_to_public(series), episode_count=episode_count,
-            category_name=category_name,
+            category_name=category_name, like_count=like_count,
+            liked_by_me=liked_by_me,
         )
-        for series, episode_count, category_name in rows
+        for series, episode_count, category_name, like_count, liked_by_me in rows
     ]
     return items, total
 

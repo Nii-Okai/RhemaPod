@@ -114,7 +114,8 @@ async def test_seed_creates_playback_history_over_eight_iso_weeks(engine):
 
 async def test_seed_creates_subscriptions_all_statuses_both_paid_tiers(engine):
     """W15.0: Subscriptions screen needs rows in every status across both paid
-    tiers, with provider_customer_id set on the paid ones (MockProvider won't)."""
+    tiers. Provider fields stay null on every row until a native IAP provider
+    lands (ADR 0016)."""
     factory = _session_factory(engine)
     await seed_dev.seed(session_factory=factory)
 
@@ -131,10 +132,16 @@ async def test_seed_creates_subscriptions_all_statuses_both_paid_tiers(engine):
     }
     paid = [s for s in subs if s.tier in PAID_TIERS]
     assert {s.tier for s in paid} == set(PAID_TIERS)
-    # Every status appears on a paid row, and every paid row has a Stripe id.
+    # Every status appears on a paid row. Provider fields stay null across
+    # every row, paid included — nothing populates them until a native IAP
+    # provider lands.
     assert {s.status for s in paid} == statuses
-    assert all(s.provider_customer_id and s.provider_customer_id.startswith("cus_")
-               for s in paid)
+    assert all(
+        s.provider is None
+        and s.provider_customer_id is None
+        and s.provider_subscription_id is None
+        for s in subs
+    )
     # At least one free-tier row too.
     assert any(s.tier not in PAID_TIERS for s in subs)
 

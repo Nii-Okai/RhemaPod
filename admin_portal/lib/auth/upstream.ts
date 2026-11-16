@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 
 import { logError } from "../log";
 import { forwardedForHeaders } from "./client-ip";
+import { userAgentHeaders } from "./user-agent";
 import { API_BASE_URL, BACKEND_API_PREFIX } from "./config";
 
 const CORRELATION_HEADER = "x-correlation-id";
@@ -26,11 +27,14 @@ export interface UpstreamResponse {
  * trusted `CLIENT_IP_HEADER`) is forwarded as a single validated
  * `X-Forwarded-For` so the backend rate limiter keys per staff member, not per
  * BFF instance. `null` / unvalidated → no header, backend falls back to peer.
+ * `userAgent` (already sanitised by `userAgentFrom`) is the browser's, so the
+ * backend's audit row records it rather than Node's own.
  */
 export async function postUpstream(
   path: string,
   payload: unknown,
   clientIp?: string | null,
+  userAgent?: string | null,
 ): Promise<UpstreamResponse> {
   let res: Response;
   try {
@@ -39,6 +43,7 @@ export async function postUpstream(
       headers: {
         "content-type": "application/json",
         ...forwardedForHeaders(clientIp ?? null),
+        ...userAgentHeaders(userAgent),
       },
       body: JSON.stringify(payload),
       cache: "no-store",

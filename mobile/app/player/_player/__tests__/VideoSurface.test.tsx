@@ -1,0 +1,106 @@
+import React from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
+import { useVideoPlayer, type VideoView } from 'expo-video';
+// The manual mock's test helpers (`__mocks__/expo-video.tsx`).
+const videoMock = require('expo-video') as {
+  isPictureInPictureSupported: jest.Mock;
+  __startPictureInPicture: jest.Mock;
+};
+import { VideoSurface, type VideoSurfaceProps } from '../VideoSurface';
+import type { ControlsOverlay } from '../useControlsOverlay';
+
+jest.mock('@expo/vector-icons');
+
+const overlay: ControlsOverlay = {
+  visible: true,
+  reduceMotion: true,
+  toggle: jest.fn(),
+  touch: jest.fn(),
+};
+
+type FixtureOverrides = Partial<Omit<VideoSurfaceProps, 'player' | 'videoRef'>>;
+
+/** `useVideoPlayer` is a real hook (even against the manual mock, see
+ * `__mocks__/expo-video.tsx`'s own doc comment) — it has to run inside a component, not
+ * a bare helper function, so this harness builds the player and hands `VideoSurface` its
+ * props from inside a render rather than constructing a player fixture by hand. */
+function Harness({ overrides = {} }: { overrides?: FixtureOverrides }) {
+  const player = useVideoPlayer({ uri: 'https://example.com/stream' });
+  const videoRef = React.useRef<VideoView>(null);
+  const props: VideoSurfaceProps = {
+    player,
+    videoRef,
+    isBuffering: false,
+    isPlaying: false,
+    isEnded: false,
+    isAudio: false,
+    artworkUrl: null,
+    overlay,
+    isFullscreen: false,
+    onFullscreenChange: jest.fn(),
+    onTogglePlay: jest.fn(),
+    onReplay: jest.fn(),
+    onSeekBy: jest.fn(),
+    currentTimeSeconds: 0,
+    durationSeconds: null,
+    playbackSpeed: 1,
+    sleepRemainingSeconds: null,
+    isMuted: false,
+    onToggleMute: jest.fn(),
+    onSeekTo: jest.fn(),
+    onScrubStart: jest.fn(),
+    onScrubEnd: jest.fn(),
+    onCycleSpeed: jest.fn(),
+    onOpenSleepTimer: jest.fn(),
+    onToggleFullscreen: jest.fn(),
+    ...overrides,
+  };
+  return <VideoSurface {...props} />;
+}
+
+describe("VideoSurface — audio artwork (Isaac's report: plain dark screen for audio)", () => {
+  it('renders no artwork image for a video sermon', () => {
+    const { queryByTestId } = render(
+      <Harness overrides={{ isAudio: false, artworkUrl: 'https://cdn.example/art.jpg' }} />,
+    );
+    expect(queryByTestId('player-artwork')).toBeNull();
+  });
+
+  it('renders no artwork image for audio with no thumbnail url (falls back to the plain surface)', () => {
+    const { queryByTestId } = render(<Harness overrides={{ isAudio: true, artworkUrl: null }} />);
+    expect(queryByTestId('player-artwork')).toBeNull();
+  });
+
+  it('renders the sermon artwork over the surface for an audio-only sermon', () => {
+    const { getByTestId } = render(
+      <Harness overrides={{ isAudio: true, artworkUrl: 'https://cdn.example/art.jpg' }} />,
+    );
+    const image = getByTestId('player-artwork');
+    expect(image.props.source).toMatchObject({ uri: 'https://cdn.example/art.jpg' });
+  });
+});
+
+describe('VideoSurface — picture-in-picture', () => {
+  afterEach(() => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(false);
+    videoMock.__startPictureInPicture.mockClear();
+  });
+
+  it('offers picture in picture for a video sermon where the device supports it', () => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(true);
+    const { getByLabelText } = render(<Harness overrides={{ isAudio: false }} />);
+    fireEvent.press(getByLabelText('Picture in picture'));
+    expect(videoMock.__startPictureInPicture).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no picture in picture control for an audio sermon', () => {
+    videoMock.isPictureInPictureSupported.mockReturnValue(true);
+    const { queryByLabelText } = render(<Harness overrides={{ isAudio: true }} />);
+    expect(queryByLabelText('Picture in picture')).toBeNull();
+  });
+
+  it('has no picture in picture control where the device does not support it', () => {
+    const { queryByLabelText } = render(<Harness overrides={{ isAudio: false }} />);
+    expect(queryByLabelText('Picture in picture')).toBeNull();
+  });
+});

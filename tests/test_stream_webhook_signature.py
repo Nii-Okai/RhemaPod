@@ -156,3 +156,18 @@ async def test_route_rejects_bad_signature_with_real_provider(client, engine, mo
         )).scalars().first()
     assert job.finished_at is None  # neither rejected call touched the DB
     assert ref.stream_uid == uid
+
+
+@pytest.mark.parametrize("environment, refused", [("development", False), ("staging", True)])
+def test_stub_provider_refuses_unsigned_webhooks_on_internet_reachable_hosts(
+    monkeypatch, environment, refused
+):
+    """The stub verifies no signature, so it must not accept events anywhere an
+    outsider can reach the endpoint."""
+    monkeypatch.setattr(get_settings(), "environment", environment)
+    stub = stream_module.LocalStream()
+    if refused:
+        with pytest.raises(StreamError):
+            stub.verify_webhook(b'{"uid": "x"}', None)
+    else:
+        assert stub.verify_webhook(b'{"uid": "x"}', None) == {"uid": "x"}
