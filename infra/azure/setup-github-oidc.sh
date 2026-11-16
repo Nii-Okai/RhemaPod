@@ -12,7 +12,11 @@
 # nonprod identity can't touch production.
 #
 # Environment: AZURE_ACR_NAME (required), AZURE_ACR_RESOURCE_GROUP,
-# AZURE_ACR_SUBSCRIPTION_ID, GITHUB_REPO (default Nii-Okai/RhemaPod).
+# AZURE_ACR_SUBSCRIPTION_ID, GITHUB_REPO (default Nii-Okai/RhemaPod),
+# GITHUB_OIDC_REPO (the repo as GitHub writes it in the token's subject claim).
+# This repository's tokens use the owner@id/repo@id form, e.g.
+# repo:Nii-Okai@9963683/RhemaPod@1414148858:environment:dev, so that is the
+# default; the `azure/login` step prints the "subject claim" if it ever changes.
 set -euo pipefail
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -25,6 +29,7 @@ case "$platform" in
 esac
 [[ -n "${AZURE_ACR_NAME:-}" ]] || die "set AZURE_ACR_NAME"
 repo="${GITHUB_REPO:-Nii-Okai/RhemaPod}"
+oidc_repo="${GITHUB_OIDC_REPO:-Nii-Okai@9963683/RhemaPod@1414148858}"
 acr_rg="${AZURE_ACR_RESOURCE_GROUP:-rg-rhemapod-shared}"
 subscription="$(az account show --query id -o tsv)"
 tenant="$(az account show --query tenantId -o tsv)"
@@ -43,18 +48,22 @@ sp_id="$(az ad sp show --id "$app_id" --query id -o tsv)"
 
 for environment in "${environments[@]}"; do
   cred="github-$environment"
-  if ! az ad app federated-credential show --id "$app_id" --federated-credential-id "$cred" -o none 2>/dev/null; then
-    az ad app federated-credential create --id "$app_id" --parameters "$(cat <<JSON
+  verb=create
+  if az ad app federated-credential show --id "$app_id" --federated-credential-id "$cred" -o none 2>/dev/null; then
+    verb=update
+  fi
+  # shellcheck disable=SC2046
+  az ad app federated-credential "$verb" --id "$app_id" \
+    $([[ $verb == update ]] && echo --federated-credential-id "$cred") --parameters "$(cat <<JSON
 {
   "name": "$cred",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:$repo:environment:$environment",
+  "subject": "repo:$oidc_repo:environment:$environment",
   "audiences": ["api://AzureADTokenExchange"]
 }
 JSON
 )" -o none
-    echo "trusts $repo environment $environment"
-  fi
+  echo "trusts $repo environment $environment"
 done
 
 for scope in "$rg_id" "$acr_id"; do
