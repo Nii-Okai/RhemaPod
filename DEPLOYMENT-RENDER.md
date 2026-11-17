@@ -52,8 +52,9 @@ Every push to `dev` redeploys both web services.
 
 ## 1. Before you start
 
-1. **R2 CORS.** The portal uploads from the browser straight to `sermon-raw-dev`. Add
-   `https://admin.rhemapod.com` to that bucket's CORS `AllowedOrigins`, next to the
+1. **R2 CORS.** The portal uploads from the browser straight to R2: videos to `sermon-raw-dev`,
+   images (thumbnails, sign-in photo) to `sermon-media-dev`. Add `https://admin.rhemapod.com` to
+   **both** buckets' CORS `AllowedOrigins`, next to the
    localhost origins already there:
    ```json
    [{"AllowedOrigins":["http://localhost:3000","https://admin.rhemapod.com"],
