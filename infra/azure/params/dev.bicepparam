@@ -18,7 +18,7 @@ param deployApps = bool(readEnvironmentVariable('DEPLOY_APPS', 'false'))
 param apiHost = 'api-dev.rhemapod.com'
 param adminHost = 'admin-dev.rhemapod.com'
 // none → added → bound, one commit each (DEPLOYMENT-AZURE.md §6).
-param customDomainStage = 'none'
+param customDomainStage = 'bound'
 
 param databaseName = 'rhemapod_dev'
 param redisMode = 'container'

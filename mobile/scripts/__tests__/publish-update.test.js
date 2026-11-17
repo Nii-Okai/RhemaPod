@@ -16,11 +16,12 @@ describe('channels in eas.json', () => {
     expect(resolveProfile(easJson, profile).channel).toBe(channel);
   });
 
-  it('gives staging and production the production API, so an update never points at localhost', () => {
+  it('gives the tester channels the test API and preview the dev API, so an update never points at localhost', () => {
     for (const channel of ['staging', 'production']) {
       const env = resolveProfile(easJson, CHANNEL_PROFILES[channel]).env;
-      expect(env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api.rhemapod.com');
+      expect(env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api-test.rhemapod.com');
     }
+    expect(resolveProfile(easJson, 'preview').env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api-dev.rhemapod.com');
   });
 
   it('uses the EAS environment each profile builds with', () => {

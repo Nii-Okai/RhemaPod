@@ -245,12 +245,13 @@ Nothing here happens automatically. Render keeps running until you switch DNS an
    - Point `api.rhemapod.com` / `admin.rhemapod.com` at Azure **dev** for now. Set those as dev's
      `apiHost` / `adminHost`, then follow §6. Production moves onto them at launch, and dev moves to `api-dev.`.
    - Or ship new builds pointing at `api-dev.rhemapod.com` first (below), and leave the hostnames for production.
-3. **Mobile build profiles** (`mobile/eas.json`), when each environment is live:
-   - `testflight` (OTA channel `production`): `EXPO_PUBLIC_API_BASE_URL=https://api.rhemapod.com`.
-     This is unchanged once production owns that hostname.
-   - `android-internal` (OTA channel `staging`): add `"EXPO_PUBLIC_API_BASE_URL": "https://api-test.rhemapod.com"`
-     to its `env`. It extends `testflight` today, so it inherits the production URL.
-   - `development` / `preview`: `EXPO_PUBLIC_API_BASE_URL=https://api-dev.rhemapod.com` (and in `mobile/.env`).
+3. **Mobile build profiles** (`mobile/eas.json`). Until production exists, every tester build talks to
+   **test**, and dev is for development only:
+   - `testflight` (iOS, OTA channel `production`) and `android-internal` (Android, OTA channel `staging`,
+     extends `testflight`): `EXPO_PUBLIC_API_BASE_URL=https://api-test.rhemapod.com`.
+     At launch, `testflight` moves to `https://api.rhemapod.com` (production) and `android-internal`
+     keeps `api-test.` in its own `env`.
+   - `preview`: `https://api-dev.rhemapod.com`. `development` builds use `mobile/.env` (local or `api-dev.`).
    - `npm run update` follows the profile's `env`, so over-the-air updates pick up the same URLs.
    `EXPO_PUBLIC_*` values are baked into each build, so testers need a new build or OTA update before
    the old host goes away.
