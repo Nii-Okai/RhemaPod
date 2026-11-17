@@ -90,7 +90,7 @@ holds the registry>` whenever you work on production.
 | | dev | test | production |
 |---|---|---|---|
 | R2 buckets | existing `sermon-raw-dev` / `sermon-media-dev` | new `sermon-raw-staging` / `sermon-media-staging` + their own R2 token | new `sermon-raw` / `sermon-media` + their own token |
-| R2 CORS `AllowedOrigins` on the raw bucket | add `https://admin-dev.rhemapod.com` | `https://admin-test.rhemapod.com` | `https://admin.rhemapod.com` |
+| R2 CORS `AllowedOrigins` on **both** buckets (videos upload to raw, images to media) | add `https://admin-dev.rhemapod.com` | `https://admin-test.rhemapod.com` | `https://admin.rhemapod.com` |
 | Resend | existing key | own key recommended | own key |
 | Cloudflare Stream, Workers AI, Glacier archive | stubs | stubs | **required** (DEPLOYMENT.md §12) |
 | Apple `.p8`, Google OAuth | same as today | same | same, or a separate Apple key (DEPLOYMENT.md §14) |
