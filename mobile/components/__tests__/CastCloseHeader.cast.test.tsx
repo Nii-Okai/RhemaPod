@@ -6,6 +6,8 @@ jest.mock('@expo/vector-icons');
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 20, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 
 // A build with the Cast SDK linked: its native button stands in as a plain view.

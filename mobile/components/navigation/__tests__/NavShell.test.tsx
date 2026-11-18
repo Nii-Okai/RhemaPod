@@ -15,6 +15,8 @@ jest.mock('../platform', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 
 // See `__mocks__/@expo/vector-icons.tsx` — real Ionicons needs native font-loading
