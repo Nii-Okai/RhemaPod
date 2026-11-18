@@ -61,8 +61,50 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
     });
   };
 
+  // The controls are the sheet's pinned footer, not part of the scrolled text: the
+  // guidelines are taller than most phone screens, and with the checkbox at the end of the
+  // scroll it ended up hidden below the fold (and behind the Android nav bar).
+  const footer = readOnly ? (
+    <View style={styles.cancel}>
+      <LinkButton label="Close" onPress={onClose} />
+    </View>
+  ) : (
+    <>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: agreed }}
+        accessibilityLabel="I agree to the comment guidelines"
+        onPress={() => setAgreed((value) => !value)}
+        style={styles.checkRow}
+      >
+        <PlatformIcon
+          name={agreed ? 'checkbox' : 'square-outline'}
+          size={24}
+          color={agreed ? colors.accent.goldText : colors.text.tertiary}
+        />
+        <AppText variant="ui.body" style={styles.checkLabel}>
+          I agree to the comment guidelines
+        </AppText>
+      </Pressable>
+      {error ? (
+        <AppText variant="ui.badge" style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </AppText>
+      ) : null}
+      <PrimaryButton
+        label="Agree and continue"
+        disabled={!agreed || termsPending}
+        loading={accept.isPending}
+        onPress={submit}
+      />
+      <View style={styles.cancel}>
+        <LinkButton label="Not now" onPress={onClose} />
+      </View>
+    </>
+  );
+
   return (
-    <Sheet visible={visible} onClose={onClose}>
+    <Sheet visible={visible} onClose={onClose} footer={footer}>
       <View style={styles.terms}>
         <AppText variant="ui.bodyBold" accessibilityRole="header">
           {title}
@@ -71,44 +113,6 @@ export function TermsSheet({ visible, readOnly = false, onClose, onAccepted }: T
           {body}
         </AppText>
       </View>
-      {readOnly ? (
-        <View style={styles.cancel}>
-          <LinkButton label="Close" onPress={onClose} />
-        </View>
-      ) : (
-        <>
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: agreed }}
-            accessibilityLabel="I agree to the comment guidelines"
-            onPress={() => setAgreed((value) => !value)}
-            style={styles.checkRow}
-          >
-            <PlatformIcon
-              name={agreed ? 'checkbox' : 'square-outline'}
-              size={24}
-              color={agreed ? colors.accent.goldText : colors.text.tertiary}
-            />
-            <AppText variant="ui.body" style={styles.checkLabel}>
-              I agree to the comment guidelines
-            </AppText>
-          </Pressable>
-          {error ? (
-            <AppText variant="ui.badge" style={styles.error} accessibilityLiveRegion="polite">
-              {error}
-            </AppText>
-          ) : null}
-          <PrimaryButton
-            label="Agree and continue"
-            disabled={!agreed || termsPending}
-            loading={accept.isPending}
-            onPress={submit}
-          />
-          <View style={styles.cancel}>
-            <LinkButton label="Not now" onPress={onClose} />
-          </View>
-        </>
-      )}
     </Sheet>
   );
 }

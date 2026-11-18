@@ -15,6 +15,8 @@ jest.mock('@expo/vector-icons');
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 
 jest.mock('../../../../lib/downloads/useDownloads', () => ({ useDownloads: jest.fn() }));
