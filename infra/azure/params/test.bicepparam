@@ -53,7 +53,13 @@ param apiSettings = union(commonSettings, {
   // Its own R2 buckets and token, never the dev ones (DEPLOYMENT-AZURE.md §3).
   OBJECT_STORE_RAW_BUCKET: 'sermon-raw-staging'
   OBJECT_STORE_MEDIA_BUCKET: 'sermon-media-staging'
-  PUSH_NOTIFICATIONS_ENABLED: 'false'
+  // The TestFlight and android-internal builds point here, so testers need real
+  // new-sermon pushes. The every-5-minute send-pushes job is production-only (it
+  // would eat the free Container Apps allowance), so test runs the in-process
+  // loop instead: it announces within a minute while the API is up (warm hours,
+  // or any request that wakes it, such as publishing from the admin portal).
+  PUSH_NOTIFICATIONS_ENABLED: 'true'
+  PUSH_SCHEDULER_ENABLED: 'true'
   SENTRY_DSN: ''
 })
 param apiSecretNames = commonSecrets
