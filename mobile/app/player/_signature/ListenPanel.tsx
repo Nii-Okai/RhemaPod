@@ -7,9 +7,12 @@ import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { formatDuration } from '../../../lib/format/duration';
 import type { PlaybackSpeed } from '../../../lib/settings/playbackPreferences';
+import { deviceClassForWidth } from '../../../components/navigation/useDeviceClass';
 import { PlayerSeekBar } from '../_player/PlayerSeekBar';
 
 const SEEK_SECONDS = 10;
+const PHONE_ART_MAX = 184;
+const TABLET_ART_MAX = 380;
 
 export type PlayerMode = 'watch' | 'listen';
 
@@ -87,8 +90,13 @@ export function ListenPanel({
   const { colors } = useTheme();
   const { width, height } = useWindowDimensions();
   // Sized to the screen's height as well as its width, so the title block and comments
-  // under it keep their room on a shorter phone.
-  const artSize = Math.max(112, Math.min(width - spacing.xxl * 4, 184, Math.round(height * 0.19)));
+  // under it keep their room on a shorter phone. A tablet has the room for much bigger art
+  // (mockups, Nii 2026-11-21).
+  const tablet = deviceClassForWidth(width) === 'tablet';
+  const artSize = Math.max(
+    112,
+    Math.min(width - spacing.xxl * 4, tablet ? TABLET_ART_MAX : PHONE_ART_MAX, Math.round(height * (tablet ? 0.36 : 0.19))),
+  );
   const remaining = durationSeconds ? Math.max(0, durationSeconds - currentTimeSeconds) : null;
 
   return (

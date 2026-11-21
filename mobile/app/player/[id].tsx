@@ -63,6 +63,10 @@ import { PlayerHeroRootContext, PlayerHeroTarget } from './_signature/PlayerHero
 import { usePlayerHero } from '../../lib/playback/playerHero';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
 import { haptics } from '../../lib/haptics';
+import { useTwoPane } from '../../components/navigation/responsive';
+
+// Two-pane player (tablet landscape): the queue / comments column on the right.
+const PLAYER_SIDE_PANE_WIDTH = 440;
 
 /**
  * Player screen (design spec §3 "Player (1d, iOS) / Now playing (2b, Android)", plan
@@ -804,6 +808,10 @@ interface SignatureLayoutProps {
  * switch has shown it stays for that sermon, so clearing the queue doesn't pull the pane
  * away mid-tap. The title block and that switch fold away while the keyboard is up so the
  * comment composer keeps its room. Playback itself is `PlayerContent`'s, unchanged.
+ *
+ * On a wide screen (tablet landscape, mockups Nii 2026-11-21) the same pieces sit in two
+ * panes: the stage and title block on the left, the queue or comments on the right. The
+ * left pane stays put while the keyboard is up, since the composer has its own column.
  */
 function SignatureLayout({
   sermonId,
@@ -827,15 +835,10 @@ function SignatureLayout({
   const offersQueue = queueShownRef.current;
   const showQueue = offersQueue && pane === 'queue';
   const showSwitch = offersQueue && !keyboardVisible;
+  const twoPane = useTwoPane();
 
-  return (
+  const sidePanel = (
     <>
-      {mode === 'listen' ? (
-        keyboardVisible ? null : listen
-      ) : (
-        <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>
-      )}
-      {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
           <QueueList {...queueContext} isPlaying={isPlaying} />
@@ -846,6 +849,33 @@ function SignatureLayout({
       {!showSwitch ? null : (
         <PaneSwitch pane={showQueue ? 'queue' : 'comments'} onSelectPane={setPane} bottomInset={insets.bottom} />
       )}
+    </>
+  );
+
+  if (twoPane) {
+    return (
+      <>
+        <View testID="player-two-pane" style={styles.panes}>
+          <View style={styles.stagePane}>
+            {mode === 'listen' ? listen : <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>}
+            <NowPlayingDetails detail={detail} />
+          </View>
+          <View style={styles.sidePane}>{sidePanel}</View>
+        </View>
+        {sleepSheet}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {mode === 'listen' ? (
+        keyboardVisible ? null : listen
+      ) : (
+        <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>
+      )}
+      {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
+      {sidePanel}
       {sleepSheet}
     </>
   );
@@ -892,6 +922,19 @@ const useStyles = createThemedStyles((colors) => ({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
     backgroundColor: colors.surface.raised,
+  },
+  panes: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  stagePane: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  sidePane: {
+    width: PLAYER_SIDE_PANE_WIDTH,
+    paddingTop: spacing.sm,
   },
   queueCard: {
     ...LEAF,

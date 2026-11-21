@@ -11,8 +11,8 @@ import { useSearchResultsInfinite } from '../../lib/query/hooks/useSearch';
 import type { SermonListItem } from '../../lib/query/hooks/useSermons';
 import { useFetchAllPages } from '../../lib/hooks/useFetchAllPages';
 import { usePullToRefresh } from '../../lib/hooks/usePullToRefresh';
+import { gridCellInset, gridColumnsForWidth } from '../../components/navigation/responsive';
 
-const GRID_COLUMNS = 2;
 const GRID_GAP = spacing.md;
 const GRID_PADDING = spacing.lg + 4;
 const ROW_GAP = spacing.lg + 2;
@@ -58,7 +58,9 @@ export default function CategoryDrillDownScreen() {
   const results = useSearchResultsInfinite({ category_id: id });
   const pullToRefresh = usePullToRefresh([results]);
   const { width: windowWidth } = useWindowDimensions();
-  const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  // 2 columns on a phone, 3–4 on a tablet (`gridColumnsForWidth`).
+  const columns = gridColumnsForWidth(windowWidth);
+  const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (columns - 1)) / columns;
   const [oldestFirst, setOldestFirst] = useState(false);
   useFetchAllPages(results, oldestFirst);
   const all = results.data?.pages.flatMap((page) => page.results) ?? [];
@@ -69,9 +71,9 @@ export default function CategoryDrillDownScreen() {
 
   const renderItem: ListRenderItem<SermonListItem> = useCallback(
     ({ item, index }) => (
-      // FlashList gives each column half the width; pin the card to the outer edge of its
-      // half so the two cards sit GRID_PADDING from the screen edges and GRID_GAP apart.
-      <View style={[styles.cell, index % GRID_COLUMNS === 0 ? styles.cellStart : styles.cellEnd]}>
+      // FlashList gives each column an equal share of the width; inset each card within its
+      // share so the row sits GRID_PADDING from the screen edges with GRID_GAP between cards.
+      <View style={[styles.cell, { paddingLeft: gridCellInset(index % columns, columns, cardWidth, windowWidth, GRID_PADDING, GRID_GAP) }]}>
         <SermonCard
           sermon={item}
           width={cardWidth}
@@ -80,7 +82,7 @@ export default function CategoryDrillDownScreen() {
         />
       </View>
     ),
-    [styles, cardWidth, router],
+    [styles, cardWidth, columns, windowWidth, router],
   );
 
   const header = (
@@ -139,7 +141,9 @@ export default function CategoryDrillDownScreen() {
         data={sermons}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        numColumns={GRID_COLUMNS}
+        // Remount on a column change (rotation, Split View): FlashList can't re-flow in place.
+        key={`grid-${columns}`}
+        numColumns={columns}
         // Card art is 16:9 plus a one-line title block and the row gap.
         estimatedItemSize={Math.round((cardWidth * 9) / 16) + 52 + ROW_GAP}
         ListHeaderComponent={header}
@@ -260,14 +264,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   cell: {
     paddingBottom: ROW_GAP,
-  },
-  cellStart: {
-    paddingLeft: GRID_PADDING,
     alignItems: 'flex-start',
-  },
-  cellEnd: {
-    paddingRight: GRID_PADDING,
-    alignItems: 'flex-end',
   },
   footerSpinner: {
     paddingVertical: spacing.lg,
