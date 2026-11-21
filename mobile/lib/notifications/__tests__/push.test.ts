@@ -20,6 +20,11 @@ jest.mock('../../api/typedClient', () => ({
   api: { put: (...a: unknown[]) => mockPut(...a), post: (...a: unknown[]) => mockPost(...a) },
 }));
 
+const mockReportError = jest.fn();
+jest.mock('../../observability/sentry', () => ({
+  reportError: (...a: unknown[]) => mockReportError(...a),
+}));
+
 import { Platform } from 'react-native';
 import {
   DAILY_RHEMA_REMINDER_ID,
@@ -91,6 +96,15 @@ describe('syncPushRegistration', () => {
     mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
     mockPut.mockRejectedValueOnce(new Error('offline'));
     await expect(syncPushRegistration({ newSermons: false, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } })).resolves.toBeUndefined();
+  });
+
+  it('reports a token failure (e.g. no Firebase config) to Sentry instead of failing silently', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: true });
+    const err = new Error('Default FirebaseApp is not initialized');
+    mockNotifications.getExpoPushTokenAsync.mockRejectedValueOnce(err);
+    await syncPushRegistration({ newSermons: true, dailyRhema: false, dailyRhemaTime: { hour: 7, minute: 0 } });
+    expect(mockReportError).toHaveBeenCalledWith(err, expect.objectContaining({ where: 'push.syncPushRegistration' }));
+    expect(mockPut).not.toHaveBeenCalled();
   });
 });
 
