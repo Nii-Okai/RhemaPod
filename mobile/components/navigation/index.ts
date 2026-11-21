@@ -1,5 +1,6 @@
 export * from './routes';
 export * from './useDeviceClass';
+export * from './responsive';
 export * from './platform';
 export * from './IconNavItem';
 export * from './FloatingDock';

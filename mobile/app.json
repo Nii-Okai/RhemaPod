@@ -18,7 +18,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true,
+      "supportsTablet": true,
       "bundleIdentifier": "com.niitech.rhemapod",
       "appleTeamId": "FAND2W5VMM",
       "usesAppleSignIn": true,
@@ -121,6 +121,7 @@
       ],
       "expo-apple-authentication",
       "./plugins/withMinPodsDeploymentTarget",
+      "./plugins/withTabletOrientation",
       [
         "@sentry/react-native",
         {

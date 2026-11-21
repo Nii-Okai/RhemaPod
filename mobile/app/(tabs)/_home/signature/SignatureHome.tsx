@@ -17,6 +17,7 @@ import { useTrending } from '../../../../lib/query/hooks/useTrending';
 import { useSeriesList } from '../../../../lib/query/hooks/useSeries';
 import { useUpcomingSermon } from '../../../../lib/query/hooks/useUpcomingSermon';
 import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
+import { useTabContentWidth, useTabGridColumns } from '../../../../components/navigation/responsive';
 import { SectionError } from '../../../../components/SectionError';
 import { ShelfSkeleton } from '../../../../components/ShelfSkeleton';
 import { HeroCarousel } from '../HeroCarousel';
@@ -41,8 +42,8 @@ import {
 import { useSeriesWalk } from './useSeriesWalk';
 
 /** The Series grid: one row of two (Nii's call, 2026-10-21); "See all" opens the full list. */
-const SERIES_COLUMNS = 2;
-const SERIES_GRID_MAX = 2;
+// Content this wide (tablet landscape) puts the hero and Daily Rhema side by side.
+const WIDE_HOME_MIN_WIDTH = 900;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const rows: T[][] = [];
@@ -134,6 +135,9 @@ function Shelf<T extends { id: string }>({
  *  walk" — or, with none yet, a spotlight on one series — above a two-column grid of the
  *  other series) → Prophet's Catalog → recommended for you → trending.
  *
+ * On a tablet in landscape (mockups, Nii 2026-11-21) the hero moves up beside Daily Rhema,
+ * and the series grid shows a row of 3–4 instead of 2.
+ *
  * The header is frosted and laid over the top of the scroll (`FrostedHeader`): the page
  * starts below it and blurs up under it as it scrolls.
  */
@@ -152,6 +156,10 @@ export function SignatureHomeScreen() {
   const seriesWalk = useSeriesWalk(continueWatching.data ?? []);
   const [headerHeight, setHeaderHeight] = useState(0);
   const frosted = useFrostedScroll(headerHeight);
+  const contentWidth = useTabContentWidth();
+  const wide = contentWidth >= WIDE_HOME_MIN_WIDTH;
+  // One row of other series under the walk/spotlight: 2 on a phone, 3–4 on a tablet.
+  const seriesColumns = useTabGridColumns();
 
   const heroItems = hero.data ?? [];
   const catalogItems = prophetsCatalog.data ?? [];
@@ -162,7 +170,7 @@ export function SignatureHomeScreen() {
   // leaving the section's top empty; `otherSeries` excludes whichever of the two is up top.
   const spotlightSeries = walk ? null : seriesItems[0] ?? null;
   const featuredSeriesId = walk?.seriesId ?? spotlightSeries?.id;
-  const otherSeries = seriesItems.filter((item) => item.id !== featuredSeriesId).slice(0, SERIES_GRID_MAX);
+  const otherSeries = seriesItems.filter((item) => item.id !== featuredSeriesId).slice(0, seriesColumns);
   const walkThumbnail =
     seriesItems.find((item) => item.id === walk?.seriesId)?.thumbnail_url ?? walk?.current.thumbnail_url;
   // The catalogue is one speaker's; the header shows their avatar.
@@ -183,6 +191,31 @@ export function SignatureHomeScreen() {
     upcoming,
     seriesWalk,
   ]);
+
+  const heroContent = (
+    <>
+      {hero.isLoading ? (
+        <HeroSkeleton />
+      ) : hero.isError ? (
+        <SectionError message={userMessageFor(hero.error)} onRetry={() => hero.refetch()} />
+      ) : heroItems.length > 0 ? (
+        <HeroCarousel
+          sermons={heroItems}
+          onPress={goToSermon}
+          renderCard={(sermon, onPress) => <SignatureHeroCard sermon={sermon} onPress={onPress} />}
+        />
+      ) : (
+        <View style={styles.centered}>
+          <AppText variant="ui.bodyLarge" style={styles.centeredText}>
+            No sermons yet
+          </AppText>
+          <AppText variant="ui.body" tone="secondary" style={styles.centeredText}>
+            Check back once the catalogue has published sermons.
+          </AppText>
+        </View>
+      )}
+    </>
+  );
 
   return (
     <View style={styles.screen}>
@@ -207,9 +240,18 @@ export function SignatureHomeScreen() {
         <View style={styles.gutter}>
           <VerseCard />
         </View>
-        <View style={styles.gutter}>
-          <DailyRhemaCard />
-        </View>
+        {wide ? (
+          <View style={[styles.gutter, styles.heroRow]}>
+            <View style={styles.heroPane}>{heroContent}</View>
+            <View style={styles.rhemaPane}>
+              <DailyRhemaCard />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.gutter}>
+            <DailyRhemaCard />
+          </View>
+        )}
 
         <Shelf
           title="Keep listening"
@@ -217,28 +259,7 @@ export function SignatureHomeScreen() {
           renderItem={(item) => <ResumeCard item={item} onPress={() => goToSermon(item.id)} />}
         />
 
-        <View style={styles.gutter}>
-          {hero.isLoading ? (
-            <HeroSkeleton />
-          ) : hero.isError ? (
-            <SectionError message={userMessageFor(hero.error)} onRetry={() => hero.refetch()} />
-          ) : heroItems.length > 0 ? (
-            <HeroCarousel
-              sermons={heroItems}
-              onPress={goToSermon}
-              renderCard={(sermon, onPress) => <SignatureHeroCard sermon={sermon} onPress={onPress} />}
-            />
-          ) : (
-            <View style={styles.centered}>
-              <AppText variant="ui.bodyLarge" style={styles.centeredText}>
-                No sermons yet
-              </AppText>
-              <AppText variant="ui.body" tone="secondary" style={styles.centeredText}>
-                Check back once the catalogue has published sermons.
-              </AppText>
-            </View>
-          )}
-        </View>
+        {wide ? null : <View style={styles.gutter}>{heroContent}</View>}
 
         <Shelf
           title="New releases"
@@ -309,9 +330,9 @@ export function SignatureHomeScreen() {
             </AppText>
           ) : (
             <View style={styles.grid}>
-              {chunk(otherSeries, SERIES_COLUMNS).map((row) => (
+              {chunk(otherSeries, seriesColumns).map((row) => (
                 <View key={row[0].id} style={styles.gridRow}>
-                  {Array.from({ length: SERIES_COLUMNS }, (_, i) => row[i]).map((item, i) => (
+                  {Array.from({ length: seriesColumns }, (_, i) => row[i]).map((item, i) => (
                     <View key={item?.id ?? `empty-${i}`} style={styles.gridCell}>
                       {item ? <SeriesTile series={item} onPress={() => goToSeries(item.id)} /> : null}
                     </View>
@@ -409,6 +430,19 @@ const useStyles = createThemedStyles((colors) => ({
   grid: {
     gap: spacing.md,
     paddingTop: spacing.xs,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.lg,
+  },
+  heroPane: {
+    flex: 1.65,
+    minWidth: 0,
+  },
+  rhemaPane: {
+    flex: 1,
+    minWidth: 0,
   },
   gridRow: {
     flexDirection: 'row',

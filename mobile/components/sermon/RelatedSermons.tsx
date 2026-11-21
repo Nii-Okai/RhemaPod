@@ -4,6 +4,7 @@ import { AppText } from '../Text';
 import { ImageOnlyCard } from './ImageOnlyCard';
 import { spacing } from '../../theme/spacing';
 import { useSearchResults } from '../../lib/query/hooks/useSearch';
+import { gridColumnsForWidth } from '../navigation/responsive';
 
 export interface RelatedSermonsProps {
   categoryId: string | null;
@@ -116,7 +117,9 @@ export function RelatedSermons({
   }
 
   if (grid) {
-    const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+    // 2 across on a phone, 3–4 on a tablet.
+    const columns = gridColumnsForWidth(windowWidth, GRID_COLUMNS);
+    const cardWidth = (windowWidth - GRID_PADDING * 2 - GRID_GAP * (columns - 1)) / columns;
     return (
       <View style={styles.grid}>
         {related.map((sermon) => (
