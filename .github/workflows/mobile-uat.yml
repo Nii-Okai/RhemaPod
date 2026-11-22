@@ -1,0 +1,119 @@
+name: Mobile testers (uat)
+
+# The `uat` branch is what testers run. Every push to uat that touches mobile/
+# reaches TestFlight and the internal Android APK (both on the EAS channel `uat`):
+#
+#   - JavaScript and asset changes go out as an over-the-air update.
+#   - A new app version (expo.version in mobile/app.json) with no build yet on
+#     `uat` gets new builds: iOS is built and submitted to TestFlight, Android is
+#     built as the internal APK (install link on expo.dev).
+#   - Native changes without a version bump stop the run: bump expo.version and
+#     push again (mobile/docs/ota-updates.md).
+#
+# Run it by hand (Actions → Mobile testers (uat) → Run workflow, branch uat) to
+# force new builds or an update. Needs the repository secret EXPO_TOKEN;
+# SENTRY_AUTH_TOKEN is optional (source maps for updates).
+on:
+  push:
+    branches: [uat]
+    paths:
+      - "mobile/**"
+      - "!mobile/**/*.md"
+      - ".github/workflows/mobile-uat.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto: update or build as needed · build: new builds · update: OTA update only"
+        type: choice
+        options: [auto, build, update]
+        default: auto
+      platform:
+        description: "Platforms"
+        type: choice
+        options: [all, ios, android]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-uat
+  cancel-in-progress: false # never cut an update or a build submission in half
+
+jobs:
+  ship:
+    name: Ship to testers
+    if: github.ref_name == 'uat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      MODE: ${{ inputs.mode || 'auto' }}
+      PLATFORM: ${{ inputs.platform || 'all' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the native-change check diffs against each build's commit
+
+      - name: Check the Expo token is set
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Add the repository secret EXPO_TOKEN (expo.dev → Account settings → Access tokens)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Decide update or build per platform
+        id: plan
+        run: |
+          case "$MODE" in
+            build|update)
+              if [ "$PLATFORM" = all ]; then platforms="ios android"; else platforms="$PLATFORM"; fi
+              plan="$(for p in $platforms; do echo "$p=$MODE"; done)"
+              ;;
+            *)
+              plan="$(node scripts/publish-update.js --channel uat --platform "$PLATFORM" --plan)"
+              ;;
+          esac
+          echo "$plan"
+          builds="$(echo "$plan" | sed -n 's/=build$//p' | xargs)"
+          updates="$(echo "$plan" | sed -n 's/=update$//p' | xargs)"
+          {
+            echo "builds=$builds"
+            echo "updates=$updates"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Testers (uat)"
+            echo "- New builds: ${builds:-none}"
+            echo "- Over-the-air update: ${updates:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the over-the-air update
+        if: steps.plan.outputs.updates != ''
+        env:
+          UPDATES: ${{ steps.plan.outputs.updates }}
+        run: |
+          for p in $UPDATES; do
+            node scripts/publish-update.js --channel uat --platform "$p"
+          done
+
+      # Builds run on EAS; --no-wait so this job doesn't pay for the build time.
+      # Follow them on expo.dev. iOS goes to TestFlight by itself when it finishes.
+      - name: Start the TestFlight build
+        if: contains(steps.plan.outputs.builds, 'ios')
+        run: npx --yes eas-cli build --profile testflight --platform ios --auto-submit --non-interactive --no-wait
+
+      - name: Start the internal Android build
+        if: contains(steps.plan.outputs.builds, 'android')
+        run: npx --yes eas-cli build --profile android-internal --platform android --non-interactive --no-wait

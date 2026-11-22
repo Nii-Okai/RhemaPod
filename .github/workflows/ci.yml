@@ -6,7 +6,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [dev, main]
+    branches: [dev, uat, prod]
   workflow_dispatch:
 
 concurrency:

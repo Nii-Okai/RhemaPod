@@ -30,9 +30,10 @@ npm run dev
 ## Shipping a fix without a store release
 
 JavaScript and asset fixes go out over the air with EAS Update:
-`npm run update -- --channel staging --message "..."`. Native changes still need a new
-build and a bump of `expo.version` in `app.json`. Channels, staged rollouts and
-rollback: `docs/ota-updates.md`.
+testers get them automatically when the change is merged into the `uat` branch
+(TestFlight and the internal Android APK both listen on the `uat` channel). Native
+changes still need a bump of `expo.version` in `app.json`; the next push to `uat`
+then makes new builds. Channels, staged rollouts and rollback: `docs/ota-updates.md`.
 
 ## Route structure
 

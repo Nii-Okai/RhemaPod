@@ -218,7 +218,9 @@ Then check:
 - **Deploy:** merge to `dev`, `uat` or `prod`. The workflow builds (or reuses) the images for that commit,
   points the jobs at them, runs migrations, rolls out the API, waits for `/health/ready`, then rolls out the
   admin portal and, on production, the share site.
-- **Promote:** merge `dev` → `uat` → `prod`, as the branches already exist.
+- **Promote:** merge `dev` → `uat` → `prod`. `uat` is the testers' branch for everything: it deploys
+  the test backend here, and its pushes also ship TestFlight and the internal Android build (builds or
+  over-the-air updates on the EAS channel `uat`, see `mobile/docs/ota-updates.md`).
 - **Roll back:** Actions → *Deploy to Azure* → *Run workflow* on the older commit's branch, or
   `az containerapp update -g <rg> -n rhemapod-<env>-api --image <registry>/rhemapod-api:<older sha>`.
   Migrations are additive by house rule, so older code runs against a newer schema. The exception is
@@ -247,8 +249,8 @@ Nothing here happens automatically. Render keeps running until you switch DNS an
    - Or ship new builds pointing at `api-dev.rhemapod.com` first (below), and leave the hostnames for production.
 3. **Mobile build profiles** (`mobile/eas.json`). Until production exists, every tester build talks to
    **test**, and dev is for development only:
-   - `testflight` (iOS, OTA channel `production`) and `android-internal` (Android, OTA channel `staging`,
-     extends `testflight`): `EXPO_PUBLIC_API_BASE_URL=https://api-test.rhemapod.com`.
+   - `testflight` (iOS) and `android-internal` (Android, extends `testflight`), both on OTA channel `uat`
+     and shipped from the `uat` branch: `EXPO_PUBLIC_API_BASE_URL=https://api-test.rhemapod.com`.
      At launch, `testflight` moves to `https://api.rhemapod.com` (production) and `android-internal`
      keeps `api-test.` in its own `env`.
    - `preview`: `https://api-dev.rhemapod.com`. `development` builds use `mobile/.env` (local or `api-dev.`).
