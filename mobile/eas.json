@@ -45,7 +45,8 @@
     "production": {},
     "testflight": {
       "ios": {
-        "appleTeamId": "FAND2W5VMM"
+        "appleTeamId": "FAND2W5VMM",
+        "ascAppId": "6828878983"
       }
     }
   }
