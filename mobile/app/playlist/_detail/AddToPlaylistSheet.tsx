@@ -5,7 +5,8 @@ import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
 import { fontFamily } from '../../../theme/typography';
-import { userMessageFor } from '../../../lib/api/errors';
+import { isOfflineError, userMessageFor } from '../../../lib/api/errors';
+import { OfflineCard } from '../../../components/offline';
 import { useDebouncedValue } from '../../../lib/hooks/useDebouncedValue';
 import { useDownloads } from '../../../lib/downloads/useDownloads';
 import { useSearchResultsInfinite } from '../../../lib/query/hooks/useSearch';
@@ -148,6 +149,8 @@ export function AddToPlaylistSheet({
 
       {isLoading ? (
         <ActivityIndicator color={colors.accent.gold} />
+      ) : isError && isOfflineError(results.error) ? (
+        <OfflineCard compact message="Search needs a connection. Downloaded sermons still work" />
       ) : isError ? (
         <AppText variant="ui.body" tone="secondary">
           {userMessageFor(results.error)}

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, ConfirmDialog, LinkButton, PlatformIcon, SkeletonBlock } from '../../../components';
+import { AppText, ConfirmDialog, LinkButton, SkeletonBlock } from '../../../components';
+import { OfflineCard } from '../../../components/offline';
 import { createThemedStyles, useTheme } from '../../../theme/ThemeContext';
 import { radius } from '../../../theme/radius';
 import { spacing } from '../../../theme/spacing';
@@ -207,10 +208,11 @@ export function CommentsPanel({ sermonId, variant = 'classic', ownsBottomInset =
     return (
       <View style={[panelStyle, styles.centered]}>
         <View accessibilityLiveRegion="polite" style={styles.offline}>
-          <PlatformIcon name="cloud-offline-outline" size={28} color={colors.text.tertiary} />
-          <AppText variant="ui.body" tone="secondary">
-            Comments unavailable offline
-          </AppText>
+          <OfflineCard
+            compact
+            title="Comments unavailable offline"
+            message="They’ll load when you’re back online"
+          />
         </View>
       </View>
     );
@@ -453,8 +455,8 @@ const useStyles = createThemedStyles((colors) => ({
     padding: spacing.xxl,
   },
   offline: {
-    alignItems: 'center',
-    gap: spacing.sm,
+    alignSelf: 'stretch',
+    paddingHorizontal: spacing.lg,
   },
   skeletons: {
     flex: 1,

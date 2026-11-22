@@ -4,11 +4,16 @@ import { AppText } from './Text';
 import { LinkButton } from './Button';
 import { createThemedStyles } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
+import { isOfflineError } from '../lib/api/errors';
+import { OfflineCard } from './offline/OfflineCard';
 import { spacing } from '../theme/spacing';
 
 export interface SectionErrorProps {
   message: string;
   onRetry: () => void;
+  /** The query's error. A connection failure shows the calm offline card instead of the
+   * red banner (offline mockups, Nii 2026-11-22). */
+  error?: unknown;
 }
 
 /**
@@ -21,8 +26,9 @@ export interface SectionErrorProps {
  * folder once the Library tab became a second consumer, same promotion bar
  * `Sheet`/`ConfirmDialog` already cleared this session.
  */
-export function SectionError({ message, onRetry }: SectionErrorProps) {
+export function SectionError({ message, onRetry, error }: SectionErrorProps) {
   const styles = useStyles();
+  if (isOfflineError(error)) return <OfflineCard />;
   return (
     <View style={styles.banner}>
       <AppText variant="ui.label" style={styles.text}>

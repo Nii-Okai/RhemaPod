@@ -43,6 +43,12 @@ export function userMessageFor(error: unknown): string {
   return 'Something went wrong. Try again.';
 }
 
+/** The request never reached the server (no connection, DNS, timeout). Screens show the
+ * calm offline placeholder for these instead of a red error, and it opens `/offline`. */
+export function isOfflineError(error: unknown): boolean {
+  return error instanceof ApiError && error.network;
+}
+
 /** A 404 from the API — a deleted, unpublished or (for playlists) not-visible item all
  * look the same to the client, by design. Drives the "no longer available" screens. */
 export function isNotFoundError(error: unknown): boolean {

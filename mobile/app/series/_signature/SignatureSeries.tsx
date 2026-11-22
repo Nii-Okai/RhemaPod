@@ -92,7 +92,11 @@ export function SignatureSeriesScreen() {
     return (
       <View style={styles.screen}>
         {header}
-        <DetailError message="Something went wrong loading this series." onRetry={() => series.refetch()} />
+        <DetailError
+          message="Something went wrong loading this series."
+          onRetry={() => series.refetch()}
+          error={series.error}
+        />
       </View>
     );
   }

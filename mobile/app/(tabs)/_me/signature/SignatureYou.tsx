@@ -14,6 +14,8 @@ import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
 import { useAuth } from '../../../../lib/auth/AuthContext';
+import { isOfflineError } from '../../../../lib/api/errors';
+import { useOpenOfflineHelp } from '../../../../components/offline';
 import { displayEmail } from '../../../../lib/auth/displayEmail';
 import { useCurrentUser } from '../../../../lib/query/hooks/useProfile';
 import { previewDisplayName } from '../../../../lib/format/displayName';
@@ -170,6 +172,7 @@ export function SignatureYouScreen() {
   const { signOut } = useAuth();
 
   const profileQuery = useCurrentUser();
+  const openOfflineHelp = useOpenOfflineHelp();
   const pullToRefresh = usePullToRefresh([profileQuery]);
   const { preferences, isSaving, setAutoplayNextInSeries } = usePlaybackPreferences();
   const { wifiOnly, isSavingWifiOnly, setWifiOnly } = useDownloads();
@@ -221,6 +224,19 @@ export function SignatureYouScreen() {
           <AppText variant="ui.body" style={styles.onFeatureMuted}>
             Loading profile…
           </AppText>
+        ) : (profileQuery.isError || !profile) && isOfflineError(profileQuery.error) ? (
+          <Pressable
+            onPress={openOfflineHelp}
+            accessibilityRole="button"
+            accessibilityHint="Opens help to reconnect"
+          >
+            <AppText variant="ui.body" style={styles.onFeatureMuted}>
+              You&rsquo;re offline. Your profile will load when you reconnect.{' '}
+              <AppText variant="ui.body" style={styles.onFeatureLink}>
+                Check settings
+              </AppText>
+            </AppText>
+          </Pressable>
         ) : profileQuery.isError || !profile ? (
           <AppText variant="ui.body" style={styles.onFeatureMuted}>
             Couldn't load your profile.
@@ -537,6 +553,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   onFeatureMuted: {
     color: colors.feature.muted,
+  },
+  // The profile card is navy in both themes, so its link is the dark palette's gold.
+  onFeatureLink: {
+    color: colors.feature.sun,
   },
   editText: {
     color: colors.feature.eyebrow,

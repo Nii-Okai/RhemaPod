@@ -6,7 +6,9 @@ import { useEvent, useEventListener } from 'expo';
 import type { VideoView } from 'expo-video';
 import { AirPlayButton, isAirPlayAvailable } from 'airplay-button';
 import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
-import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
+import { AppText, FittedArt, LinkButton, PrimaryButton, SkeletonBlock } from '../../components';
+import { useOpenOfflineHelp } from '../../components/offline';
+import { isOfflineError } from '../../lib/api/errors';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -336,13 +338,25 @@ export default function PlayerScreen() {
     }
 
     if (detailQuery.isError || !detail) {
-      return <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />;
+      return (
+        <PlayerError
+          message="Something went wrong loading this sermon."
+          onRetry={() => detailQuery.refetch()}
+          error={detailQuery.error}
+        />
+      );
     }
 
     if (isDownloaded) {
       if (localPlayback.error) return <PlayerError message={localPlayback.error} />;
     } else if (streamQuery.isError || !streamQuery.data) {
-      return <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />;
+      return (
+        <PlayerError
+          message="Couldn't load this sermon's playback link."
+          onRetry={() => streamQuery.refetch()}
+          error={streamQuery.error}
+        />
+      );
     }
 
     const variant: StreamVariant | null =
@@ -443,16 +457,27 @@ function PlayerLoading({ sermonId, detail }: { sermonId: string; detail?: Sermon
 interface PlayerErrorProps {
   message: string;
   onRetry?: () => void;
+  /** A connection failure says so and links to the offline page (offline mockups, Nii
+   * 2026-11-22) instead of the generic message. */
+  error?: unknown;
 }
 
-function PlayerError({ message, onRetry }: PlayerErrorProps) {
+function PlayerError({ message, onRetry, error }: PlayerErrorProps) {
   const styles = useStyles();
+  const openOfflineHelp = useOpenOfflineHelp();
+  const offline = isOfflineError(error);
   return (
     <View style={styles.centered}>
+      {offline ? (
+        <AppText variant="display.title" accessibilityRole="header" style={styles.errorText}>
+          You&rsquo;re offline
+        </AppText>
+      ) : null}
       <AppText variant="ui.body" tone="secondary" style={styles.errorText}>
-        {message}
+        {offline ? 'This sermon needs a connection to play. Downloaded sermons still play offline.' : message}
       </AppText>
       {onRetry ? <PrimaryButton label="Try again" onPress={onRetry} /> : null}
+      {offline ? <LinkButton label="Check connection settings" onPress={openOfflineHelp} /> : null}
     </View>
   );
 }
