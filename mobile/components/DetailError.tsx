@@ -3,12 +3,17 @@ import { StyleSheet, View } from 'react-native';
 import { AppText } from './Text';
 import { PrimaryButton } from './Button';
 import { spacing } from '../theme/spacing';
+import { isOfflineError } from '../lib/api/errors';
+import { OfflineState } from './offline/OfflineState';
 
 export interface DetailErrorProps {
   onRetry: () => void;
   /** Defaults to sermon-detail's original copy, its first consumer — series detail
       (its second, Isaac's ask, session 2026-09-30) passes its own. */
   message?: string;
+  /** The query's error. A connection failure shows the full "You're offline" state
+   * instead (offline mockups, Nii 2026-11-22), which retries once the connection is back. */
+  error?: unknown;
 }
 
 /**
@@ -18,7 +23,14 @@ export interface DetailErrorProps {
  * replacement block. No status-specific copy — the fetch doesn't return a user-facing
  * failure reason, unlike the Downloads screen's failed-item state.
  */
-export function DetailError({ onRetry, message = 'Something went wrong loading this sermon.' }: DetailErrorProps) {
+export function DetailError({ onRetry, message = 'Something went wrong loading this sermon.', error }: DetailErrorProps) {
+  if (isOfflineError(error)) {
+    return (
+      <View style={styles.offline}>
+        <OfflineState onReconnected={onRetry} />
+      </View>
+    );
+  }
   return (
     <View style={styles.centered}>
       <AppText variant="ui.body" tone="secondary" style={styles.text}>
@@ -37,5 +49,8 @@ const styles = StyleSheet.create({
   },
   text: {
     textAlign: 'center',
+  },
+  offline: {
+    paddingBottom: spacing.xxl,
   },
 });

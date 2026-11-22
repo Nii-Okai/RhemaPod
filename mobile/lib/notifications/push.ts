@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { api } from '../api/typedClient';
+import { reportError } from '../observability/sentry';
 import type { NotificationPreferences, ReminderTime } from '../settings/notificationPreferences';
 import { setAppIconBadge } from './appBadge';
 
@@ -98,6 +99,9 @@ export async function syncPushRegistration(prefs: NotificationPreferences): Prom
     });
   } catch (err) {
     if (__DEV__) console.warn('[push] registration failed', err);
+    // Without this a release build fails silently: a missing google-services.json
+    // (Android) or APNs key (iOS) only shows up here, as getExpoPushTokenAsync throwing.
+    reportError(err, { where: 'push.syncPushRegistration', platform: Platform.OS });
   }
 }
 

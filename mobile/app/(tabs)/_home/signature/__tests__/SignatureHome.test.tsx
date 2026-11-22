@@ -5,6 +5,7 @@ import { SignatureHomeScreen } from '../SignatureHome';
 import { api } from '../../../../../lib/api/typedClient';
 import { createTestQueryClient } from '../../../../../lib/query/testUtils';
 import { ThemeProvider } from '../../../../../theme/ThemeContext';
+import { networkError } from '../../../../../lib/api/errors';
 
 jest.mock('../../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn() },
@@ -14,6 +15,8 @@ jest.mock('@expo/vector-icons');
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 
 jest.mock('../../../../../lib/settings/themePreference', () => ({
@@ -233,5 +236,18 @@ describe('SignatureHomeScreen', () => {
     const screen = renderSignature({ '/catalog/sermons/new-releases': new Error('boom') });
     await screen.findByText('New releases');
     expect(await screen.findByText('Retry')).toBeTruthy();
+  });
+
+  it('shows calm offline placeholders, not red errors, when shelves fail offline', async () => {
+    const screen = renderSignature({
+      '/catalog/sermons/new-releases': networkError(),
+      '/catalog/sermons/prophets-catalog': networkError(),
+    });
+    expect(await screen.findByLabelText(/New releases: you.re offline/)).toBeTruthy();
+    expect(await screen.findByText('This week\u2019s pick is waiting')).toBeTruthy();
+    expect(screen.queryByText(/Could not reach the server/)).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+    fireEvent.press(screen.getByLabelText(/New releases: you.re offline/));
+    expect(mockPush).toHaveBeenLastCalledWith('/offline');
   });
 });

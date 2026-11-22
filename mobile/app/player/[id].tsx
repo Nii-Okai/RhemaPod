@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
@@ -7,6 +7,8 @@ import type { VideoView } from 'expo-video';
 import { AirPlayButton, isAirPlayAvailable } from 'airplay-button';
 import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
 import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
+import { OfflineState } from '../../components/offline';
+import { isOfflineError } from '../../lib/api/errors';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
 import { spacing } from '../../theme/spacing';
@@ -63,6 +65,10 @@ import { PlayerHeroRootContext, PlayerHeroTarget } from './_signature/PlayerHero
 import { usePlayerHero } from '../../lib/playback/playerHero';
 import { LEAF } from '../(tabs)/_home/signature/leaf';
 import { haptics } from '../../lib/haptics';
+import { useTwoPane } from '../../components/navigation/responsive';
+
+// Two-pane player (tablet landscape): the queue / comments column on the right.
+const PLAYER_SIDE_PANE_WIDTH = 440;
 
 /**
  * Player screen (design spec §3 "Player (1d, iOS) / Now playing (2b, Android)", plan
@@ -332,13 +338,25 @@ export default function PlayerScreen() {
     }
 
     if (detailQuery.isError || !detail) {
-      return <PlayerError message="Something went wrong loading this sermon." onRetry={() => detailQuery.refetch()} />;
+      return (
+        <PlayerError
+          message="Something went wrong loading this sermon."
+          onRetry={() => detailQuery.refetch()}
+          error={detailQuery.error}
+        />
+      );
     }
 
     if (isDownloaded) {
       if (localPlayback.error) return <PlayerError message={localPlayback.error} />;
     } else if (streamQuery.isError || !streamQuery.data) {
-      return <PlayerError message="Couldn't load this sermon's playback link." onRetry={() => streamQuery.refetch()} />;
+      return (
+        <PlayerError
+          message="Couldn't load this sermon's playback link."
+          onRetry={() => streamQuery.refetch()}
+          error={streamQuery.error}
+        />
+      );
     }
 
     const variant: StreamVariant | null =
@@ -439,10 +457,24 @@ function PlayerLoading({ sermonId, detail }: { sermonId: string; detail?: Sermon
 interface PlayerErrorProps {
   message: string;
   onRetry?: () => void;
+  /** A connection failure shows the full "You're offline" view (offline mockups, Nii
+   * 2026-11-22), the same one sermon and series pages show, instead of the message. */
+  error?: unknown;
 }
 
-function PlayerError({ message, onRetry }: PlayerErrorProps) {
+function PlayerError({ message, onRetry, error }: PlayerErrorProps) {
   const styles = useStyles();
+  if (isOfflineError(error)) {
+    return (
+      <ScrollView
+        style={styles.offlineScroll}
+        contentContainerStyle={styles.offlineContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <OfflineState onReconnected={onRetry} />
+      </ScrollView>
+    );
+  }
   return (
     <View style={styles.centered}>
       <AppText variant="ui.body" tone="secondary" style={styles.errorText}>
@@ -804,6 +836,10 @@ interface SignatureLayoutProps {
  * switch has shown it stays for that sermon, so clearing the queue doesn't pull the pane
  * away mid-tap. The title block and that switch fold away while the keyboard is up so the
  * comment composer keeps its room. Playback itself is `PlayerContent`'s, unchanged.
+ *
+ * On a wide screen (tablet landscape, mockups Nii 2026-11-21) the same pieces sit in two
+ * panes: the stage and title block on the left, the queue or comments on the right. The
+ * left pane stays put while the keyboard is up, since the composer has its own column.
  */
 function SignatureLayout({
   sermonId,
@@ -827,15 +863,10 @@ function SignatureLayout({
   const offersQueue = queueShownRef.current;
   const showQueue = offersQueue && pane === 'queue';
   const showSwitch = offersQueue && !keyboardVisible;
+  const twoPane = useTwoPane();
 
-  return (
+  const sidePanel = (
     <>
-      {mode === 'listen' ? (
-        keyboardVisible ? null : listen
-      ) : (
-        <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>
-      )}
-      {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
       {showQueue ? (
         <View style={styles.queueCard}>
           <QueueList {...queueContext} isPlaying={isPlaying} />
@@ -846,6 +877,33 @@ function SignatureLayout({
       {!showSwitch ? null : (
         <PaneSwitch pane={showQueue ? 'queue' : 'comments'} onSelectPane={setPane} bottomInset={insets.bottom} />
       )}
+    </>
+  );
+
+  if (twoPane) {
+    return (
+      <>
+        <View testID="player-two-pane" style={styles.panes}>
+          <View style={styles.stagePane}>
+            {mode === 'listen' ? listen : <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>}
+            <NowPlayingDetails detail={detail} />
+          </View>
+          <View style={styles.sidePane}>{sidePanel}</View>
+        </View>
+        {sleepSheet}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {mode === 'listen' ? (
+        keyboardVisible ? null : listen
+      ) : (
+        <PlayerHeroTarget sermonId={sermonId}>{video}</PlayerHeroTarget>
+      )}
+      {keyboardVisible ? null : <NowPlayingDetails detail={detail} />}
+      {sidePanel}
       {sleepSheet}
     </>
   );
@@ -858,6 +916,14 @@ const useStyles = createThemedStyles((colors) => ({
   },
   body: {
     flex: 1,
+  },
+  offlineScroll: {
+    flex: 1,
+  },
+  offlineContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
@@ -892,6 +958,19 @@ const useStyles = createThemedStyles((colors) => ({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
     backgroundColor: colors.surface.raised,
+  },
+  panes: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  stagePane: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  sidePane: {
+    width: PLAYER_SIDE_PANE_WIDTH,
+    paddingTop: spacing.sm,
   },
   queueCard: {
     ...LEAF,

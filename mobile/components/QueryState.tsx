@@ -3,7 +3,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createThemedStyles, useTheme } from '../theme/ThemeContext';
 import { radius } from '../theme/radius';
 import { spacing } from '../theme/spacing';
-import { userMessageFor } from '../lib/api/errors';
+import { isOfflineError, userMessageFor } from '../lib/api/errors';
+import { OfflineCard } from './offline/OfflineCard';
 import { LinkButton } from './Button';
 import { AppText } from './Text';
 
@@ -46,6 +47,11 @@ export function QueryState({
         <ActivityIndicator color={colors.accent.gold} />
       </View>
     );
+  }
+
+  if (isError && isOfflineError(error)) {
+    // Offline mockups (Nii 2026-11-22): a calm card that opens the offline page, not a red box.
+    return <OfflineCard />;
   }
 
   if (isError) {

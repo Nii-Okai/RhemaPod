@@ -11,7 +11,10 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-dev.rhemapod.com"
+      }
     },
     "production": {
       "channel": "production",
@@ -20,8 +23,9 @@
     "testflight": {
       "extends": "production",
       "distribution": "store",
+      "channel": "uat",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.rhemapod.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-test.rhemapod.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "827558560538-jfpd1k7eq6bej6q481ohb2co70t56h9r.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "827558560538-ujevidt1217i6a2gu8fm9sn8je755kta.apps.googleusercontent.com"
       },
@@ -32,7 +36,6 @@
     "android-internal": {
       "extends": "testflight",
       "distribution": "internal",
-      "channel": "staging",
       "android": {
         "buildType": "apk"
       }
@@ -42,7 +45,8 @@
     "production": {},
     "testflight": {
       "ios": {
-        "appleTeamId": "FAND2W5VMM"
+        "appleTeamId": "FAND2W5VMM",
+        "ascAppId": "6828878983"
       }
     }
   }

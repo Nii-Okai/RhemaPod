@@ -54,6 +54,7 @@ const ICONS = {
   'wifi-outline': { ios: 'wifi-outline', android: 'wifi' },
   'paper-plane': { ios: 'paper-plane', android: 'send' },
   'cloud-offline-outline': { ios: 'cloud-offline-outline', android: 'cloud-off' },
+  'settings-outline': { ios: 'settings-outline', android: 'settings' },
   'ban-outline': { ios: 'ban-outline', android: 'block' },
   trash: { ios: 'trash', android: 'delete' },
   'trash-outline': { ios: 'trash-outline', android: 'delete-outline' },

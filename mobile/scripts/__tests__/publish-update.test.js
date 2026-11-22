@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   CHANNEL_PROFILES,
+  channelTargets,
+  checkProfileEnv,
   resolveProfile,
   easEnvironment,
   nativeChanges,
@@ -12,15 +14,35 @@ const {
 const easJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../../eas.json'), 'utf8'));
 
 describe('channels in eas.json', () => {
-  it.each(Object.entries(CHANNEL_PROFILES))('channel %s is the one profile %s builds on', (channel, profile) => {
-    expect(resolveProfile(easJson, profile).channel).toBe(channel);
+  it.each(Object.keys(CHANNEL_PROFILES))('channel %s is the one its profiles build on', (channel) => {
+    for (const [, profile] of channelTargets(channel)) {
+      expect(resolveProfile(easJson, profile).channel).toBe(channel);
+    }
   });
 
-  it('gives staging and production the production API, so an update never points at localhost', () => {
-    for (const channel of ['staging', 'production']) {
-      const env = resolveProfile(easJson, CHANNEL_PROFILES[channel]).env;
-      expect(env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api.rhemapod.com');
+  it('puts TestFlight and the Android APK on the uat channel, each with its own profile', () => {
+    expect(channelTargets('uat')).toEqual([
+      ['ios', 'testflight'],
+      ['android', 'android-internal'],
+    ]);
+    expect(channelTargets('uat', 'android')).toEqual([['android', 'android-internal']]);
+    expect(channelTargets('preview')).toEqual([
+      ['ios', 'preview'],
+      ['android', 'preview'],
+    ]);
+  });
+
+  it('gives the testers the test API and preview the dev API, so an update never points at localhost', () => {
+    for (const [, profile] of channelTargets('uat')) {
+      expect(resolveProfile(easJson, profile).env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api-test.rhemapod.com');
     }
+    expect(resolveProfile(easJson, 'preview').env.EXPO_PUBLIC_API_BASE_URL).toBe('https://api-dev.rhemapod.com');
+  });
+
+  it('refuses a profile without an API URL, except dev clients', () => {
+    expect(() => checkProfileEnv('production', resolveProfile(easJson, 'production'))).toThrow('localhost');
+    expect(() => checkProfileEnv('development', resolveProfile(easJson, 'development'))).not.toThrow();
+    expect(() => checkProfileEnv('testflight', resolveProfile(easJson, 'testflight'))).not.toThrow();
   });
 
   it('uses the EAS environment each profile builds with', () => {
@@ -75,23 +97,27 @@ describe('nativeChanges', () => {
 
 describe('parseArgs and easUpdateArgs', () => {
   it('builds the eas update command', () => {
-    const args = parseArgs(['--channel', 'production', '--message', 'Fix timer', '--rollout', '10']);
-    expect(easUpdateArgs({ ...args, environment: 'production' })).toEqual([
-      'update', '--channel', 'production', '--environment', 'production', '--message', 'Fix timer',
+    const args = parseArgs(['--channel', 'uat', '--message', 'Fix timer', '--rollout', '10']);
+    expect(args.platform).toBe('all');
+    expect(easUpdateArgs({ ...args, platform: 'ios', environment: 'production' })).toEqual([
+      'update', '--channel', 'uat', '--platform', 'ios', '--environment', 'production', '--message', 'Fix timer',
       '--non-interactive', '--rollout-percentage', '10',
     ]);
   });
 
   it('leaves out a 100% rollout', () => {
-    const args = parseArgs(['--channel', 'staging', '--rollout', '100']);
-    expect(easUpdateArgs({ ...args, message: 'm', environment: 'preview' })).not.toContain('--rollout-percentage');
+    const args = parseArgs(['--channel', 'uat', '--rollout', '100']);
+    expect(easUpdateArgs({ ...args, platform: 'android', message: 'm', environment: 'preview' })).not.toContain('--rollout-percentage');
   });
 
   it('rejects bad input', () => {
     expect(() => parseArgs([])).toThrow('--channel must be one of');
     expect(() => parseArgs(['--channel', 'prod'])).toThrow('--channel must be one of');
-    expect(() => parseArgs(['--channel', 'staging', '--rollout', '0'])).toThrow('--rollout');
-    expect(() => parseArgs(['--channel', 'staging', '--message'])).toThrow('needs a value');
-    expect(() => parseArgs(['--channel', 'staging', '--yes'])).toThrow('Unknown option');
+    expect(() => parseArgs(['--channel', 'staging'])).toThrow('--channel must be one of');
+    expect(() => parseArgs(['--channel', 'uat', '--platform', 'web'])).toThrow('--platform');
+    expect(parseArgs(['--channel', 'uat', '--plan']).plan).toBe(true);
+    expect(() => parseArgs(['--channel', 'uat', '--rollout', '0'])).toThrow('--rollout');
+    expect(() => parseArgs(['--channel', 'uat', '--message'])).toThrow('needs a value');
+    expect(() => parseArgs(['--channel', 'uat', '--yes'])).toThrow('Unknown option');
   });
 });

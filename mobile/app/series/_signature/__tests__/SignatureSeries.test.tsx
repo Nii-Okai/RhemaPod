@@ -10,9 +10,17 @@ import { loadThemePreference } from '../../../../lib/settings/themePreference';
 import { ThemeProvider } from '../../../../theme/ThemeContext';
 
 jest.mock('@expo/vector-icons');
+// Window size, so a test can draw the screen at tablet landscape (two panes).
+let mockWindow = { width: 390, height: 844 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ ...mockWindow, scale: 2, fontScale: 1 }),
+}));
 jest.mock('react-native-share', () => ({ __esModule: true, default: { open: jest.fn() } }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 jest.mock('../../../../lib/api/typedClient', () => ({
   api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
@@ -144,6 +152,7 @@ beforeEach(() => {
   download.mockClear();
   mockCastPlay.mockClear();
   mockCastConnected = false;
+  mockWindow = { width: 390, height: 844 };
   records = {};
   mockedLoadTheme.mockResolvedValue('dark');
   mockedUseDownloads.mockReturnValue({
@@ -281,5 +290,26 @@ describe('SignatureSeriesScreen', () => {
     );
     const { findByText } = renderScreen();
     await waitFor(async () => expect(await findByText('Something went wrong loading this series.')).toBeTruthy());
+  });
+});
+
+describe('SignatureSeriesScreen — tablet', () => {
+  it('splits into two panes in landscape: cover and actions beside the episodes', async () => {
+    mockWindow = { width: 1194, height: 834 };
+    mockApi();
+    const { findByText, getByTestId, getByText } = renderScreen();
+
+    await findByText('The Destiny of the Church');
+    expect(getByTestId('series-side-pane')).toBeTruthy();
+    expect(getByTestId('series-hero')).toBeTruthy();
+    expect(getByText('1 of 3 finished')).toBeTruthy();
+  });
+
+  it('keeps one column on a phone', async () => {
+    mockApi();
+    const { findByText, queryByTestId } = renderScreen();
+
+    await findByText('The Destiny of the Church');
+    expect(queryByTestId('series-side-pane')).toBeNull();
   });
 });

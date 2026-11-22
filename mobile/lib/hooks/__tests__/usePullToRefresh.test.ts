@@ -24,4 +24,25 @@ describe('usePullToRefresh', () => {
     act(() => result.current.onRefresh());
     expect(result.current.refreshing).toBe(true);
   });
+
+  // Hermes's own Promise has no `allSettled`; the refresh must not depend on it.
+  it('works where Promise.allSettled does not exist', async () => {
+    const original = Promise.allSettled;
+    // @ts-expect-error simulating Hermes
+    delete Promise.allSettled;
+    try {
+      const ok = { refetch: jest.fn().mockResolvedValue('ok') };
+      const throwing = jest.fn(() => {
+        throw new Error('sync failure');
+      });
+      const { result } = renderHook(() => usePullToRefresh([ok, throwing]));
+      await act(async () => {
+        result.current.onRefresh();
+      });
+      expect(ok.refetch).toHaveBeenCalledTimes(1);
+      expect(result.current.refreshing).toBe(false);
+    } finally {
+      Promise.allSettled = original;
+    }
+  });
 });

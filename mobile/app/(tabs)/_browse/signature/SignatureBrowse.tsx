@@ -22,6 +22,7 @@ import { useSearchResults } from '../../../../lib/query/hooks/useSearch';
 import { useSpeakers, type Speaker } from '../../../../lib/query/hooks/useSpeakers';
 import { useSeriesList } from '../../../../lib/query/hooks/useSeries';
 import { pathnameFor, routeByKey } from '../../../../components/navigation/routes';
+import { useTabGridColumns } from '../../../../components/navigation/responsive';
 import { SeriesTile } from '../../_home/signature/shelfCards';
 import { LEAF_SM } from '../../_home/signature/leaf';
 import { CatalogCollectionCard } from './CatalogCollectionCard';
@@ -31,7 +32,6 @@ import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
 
 // Same as the classic Browse: a short grid with "See more" under it.
 const COLLAPSED_CATEGORY_COUNT = 6;
-const GRID_COLUMNS = 2;
 // Same debounce as the search screen, for the same per-user rate limit.
 const DEBOUNCE_MS = 300;
 const SERIES_SHELF_MAX = 8;
@@ -88,10 +88,13 @@ export function SignatureBrowseScreen() {
   const hasQuery = rawQuery.trim().length > 0;
   const results = useSearchResults({ q: trimmed || undefined }, { enabled: trimmed.length > 0 });
 
+  // 2 topic columns on a phone (3 rows when collapsed), 3–4 on a tablet (2 rows).
+  const gridColumns = useTabGridColumns();
+  const collapsedCount = gridColumns === 2 ? COLLAPSED_CATEGORY_COUNT : gridColumns * 2;
   const allCategories = categories.data ?? [];
-  const hasMoreCategories = allCategories.length > COLLAPSED_CATEGORY_COUNT;
+  const hasMoreCategories = allCategories.length > collapsedCount;
   const visibleCategories =
-    showAllCategories || !hasMoreCategories ? allCategories : allCategories.slice(0, COLLAPSED_CATEGORY_COUNT);
+    showAllCategories || !hasMoreCategories ? allCategories : allCategories.slice(0, collapsedCount);
   const tones = topicTones(colors);
   const speakerList = speakers.data ?? [];
   const catalogLead = prophetsCatalog.data?.[0];
@@ -217,14 +220,14 @@ export function SignatureBrowseScreen() {
                 loadingLabel="Loading categories"
               >
                 <View style={styles.grid}>
-                  {chunk(visibleCategories, GRID_COLUMNS).map((row, rowIndex) => (
+                  {chunk(visibleCategories, gridColumns).map((row, rowIndex) => (
                     <View key={row[0].id} style={styles.gridRow}>
-                      {Array.from({ length: GRID_COLUMNS }, (_, i) => row[i]).map((category, i) => (
+                      {Array.from({ length: gridColumns }, (_, i) => row[i]).map((category, i) => (
                         <View key={category?.id ?? `empty-${i}`} style={styles.gridCell}>
                           {category ? (
                             <TopicTile
                               category={category}
-                              tone={tones[(rowIndex * GRID_COLUMNS + i) % tones.length]}
+                              tone={tones[(rowIndex * gridColumns + i) % tones.length]}
                               onPress={() =>
                                 router.push({
                                   pathname: '/category/[id]',

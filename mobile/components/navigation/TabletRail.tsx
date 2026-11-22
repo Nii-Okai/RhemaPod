@@ -7,6 +7,7 @@ import { spacing } from '../../theme/spacing';
 import { IconNavItem } from './IconNavItem';
 import { PlatformIcon } from '../PlatformIcon';
 import { TABLET_RAIL_KEYS, isRouteActive, routeByKey } from './routes';
+import { TABLET_RAIL_WIDTH } from './responsive';
 
 /**
  * Tablet rail (design spec §2/1o, plan W3.4): six destinations, not a re-skin of the
@@ -57,7 +58,7 @@ export function TabletRail() {
 
 const useStyles = createThemedStyles((colors) => ({
   rail: {
-    width: 88,
+    width: TABLET_RAIL_WIDTH,
     backgroundColor: colors.surface.nav,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: colors.border.default,

@@ -6,6 +6,7 @@ import { api } from '../../../lib/api/typedClient';
 import { usePlatformOS } from '../../../components/navigation/platform';
 import { createTestQueryClient } from '../../../lib/query/testUtils';
 import { queryKeys } from '../../../lib/query/queryClient';
+import { networkError } from '../../../lib/api/errors';
 // Imported from the mock file's own relative path (not the bare `'expo-video'`
 // specifier) purely so `tsc` — which doesn't know about Jest's manual-mock
 // substitution — can see this member really exists; Jest resolves both this path and
@@ -76,6 +77,8 @@ jest.mock('../../../lib/mediaCache/useCachedSource', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  initialWindowMetrics: null,
 }));
 
 const mockBack = jest.fn();
@@ -248,6 +251,18 @@ describe('PlayerScreen — detail fetch error', () => {
     mockReads();
     fireEvent.press(await findByText('Try again'));
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/catalog/sermons/{sermon_id}', expect.anything()));
+  });
+});
+
+describe('PlayerScreen — offline', () => {
+  it('shows the full "You\'re offline" view, not the short message', async () => {
+    mockedGet.mockRejectedValue(networkError());
+    const { findByText, getByText, queryByText } = renderPlayer();
+
+    await findByText('NO CONNECTION');
+    expect(getByText('Open Settings')).toBeTruthy();
+    expect(queryByText('This sermon needs a connection to play. Downloaded sermons still play offline.')).toBeNull();
+    expect(queryByText('Something went wrong loading this sermon.')).toBeNull();
   });
 });
 

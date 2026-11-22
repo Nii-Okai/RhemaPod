@@ -28,6 +28,9 @@ import { FrostedBackdrop, useFrostBackground } from '../Frosted';
 
 /** The card's own height. */
 export const MINI_PLAYER_CARD_HEIGHT = 62;
+/** Widest the card gets: on a tablet it sits centred rather than running the full width
+ * (tablet mockups, Nii 2026-11-21). Phones are narrower than this, so they're unchanged. */
+export const MINI_PLAYER_MAX_WIDTH = 560;
 /** The band the tabs keep for it while docked: the card plus the gap above it. */
 export const MINI_PLAYER_SLOT_HEIGHT = MINI_PLAYER_CARD_HEIGHT + spacing.sm;
 
@@ -376,6 +379,9 @@ const useStyles = createThemedStyles((colors) => ({
   // Carries the drop shadow the clipped card can't (and, on Android, the elevation, which
   // needs the view's own background).
   lift: {
+    width: '100%',
+    maxWidth: MINI_PLAYER_MAX_WIDTH,
+    alignSelf: 'center',
     borderRadius: 20,
     shadowColor: colors.miniPlayer.shadow,
     shadowOpacity: 1,

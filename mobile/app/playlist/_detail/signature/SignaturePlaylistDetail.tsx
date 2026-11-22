@@ -96,7 +96,7 @@ export function SignaturePlaylistDetailScreen() {
       <View style={styles.screen}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar()}
-        <DetailError onRetry={() => void refetch()} message="Something went wrong loading this playlist." />
+        <DetailError onRetry={() => void refetch()} message="Something went wrong loading this playlist." error={error} />
       </View>
     );
   }

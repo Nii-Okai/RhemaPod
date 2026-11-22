@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -16,7 +16,8 @@ import {
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
-import { userMessageFor } from '../../../../lib/api/errors';
+import { isOfflineError, userMessageFor } from '../../../../lib/api/errors';
+import { OfflineBanner, OfflineShelf } from '../../../../components/offline';
 import { useDownloads } from '../../../../lib/downloads/useDownloads';
 import { useContinueWatching } from '../../../../lib/query/hooks/useContinueWatching';
 import { useDeletePlaylist, usePlaylists } from '../../../../lib/query/hooks/usePlaylists';
@@ -30,9 +31,13 @@ import { libraryItemTitle, sortLibraryItems, SORT_MODE_LABEL, type LibraryItem, 
 import { DownloadGridTile, DownloadListRow, PlaylistGridTile, PlaylistListRow } from './LibraryItems';
 import { SegmentedControl } from './SegmentedControl';
 import { usePullToRefresh } from '../../../../lib/hooks/usePullToRefresh';
+import {
+  READABLE_MAX_WIDTH,
+  useTabContentWidth,
+  useTabGridColumns,
+} from '../../../../components/navigation/responsive';
 
 const GUTTER = spacing.lg;
-const GRID_COLUMNS = 2;
 const GRID_GAP = spacing.md;
 
 type FilterKey = 'all' | 'playlists' | 'downloaded';
@@ -58,7 +63,9 @@ export function SignatureLibraryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const bottomChrome = useBottomChromeInset();
-  const { width: windowWidth } = useWindowDimensions();
+  // Beside the rail on a tablet, so tiles size to the content area, not the window.
+  const contentWidth = useTabContentWidth();
+  const gridColumns = useTabGridColumns();
   const playlists = usePlaylists();
   const downloads = useDownloads();
   const continueWatching = useContinueWatching();
@@ -114,7 +121,7 @@ export function SignatureLibraryScreen() {
         : 'Your library is empty. Start a playlist or download a sermon.';
   const offerCreate = !normalizedQuery && filter !== 'downloaded';
 
-  const tileWidth = (windowWidth - GUTTER * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  const tileWidth = (contentWidth - GUTTER * 2 - GRID_GAP * (gridColumns - 1)) / gridColumns;
 
   const goToPlayer = (sermonId: string) => router.push({ pathname: '/player/[id]', params: { id: sermonId } });
   const goToPlaylist = (playlistId: string) => router.push({ pathname: '/playlist/[id]', params: { id: playlistId } });
@@ -196,6 +203,9 @@ export function SignatureLibraryScreen() {
           </View>
         </View>
 
+        {/* Offline (offline mockups, Nii 2026-11-22): downloads below still play. */}
+        <OfflineBanner style={styles.banner} />
+
         {continueWatching.isLoading || continueWatching.isError || resumeItems.length > 0 ? (
           <View style={styles.section}>
             <AppText variant="display.section" accessibilityRole="header" style={styles.gutter}>
@@ -205,7 +215,9 @@ export function SignatureLibraryScreen() {
               <View style={styles.gutter}>
                 <ShelfSkeleton loadingLabel="Loading continue watching" />
               </View>
-            ) : continueWatching.isError ? (
+            ) : continueWatching.isError && isOfflineError(continueWatching.error) && resumeItems.length === 0 ? (
+              <OfflineShelf title="Keep listening" cardWidth={220} aspectRatio={16 / 9} />
+            ) : continueWatching.isError && resumeItems.length === 0 ? (
               <View style={styles.gutter}>
                 <SectionError message={userMessageFor(continueWatching.error)} onRetry={() => continueWatching.refetch()} />
               </View>
@@ -307,7 +319,7 @@ export function SignatureLibraryScreen() {
               ) : null}
             </View>
           ) : layout === 'list' ? (
-            <View>
+            <View style={styles.list}>
               {items.map((item, index) => (
                 <StaggerItem key={item.key} index={index}>
                   {renderItem(item)}
@@ -345,6 +357,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   gutter: {
     paddingHorizontal: GUTTER,
+  },
+  banner: {
+    marginHorizontal: GUTTER,
   },
   header: {
     flexDirection: 'row',
@@ -430,6 +445,11 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.primaryButton.bg,
+  },
+  // Rows stop at a readable width on a tablet rather than stretching across it.
+  list: {
+    width: '100%',
+    maxWidth: READABLE_MAX_WIDTH,
   },
   grid: {
     flexDirection: 'row',
