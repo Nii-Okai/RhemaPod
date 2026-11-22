@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEvent, useEventListener } from 'expo';
 import type { VideoView } from 'expo-video';
 import { AirPlayButton, isAirPlayAvailable } from 'airplay-button';
 import { useNowPlaying, useSharedPlayer } from '../../lib/playback/NowPlaying';
-import { AppText, FittedArt, LinkButton, PrimaryButton, SkeletonBlock } from '../../components';
-import { useOpenOfflineHelp } from '../../components/offline';
+import { AppText, FittedArt, PrimaryButton, SkeletonBlock } from '../../components';
+import { OfflineState } from '../../components/offline';
 import { isOfflineError } from '../../lib/api/errors';
 import { darkColors as onArt } from '../../theme/colors';
 import { createThemedStyles, useTheme } from '../../theme/ThemeContext';
@@ -457,27 +457,30 @@ function PlayerLoading({ sermonId, detail }: { sermonId: string; detail?: Sermon
 interface PlayerErrorProps {
   message: string;
   onRetry?: () => void;
-  /** A connection failure says so and links to the offline page (offline mockups, Nii
-   * 2026-11-22) instead of the generic message. */
+  /** A connection failure shows the full "You're offline" view (offline mockups, Nii
+   * 2026-11-22), the same one sermon and series pages show, instead of the message. */
   error?: unknown;
 }
 
 function PlayerError({ message, onRetry, error }: PlayerErrorProps) {
   const styles = useStyles();
-  const openOfflineHelp = useOpenOfflineHelp();
-  const offline = isOfflineError(error);
+  if (isOfflineError(error)) {
+    return (
+      <ScrollView
+        style={styles.offlineScroll}
+        contentContainerStyle={styles.offlineContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <OfflineState onReconnected={onRetry} />
+      </ScrollView>
+    );
+  }
   return (
     <View style={styles.centered}>
-      {offline ? (
-        <AppText variant="display.title" accessibilityRole="header" style={styles.errorText}>
-          You&rsquo;re offline
-        </AppText>
-      ) : null}
       <AppText variant="ui.body" tone="secondary" style={styles.errorText}>
-        {offline ? 'This sermon needs a connection to play. Downloaded sermons still play offline.' : message}
+        {message}
       </AppText>
       {onRetry ? <PrimaryButton label="Try again" onPress={onRetry} /> : null}
-      {offline ? <LinkButton label="Check connection settings" onPress={openOfflineHelp} /> : null}
     </View>
   );
 }
@@ -913,6 +916,14 @@ const useStyles = createThemedStyles((colors) => ({
   },
   body: {
     flex: 1,
+  },
+  offlineScroll: {
+    flex: 1,
+  },
+  offlineContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
