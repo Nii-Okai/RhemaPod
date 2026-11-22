@@ -5,6 +5,8 @@ import { ImageOnlyCard } from './ImageOnlyCard';
 import { spacing } from '../../theme/spacing';
 import { useSearchResults } from '../../lib/query/hooks/useSearch';
 import { gridColumnsForWidth } from '../navigation/responsive';
+import { isOfflineError } from '../../lib/api/errors';
+import { OfflineCard } from '../offline/OfflineCard';
 
 export interface RelatedSermonsProps {
   categoryId: string | null;
@@ -84,6 +86,14 @@ export function RelatedSermons({
     );
   }
 
+  if (results.isError && isOfflineError(results.error)) {
+    return (
+      <View style={styles.offline}>
+        <OfflineCard compact message="Related sermons will load when you’re back online" />
+      </View>
+    );
+  }
+
   if (results.isError) {
     return (
       <AppText variant="ui.body" tone="secondary" style={styles.message}>
@@ -156,6 +166,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: GRID_PADDING,
   },
   message: {
+    paddingHorizontal: spacing.lg,
+  },
+  offline: {
     paddingHorizontal: spacing.lg,
   },
 });

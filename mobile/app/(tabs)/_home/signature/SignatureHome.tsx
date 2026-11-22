@@ -5,7 +5,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { AppText, Avatar, FrostedHeader, StaggerItem, useFrostedScroll } from '../../../../components';
 import { createThemedStyles } from '../../../../theme/ThemeContext';
 import { spacing } from '../../../../theme/spacing';
-import { userMessageFor } from '../../../../lib/api/errors';
+import { isOfflineError, userMessageFor } from '../../../../lib/api/errors';
 import { useHeroSermons } from '../../../../lib/query/hooks/useHeroSermons';
 import { useContinueWatching } from '../../../../lib/query/hooks/useContinueWatching';
 import { useNewReleases } from '../../../../lib/query/hooks/useNewReleases';
@@ -20,6 +20,7 @@ import { pathnameFor, routeByKey } from '../../../../components/navigation/route
 import { useTabContentWidth, useTabGridColumns } from '../../../../components/navigation/responsive';
 import { SectionError } from '../../../../components/SectionError';
 import { ShelfSkeleton } from '../../../../components/ShelfSkeleton';
+import { OfflineBanner, OfflineCard, OfflineShelf } from '../../../../components/offline';
 import { HeroCarousel } from '../HeroCarousel';
 import { HeroSkeleton } from '../HeroSkeleton';
 import { HomeHeader } from '../HomeHeader';
@@ -44,6 +45,8 @@ import { useSeriesWalk } from './useSeriesWalk';
 /** The Series grid: one row of two (Nii's call, 2026-10-21); "See all" opens the full list. */
 // Content this wide (tablet landscape) puts the hero and Daily Rhema side by side.
 const WIDE_HOME_MIN_WIDTH = 900;
+// The "New this week" hero card's art shape (`SignatureHeroCard`), for its offline stand-in.
+const HERO_ASPECT_RATIO = 16 / 10;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const rows: T[][] = [];
@@ -82,23 +85,35 @@ function SectionTitle({
   );
 }
 
+/** A shelf card's width and art shape, so its offline ghosts sit where the cards will. */
+interface GhostShape {
+  width: number;
+  aspectRatio: number;
+}
+
 /**
  * One horizontal shelf with the classic Home's loading / error / empty contract: a
  * skeleton while loading, an inline retry on error, and nothing at all when the endpoint
- * returns no items.
+ * returns no items. Offline (offline mockups, Nii 2026-11-22) it keeps any cards it already
+ * has, and otherwise shows ghost cards in its own shape that open the offline page.
  */
 function Shelf<T extends { id: string }>({
   title,
   query,
   renderItem,
+  ghost,
 }: {
   title: string;
   query: UseQueryResult<T[]>;
   renderItem: (item: T, index: number) => React.ReactNode;
+  ghost: GhostShape;
 }) {
   const styles = useStyles();
   const items = query.data ?? [];
+  const offline = query.isError && isOfflineError(query.error);
   if (!query.isLoading && !query.isError && items.length === 0) return null;
+  // Cards it already has stay up through a failed refresh.
+  const showItems = items.length > 0;
   return (
     <View style={styles.section}>
       <View style={styles.gutter}>
@@ -108,7 +123,9 @@ function Shelf<T extends { id: string }>({
         <View style={styles.gutter}>
           <ShelfSkeleton loadingLabel={`Loading ${title.toLowerCase()}`} />
         </View>
-      ) : query.isError ? (
+      ) : offline && !showItems ? (
+        <OfflineShelf title={title} cardWidth={ghost.width} aspectRatio={ghost.aspectRatio} />
+      ) : query.isError && !showItems ? (
         <View style={styles.gutter}>
           <SectionError message={userMessageFor(query.error)} onRetry={() => query.refetch()} />
         </View>
@@ -196,7 +213,13 @@ export function SignatureHomeScreen() {
     <>
       {hero.isLoading ? (
         <HeroSkeleton />
-      ) : hero.isError ? (
+      ) : hero.isError && isOfflineError(hero.error) && heroItems.length === 0 ? (
+        <OfflineCard
+          aspectRatio={HERO_ASPECT_RATIO}
+          title="This week’s message is waiting"
+          message="It will appear when you’re back online"
+        />
+      ) : hero.isError && heroItems.length === 0 ? (
         <SectionError message={userMessageFor(hero.error)} onRetry={() => hero.refetch()} />
       ) : heroItems.length > 0 ? (
         <HeroCarousel
@@ -237,6 +260,7 @@ export function SignatureHomeScreen() {
           <RefreshControl {...pullToRefresh} progressViewOffset={frosted.progressViewOffset} />
         }
       >
+        <OfflineBanner style={styles.banner} />
         <View style={styles.gutter}>
           <VerseCard />
         </View>
@@ -257,6 +281,7 @@ export function SignatureHomeScreen() {
           title="Keep listening"
           query={continueWatching}
           renderItem={(item) => <ResumeCard item={item} onPress={() => goToSermon(item.id)} />}
+          ghost={{ width: 220, aspectRatio: 16 / 9 }}
         />
 
         {wide ? null : <View style={styles.gutter}>{heroContent}</View>}
@@ -265,6 +290,7 @@ export function SignatureHomeScreen() {
           title="New releases"
           query={newReleases}
           renderItem={(item) => <ReleaseCard sermon={item} onPress={() => goToSermon(item.id)} />}
+          ghost={{ width: 240, aspectRatio: 16 / 9 }}
         />
 
         <View style={styles.gutter}>
@@ -295,7 +321,13 @@ export function SignatureHomeScreen() {
             </SectionTitle>
             {prophetsCatalog.isLoading ? (
               <ShelfSkeleton loadingLabel="Loading Prophet's Pick" />
-            ) : prophetsCatalog.isError ? (
+            ) : prophetsCatalog.isError && isOfflineError(prophetsCatalog.error) && !pick ? (
+              <OfflineCard
+                aspectRatio={16 / 9}
+                title="This week’s pick is waiting"
+                message="Connect to listen"
+              />
+            ) : prophetsCatalog.isError && !pick ? (
               <SectionError
                 message={userMessageFor(prophetsCatalog.error)}
                 onRetry={() => prophetsCatalog.refetch()}
@@ -323,7 +355,11 @@ export function SignatureHomeScreen() {
           {series.isLoading ? (
             <ShelfSkeleton loadingLabel="Loading series" />
           ) : series.isError ? (
-            <SectionError message={userMessageFor(series.error)} onRetry={() => series.refetch()} />
+            <SectionError
+              message={userMessageFor(series.error)}
+              onRetry={() => series.refetch()}
+              error={series.error}
+            />
           ) : seriesItems.length === 0 ? (
             <AppText variant="ui.body" tone="secondary">
               No series yet — check back once the catalogue has one.
@@ -373,6 +409,7 @@ export function SignatureHomeScreen() {
           title="Recommended for you"
           query={recommended}
           renderItem={(item) => <PosterCard sermon={item} onPress={() => goToSermon(item.id)} />}
+          ghost={{ width: 130, aspectRatio: 130 / 190 }}
         />
 
         <Shelf
@@ -381,6 +418,7 @@ export function SignatureHomeScreen() {
           renderItem={(item, index) => (
             <TrendingCard rank={index + 1} sermon={item} onPress={() => goToSermon(item.id)} />
           )}
+          ghost={{ width: 120, aspectRatio: 120 / 176 }}
         />
       </ScrollView>
     </View>
@@ -405,6 +443,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   gutter: {
     paddingHorizontal: spacing.lg,
+  },
+  banner: {
+    marginHorizontal: spacing.lg,
   },
   section: {
     gap: spacing.md,

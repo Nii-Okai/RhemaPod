@@ -6,6 +6,8 @@ import { useSearchResults } from '../../../lib/query/hooks/useSearch';
 import { ArtTile } from '../../(tabs)/_home/signature/ArtTile';
 import { pickRelated } from './episodeProgress';
 import { gridColumnsForWidth } from '../../../components/navigation/responsive';
+import { OfflineCard } from '../../../components/offline';
+import { isOfflineError } from '../../../lib/api/errors';
 
 const COLUMNS = 3;
 const GAP = spacing.sm;
@@ -37,6 +39,13 @@ export function SignatureRelated({ seriesId, categoryId, onPressSermon, width }:
 
   if (categoryId === null) return message('No related sermons yet.');
   if (results.isLoading) return message('Loading related sermons…');
+  if (results.isError && isOfflineError(results.error)) {
+    return (
+      <View style={styles.offline}>
+        <OfflineCard compact message="Related sermons will load when you’re back online" />
+      </View>
+    );
+  }
   if (results.isError) return message('Something went wrong loading related sermons.');
 
   const related = pickRelated(results.data?.results ?? [], seriesId);
@@ -68,6 +77,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   message: {
+    paddingHorizontal: PADDING,
+    paddingTop: spacing.lg,
+  },
+  offline: {
     paddingHorizontal: PADDING,
     paddingTop: spacing.lg,
   },

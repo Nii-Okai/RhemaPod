@@ -97,7 +97,7 @@ export default function SermonDetailScreen() {
     return (
       <View style={styles.screen}>
         <CastCloseHeader onClose={onCloseAll} onBack={onBack} />
-        <DetailError onRetry={() => detailQuery.refetch()} />
+        <DetailError onRetry={() => detailQuery.refetch()} error={detailQuery.error} />
       </View>
     );
   }

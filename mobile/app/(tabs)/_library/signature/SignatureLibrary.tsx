@@ -16,7 +16,8 @@ import {
 import { createThemedStyles, useTheme } from '../../../../theme/ThemeContext';
 import { radius } from '../../../../theme/radius';
 import { spacing } from '../../../../theme/spacing';
-import { userMessageFor } from '../../../../lib/api/errors';
+import { isOfflineError, userMessageFor } from '../../../../lib/api/errors';
+import { OfflineBanner, OfflineShelf } from '../../../../components/offline';
 import { useDownloads } from '../../../../lib/downloads/useDownloads';
 import { useContinueWatching } from '../../../../lib/query/hooks/useContinueWatching';
 import { useDeletePlaylist, usePlaylists } from '../../../../lib/query/hooks/usePlaylists';
@@ -202,6 +203,9 @@ export function SignatureLibraryScreen() {
           </View>
         </View>
 
+        {/* Offline (offline mockups, Nii 2026-11-22): downloads below still play. */}
+        <OfflineBanner style={styles.banner} />
+
         {continueWatching.isLoading || continueWatching.isError || resumeItems.length > 0 ? (
           <View style={styles.section}>
             <AppText variant="display.section" accessibilityRole="header" style={styles.gutter}>
@@ -211,7 +215,9 @@ export function SignatureLibraryScreen() {
               <View style={styles.gutter}>
                 <ShelfSkeleton loadingLabel="Loading continue watching" />
               </View>
-            ) : continueWatching.isError ? (
+            ) : continueWatching.isError && isOfflineError(continueWatching.error) && resumeItems.length === 0 ? (
+              <OfflineShelf title="Keep listening" cardWidth={220} aspectRatio={16 / 9} />
+            ) : continueWatching.isError && resumeItems.length === 0 ? (
               <View style={styles.gutter}>
                 <SectionError message={userMessageFor(continueWatching.error)} onRetry={() => continueWatching.refetch()} />
               </View>
@@ -351,6 +357,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   gutter: {
     paddingHorizontal: GUTTER,
+  },
+  banner: {
+    marginHorizontal: GUTTER,
   },
   header: {
     flexDirection: 'row',
