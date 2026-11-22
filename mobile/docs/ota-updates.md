@@ -9,16 +9,37 @@ itself mid-sermon. Code: `mobile/lib/updates/otaUpdates.ts`, `mobile/app.json`
 
 ## Channels
 
-| Build profile      | Channel       | Who has it                        |
-| ------------------ | ------------- | --------------------------------- |
-| `development`      | `development` | dev client builds                 |
-| `preview`          | `preview`     | internal preview builds           |
-| `android-internal` | `staging`     | the internal Android APK          |
-| `testflight`       | `production`  | TestFlight and App Store (iOS)    |
-| `production`       | `production`  | (base of `testflight`)            |
+| Build profile      | Channel       | Who has it                               |
+| ------------------ | ------------- | ---------------------------------------- |
+| `development`      | `development` | dev client builds                        |
+| `preview`          | `preview`     | internal preview builds (dev API)        |
+| `testflight`       | `uat`         | testers on TestFlight (iOS)              |
+| `android-internal` | `uat`         | testers on the internal Android APK      |
+| `production`       | `production`  | App Store / Play Store, from launch      |
 
 A build only ever receives updates published to its own channel, and only updates
-with the same runtime version.
+with the same runtime version. Builds made before the move to `uat` (TestFlight on
+`production`, Android on `staging`) get no more updates; testers need one new build.
+
+## The `uat` branch is what testers run
+
+Testers' builds and updates come from the `uat` branch, and its backend is the test
+environment (`api-test.rhemapod.com`), which also deploys from `uat`
+(DEPLOYMENT-AZURE.md). Work lands on `dev`; promote it by merging `dev` into `uat`.
+
+Every push to `uat` that touches `mobile/` runs **Mobile testers (uat)**
+(`.github/workflows/mobile-uat.yml`):
+
+- JavaScript and asset changes go out as an over-the-air update to `uat`, for iOS
+  and Android, each with its own build profile's settings.
+- A new app version (`expo.version`) with no build on `uat` yet gets new builds:
+  iOS is built and submitted to TestFlight, Android is built as the internal APK
+  (install link on expo.dev). The first push after this change builds both.
+- Native changes without a version bump stop the run with the list of files: bump
+  `expo.version` and push again.
+
+To force new builds or an update, run the workflow by hand on `uat` (Actions →
+*Mobile testers (uat)* → *Run workflow*).
 
 ## What an update can and cannot carry
 
@@ -35,9 +56,13 @@ crashing a build it doesn't fit.
 
 Always publish with the script, never plain `eas update`:
 
+Normally the workflow above publishes for you. By hand, from a `uat` checkout:
+
 ```sh
 cd mobile
-npm run update -- --channel staging --message "Fix the sleep timer"
+npm run update -- --channel uat --message "Fix the sleep timer"
+npm run update -- --channel uat --platform android   # one platform only
+npm run update -- --channel uat --plan               # update or build, per platform
 ```
 
 The script:
@@ -56,11 +81,13 @@ The script:
 
 `--dry-run` prints what it would do.
 
-## Staging, then production in steps
+## Testers first, then production in steps
 
-1. Publish to `staging`, open the internal Android APK twice (the first launch
+1. Merge into `uat`. Open the app twice on a tester build (the first launch
    downloads, the second runs it) and check the fix.
-2. Publish the same commit to production for a slice of users:
+2. After launch, once `prod` has store builds on `production` (that profile needs its
+   own `EXPO_PUBLIC_API_BASE_URL` first; the script refuses without one), publish
+   the same commit from `prod` to a slice of users:
    `npm run update -- --channel production --rollout 10`
 3. Watch Sentry for the new update id. If it looks healthy, raise the rollout with
    `npx eas-cli update:edit` (pick the update, set the percentage to 100).
